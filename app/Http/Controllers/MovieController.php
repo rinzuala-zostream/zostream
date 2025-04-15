@@ -22,7 +22,7 @@ class MovieController extends Controller
         $apiKey = $request->header('api_key');
 
         if ($apiKey !== $this->validApiKey) {
-            return response()->json(["status" => "error", "message" => $this->validApiKey], 401);
+            return response()->json(["status" => "error", "message" => $apiKey], 401);
         }
 
         $validated = $request->validate([
