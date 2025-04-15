@@ -33,7 +33,7 @@ Route::get('/test', function () {
 
 Route::get('/user', [UserController::class, 'getUserData']);
 Route::get('/get-subscription', [SubscriptionController::class, 'getSubscription']);
-Route::get('/movies', [MovieController::class, 'getMovies']);
+Route::post('/movies', [MovieController::class, 'getMovies']);
 
 //update device for new device or change device
 Route::post('/device', [UpdateUserDevice::class, 'updateDevice']);
