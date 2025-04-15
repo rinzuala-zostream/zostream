@@ -19,7 +19,7 @@ class UpdateUserDevice extends Controller
     public function updateDevice(Request $request)
     {
         
-        $apiKey = $request->header('api_key');
+        $apiKey = $request->header('X-Api-Key');
         
         if ($apiKey !== $this->validApiKey) {
             return response()->json(["status" => "error", "message" => "Invalid API key"], 401);
@@ -53,7 +53,7 @@ class UpdateUserDevice extends Controller
                 'device_name' => $request->device_name,
             ]);
 
-            $deviceRequest->headers->set('api_key', $apiKey);
+            $deviceRequest->headers->set('X-Api-Key', $apiKey);
             $this->deviceController->update($deviceRequest);
         } catch (\Exception $e) {
             return response()->json([

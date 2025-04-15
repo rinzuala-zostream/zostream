@@ -22,7 +22,7 @@ class DeviceManagementController extends Controller
     {
 
        
-        $apiKey = $request->header('api_key');
+        $apiKey = $request->header('X-Api-Key');
        
         if ($apiKey !== $this->validApiKey) {
             return response()->json(["status" => "error", "message" => "Invalid API key"]);
@@ -58,7 +58,7 @@ class DeviceManagementController extends Controller
     public function delete(Request $request)
 {
    
-    $apiKey = $request->header('api_key');
+    $apiKey = $request->header('X-Api-Key');
 
     if ($apiKey !== $this->validApiKey) {
         return response()->json(["status" => "error", "message" => "Invalid API key"]);
@@ -108,7 +108,7 @@ class DeviceManagementController extends Controller
     public function get(Request $request)
     {
        
-        $apiKey = $request->header('api_key');
+        $apiKey = $request->header('X-Api-Key');
 
         if ($apiKey !== $this->validApiKey) {
             return response()->json(["status" => "error", "message" => "Invalid API key"]);
@@ -163,7 +163,7 @@ class DeviceManagementController extends Controller
     {
 
        
-        $apiKey = $request->header('api_key');
+        $apiKey = $request->header('X-Api-Key');
 
         if ($apiKey !== $this->validApiKey) {
             return response()->json(["status" => "error", "message" => "Invalid API key"]);

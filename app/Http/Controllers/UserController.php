@@ -17,12 +17,9 @@ class UserController extends Controller
 
     public function getUserData(Request $request)
     {
-        try {
-            $apiKey = $request->header('api_key');
-        } catch (\Exception $e) {
-            return response()->json(["status" => "error", "message" => "Invalid API key format"], 401);
-        }
-
+        
+        $apiKey = $request->header('X-Api-Key');
+        
         // Validate the input (email or uid)
         $validatedData = $request->validate([
             'mail' => 'nullable|email', // Validate email if present

@@ -21,7 +21,7 @@ class VerifyOTPController extends Controller
     {
 
         
-        $apiKey = $request->header('api_key');
+        $apiKey = $request->header('X-Api-Key');
 
         if ($apiKey !== $this->validApiKey) {
             return response()->json(["status" => "error", "message" => "Invalid API key"]);

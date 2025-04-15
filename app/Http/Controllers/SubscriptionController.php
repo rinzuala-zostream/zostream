@@ -25,7 +25,7 @@ class SubscriptionController extends Controller
         try {
             // Decrypt the API key from header
             
-            $apiKey = $request->header('api_key');
+            $apiKey = $request->header('X-Api-Key');
             
             if ($apiKey !== $this->validApiKey) {
                 return response()->json(["status" => "error", "message" => "Invalid API key"], 401);
@@ -94,7 +94,7 @@ class SubscriptionController extends Controller
 {
 
     try {
-        $apiKey = $request->header('api_key');
+        $apiKey = $request->header('X-Api-Key');
     } catch (\Exception $e) {
         return response()->json(["status" => "error", "message" => "Invalid API key format"], 401);
     }
@@ -183,7 +183,7 @@ private function deleteSharedUser($id, $apiKey)
             
         ]);
 
-        $deviceRequest->headers->set('api_key', $apiKey);
+        $deviceRequest->headers->set('X-Api-Key', $apiKey);
         $this->deviceManagementController->delete($deviceRequest);
     } catch (\Exception $e) {
         return response()->json([

@@ -21,7 +21,7 @@ class CheckDeviceAvailable extends Controller
     public function checkDeviceAvailability(Request $request)
     {
 
-        $apiKey = $request->header('api_key');
+        $apiKey = $request->header('X-Api-Key');
     
         if ($apiKey !== $this->validApiKey) {
             return response()->json(["status" => "error", "message" => "Invalid API key"]);
@@ -89,7 +89,7 @@ class CheckDeviceAvailable extends Controller
             'id' => $user_id
         ]);
 
-        $deviceRequest->headers->set('api_key', $apiKey);
+        $deviceRequest->headers->set('X-Api-Key', $apiKey);
 
         $response = $this->subscriptionController->getSubscription($deviceRequest);
 

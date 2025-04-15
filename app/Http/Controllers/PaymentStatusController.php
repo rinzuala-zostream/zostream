@@ -58,7 +58,7 @@ class PaymentStatusController extends Controller
                             'currentDate' => $tempData->created_at->toDateTimeString()
                         ]);                        
 
-                        $fakeRequest->headers->set('api_key', $this->validApiKey);
+                        $fakeRequest->headers->set('X-Api-Key', $this->validApiKey);
                         
                         $response = $this->subscriptionController->addSubscription($fakeRequest);
                         $responseData = $response->getData(true);
