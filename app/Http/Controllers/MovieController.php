@@ -19,10 +19,10 @@ class MovieController extends Controller
     public function getMovies(Request $request)
     {
        
-        $apiKey = $request->header('api_key');
+        $apiKey = $request->header('X-Api-Key');
 
         if ($apiKey !== $this->validApiKey) {
-            return response()->json(["status" => "error", "message" => $apiKey], 401);
+            return response()->json(["status" => "error", "message" => "Invalid API key"], 401);
         }
 
         $validated = $request->validate([
