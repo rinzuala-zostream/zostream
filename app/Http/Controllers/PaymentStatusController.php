@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Models\PPVPaymentModel;
 use App\Models\TempPaymentModel;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
 class PaymentStatusController extends Controller
@@ -59,7 +58,7 @@ class PaymentStatusController extends Controller
                             'currentDate' => $tempData->created_at->toDateTimeString()
                         ]);                        
 
-                        $fakeRequest->headers->set('api_key', Crypt::encryptString($this->validApiKey));
+                        $fakeRequest->headers->set('api_key', $this->validApiKey);
                         
                         $response = $this->subscriptionController->addSubscription($fakeRequest);
                         $responseData = $response->getData(true);

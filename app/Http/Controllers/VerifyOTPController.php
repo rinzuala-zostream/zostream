@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\OTPRequestModel;
-use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Hash;
 
 class VerifyOTPController extends Controller
@@ -21,11 +20,8 @@ class VerifyOTPController extends Controller
     public function verify(Request $request)
     {
 
-        try {
-            $apiKey = Crypt::decryptString($request->header('api_key'));
-        } catch (\Exception $e) {
-            return response()->json(["status" => "error", "message" => "Invalid API key format"]);
-        }
+        
+        $apiKey = $request->header('api_key');
 
         if ($apiKey !== $this->validApiKey) {
             return response()->json(["status" => "error", "message" => "Invalid API key"]);

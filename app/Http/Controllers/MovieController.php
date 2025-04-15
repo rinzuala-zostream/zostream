@@ -18,11 +18,8 @@ class MovieController extends Controller
 
     public function getMovies(Request $request)
     {
-        try {
-            $apiKey = Crypt::decryptString($request->header('api_key'));
-        } catch (\Exception $e) {
-            return response()->json(["status" => "error", "message" => "Invalid API key format"], 401);
-        }
+       
+        $apiKey = $request->header('api_key');
 
         if ($apiKey !== $this->validApiKey) {
             return response()->json(["status" => "error", "message" => "Invalid API key"], 401);

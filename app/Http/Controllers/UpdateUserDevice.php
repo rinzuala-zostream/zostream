@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Models\RegisterModel;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Crypt;
 
 class UpdateUserDevice extends Controller
 {
@@ -19,12 +18,9 @@ class UpdateUserDevice extends Controller
 
     public function updateDevice(Request $request)
     {
-        try {
-            $apiKey = Crypt::decryptString($request->header('api_key'));
-        } catch (\Exception $e) {
-            return response()->json(["status" => "error", "message" => "Invalid API key format"], 401);
-        }
-
+        
+        $apiKey = $request->header('api_key');
+        
         if ($apiKey !== $this->validApiKey) {
             return response()->json(["status" => "error", "message" => "Invalid API key"], 401);
         }
@@ -57,7 +53,7 @@ class UpdateUserDevice extends Controller
                 'device_name' => $request->device_name,
             ]);
 
-            $deviceRequest->headers->set('api_key', Crypt::encryptString($apiKey));
+            $deviceRequest->headers->set('api_key', $apiKey);
             $this->deviceController->update($deviceRequest);
         } catch (\Exception $e) {
             return response()->json([

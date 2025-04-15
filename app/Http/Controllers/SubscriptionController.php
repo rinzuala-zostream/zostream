@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Models\SubscriptionModel;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use DateTime;
@@ -25,12 +24,9 @@ class SubscriptionController extends Controller
     {
         try {
             // Decrypt the API key from header
-            try {
-                $apiKey = Crypt::decryptString($request->header('api_key'));
-            } catch (\Exception $e) {
-                return response()->json(["status" => "error", "message" => "Invalid API key format"], 401);
-            }
-    
+            
+            $apiKey = $request->header('api_key');
+            
             if ($apiKey !== $this->validApiKey) {
                 return response()->json(["status" => "error", "message" => "Invalid API key"], 401);
             }
@@ -98,7 +94,7 @@ class SubscriptionController extends Controller
 {
 
     try {
-        $apiKey = Crypt::decryptString($request->header('api_key'));
+        $apiKey = $request->header('api_key');
     } catch (\Exception $e) {
         return response()->json(["status" => "error", "message" => "Invalid API key format"], 401);
     }
@@ -187,7 +183,7 @@ private function deleteSharedUser($id, $apiKey)
             
         ]);
 
-        $deviceRequest->headers->set('api_key', Crypt::encryptString($apiKey));
+        $deviceRequest->headers->set('api_key', $apiKey);
         $this->deviceManagementController->delete($deviceRequest);
     } catch (\Exception $e) {
         return response()->json([

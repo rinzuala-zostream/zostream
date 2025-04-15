@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Models\UserModel;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Log;
 
 class UserController extends Controller
@@ -19,7 +18,7 @@ class UserController extends Controller
     public function getUserData(Request $request)
     {
         try {
-            $apiKey = Crypt::decryptString($request->header('api_key'));
+            $apiKey = $request->header('api_key');
         } catch (\Exception $e) {
             return response()->json(["status" => "error", "message" => "Invalid API key format"], 401);
         }

@@ -21,12 +21,9 @@ class DeviceManagementController extends Controller
     public function store(Request $request)
     {
 
-        try {
-            $apiKey = Crypt::decryptString($request->header('api_key'));
-        } catch (\Exception $e) {
-            return response()->json(["status" => "error", "message" => "Invalid API key format"]);
-        }
-
+       
+        $apiKey = $request->header('api_key');
+       
         if ($apiKey !== $this->validApiKey) {
             return response()->json(["status" => "error", "message" => "Invalid API key"]);
         }
@@ -60,11 +57,8 @@ class DeviceManagementController extends Controller
 
     public function delete(Request $request)
 {
-    try {
-        $apiKey = Crypt::decryptString($request->header('api_key'));
-    } catch (\Exception $e) {
-        return response()->json(["status" => "error", "message" => "Invalid API key format"]);
-    }
+   
+    $apiKey = $request->header('api_key');
 
     if ($apiKey !== $this->validApiKey) {
         return response()->json(["status" => "error", "message" => "Invalid API key"]);
@@ -113,11 +107,8 @@ class DeviceManagementController extends Controller
 
     public function get(Request $request)
     {
-        try {
-            $apiKey = Crypt::decryptString($request->header('api_key'));
-        } catch (\Exception $e) {
-            return response()->json(["status" => "error", "message" => "Invalid API key format"]);
-        }
+       
+        $apiKey = $request->header('api_key');
 
         if ($apiKey !== $this->validApiKey) {
             return response()->json(["status" => "error", "message" => "Invalid API key"]);
@@ -171,11 +162,8 @@ class DeviceManagementController extends Controller
     public function update(Request $request)
     {
 
-        try {
-            $apiKey = Crypt::decryptString($request->header('api_key'));
-        } catch (\Exception $e) {
-            return response()->json(["status" => "error", "message" => "Invalid API key format"]);
-        }
+       
+        $apiKey = $request->header('api_key');
 
         if ($apiKey !== $this->validApiKey) {
             return response()->json(["status" => "error", "message" => "Invalid API key"]);

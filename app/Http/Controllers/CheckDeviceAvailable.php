@@ -20,12 +20,9 @@ class CheckDeviceAvailable extends Controller
 
     public function checkDeviceAvailability(Request $request)
     {
-        try {
-            $apiKey = Crypt::decryptString($request->header('api_key'));
-        } catch (\Exception $e) {
-            return response()->json(["status" => "error", "message" => "Invalid API key format"]);
-        }
 
+        $apiKey = $request->header('api_key');
+    
         if ($apiKey !== $this->validApiKey) {
             return response()->json(["status" => "error", "message" => "Invalid API key"]);
         }
@@ -92,7 +89,7 @@ class CheckDeviceAvailable extends Controller
             'id' => $user_id
         ]);
 
-        $deviceRequest->headers->set('api_key', Crypt::encryptString($apiKey));
+        $deviceRequest->headers->set('api_key', $apiKey);
 
         $response = $this->subscriptionController->getSubscription($deviceRequest);
 
