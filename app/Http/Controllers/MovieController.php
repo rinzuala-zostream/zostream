@@ -145,10 +145,7 @@ class MovieController extends Controller
             }
         
             // Return the JSON response with actual data, and set proper response headers
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Response data',
-                'data' => $data
+            return response()->json([$data
             ])->header('Content-Type', 'application/json'); // Ensure proper content type
         }        
     }
