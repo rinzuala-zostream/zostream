@@ -20,6 +20,7 @@ Route::get('/user', function (Request $request) {
 Route::post('/register', [RegisterController::class, 'store']);
 
 Route::prefix('device')->group(function () {
+
     Route::post('/store', [DeviceManagementController::class, 'store']);
     Route::delete('/delete', [DeviceManagementController::class, 'delete']);
     Route::get('/get', [DeviceManagementController::class, 'get']);
@@ -36,7 +37,7 @@ Route::get('/get-subscription', [SubscriptionController::class, 'getSubscription
 Route::post('/movies', [MovieController::class, 'getMovies']);
 
 //update device for new device or change device
-Route::post('/device', [UpdateUserDevice::class, 'updateDevice']);
+Route::get('/device', [UpdateUserDevice::class, 'updateDevice']);
 
 Route::get('/payment-status', [PaymentStatusController::class, 'processUserPayments']);
 

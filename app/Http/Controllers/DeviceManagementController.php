@@ -162,7 +162,6 @@ class DeviceManagementController extends Controller
     public function update(Request $request)
     {
 
-       
         $apiKey = $request->header('X-Api-Key');
 
         if ($apiKey !== $this->validApiKey) {
