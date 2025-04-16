@@ -93,14 +93,10 @@ class SubscriptionController extends Controller
     public function addSubscription(Request $request)
 {
 
-    try {
-        $apiKey = $request->header('X-Api-Key');
-    } catch (\Exception $e) {
-        return response()->json(["status" => "error", "message" => "Invalid API key format"], 401);
-    }
-
+    
+    $apiKey = $request->header('X-Api-Key');
     if ($apiKey !== $this->validApiKey) {
-        return response()->json(["status" => "error", "message" => "Invalid API key"], 401);
+        return response()->json(['status' => 'error', 'message' => 'Invalid API key'], 401);
     }
     
     // Validate input
