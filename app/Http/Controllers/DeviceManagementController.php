@@ -119,8 +119,8 @@ class DeviceManagementController extends Controller
             'device_id' => 'nullable|string',
         ]);
     
-        $user_id = $request->validate['user_id'];
-        $device_id = $request->validate['device_id'];
+        $user_id = $request->query('user_id');
+        $device_id = $request->query('device_id');
     
         if ($device_id) {
             // Fetch specific device for the user

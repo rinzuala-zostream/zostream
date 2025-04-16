@@ -38,7 +38,6 @@ Route::post('/movies', [MovieController::class, 'getMovies']);
 //update device for new device or change device
 Route::post('/device', [UpdateUserDevice::class, 'updateDevice']);
 
-Route::post('/device', [UpdateUserDevice::class, 'updateDevice']);
 Route::get('/payment-status', [PaymentStatusController::class, 'processUserPayments']);
 
 Route::post('/request-otp', [RequestOTPController::class, 'sendOTP']);
