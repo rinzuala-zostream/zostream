@@ -144,7 +144,7 @@ class SubscriptionController extends Controller
     }
 }
 
-private function generateSubPlan(\DateInterval $interval)
+private function generateSubPlan($interval)
 {
     if ($interval->days >= 365) {
         if ($interval->y == 1 && $interval->m == 0 && $interval->d == 0) {
@@ -176,17 +176,17 @@ private function deleteSharedUser($id, $apiKey)
     try {
         $deviceRequest = new Request([
             'user_id' => $id,
-            
         ]);
 
         $deviceRequest->headers->set('X-Api-Key', $apiKey);
-        $this->deviceManagementController->delete($deviceRequest);
+
+        // Call the controller method safely
+        app(\App\Http\Controllers\DeviceManagementController::class)->delete($deviceRequest);
     } catch (\Exception $e) {
-        return response()->json([
-            'status' => 'error',
-            'message' => 'Device update failed: ' . $e->getMessage(),
-        ], 500);
+        Log::error('Failed to delete shared user: ' . $e->getMessage());
+        // Don’t return a response here
     }
 }
+
 
 }
