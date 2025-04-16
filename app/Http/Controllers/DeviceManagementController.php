@@ -19,41 +19,45 @@ class DeviceManagementController extends Controller
      
     }
     public function store(Request $request)
-    {
+{
+    $apiKey = $request->header('X-Api-Key');
 
-       
-        $apiKey = $request->header('X-Api-Key');
-       
-        if ($apiKey !== $this->validApiKey) {
-            return response()->json(["status" => "error", "message" => "Invalid API key"]);
+    if ($apiKey !== $this->validApiKey) {
+        return response()->json(["status" => "error", "message" => "Invalid API key"], 401);
+    }
+
+    // Validate query parameters
+    $request->validate([
+        'user_id' => 'required|string',
+        'device_id' => 'required|string',
+        'device_name' => 'required|string'
+    ]);
+
+    try {
+        $user_id = $request->query('user_id');
+        $device_id = $request->query('device_id');
+        $device_name = $request->query('device_name');
+
+        $user = UserModel::where('uid', $user_id)->first();
+        if (!$user) {
+            return response()->json(['status' => 'error', 'message' => 'User not found'], 404);
         }
 
-        $validatedData = $request->validate([
-            'user_id' => 'required|string',
-            'device_id' => 'required|string',
-            'device_name' => 'required|string'
+        $role = 'shared';
+
+        UserDeviceModel::create([
+            'user_id' => $user_id,
+            'device_id' => $device_id,
+            'device_name' => $device_name,
+            'role' => $role
         ]);
 
-        try {
-            $user = UserModel::where('uid', $validatedData['user_id'])->first();
-            if (!$user) {
-                return response()->json(['status' => 'error', 'message' => 'User not found']);
-            }
-
-            $role =  'shared';
-            UserDeviceModel::create([ 
-                'user_id' => $validatedData['user_id'],
-                'device_id' => $validatedData['device_id'],
-                'device_name' => $validatedData['device_name'],
-                'role' => $role
-            ]);
-
-            return response()->json(['status' => 'success', 'message' => 'Device registered successfully']);
-        } catch (\Exception $e) {
-            Log::error('Database Error: ' . $e->getMessage());
-            return response()->json(['status' => 'error', 'message' => 'Database error']);
-        }
+        return response()->json(['status' => 'success', 'message' => 'Device registered successfully']);
+    } catch (\Exception $e) {
+        Log::error('Database Error: ' . $e->getMessage());
+        return response()->json(['status' => 'error', 'message' => 'Database error'], 500);
     }
+}
 
     public function delete(Request $request)
 {

@@ -32,8 +32,8 @@ class CheckDeviceAvailable extends Controller
             'device_id' => 'required|string',
         ]);
 
-        $user_id = $request->user_id;
-        $device_id = $request->device_id;
+        $user_id = $request->query('user_id');
+        $device_id = $request->query('device_id');
 
         // Check if user exists
         $userExists = UserModel::where('uid', $user_id)->exists();

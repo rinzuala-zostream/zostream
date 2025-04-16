@@ -42,7 +42,6 @@ Route::get('/device', [UpdateUserDevice::class, 'updateDevice']);
 Route::get('/payment-status', [PaymentStatusController::class, 'processUserPayments']);
 
 Route::post('/request-otp', [RequestOTPController::class, 'sendOTP']);
-
 Route::post('/verify-otp', [VerifyOTPController::class, 'verify']);
 
 
