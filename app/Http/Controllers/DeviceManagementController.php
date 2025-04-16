@@ -59,27 +59,24 @@ class DeviceManagementController extends Controller
     }
 }
 
-    public function delete(Request $request)
+public function delete(Request $request)
 {
-   
     $apiKey = $request->header('X-Api-Key');
 
     if ($apiKey !== $this->validApiKey) {
         return response()->json(['status' => 'error', 'message' => "Invalid API key"]);
     }
 
-    $request->validate([
+    $validated = $request->validate([
         'user_id' => 'required|string',
-
     ]);
 
-    $user_id = $request->query('user_id');
+    $user_id = $validated['user_id'];
 
     if (!$user_id) {
         return response()->json(["status" => "error", "message" => "Missing required user_id."]);
     }
 
-    // Check if shared devices exist
     $sharedCount = UserDeviceModel::where('user_id', $user_id)
                     ->where('role', 'shared')
                     ->count();
@@ -91,7 +88,6 @@ class DeviceManagementController extends Controller
         ]);
     }
 
-    // Delete shared devices
     $deleted = UserDeviceModel::where('user_id', $user_id)
                 ->where('role', 'shared')
                 ->delete();
