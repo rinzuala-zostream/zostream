@@ -4,8 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Models\MovieModel;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Crypt;
-use Illuminate\Support\Facades\DB;
 
 class MovieController extends Controller
 {
@@ -43,7 +41,7 @@ class MovieController extends Controller
             $movie = MovieModel::where('id', $id)->first();
 
             if (!$movie) {
-                return response()->json(['status" => "error', 'error' => 'Movie not found']);
+                return response()->json(['status" => "error', 'message' => 'Movie not found']);
             }
 
             return response()->json($this->transformMovie($movie));
@@ -72,7 +70,7 @@ class MovieController extends Controller
             $column = $categoryType ? $categoryKey : ($categoryMapping[$categoryKey] ?? null);
 
             if (!$column) {
-                return response()->json(['status" => "error', 'error' => 'Invalid category']);
+                return response()->json(['status" => "error', 'message' => 'Invalid category']);
             }
 
             $query = MovieModel::query()->where('isEnable', 1);
@@ -146,7 +144,7 @@ class MovieController extends Controller
                 }
             }
             
-            return response()->json(['status" => "success', 'error' => $data]);
+            return response()->json(['status" => "success', 'message' => 'response data']);
             
         }
     }
