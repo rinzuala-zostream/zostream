@@ -173,15 +173,16 @@ private function deleteSharedUser($id, $apiKey)
     try {
         $deviceRequest = new Request([
             'user_id' => $id,
+            
         ]);
 
         $deviceRequest->headers->set('X-Api-Key', $apiKey);
-
-        // Call the controller method safely
-        app(\App\Http\Controllers\DeviceManagementController::class)->delete($deviceRequest);
+        $this->deviceManagementController->delete($deviceRequest);
     } catch (\Exception $e) {
-        Log::error('Failed to delete shared user: ' . $e->getMessage());
-        // Don’t return a response here
+        return response()->json([
+            'status' => 'error',
+            'message' => 'Device update failed: ' . $e->getMessage(),
+        ], 500);
     }
 }
 
