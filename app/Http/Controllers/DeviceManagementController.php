@@ -65,7 +65,7 @@ class DeviceManagementController extends Controller
     $apiKey = $request->header('X-Api-Key');
 
     if ($apiKey !== $this->validApiKey) {
-        return response()->json(["status" => "error", "message" => "Invalid API key"]);
+        return response()->json(['status' => 'error', 'message' => "Invalid API key"]);
     }
 
     $request->validate([
@@ -73,7 +73,7 @@ class DeviceManagementController extends Controller
 
     ]);
 
-    $user_id = $request->validate['user_id'];
+    $user_id = $request->query('user_id');
 
     if (!$user_id) {
         return response()->json(["status" => "error", "message" => "Missing required user_id."]);

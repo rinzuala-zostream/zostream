@@ -22,7 +22,7 @@ Route::post('/register', [RegisterController::class, 'store']);
 Route::prefix('device')->group(function () {
 
     Route::post('/store', [DeviceManagementController::class, 'store']);
-    Route::delete('/delete', [DeviceManagementController::class, 'delete']);
+    Route::get('/delete', [DeviceManagementController::class, 'delete']);
     Route::get('/get', [DeviceManagementController::class, 'get']);
     Route::put('/update', [DeviceManagementController::class, 'update']);
     Route::get('/available', [CheckDeviceAvailable::class, 'checkDeviceAvailability']);
