@@ -22,7 +22,7 @@ class MovieController extends Controller
         $apiKey = $request->header('X-Api-Key');
 
         if ($apiKey !== $this->validApiKey) {
-            return response()->json(["status" => "error", "message" => "Invalid API key"]);
+            return response()->json(['status" => "error', 'message' => 'Invalid API key']);
         }
 
         $validated = $request->validate([
@@ -43,7 +43,7 @@ class MovieController extends Controller
             $movie = MovieModel::where('id', $id)->first();
 
             if (!$movie) {
-                return response()->json(['error' => 'Movie not found']);
+                return response()->json(['status" => "error', 'error' => 'Movie not found']);
             }
 
             return response()->json($this->transformMovie($movie));
@@ -72,7 +72,7 @@ class MovieController extends Controller
             $column = $categoryType ? $categoryKey : ($categoryMapping[$categoryKey] ?? null);
 
             if (!$column) {
-                return response()->json(['error' => 'Invalid category']);
+                return response()->json(['status" => "error', 'error' => 'Invalid category']);
             }
 
             $query = MovieModel::query()->where('isEnable', 1);
