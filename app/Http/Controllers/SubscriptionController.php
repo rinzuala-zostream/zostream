@@ -112,7 +112,7 @@ class SubscriptionController extends Controller
 
     $id = $request->query('id');
     $period = $request->query('period');
-    $currentDate = $request->query('currentDate') ? Carbon::parse($request->input('currentDate')) : Carbon::now();
+    $currentDate = $request->query('currentDate') ? Carbon::parse($request->query('currentDate')) : Carbon::now();
 
     try {
 
