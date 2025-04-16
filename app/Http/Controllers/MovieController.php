@@ -122,15 +122,15 @@ class MovieController extends Controller
                 "Documentary"    => ["where" => "isDocumentary = 1", "order" => "num DESC"],
                 "Free"           => ["where" => "isPremium = 0", "order" => "num DESC"],
             ];
-            
+        
             $data = [];
-
+        
             foreach ($categories as $name => $clause) {
                 if ($name === "18+" && !$ageRestriction) continue;
-            
+        
                 $where = $clause['where'];
                 $order = $clause['order'];
-            
+        
                 $query = MovieModel::whereRaw("isEnable = 1 AND $where")
                     ->when(!$ageRestriction && strpos($where, 'isAgeRestricted') === false, function ($q) use ($ageRestriction) {
                         return $q->where('isAgeRestricted', $ageRestriction);
@@ -138,15 +138,19 @@ class MovieController extends Controller
                     ->orderByRaw($order)
                     ->limit(10)
                     ->get();
-            
+        
                 if (!$query->isEmpty()) {
                     $data[$name] = $query->map(fn($m) => $this->transformMovie($m));
                 }
             }
-            
-            return response()->json(['status" => "success', 'message' => 'response data']);
-            
-        }
+        
+            // Return the JSON response with actual data, and set proper response headers
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Response data',
+                'data' => $data
+            ])->header('Content-Type', 'application/json'); // Ensure proper content type
+        }        
     }
 
     private function transformMovie($movie)
