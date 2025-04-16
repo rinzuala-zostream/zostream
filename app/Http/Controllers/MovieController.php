@@ -20,7 +20,7 @@ class MovieController extends Controller
         $apiKey = $request->header('X-Api-Key');
 
         if ($apiKey !== $this->validApiKey) {
-            return response()->json(['status" => "error', 'message' => 'Invalid API key']);
+            return response()->json(['status' => 'error', 'message' => 'Invalid API key']);
         }
 
         $validated = $request->validate([
@@ -41,10 +41,11 @@ class MovieController extends Controller
             $movie = MovieModel::where('id', $id)->first();
 
             if (!$movie) {
-                return response()->json(['status" => "error', 'message' => 'Movie not found']);
+                return response()->json(['status' => 'error', 'message' => 'Movie not found']);
             }
 
-            return response()->json($this->transformMovie($movie));
+            return response()->json($this->transformMovie($movie)
+            )->header('Content-Type', 'application/json');
         } else if ($range || $categoryKey) {
             
             $rangeParts = explode('-', $range ?? '1-10');
@@ -70,7 +71,7 @@ class MovieController extends Controller
             $column = $categoryType ? $categoryKey : ($categoryMapping[$categoryKey] ?? null);
 
             if (!$column) {
-                return response()->json(['status" => "error', 'message' => 'Invalid category']);
+                return response()->json(['status' => 'error', 'message' => 'Invalid category']);
             }
 
             $query = MovieModel::query()->where('isEnable', 1);
@@ -105,7 +106,8 @@ class MovieController extends Controller
 
             $movies = $query->offset($start)->limit($count)->get();
 
-            return response()->json($movies->map(fn($m) => $this->transformMovie($m)));
+            return response()->json(data: $movies->map(fn($m) => $this->transformMovie($m))
+            )->header('Content-Type', 'application/json');
         } else {
             $categories = [
                 "New Release"    => ["where" => "release_on IS NOT NULL", "order" => "STR_TO_DATE(release_on, '%d %b, %Y') DESC"],
