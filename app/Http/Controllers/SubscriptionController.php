@@ -92,59 +92,56 @@ class SubscriptionController extends Controller
 
     public function addSubscription(Request $request)
 {
-
-    
     $apiKey = $request->header('X-Api-Key');
     if ($apiKey !== $this->validApiKey) {
         return response()->json(['status' => 'error', 'message' => 'Invalid API key'], 401);
     }
-    
-    // Validate input
-    $request->validate([
+
+    // Validate query parameters
+    $validated = $request->validate([
         'id' => 'required|string',
         'period' => 'required|integer|min:1',
         'currentDate' => 'nullable|string'
     ]);
 
     $id = $request->query('id');
-    $period = $request->query('period');
-    $currentDate = $request->query('currentDate') ? Carbon::parse($request->query('currentDate')) : Carbon::now();
+    $period = (int) $request->query('period');
+    $currentDateString = $request->query('currentDate');
 
     try {
+        $currentDate = $currentDateString
+            ? Carbon::parse($currentDateString)
+            : Carbon::now();
+    } catch (\Exception $e) {
+        Log::error('Invalid currentDate format: ' . $e->getMessage());
+        return response()->json(['status' => 'error', 'message' => 'Invalid currentDate format']);
+    }
 
-        $existing = SubscriptionModel::where('id', $id)->first();
-
+    try {
         $endDate = (clone $currentDate)->addDays($period);
         $interval = $currentDate->diff($endDate);
         $sub_plan = $this->generateSubPlan($interval);
         $createDate = $currentDate->format('F j, Y');
 
-        if ($existing) {
-            // Update
-            SubscriptionModel::where('id', $id)->update([
+        SubscriptionModel::updateOrInsert(
+            ['id' => $id],
+            [
                 'sub_plan' => $sub_plan,
                 'period' => $period,
                 'create_date' => $createDate,
-            ]);
-        } else {
-            // Insert
-            SubscriptionModel::insert([
-                'id' => $id,
-                'sub_plan' => $sub_plan,
-                'period' => $period,
-                'create_date' => $createDate,
-            ]);
-        }
+            ]
+        );
 
         $this->deleteSharedUser($id, $apiKey);
 
         return response()->json(['status' => 'success', 'message' => 'Record saved successfully']);
     } catch (\Exception $e) {
-        return response()->json(['status' => 'error', 'message' => 'Error: ' . $e->getMessage()]);
+        Log::error('Error in addSubscription: ' . $e->getMessage());
+        return response()->json(['status' => 'error', 'message' => 'Internal Server Error'], 500);
     }
 }
 
-private function generateSubPlan($interval)
+private function generateSubPlan(\DateInterval $interval)
 {
     if ($interval->days >= 365) {
         if ($interval->y == 1 && $interval->m == 0 && $interval->d == 0) {
