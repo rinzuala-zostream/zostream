@@ -112,18 +112,13 @@ class SubscriptionController extends Controller
         $currentDate = $currentDateString
             ? Carbon::parse($currentDateString)
             : Carbon::now();
-    } catch (\Exception $e) {
-        Log::error('Invalid currentDate format: ' . $e->getMessage());
-        return response()->json(['status' => 'error', 'message' => 'Invalid currentDate format']);
-    }
 
-    try {
         $endDate = (clone $currentDate)->addDays($period);
         $interval = $currentDate->diff($endDate);
         $sub_plan = $this->generateSubPlan($interval);
         $createDate = $currentDate->format('F j, Y');
 
-        SubscriptionModel::updateOrInsert(
+        $saved = SubscriptionModel::updateOrInsert(
             ['id' => $id],
             [
                 'sub_plan' => $sub_plan,
@@ -132,9 +127,24 @@ class SubscriptionController extends Controller
             ]
         );
 
-        $this->deleteSharedUser($id, $apiKey);
+        if ($saved) {
+            // Call shared user deletion
+            $deleteResponse = $this->deleteSharedUser($id, $apiKey);
 
-        return response()->json(['status' => 'success', 'message' => 'Record saved successfully']);
+            // If delete returns error, still return success but include warning
+            if ($deleteResponse instanceof \Illuminate\Http\JsonResponse && $deleteResponse->getStatusCode() !== 200) {
+                return response()->json([
+                    'status' => 'success',
+                    'message' => 'Subscription saved, but failed to delete shared devices',
+                    'deleteError' => json_decode($deleteResponse->getContent(), true)
+                ]);
+            }
+
+            return response()->json(['status' => 'success', 'message' => 'Record saved successfully']);
+        }
+
+        return response()->json(['status' => 'error', 'message' => 'Failed to save subscription']);
+
     } catch (\Exception $e) {
         Log::error('Error in addSubscription: ' . $e->getMessage());
         return response()->json(['status' => 'error', 'message' => 'Internal Server Error'], 500);
