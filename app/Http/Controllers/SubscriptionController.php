@@ -170,10 +170,12 @@ private function generateSubPlan(\DateInterval $interval)
 
 private function deleteSharedUser($id, $apiKey)
 {
+
+
     try {
         $deviceRequest = new Request([
             'user_id' => $id,
-            
+        
         ]);
 
         $deviceRequest->headers->set('X-Api-Key', $apiKey);
@@ -181,7 +183,7 @@ private function deleteSharedUser($id, $apiKey)
     } catch (\Exception $e) {
         return response()->json([
             'status' => 'error',
-            'message' => 'Device update failed: ' . $e->getMessage(),
+            'message' => 'Share delete failed: ' . $e->getMessage(),
         ], 500);
     }
 }
