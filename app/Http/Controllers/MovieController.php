@@ -146,7 +146,7 @@ class MovieController extends Controller
                 }
             }
             
-            return response()->json($data);
+            return response()->json(['status" => "success', 'error' => $data]);
             
         }
     }
