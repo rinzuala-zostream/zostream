@@ -17,25 +17,29 @@ class UserController extends Controller
 
     public function getUserData(Request $request)
     {
-        
         $apiKey = $request->header('X-Api-Key');
-        
-        // Validate the input (email or uid)
-        $validatedData = $request->validate([
-            'mail' => 'nullable|email', // Validate email if present
-            'uid' => 'nullable|string', // Validate uid if present
+
+        if ($apiKey !== $this->validApiKey) {
+            return response()->json(['status' => 'error', 'message' => 'Invalid API key'], 401);
+        }
+
+        // Validate query parameters
+        $request->validate([
+            'mail' => 'nullable|email',
+            'uid' => 'nullable|string',
         ]);
 
         try {
-            // Fetch user by email or uid
+            $mail = $request->query('mail');
+            $uid = $request->query('uid');
+
             $user = null;
-            if (isset($validatedData['mail'])) {
-                $user = UserModel::where('mail', $validatedData['mail'])->first();
-            } elseif (isset($validatedData['uid'])) {
-                $user = UserModel::where('uid', $validatedData['uid'])->first();
+            if (!empty($mail)) {
+                $user = UserModel::where('mail', $mail)->first();
+            } elseif (!empty($uid)) {
+                $user = UserModel::where('uid', $uid)->first();
             }
 
-            // Check if user is found
             if ($user) {
                 return response()->json($user);
             } else {
