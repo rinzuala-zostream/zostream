@@ -41,6 +41,14 @@ class DetailsController extends Controller
     if ($apiKey !== $this->validApiKey) {
         return response()->json(["status" => "error", "message" => "Invalid API key"], 401);
     }
+
+    $request->validate([
+        'user_id' => 'required|string',
+        'movie_id' => 'required|string',
+        'device_id' => 'required|string',
+        'type' => 'required|string'
+    ]);
+
     
     $userId = $request->query('user_id');
     $movieId = $request->query('movie_id');

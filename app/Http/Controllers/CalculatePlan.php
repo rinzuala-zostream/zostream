@@ -29,8 +29,7 @@ class CalculatePlan extends Controller
         $period = (int) $request->query('period');
         if (!$period || $period < 7) {
             return response()->json([
-                'status' => 'error',
-                'error_data' => ['message' => 'Invalid period parameter provided or period is not less than 7']
+                'status' => 'error', 'message' => 'Invalid period parameter provided or period is not less than 7'
             ]);
         }
 
