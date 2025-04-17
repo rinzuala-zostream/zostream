@@ -6,8 +6,9 @@ use App\Models\AdsModel;
 use App\Models\EpisodeModel;
 use App\Models\MovieModel;
 use App\Models\PPVPaymentModel;
-use Http;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
+use Carbon\Carbon;
 
 class DetailsController extends Controller
 {
@@ -18,140 +19,129 @@ class DetailsController extends Controller
     protected $adsController;
     protected $calculatePlan;
 
-    public function __construct(PaymentStatusController $paymentStatusController, 
-    DeviceManagementController $deviceManagementController,
-    SubscriptionController $subscriptionController,
-    AdsController $adsModel,
-    CalculatePlan $calculatePlan)
-    
-    {
+    public function __construct(
+        PaymentStatusController $paymentStatusController,
+        DeviceManagementController $deviceManagementController,
+        SubscriptionController $subscriptionController,
+        AdsController $adsController,
+        CalculatePlan $calculatePlan
+    ) {
         $this->validApiKey = config('app.api_key');
         $this->paymentStatusController = $paymentStatusController;
         $this->deviceManagementController = $deviceManagementController;
         $this->subscriptionController = $subscriptionController;
-        $this->adsController = $adsModel;
+        $this->adsController = $adsController;
         $this->calculatePlan = $calculatePlan;
-     
     }
 
-    public function getDetails(Request $request) {
-
+    public function getDetails(Request $request)
+    {
         $apiKey = $request->header('X-Api-Key');
+        if ($apiKey !== $this->validApiKey) {
+            return response()->json(["status" => "error", "message" => "Invalid API key"], 401);
+        }
 
-    if ($apiKey !== $this->validApiKey) {
-        return response()->json(["status" => "error", "message" => "Invalid API key"], 401);
-    }
+        $request->validate([
+            'user_id' => 'required|string',
+            'movie_id' => 'required|string',
+            'device_id' => 'required|string',
+            'type' => 'required|string'
+        ]);
 
-    $request->validate([
-        'user_id' => 'required|string',
-        'movie_id' => 'required|string',
-        'device_id' => 'required|string',
-        'type' => 'required|string'
-    ]);
+        $userId = $request->query('user_id');
+        $movieId = $request->query('movie_id');
+        $deviceId = $request->query('device_id');
+        $type = $request->query('type', 'movie');
 
+        try {
+            // Call sub-controllers and decode JSON responses
+            $paymentRequest = new Request(['user_id' => $userId]);
+            $paymentRequest->headers->set('X-Api-Key', $apiKey);
+            $paymentResponse = $this->paymentStatusController->processUserPayments($paymentRequest);
+            $paymentData = json_decode($paymentResponse->getContent(), true);
+
+            $subscriptionRequest = new Request([
+                'id' => $userId
+            ]);
     
-    $userId = $request->query('user_id');
-    $movieId = $request->query('movie_id');
-    $deviceId = $request->query('device_id');
-    $type = $request->query('type', 'movie');
+            $subscriptionRequest->headers->set('X-Api-Key', $apiKey);
+    
+            $response = $this->subscriptionController->getSubscription($subscriptionRequest);
+            $subscriptionData = json_decode(json_encode($response->getData()), true);
 
-    if (!$userId || !$movieId) {
-        return response()->json([
-            'status' => 'error',
-            'message' => 'Missing required parameters: user_id or movie_id'
-        ], 400);
-    }
+            $deviceRequest = new Request(['user_id' => $userId, 'device_id' => $deviceId]);
+            $deviceRequest->headers->set('X-Api-Key', $apiKey);
+            $deviceResponse = $this->deviceManagementController->get($deviceRequest);
+            $deviceData = json_decode($deviceResponse->getContent(), true);
 
-    try {
+            $adsRequest = new Request();
+            $adsRequest->headers->set('X-Api-Key', $apiKey);
+            $adsResponse = $this->adsController->getAds($adsRequest);
+            $adsData = json_decode($adsResponse->getContent(), true);
 
-        $paymentStatus = new Request([
-            'user_id' => $userId,
-        ]);
+            // Set device details in subscription
+            $subscriptionData['deviceDetails'] = $deviceData;
 
-        $subscriptionData = new Request([
-            'id' => $userId,
-        ]);
+            // Ads free logic
+            if (isset($subscriptionData['status']) && $subscriptionData['status'] === 'error') {
+                $subscriptionData['isAdsFree'] = empty($adsData);
+            } else {
+                $subscriptionData['isAdsFree'] = empty($adsData) || ($subscriptionData['isAdsFree'] ?? false);
+            }
 
-        $deviceDetails = new Request([
-            'user_id' => $userId,
-            'device_id' => $deviceId,
-        ]);
+            // Get movie or episode
+            $movie = $type === 'movie'
+                ? MovieModel::where('id', $movieId)->first()
+                : EpisodeModel::where('id', $movieId)->first();
 
-        $adsData = new Request([
-        ]);
+            if (!$movie) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'No movie data found'
+                ], 404);
+            }
 
-        $paymentStatus->headers->set('X-Api-Key', $apiKey);
-        $subscriptionData->headers->set('X-Api-Key', $apiKey);
-        $deviceDetails->headers->set('X-Api-Key', $apiKey);
-        $adsData->headers->set('X-Api-Key', $apiKey);
+            // Normalize booleans
+            foreach ($movie as $key => $value) {
+                if (is_numeric($value) && ($value == 0 || $value == 1)) {
+                    $movie[$key] = (bool) $value;
+                }
+            }
 
-        $this->paymentStatusController->processUserPayments($paymentStatus);
-        $this->subscriptionController->getSubscription($subscriptionData);
-        $this->deviceManagementController->get($deviceDetails);
-        $adsData = $this->adsController->getAds($adsData);
+            $movie['num'] = (int) ($movie['num'] ?? 0);
+            $movie['views'] = (int) ($movie['views'] ?? 0);
 
-        $subscriptionData['deviceDetails'] = $deviceDetails;
+            // PPV logic
+            $ppvKey = $movie['isPayPerView'] ?? $movie['isPPV'] ?? null;
+            if ($ppvKey) {
+                $movie['ppv_details'] = $this->fetchPPVDetails($userId, $movieId, $apiKey);
+            }
 
-        if (isset($subscriptionData['status']) && $subscriptionData['status'] === 'error') {
-            $subscriptionData['isAdsFree'] = empty($adsData);
-        } else {
-            $subscriptionData['isAdsFree'] = empty($adsData) || ($subscriptionData['isAdsFree'] ?? false);
-        }
+            // Ad display time
+            if ($type === 'episode') {
+                $url = $movie['isProtected'] ? $movie['dash_url'] : $movie['url'];
+                $duration = $this->getEpisodeDuration($url);
+                $ms = $this->convertToMilliseconds($duration);
+                $movie['adDisplayTimes'] = ['second' => $ms / 2 + rand(1, $ms / 2)];
+            } elseif (!$subscriptionData['isAdsFree'] && !empty($movie['duration'])) {
+                $ms = $this->convertToMilliseconds($movie['duration']);
+                $movie['adDisplayTimes'] = ['second' => $ms / 2 + rand(1, $ms / 2)];
+            }
 
-        if ($type === 'movie') {
-            $movie = MovieModel::where('id', $movieId)->first();
-        } else {
-            $movie = EpisodeModel::where('id', $movieId)->first();
-        }
+            return response()->json([
+                'subscription' => $subscriptionData,
+                'movie' => $movie,
+                'ads' => $subscriptionData['isAdsFree'] ? [] : $adsData,
+                'PaymentStatus' => $paymentData,
+            ]);
 
-        if (!$movie) {
+        } catch (\Exception $e) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'No movie data found'
-            ], 404);
+                'message' => 'Internal server error',
+                'error' => $e->getMessage()
+            ], 500);
         }
-
-        $movie = (array) $movie;
-
-        foreach ($movie as $key => $value) {
-            if (is_numeric($value) && ($value == 0 || $value == 1)) {
-                $movie[$key] = (bool) $value;
-            }
-        }
-
-        $movie['num'] = (int) ($movie['num'] ?? 0);
-        $movie['views'] = (int) ($movie['views'] ?? 0);
-
-        $payPerViewKey = $movie['isPayPerView'] ?? $movie['isPPV'] ?? null;
-        if ($payPerViewKey) {
-            $movie['ppv_details'] = $this->fetchPPVDetails($userId, $movieId, $apiKey);
-        }
-
-        if ($type === 'episode') {
-            $url = $movie['isProtected'] ? $movie['dash_url'] : $movie['url'];
-            $duration = $this->getEpisodeDuration($url);
-            $ms = $this->convertToMilliseconds($duration);
-            $movie['adDisplayTimes'] = ['second' => $ms / 2 + rand(1, $ms / 2)];
-        } else if (!$subscriptionData['isAdsFree'] && !empty($movie['duration'])) {
-            $ms = $this->convertToMilliseconds($movie['duration']);
-            $movie['adDisplayTimes'] = ['second' => $ms / 2 + rand(1, $ms / 2)];
-        }
-
-        return response()->json([
-            'subscription' => $subscriptionData,
-            'movie' => $movie,
-            'ads' => $subscriptionData['isAdsFree'] ? [] : $adsData,
-            'PaymentStatus' => $paymentStatus,
-        ]);
-
-    } catch (\Exception $e) {
-        return response()->json([
-            'status' => 'error',
-            'message' => 'Internal server error',
-            'error' => $e->getMessage()
-        ], 500);
-    }
-
     }
 
     private function fetchPPVDetails($userId, $movieId, $apiKey)
@@ -169,7 +159,7 @@ class DetailsController extends Controller
             ];
         }
 
-        $purchaseDate = \Carbon\Carbon::parse($ppvData->purchase_date)->format('Y-m-d');
+        $purchaseDate = Carbon::parse($ppvData->purchase_date)->format('Y-m-d');
         $period = $ppvData->rental_period;
 
         $response = new Request([
@@ -178,9 +168,10 @@ class DetailsController extends Controller
         ]);
         $response->headers->set('X-Api-Key', $apiKey);
 
-        $this->calculatePlan->calculate($response);
+        $calculateResponse = $this->calculatePlan->calculate($response);
+        $calculateData = json_decode($calculateResponse->getContent(), true);
 
-        if (!isset($response['data']['expiry_date'])) {
+        if (!isset($calculateData['data']['expiry_date'])) {
             return [
                 'isRented' => false,
                 'rentalPurchased' => null,
@@ -189,14 +180,14 @@ class DetailsController extends Controller
             ];
         }
 
-        $expiry = \Carbon\Carbon::parse($response['data']['expiry_date']);
+        $expiry = Carbon::parse($calculateData['data']['expiry_date']);
         $now = now();
         $daysLeft = $now->diffInDays($expiry, false);
-        $isRented = $now->between(\Carbon\Carbon::parse($purchaseDate), $expiry);
+        $isRented = $now->between(Carbon::parse($purchaseDate), $expiry);
 
         return [
             'isRented' => $isRented,
-            'rentalPurchased' => \Carbon\Carbon::parse($purchaseDate)->format('F j, Y'),
+            'rentalPurchased' => Carbon::parse($purchaseDate)->format('F j, Y'),
             'rentalExpiry' => $expiry->format('F j, Y'),
             'daysLeft' => $daysLeft > 0 ? "Ni $daysLeft chhung ila en thei." : "Vawiin chiah i en thei tawh",
         ];
@@ -250,7 +241,6 @@ class DetailsController extends Controller
         $hours = isset($m[2]) ? (int) $m[2] : 0;
         $minutes = isset($m[4]) ? (int) $m[4] : 0;
         $seconds = isset($m[6]) ? round((float) $m[6]) : 0;
-
         return ($hours * 3600) + ($minutes * 60) + $seconds;
     }
 
@@ -258,7 +248,6 @@ class DetailsController extends Controller
     {
         $hours = floor($seconds / 3600);
         $minutes = floor(($seconds % 3600) / 60);
-
         return $hours > 0 ? "{$hours}h " . ($minutes > 0 ? "{$minutes}m" : "") : "{$minutes}m";
     }
 }

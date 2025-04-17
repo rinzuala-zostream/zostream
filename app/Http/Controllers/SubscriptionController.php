@@ -23,34 +23,35 @@ class SubscriptionController extends Controller
     public function getSubscription(Request $request)
     {
         try {
-            // Decrypt the API key from header
-            
+            // API Key check
             $apiKey = $request->header('X-Api-Key');
-            
             if ($apiKey !== $this->validApiKey) {
                 return response()->json(["status" => "error", "message" => "Invalid API key"], 401);
             }
-
-            // Validate the subscription ID input
-            $validatedData = $request->validate([
+    
+            // Validate query parameter
+            $request->validate([
                 'id' => 'required|string',
             ]);
-
-            // Fetch subscription by id
-            $subscription = SubscriptionModel::where('id', $validatedData['id'])->first();
-
+    
+            // Fetch `id` from query
+            $uid = $request->query('id');
+    
+            // Fetch subscription by ID
+            $subscription = SubscriptionModel::where('id', $uid)->first();
+    
             if ($subscription) {
                 $createDate = new DateTime($subscription->create_date);
                 $daysToAdd = $subscription->period;
                 $endDate = clone $createDate;
                 $endDate->modify("+{$daysToAdd} days");
-
+    
                 $currentDate = new DateTime();
                 $isActive = $currentDate >= $createDate && $currentDate <= $endDate;
-
+    
                 $interval = $createDate->diff($endDate);
                 $months = ($interval->y * 12) + $interval->m;
-
+    
                 $deviceSupport = 0;
                 if ($months < 1) {
                     $deviceSupport = 1;
@@ -59,14 +60,14 @@ class SubscriptionController extends Controller
                 } elseif ($months >= 12) {
                     $deviceSupport = 4;
                 }
-
+    
                 $isAdsFree = false;
                 if ($subscription->sub_plan >= 'Thla 1' && $subscription->sub_plan < 'Thla 6') {
                     $isAdsFree = rand(1, 100) > 40;
                 } elseif ($subscription->sub_plan >= 'Thla 6') {
                     $isAdsFree = true;
                 }
-
+    
                 return response()->json([
                     'status' => 'success',
                     'id' => $subscription->id,
@@ -81,7 +82,7 @@ class SubscriptionController extends Controller
             } else {
                 return response()->json(['status' => 'error', 'message' => 'No data found for the given id']);
             }
-
+    
         } catch (\Illuminate\Contracts\Encryption\DecryptException $e) {
             return response()->json(['status' => 'error', 'message' => 'Invalid encrypted API key'], 403);
         } catch (\Exception $e) {
@@ -89,6 +90,7 @@ class SubscriptionController extends Controller
             return response()->json(['status' => 'error', 'message' => 'Internal Server Error'], 500);
         }
     }
+    
 
     public function addSubscription(Request $request)
 {
