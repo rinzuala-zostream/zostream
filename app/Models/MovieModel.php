@@ -12,4 +12,5 @@ class MovieModel extends Model
     public $incrementing = true;
     
     protected $table = 'movie';
+    public $timestamps = true;
 }

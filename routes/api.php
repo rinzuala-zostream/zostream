@@ -1,6 +1,9 @@
 <?php
 
+use App\Http\Controllers\AdsController;
+use App\Http\Controllers\CalculatePlan;
 use App\Http\Controllers\CheckDeviceAvailable;
+use App\Http\Controllers\DetailsController;
 use App\Http\Controllers\MovieController;
 use App\Http\Controllers\PaymentStatusController;
 use App\Http\Controllers\RegisterController;
@@ -46,6 +49,12 @@ Route::get('/payment-status', [PaymentStatusController::class, 'processUserPayme
 
 Route::post('/request-otp', [RequestOTPController::class, 'sendOTP']);
 Route::post('/verify-otp', [VerifyOTPController::class, 'verify']);
+
+Route::get('/ads', [AdsController::class, 'getAds']);
+
+Route::get('/details', [DetailsController::class, 'getDetails']);
+
+Route::get('/calculate', [CalculatePlan::class, 'calculate']);
 
 
 
