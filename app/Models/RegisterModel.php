@@ -18,7 +18,6 @@ class RegisterModel extends Model
     ];
 
     protected $casts = [
-        'edit_date' => 'datetime',
         'isACActive' => 'boolean',
         'isAccountComplete' => 'boolean',
     ];
