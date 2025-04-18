@@ -18,10 +18,7 @@ class RegisterModel extends Model
     ];
 
     protected $casts = [
-        'created_date' => 'datetime',
-        'dob' => 'datetime',
         'edit_date' => 'datetime',
-        'lastLogin' => 'datetime',
         'isACActive' => 'boolean',
         'isAccountComplete' => 'boolean',
     ];
