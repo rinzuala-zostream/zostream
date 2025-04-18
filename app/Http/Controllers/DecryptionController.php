@@ -10,6 +10,8 @@ use Carbon\Carbon;
 
 class DecryptionController extends Controller
 {
+    private $validApiKey;
+
     private $allowedPackageNames = [
         'com.buannel.studio.pvt.ltd.zostream',
         'com.test',
@@ -19,9 +21,19 @@ class DecryptionController extends Controller
         'd4c6198dabafb243b0d043a3c33a9fe171f81605158c267c7dfe5f66df29559a',
         '24a4785bb225d7392aa419e218d9e2e7461e193a27c42d8af8418d28e0d53676',
     ];
+    public function __construct()
+    {
+        $this->validApiKey = config('app.api_key');
+    }
 
     public function decryptMessage(Request $request)
     {
+
+        $apiKey = $request->header('X-Api-Key');
+        if ($apiKey !== $this->validApiKey) {
+            return response()->json(["status" => "error", "message" => "Invalid API key"]);
+        }
+
         $message = $request->input('msg');
         $packageName = $request->input('packageName');
         $shaKey = $request->input('sha');
