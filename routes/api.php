@@ -6,6 +6,7 @@ use App\Http\Controllers\CheckDeviceAvailable;
 use App\Http\Controllers\DetailsController;
 use App\Http\Controllers\MovieController;
 use App\Http\Controllers\PaymentStatusController;
+use App\Http\Controllers\PPVPriceCalculate;
 use App\Http\Controllers\RegisterController;
 use App\Http\Controllers\RequestOTPController;
 use App\Http\Controllers\SubscriptionController;
@@ -54,7 +55,10 @@ Route::get('/ads', [AdsController::class, 'getAds']);
 
 Route::get('/details', [DetailsController::class, 'getDetails']);
 
+//Subscription calculate
 Route::get('/calculate', [CalculatePlan::class, 'calculate']);
+
+Route::get('/ppv-price', [PPVPriceCalculate::class, 'getPPVPrice']);
 
 
 

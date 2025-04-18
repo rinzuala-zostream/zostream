@@ -44,10 +44,11 @@ class SubscriptionController extends Controller
                 $createDate = new DateTime($subscription->create_date);
                 $daysToAdd = $subscription->period;
                 $endDate = clone $createDate;
-                $endDate->modify("+{$daysToAdd} days");
-    
+                $endDate->modify("+{$daysToAdd} days")->setTime(23, 59, 59);
+
                 $currentDate = new DateTime();
                 $isActive = $currentDate >= $createDate && $currentDate <= $endDate;
+
     
                 $interval = $createDate->diff($endDate);
                 $months = ($interval->y * 12) + $interval->m;
