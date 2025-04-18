@@ -28,7 +28,7 @@ class PaymentStatusController extends Controller
             'user_id' => 'required|string',
         ]);
     
-        $uid = $request->user_id; // Corrected here
+        $uid = $request->query('user_id'); // Corrected here
     
         if (!$uid) {
             return response()->json(['status' => 'error', 'message' => 'User ID is required']);

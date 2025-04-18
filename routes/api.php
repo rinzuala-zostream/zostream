@@ -3,6 +3,7 @@
 use App\Http\Controllers\AdsController;
 use App\Http\Controllers\CalculatePlan;
 use App\Http\Controllers\CheckDeviceAvailable;
+use App\Http\Controllers\DecryptionController;
 use App\Http\Controllers\DetailsController;
 use App\Http\Controllers\MovieController;
 use App\Http\Controllers\MovieSearchController;
@@ -62,6 +63,8 @@ Route::get('/calculate', [CalculatePlan::class, 'calculate']);
 Route::get('/ppv-price', [PPVPriceCalculate::class, 'getPPVPrice']);
 
 Route::get('/search', [MovieSearchController::class, 'search']);
+
+Route::post('/decrypt', [DecryptionController::class, 'decryptMessage']);
 
 
 
