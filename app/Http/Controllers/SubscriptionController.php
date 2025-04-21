@@ -100,7 +100,7 @@ class SubscriptionController extends Controller
             return response()->json(['status' => 'error', 'message' => 'Invalid encrypted API key'], 403);
         } catch (\Exception $e) {
             Log::error('Error fetching subscription data: ' . $e->getMessage());
-            return response()->json(['status' => 'error', 'message' => 'Internal Server Error'], 500);
+            return response()->json(['status' => 'error', 'message' => 'Internal Server Error' . $e->getMessage()], 500);
         }
     }
 
