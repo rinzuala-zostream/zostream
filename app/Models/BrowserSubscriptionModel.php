@@ -6,16 +6,13 @@ use Illuminate\Database\Eloquent\Model;
 
 class BrowserSubscriptionModel extends Model
 {
-    protected $table = 'browser_subscription'; // Update to your actual table name
+    protected $primaryKey = 'num'; // Ensure 'num' is set as the primary key
 
-    protected $primaryKey = 'num';
+    protected $keyType = 'int'; // Ensure primary key is integer
     public $incrementing = true;
-    public $timestamps = false;
 
-    protected $fillable = [
-        'id',
-        'plan',
-        'period',
-        'create_date',
-    ];
+    protected $table = 'browser_subscription';
+
+    protected $fillable = ['id', 'sub_plan', 'period', 'create_date'];
+    public $timestamps = false; //
 }
