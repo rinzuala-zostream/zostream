@@ -9,6 +9,7 @@ use App\Http\Controllers\DetailsController;
 use App\Http\Controllers\MovieController;
 use App\Http\Controllers\MovieSearchController;
 use App\Http\Controllers\PaymentStatusController;
+use App\Http\Controllers\PlanPriceController;
 use App\Http\Controllers\PPVPriceCalculate;
 use App\Http\Controllers\RegisterController;
 use App\Http\Controllers\RequestOTPController;
@@ -68,6 +69,8 @@ Route::get('/search', [MovieSearchController::class, 'search']);
 Route::post('/decrypt', [DecryptionController::class, 'decryptMessage']);
 
 Route::get('/alsolike', [AlsoLikeController::class, 'alsoLike']);
+
+Route::get('/price', [PlanPriceController::class, 'getPlanPrice']);
 
 
 

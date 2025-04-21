@@ -61,10 +61,12 @@ class PPVPriceCalculate extends Controller
 
                 if ($months < 1) {
                     $discountPercent = 2;
-                } elseif ($months >= 12) {
-                    $discountPercent = 10;
-                } else {
+                } elseif ($months === 1 || $months === 4) {
                     $discountPercent = 5;
+                } elseif ($months === 6) {
+                    $discountPercent = 7;
+                } else {
+                    $discountPercent = 10;
                 }
 
                 $discount = ($discountPercent / 100) * $ppvAmount;

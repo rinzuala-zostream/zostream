@@ -6,7 +6,6 @@ use App\Models\PPVPaymentModel;
 use App\Models\TempPaymentModel;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\DB;
 class PaymentStatusController extends Controller
 {
     private $merchantId = 'M221AEW7ARW15';
@@ -55,7 +54,9 @@ class PaymentStatusController extends Controller
                         $fakeRequest = new Request([
                             'id' => $tempData->user_id,
                             'period' => $tempData->subscription_period,
-                            'currentDate' => $tempData->created_at->toDateTimeString()
+                            'plan' => $tempData->plan,
+                            'currentDate' => $tempData->created_at->toDateTimeString(),
+                            'device_type' => $tempData->device_type
                         ]);                        
 
                         $fakeRequest->headers->set('X-Api-Key', $this->validApiKey);
