@@ -84,16 +84,18 @@ class PlanPriceController extends Controller
         $period = $startDate->diffInDays($endDate);
 
         return response()->json([
-            'original_price' => round($originalPrice, 2),
-            'discounted_price' => round($discountedPrice, 2),
-            'total_discount_percent' => round($totalDiscountPercent, 2) . '%',
-            'start_date' => $startDate->toDateString(),
-            'expiry_date' => $endDate->toDateString(),
-            'period' => $period,
-            'plan' => $plan,
-            'devices' => $discountDetails
-            
-        ]);
+            'status' => 'success',
+            'data' => [
+                'original_price' => round($originalPrice, 2),
+                'discounted_price' => round($discountedPrice, 2),
+                'total_discount_percent' => round($totalDiscountPercent, 2) . '%',
+                'start_date' => $startDate->toDateString(),
+                'expiry_date' => $endDate->toDateString(),
+                'period' => $period,
+                'plan' => $plan,
+                'devices' => $discountDetails
+            ]
+        ]);        
     }
 
     private function calculateDiscountSplit($discountPercent)
