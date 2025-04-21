@@ -23,7 +23,8 @@ class TempPaymentModel extends Model
         'device_type',
         'payment_type',
         'content_id',
-        'total_pay'
+        'total_pay',
+        'paln'
     ];
 
     protected $casts = [

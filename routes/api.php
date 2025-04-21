@@ -14,6 +14,7 @@ use App\Http\Controllers\PPVPriceCalculate;
 use App\Http\Controllers\RegisterController;
 use App\Http\Controllers\RequestOTPController;
 use App\Http\Controllers\SubscriptionController;
+use App\Http\Controllers\TempPayment;
 use App\Http\Controllers\UpdateUserDevice;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\VerifyOTPController;
@@ -71,6 +72,9 @@ Route::post('/decrypt', [DecryptionController::class, 'decryptMessage']);
 Route::get('/alsolike', [AlsoLikeController::class, 'alsoLike']);
 
 Route::get('/price', [PlanPriceController::class, 'getPlanPrice']);
+
+Route::post('/temp-payment', [TempPayment::class, 'storeTempPayment']);
+
 
 
 
