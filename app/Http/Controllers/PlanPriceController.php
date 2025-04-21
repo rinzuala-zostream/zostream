@@ -15,7 +15,7 @@ class PlanPriceController extends Controller
         $devices = $device ? array_map('trim', explode(',', $device)) : [];
 
         $planAmounts = [
-            'Kar 1' => 183,
+            'Kar 1' => 288,
             'Thla 1' => 638,
             'Thla 4' => 2407,
             'Thla 6' => 3577,
@@ -23,7 +23,7 @@ class PlanPriceController extends Controller
         ];
 
         $planDevices = [
-            'Kar 1' => ['Mobile' => 84, 'Browser' => 99],
+            'Kar 1' => ['Mobile' => 84, 'Browser' => 99, 'TV' => 105],
             'Thla 1' => ['Mobile' => 194, 'Browser' => 219, 'TV' => 225],
             'Thla 4' => ['Mobile' => 719, 'Browser' => 829, 'TV' => 859],
             'Thla 6' => ['Mobile' => 1089, 'Browser' => 1199, 'TV' => 1289],
