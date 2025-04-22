@@ -47,17 +47,7 @@ class CheckDeviceAvailable extends Controller
         }
 
         // Fetch subscription data
-        $subscriptionRequest = new Request([
-            'id' => $user_id,
-            'device_type' => $device_type,
-        ]);
-
-        $subscriptionRequest->headers->set('X-Api-Key', $apiKey);
-
-        $response = $this->subscriptionController->getSubscription($subscriptionRequest);
-        $subscriptionData = json_decode(json_encode($response->getData()), true);
-
-
+        $subscriptionData = $this->fetchSubscriptionData($user_id, $device_type,  $apiKey);
         if (!is_array($subscriptionData)) {
             return response()->json([
                 "status" => "error",
@@ -95,10 +85,11 @@ class CheckDeviceAvailable extends Controller
         }
     }
 
-    private function fetchSubscriptionData($user_id, $apiKey)
+    private function fetchSubscriptionData($user_id, $device_type, $apiKey)
     {
         $deviceRequest = new Request([
-            'id' => $user_id
+            'id' => $user_id,
+            'device_type' => $device_type
         ]);
 
         $deviceRequest->headers->set('X-Api-Key', $apiKey);
