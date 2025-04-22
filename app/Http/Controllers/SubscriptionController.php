@@ -130,7 +130,7 @@ class SubscriptionController extends Controller
                 ? Carbon::parse($currentDateString)
                 : Carbon::now();
 
-            $createDate = $currentDate->format('Y-m-d');
+            $createDate = $currentDate->format('F j, Y');
 
             $saved = false;
 
