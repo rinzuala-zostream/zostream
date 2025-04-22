@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AdsController;
 use App\Http\Controllers\AlsoLikeController;
+use App\Http\Controllers\EpisodeController;
 use App\Http\Controllers\CalculatePlan;
 use App\Http\Controllers\CheckDeviceAvailable;
 use App\Http\Controllers\DecryptionController;
@@ -74,6 +75,8 @@ Route::get('/alsolike', [AlsoLikeController::class, 'alsoLike']);
 Route::get('/price', [PlanPriceController::class, 'getPlanPrice']);
 
 Route::post('/temp-payment', [TempPayment::class, 'storeTempPayment']);
+
+Route::get('/episodes', [EpisodeController::class, 'getBySeason']);
 
 
 
