@@ -58,9 +58,9 @@ class SubscriptionController extends Controller
                 $deviceSupport = 0;
                 if ($subscription->sub_plan === 'Kar 1') {
                     $deviceSupport = 1;
-                } elseif ($$subscription->sub_plan === 'Thla 1' || $$subscription->sub_plan === 'Thla 4') {
+                } elseif ($subscription->sub_plan === 'Thla 1' || $subscription->sub_plan === 'Thla 4') {
                     $deviceSupport = 2;
-                } elseif ($$subscription->sub_plan === 'Thla 6') {
+                } elseif ($subscription->sub_plan === 'Thla 6') {
                     $deviceSupport = 3;
                 } else {
                     $deviceSupport = 4;
