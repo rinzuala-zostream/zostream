@@ -108,6 +108,7 @@ class PaymentStatusController extends Controller
             return response()->json([
                 'status'  => 'success',
                 'message' => "Processed payments. Success: $successCount, Failures: $failureCount",
+                'data' => $tempDataList,
             ]);
         } catch (\Exception $e) {
             return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
