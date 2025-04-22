@@ -45,12 +45,14 @@ class DetailsController extends Controller
             'user_id' => 'required|string',
             'movie_id' => 'required|string',
             'device_id' => 'required|string',
+            'device_type' => 'required|string',
             'type' => 'required|string'
         ]);
 
         $userId = $request->query('user_id');
         $movieId = $request->query('movie_id');
         $deviceId = $request->query('device_id');
+        $deviceType = $request->query('device_type');
         $type = $request->query('type', 'movie');
 
         try {
@@ -61,7 +63,8 @@ class DetailsController extends Controller
             $paymentData = json_decode($paymentResponse->getContent(), true);
 
             $subscriptionRequest = new Request([
-                'id' => $userId
+                'id' => $userId,
+                'device_type' => $deviceType,
             ]);
     
             $subscriptionRequest->headers->set('X-Api-Key', $apiKey);
