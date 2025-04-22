@@ -23,7 +23,7 @@ class MovieController extends Controller
             return response()->json(['status' => 'error', 'message' => 'Invalid API key']);
         }
 
-        $validated = $request->validate([
+        $request->validate([
             'id' => 'nullable|string',
             'range' => 'nullable|string',
             'category' => 'nullable|string',
@@ -31,11 +31,11 @@ class MovieController extends Controller
             'age_restriction' => 'nullable|string|in:true,false',
         ]);
 
-        $id = $validated['id'] ?? null;
-        $range = $validated['range'] ?? null;
-        $categoryKey = strtolower($validated['category'] ?? '');
-        $categoryType = strtolower($validated['category_type'] ?? '');
-        $ageRestriction = ($validated['age_restriction'] ?? 'false') === 'true' ? 1 : 0;
+        $id = $request->query('id') ?? null;
+        $range = $request->query('range') ?? null;
+        $categoryKey = strtolower($request->query('category') ?? '');
+        $categoryType = strtolower($request->query('category_type') ?? '');
+        $ageRestriction = ($request->query('age_restriction') ?? 'false') === 'true' ? 1 : 0;
 
         if ($id) {
             $movie = MovieModel::where('id', $id)->first();

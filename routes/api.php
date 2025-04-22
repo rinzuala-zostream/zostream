@@ -47,7 +47,7 @@ Route::get('/user', [UserController::class, 'getUserData']);
 Route::get('/get-subscription', [SubscriptionController::class, 'getSubscription']);
 Route::get('/add-subscription', [SubscriptionController::class, 'addSubscription']);
 
-Route::post('/movies', [MovieController::class, 'getMovies']);
+Route::get('/movies', [MovieController::class, 'getMovies']);
 
 //update device for new device or change device
 Route::get('/device', [UpdateUserDevice::class, 'updateDevice']);
