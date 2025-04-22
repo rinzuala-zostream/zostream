@@ -50,4 +50,41 @@ class UserController extends Controller
             return response()->json(['status' => 'error', 'message' => 'Internal Server Error']);
         }
     }
+
+    public function updateDob(Request $request)
+    {
+        // Validate required input
+        $request->validate([
+            'uid' => 'required|string',
+            'dob' => 'required|date',
+        ]);
+
+        $uid = $request->input('uid');
+        $dob = $request->input('dob');
+
+        // Check if the user exists
+        $user = UserModel::where('uid', $uid)->first();
+
+        if (!$user) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'UID not found in the database'
+            ], 404);
+        }
+
+        try {
+            UserModel::where('uid', $uid)
+                ->update(['dob' => $dob]);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'success'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => $e->getMessage()
+            ], 500);
+        }
+    }
 }
