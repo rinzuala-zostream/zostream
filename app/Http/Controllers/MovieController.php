@@ -112,7 +112,7 @@ class MovieController extends Controller
             $categories = [
                 "New Release"    => ["where" => "release_on IS NOT NULL", "order" => "STR_TO_DATE(release_on, '%d %b, %Y') DESC"],
                 "Most Watched"   => ["where" => "1", "order" => "views DESC"],
-                "Pay Per View"   => ["where" => "isPayPerView = 1", "order" => "num DESC"],
+                "Pay Per View"   => ["where" => "isPayPerView = 1", "isAgeRestricted = 0", "order" => "num DESC"],
                 "Latest Update"  => ["where" => "1", "order" => "num DESC"],
                 "Asian"          => ["where" => "isKorean = 1", "order" => "num DESC"],
                 "Series"         => ["where" => "isSeason = 1", "order" => "num DESC"],
