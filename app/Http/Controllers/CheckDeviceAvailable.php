@@ -30,10 +30,12 @@ class CheckDeviceAvailable extends Controller
         $request->validate([
             'user_id' => 'required|string',
             'device_id' => 'required|string',
+            'device_type' => 'required|string',
         ]);
 
         $user_id = $request->query('user_id');
         $device_id = $request->query('device_id');
+        $device_type = $request->query('device_type');
 
         // Check if user exists
         $userExists = UserModel::where('uid', $user_id)->exists();
@@ -45,7 +47,17 @@ class CheckDeviceAvailable extends Controller
         }
 
         // Fetch subscription data
-        $subscriptionData = $this->fetchSubscriptionData($user_id, $apiKey);
+        $subscriptionRequest = new Request([
+            'id' => $user_id,
+            'device_type' => $device_type,
+        ]);
+
+        $subscriptionRequest->headers->set('X-Api-Key', $apiKey);
+
+        $response = $this->subscriptionController->getSubscription($subscriptionRequest);
+        $subscriptionData = json_decode(json_encode($response->getData()), true);
+
+
         if (!is_array($subscriptionData)) {
             return response()->json([
                 "status" => "error",
