@@ -88,7 +88,7 @@ class SubscriptionController extends Controller
                     'period' => $subscription->period,
                     'sub_plan' => $subscription->sub_plan,
                     'sub' => $isActive,
-                    'expiry_date' => $endDate->format('Y-m-d'),
+                    'expiry_date' => $endDate->format('F j, Y'),
                     'device_support' => $deviceSupport,
                     'isAdsFree' => $isAdsFree,
                 ]);
