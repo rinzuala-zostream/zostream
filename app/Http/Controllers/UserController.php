@@ -59,8 +59,8 @@ class UserController extends Controller
             'dob' => 'required|date',
         ]);
 
-        $uid = $request->input('uid');
-        $dob = $request->input('dob');
+        $uid = $request->query('uid');
+        $dob = $request->query('dob');
 
         // Check if the user exists
         $user = UserModel::where('uid', $uid)->first();

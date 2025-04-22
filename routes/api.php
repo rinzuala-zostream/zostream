@@ -78,7 +78,7 @@ Route::post('/temp-payment', [TempPayment::class, 'storeTempPayment']);
 
 Route::get('/episodes', [EpisodeController::class, 'getBySeason']);
 
-Route::post('/update-dob', [UserController::class, 'updateDob']);
+Route::get('/update-dob', [UserController::class, 'updateDob']);
 
 
 
