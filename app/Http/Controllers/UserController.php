@@ -157,7 +157,6 @@ class UserController extends Controller
         'uid'              => 'required|string',
         'call'             => 'required|string',
         'edit_date'        => 'required|string',
-        'img'              => 'required|string',
         'isAccountComplete'=> 'required|boolean',
         'khua'             => 'required|string',
         'name'             => 'required|string',
@@ -177,7 +176,6 @@ class UserController extends Controller
         $user->update([
             'call'              => $request->input('call'),
             'edit_date'         => $request->input('edit_date'),
-            'img'               => $request->input('img'),
             'isAccountComplete' => $request->input('isAccountComplete'),
             'khua'              => $request->input('khua'),
             'name'              => $request->input('name'),
