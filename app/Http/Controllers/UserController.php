@@ -87,4 +87,38 @@ class UserController extends Controller
             ], 500);
         }
     }
+
+    public function updateToken(Request $request)
+    {
+        $apiKey = $request->header('X-Api-Key');
+
+        if ($apiKey !== $this->validApiKey) {
+            return response()->json(['status' => 'error', 'message' => 'Invalid API key'], 401);
+        }
+
+        // Validate request
+        $request->validate([
+            'uid'   => 'required|string',
+            'token' => 'required|string',
+        ]);
+
+        $uid   = $request->input('uid');
+        $token = $request->input('token');
+
+        try {
+
+            $user = UserModel::where('uid', $uid)->first();
+
+            if ($user) {
+                UserModel::where('uid', $uid)
+                    ->update(['token' => $token]);
+
+                return response()->json(['status' => 'success', 'message' => 'Record updated successfully']);
+            } else {
+                return response()->json(['status' => 'error', 'message' => 'Record not found'], 404);
+            }
+        } catch (\Exception $e) {
+            return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
+        }
+    }
 }

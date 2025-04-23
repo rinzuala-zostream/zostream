@@ -83,6 +83,7 @@ Route::get('/update-dob', [UserController::class, 'updateDob']);
 
 
 Route::post('/watch-position', [WatchPositionController::class, 'save']);
+Route::post('/update-token', [UserController::class, 'updateToken']);
 
 
 
