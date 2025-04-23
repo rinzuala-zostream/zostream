@@ -82,6 +82,7 @@ class SubscriptionController extends Controller
                     'status' => 'success',
                     'id' => $subscription->id,
                     'create_date' => $subscription->create_date,
+                    'current_date' => $currentDate,
                     'period' => $subscription->period,
                     'sub_plan' => $subscription->sub_plan,
                     'sub' => $isActive,

@@ -150,4 +150,44 @@ class UserController extends Controller
             return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
         }
     }
+
+    public function updateProfile(Request $request)
+{
+    $request->validate([
+        'uid'              => 'required|string',
+        'call'             => 'required|string',
+        'edit_date'        => 'required|string',
+        'img'              => 'required|string',
+        'isAccountComplete'=> 'required|boolean',
+        'khua'             => 'required|string',
+        'name'             => 'required|string',
+        'veng'             => 'required|string', // optional
+    ]);
+
+    try {
+        $uid = $request->input('uid');
+
+        $user = UserModel::where('uid', $uid)->first();
+
+        if (!$user) {
+            return response()->json(['status' => 'error', 'message' => 'Record not found'], 404);
+        }
+
+        // Update fields
+        $user->update([
+            'call'              => $request->input('call'),
+            'edit_date'         => $request->input('edit_date'),
+            'img'               => $request->input('img'),
+            'isAccountComplete' => $request->input('isAccountComplete'),
+            'khua'              => $request->input('khua'),
+            'name'              => $request->input('name'),
+            'veng'              => $request->input('veng'),
+        ]);
+
+        return response()->json(['status' => 'success', 'message' => 'Profile updated successfully']);
+    } catch (\Exception $e) {
+        return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
+    }
+}
+
 }

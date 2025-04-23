@@ -88,6 +88,8 @@ Route::get('/update-token', [UserController::class, 'updateToken']);
 
 Route::post('/update-login', [UserController::class, 'updateLogin']);
 
+Route::post('/update-profile', [UserController::class, 'updateProfile']);
+
 
 
 
