@@ -121,4 +121,33 @@ class UserController extends Controller
             return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
         }
     }
+
+    public function updateLogin(Request $request)
+    {
+
+        // Validate request
+        $request->validate([
+            'uid'   => 'required|string',
+            'lastLogin' => 'required|string',
+        ]);
+
+        $uid   = $request->input('uid');
+        $lastLogin = $request->input('lastLogin');
+
+        try {
+
+            $user = UserModel::where('uid', $uid)->first();
+
+            if ($user) {
+                UserModel::where('uid', $uid)
+                    ->update(['lastLogin' => $lastLogin]);
+
+                return response()->json(['status' => 'success', 'message' => 'Record updated successfully']);
+            } else {
+                return response()->json(['status' => 'error', 'message' => 'Record not found'], 404);
+            }
+        } catch (\Exception $e) {
+            return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
+        }
+    }
 }
