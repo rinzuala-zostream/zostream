@@ -19,6 +19,7 @@ use App\Http\Controllers\TempPayment;
 use App\Http\Controllers\UpdateUserDevice;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\VerifyOTPController;
+use App\Http\Controllers\WatchPositionController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\DeviceManagementController;
@@ -79,6 +80,9 @@ Route::post('/temp-payment', [TempPayment::class, 'storeTempPayment']);
 Route::get('/episodes', [EpisodeController::class, 'getBySeason']);
 
 Route::get('/update-dob', [UserController::class, 'updateDob']);
+
+
+Route::post('/watch-position', [WatchPositionController::class, 'save']);
 
 
 
