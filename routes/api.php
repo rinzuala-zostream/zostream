@@ -86,7 +86,7 @@ Route::post('/watch-position', [WatchPositionController::class, 'save']);
 
 Route::get('/update-token', [UserController::class, 'updateToken']);
 
-Route::get('/update-login', [UserController::class, 'updateLogin']);
+Route::post('/update-login', [UserController::class, 'updateLogin']);
 
 
 
