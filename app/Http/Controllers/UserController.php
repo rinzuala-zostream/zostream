@@ -182,9 +182,11 @@ class UserController extends Controller
             'veng'              => $request->input('veng'),
         ]);
 
-        return response()->json(['status' => 'success', 'message' => 'Profile updated successfully']);
+        return response()->json(['status' => 'success', 'message' => 'Profile updated successfully'])
+        ->header('Content-Type', 'application/json');
     } catch (\Exception $e) {
-        return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
+        return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500)
+        ->header('Content-Type', 'application/json');
     }
 }
 
