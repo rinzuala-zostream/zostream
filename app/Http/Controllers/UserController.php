@@ -160,7 +160,7 @@ class UserController extends Controller
         'isAccountComplete' => 'boolean',
         'khua'             => 'required|string',
         'name'             => 'required|string',
-        'veng'             => 'required|string', // optional
+        'veng'             => 'required|string',
     ]);
 
     try {
