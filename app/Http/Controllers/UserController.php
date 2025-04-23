@@ -102,8 +102,8 @@ class UserController extends Controller
             'token' => 'required|string',
         ]);
 
-        $uid   = $request->input('uid');
-        $token = $request->input('token');
+        $uid   = $request->query('uid');
+        $token = $request->query('token');
 
         try {
 
