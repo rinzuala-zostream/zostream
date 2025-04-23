@@ -157,7 +157,7 @@ class UserController extends Controller
         'uid'              => 'required|string',
         'call'             => 'required|string',
         'edit_date'        => 'required|string',
-        'isAccountComplete'=> 'required|boolean',
+        'isAccountComplete' => 'boolean',
         'khua'             => 'required|string',
         'name'             => 'required|string',
         'veng'             => 'required|string', // optional
