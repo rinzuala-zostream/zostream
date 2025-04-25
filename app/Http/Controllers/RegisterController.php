@@ -32,7 +32,7 @@ class RegisterController extends Controller
         $validatedData = $request->validate([
             'call' => 'nullable|string',
             'created_date' => 'required|string',
-            'device_id' => 'required|string',
+            'device_id' => 'nullable|string',
             'dob' => 'nullable|string',
             'edit_date' => 'nullable|date',
             'img' => 'nullable|string',
