@@ -50,6 +50,8 @@ Route::get('/add-subscription', [SubscriptionController::class, 'addSubscription
 
 Route::get('/movies', [MovieController::class, 'getMovies']);
 
+Route::get('/view', [MovieController::class, 'incrementView']);
+
 //update device for new device or change device
 Route::get('/device', [UpdateUserDevice::class, 'updateDevice']);
 

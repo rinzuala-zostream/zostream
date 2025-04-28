@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\EpisodeModel;
 use App\Models\MovieModel;
 use Illuminate\Http\Request;
 
@@ -167,4 +168,40 @@ class MovieController extends Controller
 
         return $movie;
     }
+
+    public function incrementView(Request $request)
+{
+    $apiKey = $request->header('X-Api-Key');
+
+    if ($apiKey !== $this->validApiKey) {
+        return response()->json(['status' => 'error', 'message' => 'Invalid API key']);
+    }
+
+    $request->validate([
+        'movie_id' => 'required|string',
+        'movie_type' => 'required|string|in:movie,episode',
+    ]);
+
+    $id = $request->input('movie_id');
+    $type = strtolower($request->input('movie_type'));
+
+    if ($type === 'movie') {
+        $movie = MovieModel::where('id', $id)->first();
+    } elseif ($type === 'episode') {
+        // Assuming you have an EpisodeModel for episodes
+        $movie = EpisodeModel::where('id', $id)->first();
+    } else {
+        return response()->json(['status' => 'error', 'message' => 'Invalid type']);
+    }
+
+    if (!$movie) {
+        return response()->json(['status' => 'error', 'message' => 'Content not found']);
+    }
+
+    $movie->increment('views');
+
+    return response()->json(['status' => 'success', 'message' => 'View count incremented']);
+}
+
+
 }

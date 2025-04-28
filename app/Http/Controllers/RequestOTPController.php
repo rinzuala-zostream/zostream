@@ -36,7 +36,7 @@ class RequestOTPController extends Controller
 
         $request->validate([
             'user_id' => 'required|string',
-            'phone_number' => 'required|string'
+            'phone_number' => 'nullable|string'
         ]);
 
         $userId = $request->user_id;
@@ -76,12 +76,21 @@ class RequestOTPController extends Controller
 
         $smsStatus = $this->sendSMS($phone, "Zo Stream share account OTP chu: $otp");
 
-        return response()->json([
-            'status' => 'success',
-            'message' => 'OTP sent successfully',
-            'SMS_Status' => $smsStatus,
-            'otp' => app()->environment('local') ? $otp : null  // Show OTP only in local/dev environment
-        ]);
+
+        if ($phone === null) {
+            return response()->json([
+                'status' => 'success',
+                'message' => $otp,
+                
+            ]);
+        } else {
+            return response()->json([
+                'status' => 'success',
+                'message' => 'OTP sent successfully',
+                'SMS_Status' => $smsStatus,
+                'otp' => app()->environment('local') ? $otp : null  // Show OTP only in local/dev environment
+            ]);
+        }
     }
 
     private function sendSMS($to, $message)
