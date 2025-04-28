@@ -46,7 +46,6 @@ class SubscriptionController extends Controller
                 $subscription = BrowserSubscriptionModel::where('id', $uid)->first();
             }
 
-            
 
             if ($subscription) {
                 $createDate = new DateTime($subscription->create_date);
@@ -57,7 +56,7 @@ class SubscriptionController extends Controller
                 $currentDate = new DateTime();
                 $isActive = $currentDate >= $createDate && $currentDate <= $endDate;
             
-                $interval = $createDate->diff($currentDate);
+                $interval = $createDate->diff($endDate);
                 $months = $interval->y * 12 + $interval->m;
 
                 $deviceSupport = 0;
