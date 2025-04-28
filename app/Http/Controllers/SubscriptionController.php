@@ -47,22 +47,36 @@ class SubscriptionController extends Controller
                 $subscription = BrowserSubscriptionModel::where('id', $uid)->first();
             }
 
-
             if ($subscription) {
                 $createDate = new DateTime($subscription->create_date);
                 $daysToAdd = $subscription->period;
-                $endDate = clone $createDate;
-                $endDate->modify("+{$daysToAdd} days")->setTime(23, 59, 59);
 
+                // Calculate the expiry date
+                $expiryDate = clone $createDate;
+                $expiryDate->modify("+{$daysToAdd} days")->setTime(23, 59, 59);
+
+                // Current date
                 $currentDate = new DateTime();
-                $isActive = $currentDate >= $createDate && $currentDate <= $endDate;
-            
-                $months = $this->calculateMonthsFromInterval($createDate, $daysToAdd);
 
+                // Check if subscription is active
+                $isActive = $currentDate >= $createDate && $currentDate <= $expiryDate;
+
+                // Calculate months of subscription (period days converted to months)
+                $startDateObj = clone $createDate;
+                $endDateObj = clone $createDate;
+                $endDateObj->modify("+{$daysToAdd} days");
+
+                // Calculate the difference
+                $diff = $startDateObj->diff($endDateObj);
+
+                // Correct months calculation
+                $months = $diff->m + ($diff->y * 12);
+
+                // Calculate device support and ad-free
                 $deviceSupport = 0;
                 $isAdsFree = false;
 
-                if ($months < 1 ) {
+                if ($months < 1) {
                     $deviceSupport = 1;
                     $isAdsFree = false;
                 } elseif ($months >= 1 && $months <= 4) {
@@ -72,22 +86,24 @@ class SubscriptionController extends Controller
                     $deviceSupport = 3;
                     $isAdsFree = rand(1, 100) > 20;
                 } else {
-                    $isAdsFree = true;
                     $deviceSupport = 4;
+                    $isAdsFree = true;
                 }
 
+                // Return the response
                 return response()->json([
                     'status' => 'success',
                     'id' => $subscription->id,
-                    'create_date' => $subscription->create_date,
+                    'create_date' => $createDate->format('F j, Y'),
                     'current_date' => $currentDate->format('F j, Y'),
                     'period' => $subscription->period,
                     'sub_plan' => $subscription->sub_plan,
                     'sub' => $isActive,
-                    'expiry_date' => $endDate->format('F j, Y'),
+                    'expiry_date' => $expiryDate->format('F j, Y'),
                     'device_support' => $deviceSupport,
                     'isAdsFree' => $isAdsFree,
                 ]);
+
             } else {
                 return response()->json(['status' => 'error', 'message' => 'No data found for the given id']);
             }
@@ -139,8 +155,8 @@ class SubscriptionController extends Controller
                         'create_date' => $createDate,
                     ]
                 );
-            } 
-            
+            }
+
             if (str_contains($device_type, 'Browser')) {
                 $saved = BrowserSubscriptionModel::updateOrInsert(
                     ['id' => $id],
@@ -150,8 +166,8 @@ class SubscriptionController extends Controller
                         'create_date' => $createDate,
                     ]
                 );
-            } 
-            
+            }
+
             if (str_contains($device_type, 'TV')) {
                 $saved = TVSubscriptionModel::updateOrInsert(
                     ['id' => $id],
@@ -182,7 +198,7 @@ class SubscriptionController extends Controller
             Log::error('Error in addSubscription: ' . $e->getMessage());
             return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
         }
-        
+
     }
 
     private function deleteSharedUser($id, $apiKey)
@@ -202,25 +218,26 @@ class SubscriptionController extends Controller
         }
     }
 
-    private function calculateMonthsFromInterval($createDate, $daysToAdd) {
+    private function calculateMonthsFromInterval($createDate, $daysToAdd)
+    {
         // If $createDate is a DateTime object, use it directly, otherwise convert it to a DateTime object from string
         if (!$createDate instanceof DateTime) {
             $createDate = new DateTime($createDate);  // Convert string to DateTime
         }
-    
+
         // Add the given number of days as a DateInterval to the start date
         $interval = new DateInterval('P' . $daysToAdd . 'D');
         $createDate->add($interval);
-    
+
         // Get the current date for comparison
         $currentDate = new DateTime(); // Or use any other reference date here
-    
+
         // Calculate the difference in years, months, and days
         $diff = $createDate->diff($currentDate);
-        
+
         // Calculate total months: years converted to months + the months difference
         $totalMonths = ($diff->y * 12) + $diff->m;
-        
+
         // Return the total number of months
         return $totalMonths;
     }
