@@ -92,6 +92,8 @@ Route::post('/update-login', [UserController::class, 'updateLogin']);
 
 Route::post('/update-profile', [UserController::class, 'updateProfile']);
 
+Route::post('/clear-device', [UserController::class, 'clearDeviceId']);
+
 
 
 

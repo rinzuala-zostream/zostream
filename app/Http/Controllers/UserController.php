@@ -190,4 +190,26 @@ class UserController extends Controller
     }
 }
 
+public function clearDeviceId(Request $request)
+    {
+
+        $request->validate([
+            'user_id' => 'required|string',
+        ]);
+
+        $userId = $request->user_id;
+
+        $user = UserModel::where('uid', $userId)->first();
+
+        if (!$user) {
+            return response()->json(['status' => 'error', 'message' => 'User not found'], 404);
+        }
+
+        $user->device_id = null;
+
+        $user->save();
+
+        return response()->json(['status' => 'success', 'message' => 'Device ID cleared successfully']);
+    }
+
 }
