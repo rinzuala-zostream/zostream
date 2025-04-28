@@ -74,9 +74,6 @@ class RequestOTPController extends Controller
             ]);
         }
 
-        $smsStatus = $this->sendSMS($phone, "Zo Stream share account OTP chu: $otp");
-
-
         if ($phone === null) {
             return response()->json([
                 'status' => 'success',
@@ -84,6 +81,7 @@ class RequestOTPController extends Controller
                 
             ]);
         } else {
+            $smsStatus = $this->sendSMS($phone, "Zo Stream share account OTP chu: $otp");
             return response()->json([
                 'status' => 'success',
                 'message' => 'OTP sent successfully',
