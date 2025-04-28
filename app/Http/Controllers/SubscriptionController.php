@@ -214,11 +214,14 @@ class SubscriptionController extends Controller
     
         // Get the current date for comparison
         $currentDate = new DateTime(); // Or use any other reference date here
+    
+        // Calculate the difference in years, months, and days
         $diff = $createDate->diff($currentDate);
         
-        // Return the total number of months (years converted to months + the months)
-        return $diff->m + ($diff->y * 12);
+        // Calculate total months: years converted to months + the months difference
+        $totalMonths = ($diff->y * 12) + $diff->m;
+        
+        // Return the total number of months
+        return $totalMonths;
     }
-    
-    
 }
