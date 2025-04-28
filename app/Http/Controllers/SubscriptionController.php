@@ -70,7 +70,7 @@ class SubscriptionController extends Controller
                     $deviceSupport = 2;
                     $isAdsFree = rand(1, 100) > 40;
                 } elseif ($months > 4 && $months <= 6) {
-                    $deviceSupport = 2;
+                    $deviceSupport = 3;
                     $isAdsFree = rand(1, 100) > 20;
                 } else {
                     $isAdsFree = true;
