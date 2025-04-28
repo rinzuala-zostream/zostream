@@ -46,6 +46,8 @@ class SubscriptionController extends Controller
                 $subscription = BrowserSubscriptionModel::where('id', $uid)->first();
             }
 
+            
+
             if ($subscription) {
                 $createDate = new DateTime($subscription->create_date);
                 $daysToAdd = $subscription->period;
@@ -54,15 +56,17 @@ class SubscriptionController extends Controller
 
                 $currentDate = new DateTime();
                 $isActive = $currentDate >= $createDate && $currentDate <= $endDate;
+            
+                $interval = $createDate->diff(new DateTime());
 
                 $deviceSupport = 0;
-                if ($subscription->sub_plan === 'Kar 1' || $subscription->sub_plan <= 'Ni 7') {
+                if ($subscription->period === $interval->days || $subscription->period <= $interval->days) {
                     $deviceSupport = 1;
-                } elseif ($subscription->sub_plan >= 'Thla 1' && $subscription->sub_plan <= 'Thla 4') {
+                } elseif ($subscription->period >= $interval->days && $subscription->period <= $interval->days) {
                     $deviceSupport = 2;
-                } elseif ($subscription->sub_plan > 'Thla 4' && $subscription->sub_plan <= 'Thla 6') {
+                } elseif ($subscription->period > $interval->days && $subscription->period <= $interval->days) {
                     $deviceSupport = 3;
-                } elseif ($subscription->sub_plan >= 'Kum 1'){
+                } elseif ($subscription->period >= $interval->days){
                     $deviceSupport = 4;
                 }
 
