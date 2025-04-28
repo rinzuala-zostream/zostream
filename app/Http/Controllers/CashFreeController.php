@@ -27,6 +27,7 @@ class CashFreeController extends Controller
             'customer_details.customer_email' => 'required|email',
             'customer_details.customer_phone' => 'required|string',
             'order_meta.notify_url' => 'nullable|url',
+            'order_meta.return_url' => 'nullable|url',
             'order_amount' => 'required|numeric|min:0',
             'order_currency' => 'required|string|max:3',
         ]);
