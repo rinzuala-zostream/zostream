@@ -63,7 +63,7 @@ class SubscriptionController extends Controller
                 $isAdsFree = false;
 
                 if ($months < 1 ) {
-                    $deviceSupport = 2;
+                    $deviceSupport = 1;
                     $isAdsFree = false;
                 } elseif ($months >= 1 && $months <= 4) {
                     $deviceSupport = 2;
