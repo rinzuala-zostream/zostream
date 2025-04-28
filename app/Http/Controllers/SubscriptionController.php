@@ -57,16 +57,17 @@ class SubscriptionController extends Controller
                 $currentDate = new DateTime();
                 $isActive = $currentDate >= $createDate && $currentDate <= $endDate;
             
-                $interval = $createDate->diff(new DateTime());
+                $interval = $createDate->diff($currentDate);
+                $months = $interval->y * 12 + $interval->m;
 
                 $deviceSupport = 0;
-                if ($subscription->period === $interval->days || $subscription->period <= $interval->days) {
+                if ($months < 1 ) {
                     $deviceSupport = 1;
-                } elseif ($subscription->period >= $interval->days && $subscription->period <= $interval->days) {
+                } elseif ($months >= 1 && $months <= 4) {
                     $deviceSupport = 2;
-                } elseif ($subscription->period > $interval->days && $subscription->period <= $interval->days) {
+                } elseif ($months > 4 && $months <= 6) {
                     $deviceSupport = 3;
-                } elseif ($subscription->period >= $interval->days){
+                } else {
                     $deviceSupport = 4;
                 }
 
