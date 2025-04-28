@@ -202,16 +202,16 @@ class SubscriptionController extends Controller
         }
     }
 
-    private function calculateMonthsFromInterval($startDate, $days) {
+    private function calculateMonthsFromInterval($createDate, $daysToAdd) {
         // Create a DateTime object for the given start date
-        $startDateObj = new DateTime($startDate);
+        $startDateObj = new DateTime($createDate);
         
         // Add the given number of days as a DateInterval
-        $interval = new DateInterval('P' . $days . 'D');
+        $interval = new DateInterval('P' . $daysToAdd . 'D');
         $startDateObj->add($interval);
         
         // Get the difference in months between the start date and the end date
-        $endDate = new DateTime($startDate); // Another DateTime object for the original start date
+        $endDate = new DateTime($createDate); // Another DateTime object for the original start date
         $diff = $startDateObj->diff($endDate);
         
         // Return the total number of months (years converted to months + the months)
