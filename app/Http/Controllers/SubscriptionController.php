@@ -61,27 +61,21 @@ class SubscriptionController extends Controller
                 $months = $interval->y * 12 + $interval->m;
 
                 $deviceSupport = 0;
+                $isAdsFree = false;
+
                 if ($months < 1 ) {
-                    $deviceSupport = 1;
+                    $deviceSupport = 2;
+                    $isAdsFree = false;
                 } elseif ($months >= 1 && $months <= 4) {
                     $deviceSupport = 2;
-                } elseif ($months > 4 && $months <= 6) {
-                    $deviceSupport = 3;
-                } else {
-                    $deviceSupport = 4;
-                }
-
-                $isAdsFree = false;
-                if ($subscription->sub_plan === 'Kar 1') 
-                {
-                    $isAdsFree = false;
-                }elseif ($subscription->sub_plan === 'Thla 1') {
                     $isAdsFree = rand(1, 100) > 40;
-                } elseif ($subscription->sub_plan === 'Thla 4') {
+                } elseif ($months > 4 && $months <= 6) {
+                    $deviceSupport = 2;
                     $isAdsFree = rand(1, 100) > 20;
                 } else {
                     $isAdsFree = true;
-                } 
+                    $deviceSupport = 4;
+                }
 
                 return response()->json([
                     'status' => 'success',
