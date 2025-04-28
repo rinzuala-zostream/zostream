@@ -206,15 +206,17 @@ class SubscriptionController extends Controller
         // Create a DateTime object for the given start date
         $startDateObj = new DateTime($createDate);
         
-        // Add the given number of days as a DateInterval
+        // Add the given number of days as a DateInterval to the start date
         $interval = new DateInterval('P' . $daysToAdd . 'D');
         $startDateObj->add($interval);
         
-        // Get the difference in months between the start date and the end date
-        $endDate = new DateTime($createDate); // Another DateTime object for the original start date
-        $diff = $startDateObj->diff($endDate);
+        // Get the difference in months between the start date and the modified end date
+        $endDate = $startDateObj; // End date is now the modified start date
+        $currentDate = new DateTime(); // Or use any other reference date here
+        $diff = $endDate->diff($currentDate);
         
         // Return the total number of months (years converted to months + the months)
-        return $diff->m + ($diff->y * 12); 
+        return $diff->m + ($diff->y * 12);
     }
+    
 }
