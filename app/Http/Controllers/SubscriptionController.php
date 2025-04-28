@@ -49,45 +49,57 @@ class SubscriptionController extends Controller
 
             if ($subscription) {
                 $createDate = new DateTime($subscription->create_date);
-                $daysToAdd = $subscription->period;
-                $endDate = clone $createDate;
-                $endDate->modify("+{$daysToAdd} days")->setTime(23, 59, 59);
+$daysToAdd = $subscription->period;
+$endDate = clone $createDate;
+$endDate->modify("+{$daysToAdd} days")->setTime(23, 59, 59);
 
-                $currentDate = new DateTime();
-                $isActive = $currentDate >= $createDate && $currentDate <= $endDate;
-            
-                $interval = $createDate->diff($endDate);
-                $months = $interval->y * 12 + $interval->m;
+$currentDate = new DateTime();
+$isActive = $currentDate >= $createDate && $currentDate <= $endDate;
 
-                $deviceSupport = 0;
-                $isAdsFree = false;
+// Calculate the interval between the create date and end date
+$interval = $createDate->diff($endDate);
 
-                if ($months < 1 ) {
-                    $deviceSupport = 2;
-                    $isAdsFree = false;
-                } elseif ($months >= 1 && $months <= 4) {
-                    $deviceSupport = 2;
-                    $isAdsFree = rand(1, 100) > 40;
-                } elseif ($months > 4 && $months <= 6) {
-                    $deviceSupport = 3;
-                    $isAdsFree = rand(1, 100) > 20;
-                } else {
-                    $isAdsFree = true;
-                    $deviceSupport = 4;
-                }
+// Calculate the number of months (taking into account the days-to-month conversion)
+$months = ($interval->y * 12) + $interval->m;
+if ($interval->d > 0) {
+    $months += 1; // Add one more month if there are extra days beyond the full month
+}
 
-                return response()->json([
-                    'status' => 'success',
-                    'id' => $subscription->id,
-                    'create_date' => $subscription->create_date,
-                    'current_date' => $currentDate->format('F j, Y'),
-                    'period' => $subscription->period,
-                    'sub_plan' => $subscription->sub_plan,
-                    'sub' => $isActive,
-                    'expiry_date' => $endDate->format('F j, Y'),
-                    'device_support' => $deviceSupport,
-                    'isAdsFree' => $isAdsFree,
-                ]);
+$deviceSupport = 0;
+$isAdsFree = false;
+
+// Adjusting device support and ad-free logic based on the number of months
+if ($months < 1) {
+    // Less than 1 month
+    $deviceSupport = 2;
+    $isAdsFree = false;
+} elseif ($months >= 1 && $months <= 4) {
+    // 1 month to 4 months
+    $deviceSupport = 2;
+    $isAdsFree = rand(1, 100) > 40;  // 60% chance for ads-free
+} elseif ($months > 4 && $months <= 6) {
+    // 4 months to 6 months
+    $deviceSupport = 3;
+    $isAdsFree = rand(1, 100) > 20;  // 80% chance for ads-free
+} else {
+    // More than 6 months
+    $isAdsFree = true;
+    $deviceSupport = 4;
+}
+
+return response()->json([
+    'status' => 'success',
+    'id' => $subscription->id,
+    'create_date' => $subscription->create_date,
+    'current_date' => $currentDate->format('F j, Y'),
+    'period' => $subscription->period,
+    'sub_plan' => $subscription->sub_plan,
+    'sub' => $isActive,
+    'expiry_date' => $endDate->format('F j, Y'),
+    'device_support' => $deviceSupport,
+    'isAdsFree' => $isAdsFree,
+]);
+
             } else {
                 return response()->json(['status' => 'error', 'message' => 'No data found for the given id']);
             }
