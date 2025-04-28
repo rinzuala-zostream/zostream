@@ -5,6 +5,8 @@ return [
     'api_key' => env('ZOSTREAM_API_KEY', 'default_value'),
     'twilio_token' => env('TWILIO_TOKEN', 'default_value'),
     'twilio_id' => env('TWILIO_ID', 'default_value'),
+    'cashfree_id' => env('CASHFREE_CLIENT_ID', 'default_value'),
+    'cashfree_secret' => env('CASHFREE_CLIENT_SECRET', 'default_value'),
 
     /*
     |--------------------------------------------------------------------------

@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AdsController;
 use App\Http\Controllers\AlsoLikeController;
+use App\Http\Controllers\CashFreeController;
 use App\Http\Controllers\EpisodeController;
 use App\Http\Controllers\CalculatePlan;
 use App\Http\Controllers\CheckDeviceAvailable;
@@ -93,6 +94,8 @@ Route::post('/update-login', [UserController::class, 'updateLogin']);
 Route::post('/update-profile', [UserController::class, 'updateProfile']);
 
 Route::post('/clear-device', [UserController::class, 'clearDeviceId']);
+
+Route::post('/cash-free-order', [CashFreeController::class, 'createOrder']);
 
 
 
