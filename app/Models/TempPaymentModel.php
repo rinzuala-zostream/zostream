@@ -19,6 +19,7 @@ class TempPaymentModel extends Model
         'amount',
         'transaction_id',
         'subscription_period',
+        'pg',
         'created_at',
         'device_type',
         'payment_type',
