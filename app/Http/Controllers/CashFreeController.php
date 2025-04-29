@@ -67,10 +67,10 @@ class CashFreeController extends Controller
         ]);
 
         $client = new Client();
-        $orderId = $request->input('order_id');
+        $orderId = $request->query('order_id');
 
         try {
-            $response = $client->get($this->baseUrl . "/orders/{$orderId}/payments", [
+            $response = $client->get($this->baseUrl . "/{$orderId}/payments", [
                 'headers' => [
                     'Accept' => 'application/json',
                     'Content-Type' => 'application/json',
@@ -121,5 +121,4 @@ class CashFreeController extends Controller
             ], 500);
         }
     }
-
 }

@@ -182,8 +182,8 @@ class MovieController extends Controller
         'movie_type' => 'required|string|in:movie,episode',
     ]);
 
-    $id = $request->input('movie_id');
-    $type = strtolower($request->input('movie_type'));
+    $id = $request->query('movie_id');
+    $type = strtolower($request->query('movie_type'));
 
     if ($type === 'movie') {
         $movie = MovieModel::where('id', $id)->first();

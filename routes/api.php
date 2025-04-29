@@ -95,7 +95,7 @@ Route::post('/update-profile', [UserController::class, 'updateProfile']);
 
 Route::post('/clear-device', [UserController::class, 'clearDeviceId']);
 
-Route::post('/cash-free-order', [CashFreeController::class, 'createOrder']);
+Route::get('/cash-free-payment', [CashFreeController::class, 'checkPayment']);
 
 
 

@@ -47,11 +47,11 @@ class PaymentStatusController extends Controller
             foreach ($tempDataList as $tempData) {
                 $transactionId = $tempData->transaction_id;
 
-                if ($tempData->transaction_id == 'phonepe') {
+                if ($tempData->pg == 'phonepe') {
                     $paymentResponse = $this->checkPaymentStatus($transactionId);
                 } else {
 
-                    $cashfreeRequest = new Request(['order_id' => $tempData->pg]);
+                    $cashfreeRequest = new Request(['order_id' => $transactionId]);
                     $cashfreeRequest = $this->cashfreeController->checkPayment($cashfreeRequest);
                     $paymentResponse = json_decode($cashfreeRequest->getContent(), true);
 
