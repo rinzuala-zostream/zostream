@@ -59,4 +59,67 @@ class CashFreeController extends Controller
             ], 500);
         }
     }
+
+    public function checkPayment(Request $request)
+    {
+        $request->validate([
+            'order_id' => 'required|string',
+        ]);
+
+        $client = new Client();
+        $orderId = $request->input('order_id');
+
+        try {
+            $response = $client->get($this->baseUrl . "/orders/{$orderId}/payments", [
+                'headers' => [
+                    'Accept' => 'application/json',
+                    'Content-Type' => 'application/json',
+                    'x-api-version' => $this->apiVersion,
+                    'x-client-id' => $this->clientId,
+                    'x-client-secret' => $this->clientSecret,
+                ],
+            ]);
+
+            $responseData = json_decode($response->getBody(), true);
+
+            // Default success and code
+            $success = false;
+            $code = 'UNKNOWN';
+            $data = $responseData;
+
+            // If Cashfree returns a list of payments
+            if (isset($responseData[0])) {
+                $payment = $responseData[0];
+
+                if (isset($payment['payment_status']) && $payment['payment_status'] === 'SUCCESS') {
+                    $success = true;
+                    $code = 'PAYMENT_SUCCESS';
+                    $data = [
+                        'state' => 'COMPLETED', // you wanted 'state' for your condition
+                        'payment' => $payment
+                    ];
+                } else {
+                    $code = $payment['payment_status'] ?? 'FAILED';
+                    $data = [
+                        'state' => 'FAILED',
+                        'payment' => $payment
+                    ];
+                }
+            }
+
+            return response()->json([
+                'success' => $success,
+                'code' => $code,
+                'data' => $data
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'code' => 'EXCEPTION',
+                'message' => $e->getMessage()
+            ], 500);
+        }
+    }
+
 }

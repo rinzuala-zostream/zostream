@@ -13,11 +13,13 @@ class PaymentStatusController extends Controller
 
     private $validApiKey;
     protected $subscriptionController;
+    protected $cashfreeController;
 
-    public function __construct(SubscriptionController $subscriptionController)
+    public function __construct(SubscriptionController $subscriptionController, CashFreeController $cashFreeController)
     {
         $this->validApiKey = config('app.api_key');
         $this->subscriptionController = $subscriptionController;
+        $this->cashfreeController = $cashFreeController;
     }
 
     public function processUserPayments(Request $request)
@@ -26,9 +28,9 @@ class PaymentStatusController extends Controller
         $request->validate([
             'user_id' => 'required|string',
         ]);
-    
+
         $uid = $request->query('user_id'); // Corrected here
-    
+
         if (!$uid) {
             return response()->json(['status' => 'error', 'message' => 'User ID is required']);
         }
@@ -44,9 +46,19 @@ class PaymentStatusController extends Controller
         try {
             foreach ($tempDataList as $tempData) {
                 $transactionId = $tempData->transaction_id;
-                $paymentResponse = $this->checkPaymentStatus($transactionId);
 
-                if ($paymentResponse['success'] === true &&
+                if ($tempData->transaction_id == 'phonepe') {
+                    $paymentResponse = $this->checkPaymentStatus($transactionId);
+                } else {
+
+                    $cashfreeRequest = new Request(['order_id' => $tempData->pg]);
+                    $cashfreeRequest = $this->cashfreeController->checkPayment($cashfreeRequest);
+                    $paymentResponse = json_decode($cashfreeRequest->getContent(), true);
+
+                }
+
+                if (
+                    $paymentResponse['success'] === true &&
                     ($paymentResponse['code'] === 'PAYMENT_SUCCESS' || $paymentResponse['data']['state'] === 'COMPLETED')
                 ) {
                     if ($tempData->payment_type === 'Subscription') {
@@ -57,35 +69,35 @@ class PaymentStatusController extends Controller
                             'plan' => $tempData->plan,
                             'currentDate' => $tempData->created_at->toDateTimeString(),
                             'device_type' => $tempData->device_type
-                        ]);                        
+                        ]);
 
                         $fakeRequest->headers->set('X-Api-Key', $this->validApiKey);
-                        
+
                         $response = $this->subscriptionController->addSubscription($fakeRequest);
                         $responseData = $response->getData(true);
-                        
+
                         if ($responseData['status'] === 'success') {
                             TempPaymentModel::where('transaction_id', $transactionId)->delete();
                             $successCount++;
                         } else {
                             $failureCount++;
                         }
-                        
+
                     } elseif ($tempData->payment_type === 'PPV') {
                         $existing = PPVPaymentModel::where('user_id', $tempData->user_id)
                             ->where('movie_id', $tempData->content_id)
                             ->first();
 
                         $data = [
-                            'payment_id'     => $tempData->transaction_id,
-                            'user_id'        => $tempData->user_id,
-                            'movie_id'       => $tempData->content_id,
-                            'rental_period'  => $tempData->subscription_period,
-                            'purchase_date'  => $tempData->created_at,
-                            'amount_paid'    => $tempData->amount,
+                            'payment_id' => $tempData->transaction_id,
+                            'user_id' => $tempData->user_id,
+                            'movie_id' => $tempData->content_id,
+                            'rental_period' => $tempData->subscription_period,
+                            'purchase_date' => $tempData->created_at,
+                            'amount_paid' => $tempData->amount,
                             'payment_status' => 'completed',
-                            'created_at'     => $tempData->created_at,
-                            'updated_at'     => $tempData->created_at,
+                            'created_at' => $tempData->created_at,
+                            'updated_at' => $tempData->created_at,
                         ];
 
                         if ($existing) {
@@ -106,9 +118,9 @@ class PaymentStatusController extends Controller
             }
 
             return response()->json([
-                'status'  => 'success',
+                'status' => 'success',
                 'message' => "Processed payments. Success: $successCount, Failures: $failureCount",
-                
+
             ]);
         } catch (\Exception $e) {
             return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
@@ -122,9 +134,9 @@ class PaymentStatusController extends Controller
         $url = "https://api.phonepe.com/apis/hermes{$path}";
 
         $response = Http::withHeaders([
-            'Content-Type'   => 'application/json',
-            'X-VERIFY'       => $checksum,
-            'X-MERCHANT-ID'  => $this->merchantId
+            'Content-Type' => 'application/json',
+            'X-VERIFY' => $checksum,
+            'X-MERCHANT-ID' => $this->merchantId
         ])->get($url);
 
         return $response->json();
