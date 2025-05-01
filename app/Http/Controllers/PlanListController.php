@@ -35,34 +35,33 @@ class PlanListController extends Controller
         $features = [
             'Kar 1' => [
                 'Watch on 1 device',
-                'Ad-supported'
+                'Ads',
+                'PPV 2% discount',
+                'Unlock all content'
             ],
             'Thla 1' => [
                 'Watch on 2 devices',
-                'Ad-free on Mobile',
-                'HD quality',
-                'Download support on mobile'
+                'Ad 40%',
+                'PPV 5% discount',
+                'Unlock all content'
             ],
             'Thla 4' => [
-                'Watch on 3 devices',
-                'Ad-free on all devices',
-                'Full HD',
-                'Download support on all devices'
+                'Watch on 2 devices',
+                'Ad 20%',
+                'PPV 5% discount',
+                'Unlock all content'
             ],
             'Thla 6' => [
-                'Watch on 4 devices',
-                'Ad-free',
-                'Full HD',
-                'Priority support',
-                'Offline downloads'
+                'Watch on 3 devices',
+                'Ad free',
+                'PPV 7% discount',
+                'Unlock all content'
             ],
             'Kum 1' => [
-                'Watch on 4+ devices',
-                'Completely ad-free',
-                'Ultra HD (4K)',
-                'Premium support',
-                'Offline downloads',
-                'Access to early releases'
+                'Watch on 4 devices',
+                'Ad free',
+                'PPV 10% discount',
+                'Unlock all content'
             ]
         ];
 
