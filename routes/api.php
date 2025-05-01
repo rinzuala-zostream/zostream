@@ -11,6 +11,7 @@ use App\Http\Controllers\DetailsController;
 use App\Http\Controllers\MovieController;
 use App\Http\Controllers\MovieSearchController;
 use App\Http\Controllers\PaymentStatusController;
+use App\Http\Controllers\PlanListController;
 use App\Http\Controllers\PlanPriceController;
 use App\Http\Controllers\PPVPriceCalculate;
 use App\Http\Controllers\RegisterController;
@@ -84,7 +85,6 @@ Route::get('/episodes', [EpisodeController::class, 'getBySeason']);
 
 Route::get('/update-dob', [UserController::class, 'updateDob']);
 
-
 Route::post('/watch-position', [WatchPositionController::class, 'save']);
 
 Route::get('/update-token', [UserController::class, 'updateToken']);
@@ -98,6 +98,7 @@ Route::post('/clear-device', [UserController::class, 'clearDeviceId']);
 Route::get('/cash-free-payment', [CashFreeController::class, 'checkPayment']);
 Route::post('/cash-free-order', [CashFreeController::class, 'createOrder']);
 
+Route::get('/price-list', [PlanListController::class, 'getPriceList']);
 
 
 
