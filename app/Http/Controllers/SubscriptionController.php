@@ -90,9 +90,9 @@ class SubscriptionController extends Controller
                 // Determine ad-free status based on months
                 if ($months < 1) {
                     $isAdsFree = false;
-                } elseif ($months >= 1) {
+                } elseif ($months >= 1 && $months < 4) {
                     $isAdsFree = rand(1, 100) > 40;
-                } elseif ($months > 4) {
+                } elseif ($months >= 4 && $months < 6) {
                     $isAdsFree = rand(1, 100) > 20;
                 } elseif ($months >= 6) {
                     $isAdsFree = true;
