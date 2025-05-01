@@ -44,7 +44,7 @@ class DetailsController extends Controller
         $request->validate([
             'user_id' => 'required|string',
             'movie_id' => 'required|string',
-            'device_id' => 'required|string',
+            'device_id' => 'nullable|string',
             'device_type' => 'required|string',
             'type' => 'required|string'
         ]);
