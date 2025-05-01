@@ -35,8 +35,7 @@ class PlanListController extends Controller
         $features = [
             'Kar 1' => [
                 'Watch on 1 device',
-                'Ad-supported',
-                'SD quality'
+                'Ad-supported'
             ],
             'Thla 1' => [
                 'Watch on 2 devices',

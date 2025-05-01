@@ -76,19 +76,28 @@ class SubscriptionController extends Controller
                 $deviceSupport = 0;
                 $isAdsFree = false;
 
+                // Determine device support based on months
                 if ($months < 1) {
                     $deviceSupport = 1;
-                    $isAdsFree = false;
                 } elseif ($months >= 1 && $months <= 4) {
                     $deviceSupport = 2;
-                    $isAdsFree = rand(1, 100) > 40;
                 } elseif ($months > 4 && $months <= 6) {
                     $deviceSupport = 3;
-                    $isAdsFree = rand(1, 100) > 20;
                 } else {
                     $deviceSupport = 4;
+                }
+
+                // Determine ad-free status based on months
+                if ($months < 1) {
+                    $isAdsFree = false;
+                } elseif ($months >= 1) {
+                    $isAdsFree = rand(1, 100) > 40;
+                } elseif ($months > 4) {
+                    $isAdsFree = rand(1, 100) > 20;
+                } else {
                     $isAdsFree = true;
                 }
+
 
                 // Return the response
                 return response()->json([
