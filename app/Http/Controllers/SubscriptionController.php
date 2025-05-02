@@ -123,7 +123,7 @@ class SubscriptionController extends Controller
                     $isAdsFree = true;
                 }
 
-                $results[] = [
+                $results = [
                     'status' => 'success',
                     'device_type' => $deviceType,
                     'id' => $subscription->id,
