@@ -24,28 +24,53 @@ class SubscriptionController extends Controller
     }
 
     public function getSubscription(Request $request)
-    {
-        try {
-            $apiKey = $request->header('X-Api-Key');
-            if ($apiKey !== $this->validApiKey) {
-                return response()->json(["status" => "error", "message" => "Invalid API key"], 401);
-            }
+{
+    try {
+        $apiKey = $request->header('X-Api-Key');
+        if ($apiKey !== $this->validApiKey) {
+            return response()->json(["status" => "error", "message" => "Invalid API key"], 401);
+        }
 
-            $request->validate([
-                'id' => 'required|string',
-                'device_type' => 'required|string',
-            ]);
+        $request->validate([
+            'id' => 'required|string',
+        ]);
 
-            $uid = $request->query('id');
-            $device = $request->query('device_type');
+        $uid = $request->query('id');
+        $device = $request->query('device_type');
 
-            if ($device === 'Mobile') {
-                $subscription = SubscriptionModel::where('id', $uid)->first();
-            } elseif ($device === 'TV') {
-                $subscription = TVSubscriptionModel::where('id', $uid)->first();
-            } else {
-                $subscription = BrowserSubscriptionModel::where('id', $uid)->first();
-            }
+        $subscriptions = [];
+
+        // If device_type is null or empty, check all device subscriptions
+        if (!$device) {
+            $subscriptions[] = [
+                'device_type' => 'Mobile',
+                'data' => SubscriptionModel::where('id', $uid)->first()
+            ];
+            $subscriptions[] = [
+                'device_type' => 'TV',
+                'data' => TVSubscriptionModel::where('id', $uid)->first()
+            ];
+            $subscriptions[] = [
+                'device_type' => 'Browser',
+                'data' => BrowserSubscriptionModel::where('id', $uid)->first()
+            ];
+        } else {
+            $model = match ($device) {
+                'Mobile' => SubscriptionModel::class,
+                'TV' => TVSubscriptionModel::class,
+                default => BrowserSubscriptionModel::class
+            };
+            $subscriptions[] = [
+                'device_type' => $device,
+                'data' => $model::where('id', $uid)->first()
+            ];
+        }
+
+        $results = [];
+
+        foreach ($subscriptions as $entry) {
+            $deviceType = $entry['device_type'];
+            $subscription = $entry['data'];
 
             if ($subscription) {
                 $createDate = new DateTime($subscription->create_date);
@@ -98,10 +123,9 @@ class SubscriptionController extends Controller
                     $isAdsFree = true;
                 }
 
-
-                // Return the response
-                return response()->json([
+                $results[] = [
                     'status' => 'success',
+                    'device_type' => $deviceType,
                     'id' => $subscription->id,
                     'create_date' => $createDate->format('F j, Y'),
                     'current_date' => $currentDate->format('F j, Y'),
@@ -111,19 +135,25 @@ class SubscriptionController extends Controller
                     'expiry_date' => $expiryDate->format('F j, Y'),
                     'device_support' => $deviceSupport,
                     'isAdsFree' => $isAdsFree,
-                ]);
-
-            } else {
-                return response()->json(['status' => 'error', 'message' => 'No data found for the given id']);
+                ];
             }
-
-        } catch (\Illuminate\Contracts\Encryption\DecryptException $e) {
-            return response()->json(['status' => 'error', 'message' => 'Invalid encrypted API key'], 403);
-        } catch (\Exception $e) {
-            Log::error('Error fetching subscription data: ' . $e->getMessage());
-            return response()->json(['status' => 'error', 'message' => 'Internal Server Error' . $e->getMessage()], 500);
         }
+
+        if (empty($results)) {
+            return response()->json(['status' => 'error', 'message' => 'No data found for the given id']);
+        }
+
+        return response()->json($results
+        );
+
+    } catch (\Illuminate\Contracts\Encryption\DecryptException $e) {
+        return response()->json(['status' => 'error', 'message' => 'Invalid encrypted API key'], 403);
+    } catch (\Exception $e) {
+        Log::error('Error fetching subscription data: ' . $e->getMessage());
+        return response()->json(['status' => 'error', 'message' => 'Internal Server Error' . $e->getMessage()], 500);
     }
+}
+
 
     public function addSubscription(Request $request)
     {
