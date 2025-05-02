@@ -70,7 +70,7 @@ class DetailsController extends Controller
             $subscriptionRequest->headers->set('X-Api-Key', $apiKey);
     
             $response = $this->subscriptionController->getSubscription($subscriptionRequest);
-            $subscriptionData = json_decode(json_encode($response->getData()), true);
+            $subscriptionData = json_decode(json_encode($response->getData(0)), true);
 
             $deviceRequest = new Request(['user_id' => $userId, 'device_id' => $deviceId]);
             $deviceRequest->headers->set('X-Api-Key', $apiKey);
@@ -132,7 +132,7 @@ class DetailsController extends Controller
             }
 
             return response()->json([
-                'subscription' => $subscriptionData[0],
+                'subscription' => $subscriptionData,
                 'movie' => $movie,
                 'ads' => $subscriptionData['isAdsFree'] ? [] : $adsData,
                 'PaymentStatus' => $paymentData,
