@@ -128,8 +128,8 @@ class SubscriptionController extends Controller
                 return response()->json(['status' => 'error', 'message' => 'No data found for the given id']);
             }
 
-            return response()->json([$results
-            ]);
+            return response()->json($results
+            );
 
         } catch (\Illuminate\Contracts\Encryption\DecryptException $e) {
             return response()->json(['status' => 'error', 'message' => 'Invalid encrypted API key'], 403);
