@@ -24,135 +24,121 @@ class SubscriptionController extends Controller
     }
 
     public function getSubscription(Request $request)
-{
-    try {
-        $apiKey = $request->header('X-Api-Key');
-        if ($apiKey !== $this->validApiKey) {
-            return response()->json(["status" => "error", "message" => "Invalid API key"], 401);
-        }
+    {
+        try {
+            $apiKey = $request->header('X-Api-Key');
+            if ($apiKey !== $this->validApiKey) {
+                return response()->json(["status" => "error", "message" => "Invalid API key"], 401);
+            }
 
-        $request->validate([
-            'id' => 'required|string',
-        ]);
+            $request->validate([
+                'id' => 'required|string',
+            ]);
 
-        $uid = $request->query('id');
-        $device = $request->query('device_type');
+            $uid = $request->query('id');
+            $device = $request->query('device_type');
 
-        $subscriptions = [];
+            $subscriptions = [];
 
-        // If device_type is null or empty, check all device subscriptions
-        if (!$device) {
-            $subscriptions[] = [
-                'device_type' => 'Mobile',
-                'data' => SubscriptionModel::where('id', $uid)->first()
-            ];
-            $subscriptions[] = [
-                'device_type' => 'TV',
-                'data' => TVSubscriptionModel::where('id', $uid)->first()
-            ];
-            $subscriptions[] = [
-                'device_type' => 'Browser',
-                'data' => BrowserSubscriptionModel::where('id', $uid)->first()
-            ];
-        } else {
-            $model = match ($device) {
-                'Mobile' => SubscriptionModel::class,
-                'TV' => TVSubscriptionModel::class,
-                default => BrowserSubscriptionModel::class
-            };
-            $subscriptions[] = [
-                'device_type' => $device,
-                'data' => $model::where('id', $uid)->first()
-            ];
-        }
-
-        $results = [];
-
-        foreach ($subscriptions as $entry) {
-            $deviceType = $entry['device_type'];
-            $subscription = $entry['data'];
-
-            if ($subscription) {
-                $createDate = new DateTime($subscription->create_date);
-                $daysToAdd = $subscription->period;
-
-                // Calculate the expiry date
-                $expiryDate = clone $createDate;
-                $expiryDate->modify("+{$daysToAdd} days")->setTime(23, 59, 59);
-
-                // Current date
-                $currentDate = new DateTime();
-
-                // Check if subscription is active
-                $isActive = $currentDate >= $createDate && $currentDate <= $expiryDate;
-
-                // Calculate months of subscription (period days converted to months)
-                $startDateObj = clone $createDate;
-                $endDateObj = clone $createDate;
-                $endDateObj->modify("+{$daysToAdd} days");
-
-                // Calculate the difference
-                $diff = $startDateObj->diff($endDateObj);
-
-                // Correct months calculation
-                $months = $diff->m + ($diff->y * 12);
-
-                // Calculate device support and ad-free
-                $deviceSupport = 0;
-                $isAdsFree = false;
-
-                // Determine device support based on months
-                if ($months < 1) {
-                    $deviceSupport = 1;
-                } elseif ($months >= 1 && $months <= 4) {
-                    $deviceSupport = 2;
-                } elseif ($months > 4 && $months <= 6) {
-                    $deviceSupport = 3;
-                } else {
-                    $deviceSupport = 4;
-                }
-
-                // Determine ad-free status based on months
-                if ($months < 1) {
-                    $isAdsFree = false;
-                } elseif ($months >= 1 && $months < 4) {
-                    $isAdsFree = rand(1, 100) > 40;
-                } elseif ($months >= 4 && $months < 6) {
-                    $isAdsFree = rand(1, 100) > 20;
-                } elseif ($months >= 6) {
-                    $isAdsFree = true;
-                }
-
-                $results = [
-                    'status' => 'success',
-                    'device_type' => $deviceType,
-                    'id' => $subscription->id,
-                    'create_date' => $createDate->format('F j, Y'),
-                    'current_date' => $currentDate->format('F j, Y'),
-                    'period' => $subscription->period,
-                    'sub_plan' => $subscription->sub_plan,
-                    'sub' => $isActive,
-                    'expiry_date' => $expiryDate->format('F j, Y'),
-                    'device_support' => $deviceSupport,
-                    'isAdsFree' => $isAdsFree,
+            if (!$device) {
+                $subscriptions[] = [
+                    'device_type' => 'Mobile',
+                    'data' => SubscriptionModel::where('id', $uid)->first()
+                ];
+                $subscriptions[] = [
+                    'device_type' => 'TV',
+                    'data' => TVSubscriptionModel::where('id', $uid)->first()
+                ];
+                $subscriptions[] = [
+                    'device_type' => 'Browser',
+                    'data' => BrowserSubscriptionModel::where('id', $uid)->first()
+                ];
+            } else {
+                $model = match ($device) {
+                    'Mobile' => SubscriptionModel::class,
+                    'TV' => TVSubscriptionModel::class,
+                    default => BrowserSubscriptionModel::class
+                };
+                $subscriptions[] = [
+                    'device_type' => $device,
+                    'data' => $model::where('id', $uid)->first()
                 ];
             }
+
+            $results = [];
+
+            foreach ($subscriptions as $entry) {
+                $deviceType = $entry['device_type'];
+                $subscription = $entry['data'];
+
+                if ($subscription) {
+                    $createDate = new DateTime($subscription->create_date);
+                    $daysToAdd = $subscription->period;
+
+                    $expiryDate = clone $createDate;
+                    $expiryDate->modify("+{$daysToAdd} days")->setTime(23, 59, 59);
+                    $currentDate = new DateTime();
+
+                    $isActive = $currentDate >= $createDate && $currentDate <= $expiryDate;
+
+                    $startDateObj = clone $createDate;
+                    $endDateObj = clone $createDate;
+                    $endDateObj->modify("+{$daysToAdd} days");
+                    $diff = $startDateObj->diff($endDateObj);
+                    $months = $diff->m + ($diff->y * 12);
+
+                    $deviceSupport = match (true) {
+                        $months < 1 => 1,
+                        $months <= 4 => 2,
+                        $months <= 6 => 3,
+                        default => 4,
+                    };
+
+                    $isAdsFree = match (true) {
+                        $months < 1 => false,
+                        $months < 4 => rand(1, 100) > 40,
+                        $months < 6 => rand(1, 100) > 20,
+                        default => true,
+                    };
+
+                    $subscriptionResult = [
+                        'status' => 'success',
+                        'device_type' => $deviceType,
+                        'id' => $subscription->id,
+                        'create_date' => $createDate->format('F j, Y'),
+                        'current_date' => $currentDate->format('F j, Y'),
+                        'period' => $subscription->period,
+                        'sub_plan' => $subscription->sub_plan,
+                        'sub' => $isActive,
+                        'expiry_date' => $expiryDate->format('F j, Y'),
+                        'device_support' => $deviceSupport,
+                        'isAdsFree' => $isAdsFree,
+                    ];
+
+                    if ($device) {
+                        // Return single object directly if device_type is provided
+                        return response()->json($subscriptionResult);
+                    }
+
+                    $results[] = $subscriptionResult;
+                }
+            }
+
+            if (empty($results)) {
+                return response()->json(['status' => 'error', 'message' => 'No data found for the given id']);
+            }
+
+            return response()->json([$results
+            ]);
+
+        } catch (\Illuminate\Contracts\Encryption\DecryptException $e) {
+            return response()->json(['status' => 'error', 'message' => 'Invalid encrypted API key'], 403);
+        } catch (\Exception $e) {
+            Log::error('Error fetching subscription data: ' . $e->getMessage());
+            return response()->json(['status' => 'error', 'message' => 'Internal Server Error: ' . $e->getMessage()], 500);
         }
-
-        if (empty($results)) {
-            return response()->json(['status' => 'error', 'message' => 'No data found for the given id']);
-        }
-
-        return response()->json([$results
-        ]);
-
-    } catch (\Illuminate\Contracts\Encryption\DecryptException $e) {
-        return response()->json(['status' => 'error', 'message' => 'Invalid encrypted API key'], 403);
-    } catch (\Exception $e) {
-        Log::error('Error fetching subscription data: ' . $e->getMessage());
-        return response()->json(['status' => 'error', 'message' => 'Internal Server Error' . $e->getMessage()], 500);
     }
-}
+
 
 
     public function addSubscription(Request $request)
