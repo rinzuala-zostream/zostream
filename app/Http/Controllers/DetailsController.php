@@ -132,7 +132,7 @@ class DetailsController extends Controller
             }
 
             return response()->json([
-                'subscription' => $subscriptionData,
+                'subscription' => $subscriptionData[0],
                 'movie' => $movie,
                 'ads' => $subscriptionData['isAdsFree'] ? [] : $adsData,
                 'PaymentStatus' => $paymentData,
