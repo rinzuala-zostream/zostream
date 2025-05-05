@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\SubscriptionHistoryModel;
 use App\Models\SubscriptionModel;
 use App\Models\TVSubscriptionModel;
 use App\Models\BrowserSubscriptionModel;
@@ -265,5 +266,63 @@ class SubscriptionController extends Controller
 
         // Return the total number of months
         return $totalMonths;
+    }
+
+    private function fetchHistory($uid)
+    {
+        return SubscriptionHistoryModel::where('uid', $uid)
+                    ->orderByDesc('num')
+                    ->get();
+    }
+
+    // GET request: /subscription-history?uid=123
+    public function getHistory(Request $request)
+    {
+
+        $apiKey = $request->header('X-Api-Key');
+            if ($apiKey !== $this->validApiKey) {
+                return response()->json(["status" => "error", "message" => "Invalid API key"], 401);
+            }
+
+        $validated = $request->validate([
+            'uid' => 'required|string',
+        ]);
+
+        $history = $this->fetchHistory($validated['uid']);
+
+        if ($history->isEmpty()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'No subscription history found for this UID.'
+            ], 404);
+        }
+
+        return response()->json($history
+        );
+    }
+
+    // POST request: JSON body { all fields except `num` }
+    public function addHistory(Request $request)
+    {
+        $validated = $request->validate([
+            'uid' => 'required|string',
+            'pid' => 'required|string',
+            'plan' => 'required|string',
+            'platform' => 'required|string',
+            'amount' => 'required|int',
+            'plan_start' => 'required|string',
+            'plan_end' => 'nullable|string',
+            'mail' => 'nullable|string',
+            'phone' => 'nullable|string',
+            'hming' => 'nullable|string',
+        ]);
+
+        $entry = SubscriptionHistoryModel::create($validated);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Subscription history added successfully.',
+            'entry' => $entry
+        ]);
     }
 }

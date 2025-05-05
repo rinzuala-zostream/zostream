@@ -15,6 +15,7 @@ class PPVPaymentModel extends Model
     protected $fillable = [
         'user_id',
         'payment_id',
+        'platform',
         'movie_id',
         'rental_period',
         'purchase_date',

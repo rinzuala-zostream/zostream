@@ -77,6 +77,20 @@ class PaymentStatusController extends Controller
                         $responseData = $response->getData(true);
 
                         if ($responseData['status'] === 'success') {
+                            $request = new Request([
+                                'uid' => $tempData->user_id,
+                                'pid' => $tempData->transaction_id,
+                                'plan' => $tempData->plan,
+                                'amount' => $tempData->amount,
+                                'plan_start' => $tempData->created_at->toDateTimeString(),
+                                'plan_end' => $tempData->plan_end,
+                                'mail' => $tempData->user_mail ?? '',
+                                'platform' => $tempData->device_type ?? '',
+                                'hming' => $tempData->hming ?? '',
+                            ]);
+
+                            $this->subscriptionController->addHistory($request);
+
                             TempPaymentModel::where('transaction_id', $transactionId)->delete();
                             $successCount++;
                         } else {
@@ -95,6 +109,7 @@ class PaymentStatusController extends Controller
                             'rental_period' => $tempData->subscription_period,
                             'purchase_date' => $tempData->created_at,
                             'amount_paid' => $tempData->amount,
+                            'platform' => $tempData->device_type,
                             'payment_status' => 'completed',
                             'created_at' => $tempData->created_at,
                             'updated_at' => $tempData->created_at,

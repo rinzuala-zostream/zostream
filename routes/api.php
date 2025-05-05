@@ -49,6 +49,7 @@ Route::get('/user', [UserController::class, 'getUserData']);
 
 Route::get('/get-subscription', [SubscriptionController::class, 'getSubscription']);
 Route::get('/add-subscription', [SubscriptionController::class, 'addSubscription']);
+Route::get('/subscription-history', [SubscriptionController::class, 'getHistory']);
 
 Route::get('/movies', [MovieController::class, 'getMovies']);
 
