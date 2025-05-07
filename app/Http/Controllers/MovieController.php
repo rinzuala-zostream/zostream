@@ -51,11 +51,10 @@ class MovieController extends Controller
         } else if ($range || $categoryKey) {
 
             $rangeParts = explode('-', $range ?? '1-10');
-            $from = max((int) $rangeParts[0], 1); // Avoid 0 or negative ranges
-            $to = max((int) $rangeParts[1], $from + 9); // Ensure a default size of 10 if $to is invalid
+            $from = max((int) $rangeParts[0], 1);
+            $to = max((int) $rangeParts[1], $from + 9);
             $start = $from - 1;
             $count = $to - $from + 1;
-
 
             $categoryMapping = [
                 "hollywood" => "isHollywood",
