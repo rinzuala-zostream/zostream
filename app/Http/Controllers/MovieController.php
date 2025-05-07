@@ -49,8 +49,8 @@ class MovieController extends Controller
             )->header('Content-Type', 'application/json');
         } else if ($range || $categoryKey) {
             
-            $rangeParts = explode('-', $range ?? '0-10');
-            $start = max(((int)$rangeParts[0] - 1), 0);
+            $rangeParts = explode('-', $range ?? '1-10');
+            $start = max(((int)$rangeParts[0] - 1), 1);
             $count = max(((int)$rangeParts[1] - $start), 10);
 
             $categoryMapping = [
