@@ -50,7 +50,7 @@ class MovieController extends Controller
         } else if ($range || $categoryKey) {
             
             $rangeParts = explode('-', $range ?? '1-10');
-            $start = max(((int)$rangeParts[0] - 1), 1);
+            $start = max(((int)$rangeParts[0] - 1), 0);
             $count = max(((int)$rangeParts[1] - $start), 10);
 
             $categoryMapping = [
