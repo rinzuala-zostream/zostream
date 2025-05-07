@@ -17,7 +17,7 @@ class MovieController extends Controller
 
     public function getMovies(Request $request)
     {
-       
+
         $apiKey = $request->header('X-Api-Key');
 
         if ($apiKey !== $this->validApiKey) {
@@ -45,13 +45,17 @@ class MovieController extends Controller
                 return response()->json(['status' => 'error', 'message' => 'Movie not found']);
             }
 
-            return response()->json($this->transformMovie($movie)
+            return response()->json(
+                $this->transformMovie($movie)
             )->header('Content-Type', 'application/json');
         } else if ($range || $categoryKey) {
-            
+
             $rangeParts = explode('-', $range ?? '1-10');
-            $start = max(((int)$rangeParts[0] - 1), 0);
-            $count = max(((int)$rangeParts[1] - $start), 10);
+            $from = max((int) $rangeParts[0], 1); // Avoid 0 or negative ranges
+            $to = max((int) $rangeParts[1], $from + 9); // Ensure a default size of 10 if $to is invalid
+            $start = $from - 1;
+            $count = $to - $from + 1;
+
 
             $categoryMapping = [
                 "hollywood" => "isHollywood",
@@ -91,11 +95,23 @@ class MovieController extends Controller
                 $query->where('isPremium', 0)
                     ->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', $ageRestriction))
                     ->orderByDesc('num');
-            } elseif (in_array($column, [
-                "isBollywood", "isCompleted", "isDocumentary", "isDubbed", "isEnable",
-                "isHollywood", "isKorean", "isMizo", "isPayPerView", "isPremium",
-                "isAgeRestricted", "isSeason", "isSubtitle"
-            ])) {
+            } elseif (
+                in_array($column, [
+                    "isBollywood",
+                    "isCompleted",
+                    "isDocumentary",
+                    "isDubbed",
+                    "isEnable",
+                    "isHollywood",
+                    "isKorean",
+                    "isMizo",
+                    "isPayPerView",
+                    "isPremium",
+                    "isAgeRestricted",
+                    "isSeason",
+                    "isSubtitle"
+                ])
+            ) {
                 $query->where($column, 1)
                     ->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', $ageRestriction))
                     ->orderByDesc('num');
@@ -107,33 +123,35 @@ class MovieController extends Controller
 
             $movies = $query->offset($start)->limit($count)->get();
 
-            return response()->json(data: $movies->map(fn($m) => $this->transformMovie($m))
+            return response()->json(
+                data: $movies->map(fn($m) => $this->transformMovie($m))
             )->header('Content-Type', 'application/json');
         } else {
             $categories = [
-                "New Release"    => ["where" => "release_on IS NOT NULL", "order" => "STR_TO_DATE(release_on, '%d %b, %Y') DESC"],
-                "Most Watched"   => ["where" => "1", "order" => "views DESC"],
-                "Pay Per View"   => ["where" => "isPayPerView = 1", "order" => "num DESC"],
-                "Latest Update"  => ["where" => "1", "order" => "num DESC"],
-                "Asian"          => ["where" => "isKorean = 1", "order" => "num DESC"],
-                "Series"         => ["where" => "isSeason = 1", "order" => "num DESC"],
-                "Hollywood"      => ["where" => "isHollywood = 1", "order" => "num DESC"],
-                "Animation"      => ["where" => "genre LIKE '%Animation%'", "order" => "num DESC"],
-                "18+"            => ["where" => "isAgeRestricted = 1", "order" => "num DESC"],
-                "Bollywood"      => ["where" => "isBollywood = 1", "order" => "num DESC"],
-                "Mizo"           => ["where" => "isMizo = 1", "order" => "num DESC"],
-                "Documentary"    => ["where" => "isDocumentary = 1", "order" => "num DESC"],
-                "Free"           => ["where" => "isPremium = 0", "order" => "num DESC"],
+                "New Release" => ["where" => "release_on IS NOT NULL", "order" => "STR_TO_DATE(release_on, '%d %b, %Y') DESC"],
+                "Most Watched" => ["where" => "1", "order" => "views DESC"],
+                "Pay Per View" => ["where" => "isPayPerView = 1", "order" => "num DESC"],
+                "Latest Update" => ["where" => "1", "order" => "num DESC"],
+                "Asian" => ["where" => "isKorean = 1", "order" => "num DESC"],
+                "Series" => ["where" => "isSeason = 1", "order" => "num DESC"],
+                "Hollywood" => ["where" => "isHollywood = 1", "order" => "num DESC"],
+                "Animation" => ["where" => "genre LIKE '%Animation%'", "order" => "num DESC"],
+                "18+" => ["where" => "isAgeRestricted = 1", "order" => "num DESC"],
+                "Bollywood" => ["where" => "isBollywood = 1", "order" => "num DESC"],
+                "Mizo" => ["where" => "isMizo = 1", "order" => "num DESC"],
+                "Documentary" => ["where" => "isDocumentary = 1", "order" => "num DESC"],
+                "Free" => ["where" => "isPremium = 0", "order" => "num DESC"],
             ];
-        
+
             $data = [];
-        
+
             foreach ($categories as $name => $clause) {
-                if ($name === "18+" && !$ageRestriction) continue;
-        
+                if ($name === "18+" && !$ageRestriction)
+                    continue;
+
                 $where = $clause['where'];
                 $order = $clause['order'];
-        
+
                 $query = MovieModel::whereRaw("isEnable = 1 AND $where")
                     ->when(!$ageRestriction && strpos($where, 'isAgeRestricted') === false, function ($q) use ($ageRestriction) {
                         return $q->where('isAgeRestricted', $ageRestriction);
@@ -141,25 +159,22 @@ class MovieController extends Controller
                     ->orderByRaw($order)
                     ->limit(10)
                     ->get();
-        
+
                 if (!$query->isEmpty()) {
                     $data[$name] = $query->map(fn($m) => $this->transformMovie($m));
                 }
             }
-        
+
             // Return the JSON response with actual data, and set proper response headers
-            return response()->json($data
+            return response()->json(
+                $data
             )->header('Content-Type', 'application/json'); // Ensure proper content type
-        }        
+        }
     }
 
     private function transformMovie($movie)
     {
-        foreach ([
-            'isProtected', 'isBollywood', 'isCompleted', 'isDocumentary', 'isDubbed',
-            'isEnable', 'isHollywood', 'isKorean', 'isMizo', 'isPayPerView',
-            'isPremium', 'isAgeRestricted', 'isSeason', 'isSubtitle'
-        ] as $key) {
+        foreach (['isProtected', 'isBollywood', 'isCompleted', 'isDocumentary', 'isDubbed', 'isEnable', 'isHollywood', 'isKorean', 'isMizo', 'isPayPerView', 'isPremium', 'isAgeRestricted', 'isSeason', 'isSubtitle'] as $key) {
             $movie->$key = (bool) $movie->$key;
         }
 
@@ -170,38 +185,38 @@ class MovieController extends Controller
     }
 
     public function incrementView(Request $request)
-{
-    $apiKey = $request->header('X-Api-Key');
+    {
+        $apiKey = $request->header('X-Api-Key');
 
-    if ($apiKey !== $this->validApiKey) {
-        return response()->json(['status' => 'error', 'message' => 'Invalid API key']);
+        if ($apiKey !== $this->validApiKey) {
+            return response()->json(['status' => 'error', 'message' => 'Invalid API key']);
+        }
+
+        $request->validate([
+            'movie_id' => 'required|string',
+            'movie_type' => 'required|string|in:movie,episode',
+        ]);
+
+        $id = $request->query('movie_id');
+        $type = strtolower($request->query('movie_type'));
+
+        if ($type === 'movie') {
+            $movie = MovieModel::where('id', $id)->first();
+        } elseif ($type === 'episode') {
+            // Assuming you have an EpisodeModel for episodes
+            $movie = EpisodeModel::where('id', $id)->first();
+        } else {
+            return response()->json(['status' => 'error', 'message' => 'Invalid type']);
+        }
+
+        if (!$movie) {
+            return response()->json(['status' => 'error', 'message' => 'Content not found']);
+        }
+
+        $movie->increment('views');
+
+        return response()->json(['status' => 'success', 'message' => 'View count incremented']);
     }
-
-    $request->validate([
-        'movie_id' => 'required|string',
-        'movie_type' => 'required|string|in:movie,episode',
-    ]);
-
-    $id = $request->query('movie_id');
-    $type = strtolower($request->query('movie_type'));
-
-    if ($type === 'movie') {
-        $movie = MovieModel::where('id', $id)->first();
-    } elseif ($type === 'episode') {
-        // Assuming you have an EpisodeModel for episodes
-        $movie = EpisodeModel::where('id', $id)->first();
-    } else {
-        return response()->json(['status' => 'error', 'message' => 'Invalid type']);
-    }
-
-    if (!$movie) {
-        return response()->json(['status' => 'error', 'message' => 'Content not found']);
-    }
-
-    $movie->increment('views');
-
-    return response()->json(['status' => 'success', 'message' => 'View count incremented']);
-}
 
 
 }
