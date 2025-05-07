@@ -30,17 +30,19 @@ class PPVPriceCalculate extends Controller
         $request->validate([
             'user_id' => 'required|string',
             'amount' => 'required|numeric|min:0.01',
+            'device_type' => 'nullable|string'
         ]);
 
         $userId = $request->query('user_id');
         $ppvAmount = (float) $request->query('amount');
+        $device_type = $request->query('device_type');
         $discount = 0;
         $discountPercent = 0;
         $finalPPVPrice = $ppvAmount;
         $currentDate = new DateTime();
 
         // Fetch subscription from DB via SubscriptionController
-        $subscriptionRequest = new Request(['id' => $userId]);
+        $subscriptionRequest = new Request(['id' => $userId, 'device_type' => $device_type]);
         $subscriptionRequest->headers->set('X-Api-Key', $apiKey);
 
         $response = $this->subscriptionController->getSubscription($subscriptionRequest);
