@@ -185,7 +185,7 @@ class DetailsController extends Controller
 
         $expiry = Carbon::parse($calculateData['data']['expiry_date']);
         $now = now();
-        $daysLeft = $now->diffInDays($expiry, false);
+        $daysLeft = (int) $now->diffInDays($expiry, false);
         $isRented = $now->between(Carbon::parse($purchaseDate), $expiry);
 
         return [
