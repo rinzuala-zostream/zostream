@@ -35,6 +35,7 @@ class EpisodeController extends Controller
 
         $episodes = EpisodeModel::where('season_id', $seasonId)
             ->where('isEnable', 1)
+            ->orderByRaw("CAST(SUBSTRING_INDEX(title, 'Episode ', -1) AS UNSIGNED)")
             ->get();
 
         if ($episodes->isEmpty()) {
