@@ -34,7 +34,7 @@ class MovieSearchController extends Controller
         $moviesQuery = MovieModel::where('isEnable', 1)
             ->where(function ($q) use ($query) {
                 $q->where('title', 'like', '%' . $query . '%')
-                  ->orWhere('genre', 'like', '%' . $query . '%');
+                    ->orWhere('genre', 'like', '%' . $query . '%');
             });
 
         if ($ageRestriction === 0) {
@@ -46,42 +46,47 @@ class MovieSearchController extends Controller
         // Prioritize sequels
         $movies = $this->prioritizeSequels($movies, $query);
 
-        // Convert fields
-        $movies = array_map(function ($movie) {
-            $boolFields = [
-                "isProtected", "isBollywood", "isCompleted", "isDocumentary",
-                "isDubbed", "isEnable", "isHollywood", "isKorean", "isMizo",
-                "isPayPerView", "isPremium", "isAgeRestricted", "isSeason", "isSubtitle"
-            ];
-        
-            foreach ($boolFields as $field) {
-                $movie[$field] = (bool) $movie[$field];
-            }
-        
-            $movie['num'] = (int) $movie['num'];
-            $movie['views'] = (int) $movie['views'];
-        
-            return $movie;
-        }, $movies);        
-
         return response()->json($movies);
     }
 
     private function prioritizeSequels(array $movies, string $query): array
     {
-        $sequels = [];
-        $others = [];
-    
-        foreach ($movies as $movie) {
-            if (preg_match('/' . preg_quote($query, '/') . ' (\d+)$/i', $movie['title'], $matches)) {
-                $sequels[(int)$matches[1]] = $movie;
-            } else {
-                $others[] = $movie;
-            }
-        }
-    
-        ksort($sequels);
-        return array_merge(array_values($sequels), $others);
+        $query = strtolower($query);
+
+        usort($movies, function ($a, $b) use ($query) {
+            $aTitle = strtolower($a['title']);
+            $bTitle = strtolower($b['title']);
+
+            $aScore = 0;
+            $bScore = 0;
+
+            // Exact match
+            if ($aTitle === $query)
+                $aScore += 10;
+            if ($bTitle === $query)
+                $bScore += 10;
+
+            // Title starts with query
+            if (str_starts_with($aTitle, $query))
+                $aScore += 5;
+            if (str_starts_with($bTitle, $query))
+                $bScore += 5;
+
+            // Contains query
+            if (strpos($aTitle, $query) !== false)
+                $aScore += 2;
+            if (strpos($bTitle, $query) !== false)
+                $bScore += 2;
+
+            // Contains number (likely a sequel)
+            if (preg_match('/\d+/', $aTitle))
+                $aScore += 1;
+            if (preg_match('/\d+/', $bTitle))
+                $bScore += 1;
+
+            return $bScore <=> $aScore; // Higher score first
+        });
+
+        return $movies;
     }
-    
 }
