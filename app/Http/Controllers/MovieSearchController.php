@@ -17,24 +17,22 @@ class MovieSearchController extends Controller
 
     public function search(Request $request)
     {
-        // API key validation
         $apiKey = $request->header('X-Api-Key');
         if ($apiKey !== $this->validApiKey) {
             return response()->json(["status" => "error", "message" => "Invalid API key"], 401);
         }
 
-        $query = trim($request->query('q', ''));
+        $query = strtolower(trim(preg_replace('/\s+/', ' ', $request->query('q', ''))));
         $ageRestriction = $request->query('age_restriction') === 'true' ? 1 : 0;
 
         if (empty($query)) {
             return response()->json(['error' => 'Search query is required.'], 400);
         }
 
-        // Base query
         $moviesQuery = MovieModel::where('isEnable', 1)
             ->where(function ($q) use ($query) {
-                $q->where('title', 'like', '%' . $query . '%')
-                    ->orWhere('genre', 'like', '%' . $query . '%');
+                $q->whereRaw('LOWER(title) LIKE ?', ['%' . $query . '%'])
+                    ->orWhereRaw('LOWER(genre) LIKE ?', ['%' . $query . '%']);
             });
 
         if ($ageRestriction === 0) {
@@ -43,7 +41,10 @@ class MovieSearchController extends Controller
 
         $movies = $moviesQuery->limit(20)->get()->toArray();
 
-        // Prioritize sequels
+        if (empty($movies)) {
+            return response()->json(['message' => 'No movies found for the given query.'], 404);
+        }
+
         $movies = $this->prioritizeSequels($movies, $query);
 
         return response()->json($movies);
