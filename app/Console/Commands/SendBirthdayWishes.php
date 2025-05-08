@@ -59,7 +59,7 @@ class SendBirthdayWishes extends Command
             // Send mail via Zo Stream API
             $response = Http::asForm()->post('https://zostream.in/mail/send_mail.php', [
                 'recipient' => $user->mail,
-                'subject' => '🎂 Happy Birthday from Zo Stream!',
+                'subject' => 'Happy Birthday from Zo Stream!',
                 'body'     => $body,
             ]);
 
