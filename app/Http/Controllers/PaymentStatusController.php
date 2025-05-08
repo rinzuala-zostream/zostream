@@ -6,6 +6,7 @@ use App\Models\PPVPaymentModel;
 use App\Models\TempPaymentModel;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
+
 class PaymentStatusController extends Controller
 {
     private $merchantId = 'M221AEW7ARW15';
@@ -24,16 +25,11 @@ class PaymentStatusController extends Controller
 
     public function processUserPayments(Request $request)
     {
-
         $request->validate([
             'user_id' => 'required|string',
         ]);
 
-        $uid = $request->query('user_id'); // Corrected here
-
-        if (!$uid) {
-            return response()->json(['status' => 'error', 'message' => 'User ID is required']);
-        }
+        $uid = $request->query('user_id');
 
         $tempDataList = TempPaymentModel::where('user_id', $uid)->get();
         if ($tempDataList->isEmpty()) {
@@ -47,63 +43,79 @@ class PaymentStatusController extends Controller
             foreach ($tempDataList as $tempData) {
                 $transactionId = $tempData->transaction_id;
 
-                if ($tempData->pg == 'phonepe') {
+                // Step 1: Get payment status
+                if ($tempData->pg === 'phonepe') {
                     $paymentResponse = $this->checkPaymentStatus($transactionId);
                 } else {
-
-                    $cashfreeRequest = new Request(['order_id' => $transactionId]);
-                    $cashfreeRequest = $this->cashfreeController->checkPayment($cashfreeRequest);
-                    $paymentResponse = json_decode($cashfreeRequest->getContent(), true);
-
+                    $cashfreeReq = new Request(['order_id' => $transactionId]);
+                    $cashfreeResponse = $this->cashfreeController->checkPayment($cashfreeReq);
+                    $paymentResponse = json_decode($cashfreeResponse->getContent(), true);
                 }
 
-                if (
-                    $paymentResponse['success'] === true &&
-                    ($paymentResponse['code'] === 'PAYMENT_SUCCESS' || $paymentResponse['data']['state'] === 'COMPLETED')
-                ) {
+                $paymentSuccess = isset($paymentResponse['success']) && $paymentResponse['success'] === true;
+                $paymentCompleted = isset($paymentResponse['code']) && $paymentResponse['code'] === 'PAYMENT_SUCCESS' ||
+                                    isset($paymentResponse['data']['state']) && $paymentResponse['data']['state'] === 'COMPLETED';
+
+                if ($paymentSuccess && $paymentCompleted) {
+                    // Subscription
                     if ($tempData->payment_type === 'Subscription') {
+                        $currentDate = $tempData->created_at;
 
                         $fakeRequest = new Request([
                             'id' => $tempData->user_id,
                             'period' => $tempData->subscription_period,
                             'plan' => $tempData->plan,
-                            'currentDate' => $tempData->created_at->toDateTimeString(),
+                            'currentDate' => $currentDate->toDateTimeString(),
                             'device_type' => $tempData->device_type
                         ]);
-
                         $fakeRequest->headers->set('X-Api-Key', $this->validApiKey);
 
                         $response = $this->subscriptionController->addSubscription($fakeRequest);
                         $responseData = $response->getData(true);
 
                         if ($responseData['status'] === 'success') {
-                            $request = new Request([
+                            $historyRequest = new Request([
                                 'uid' => $tempData->user_id,
                                 'pid' => $tempData->transaction_id,
                                 'plan' => $tempData->plan,
                                 'amount' => $tempData->amount,
-                                'plan_start' => $tempData->created_at->toDateTimeString(),
+                                'plan_start' => $currentDate->toDateTimeString(),
                                 'plan_end' => $tempData->plan_end,
                                 'mail' => $tempData->user_mail ?? '',
                                 'platform' => $tempData->device_type ?? '',
                                 'hming' => $tempData->hming ?? '',
                             ]);
+                            $this->subscriptionController->addHistory($historyRequest);
 
-                            $this->subscriptionController->addHistory($request);
+                            // Send success email
+                            $amount = $tempData->amount ?? '0.00';
+                            $paymentDate = $currentDate->format('Y-m-d H:i:s');
+                            $paymentMethod = $tempData->pg ?? 'Zo Stream Balance';
+                            $uniqueTxnId = $tempData->transaction_id;
+
+                            Http::asForm()->post('https://zostream.in/mail/success_payment.php', [
+                                'recipient' => $tempData->user_mail,
+                                'subject' => 'Payment Confirmation from Zo Stream',
+                                'amount' => $amount,
+                                'date' => $paymentDate,
+                                'method' => $paymentMethod,
+                                'transaction_id' => $uniqueTxnId,
+                            ]);
 
                             TempPaymentModel::where('transaction_id', $transactionId)->delete();
                             $successCount++;
                         } else {
                             $failureCount++;
                         }
-
-                    } elseif ($tempData->payment_type === 'PPV') {
+                    }
+                    // PPV
+                    elseif ($tempData->payment_type === 'PPV') {
                         $existing = PPVPaymentModel::where('user_id', $tempData->user_id)
                             ->where('movie_id', $tempData->content_id)
                             ->first();
 
                         $data = [
-                            'payment_id' => $tempData->transaction_id,
+                            'payment_id' => $transactionId,
                             'user_id' => $tempData->user_id,
                             'movie_id' => $tempData->content_id,
                             'rental_period' => $tempData->subscription_period,
@@ -127,6 +139,7 @@ class PaymentStatusController extends Controller
                         $successCount++;
                     }
                 } else {
+                    // Payment failed or status invalid
                     TempPaymentModel::where('transaction_id', $transactionId)->delete();
                     $failureCount++;
                 }
@@ -135,7 +148,6 @@ class PaymentStatusController extends Controller
             return response()->json([
                 'status' => 'success',
                 'message' => "Processed payments. Success: $successCount, Failures: $failureCount",
-
             ]);
         } catch (\Exception $e) {
             return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);

@@ -206,6 +206,7 @@ class SubscriptionController extends Controller
             }
 
             if ($saved) {
+                
                 $deleteResponse = $this->deleteSharedUser($id, $apiKey);
 
                 if ($deleteResponse instanceof \Illuminate\Http\JsonResponse && $deleteResponse->getStatusCode() !== 200) {
