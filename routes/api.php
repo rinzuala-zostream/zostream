@@ -47,6 +47,7 @@ Route::get('/test', function () {
 });
 
 Route::get('/user', [UserController::class, 'getUserData']);
+Route::get('/birthday-send', [UserController::class, 'sendWishes']);
 
 Route::get('/get-subscription', [SubscriptionController::class, 'getSubscription']);
 Route::get('/add-subscription', [SubscriptionController::class, 'addSubscription']);
@@ -103,7 +104,6 @@ Route::post('/cash-free-order', [CashFreeController::class, 'createOrder']);
 Route::get('/price-list', [PlanListController::class, 'getPriceList']);
 
 
-Route::get('/birthday-send', [BirthdayController::class, 'sendWishes']);
 
 
 
