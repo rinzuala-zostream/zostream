@@ -31,10 +31,7 @@ class SendBirthdayWishes extends Command
         $now = Carbon::now();
     
         // Only proceed between 7 AM and 10 AM
-        if ($now->hour < 7 || $now->hour >= 11) {
-            $this->info('Outside scheduled birthday wish hours.');
-            return 0;
-        }
+        
     
         $todayMonth = $now->month;
         $todayDay = $now->day;
