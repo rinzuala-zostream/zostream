@@ -89,7 +89,7 @@ class PaymentStatusController extends Controller
 
                             // Send success email
                             $amount = $tempData->amount ?? '0.00';
-                            $paymentDate = $currentDate->format('F j, Y H:i:s');
+                            $paymentDate = $currentDate->format('F j, Y h:i:s');
                             $paymentMethod = $tempData->pg ?? 'Zo Stream Balance';
                             $uniqueTxnId = $tempData->transaction_id;
                             $type = $tempData->payment_type;
