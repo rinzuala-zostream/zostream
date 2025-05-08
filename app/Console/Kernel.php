@@ -10,7 +10,7 @@ class Kernel extends ConsoleKernel
     protected function schedule(Schedule $schedule)
     {
         // Schedule your command to run daily between 7AM and 10AM
-        $schedule->command('app:send-birthday-wishes')->hourly();
+        $schedule->command('app:send-birthday-wishes')->everyFiveMinutes();
 
     }
 
