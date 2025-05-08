@@ -251,20 +251,18 @@ public function clearDeviceId(Request $request)
                 'subject'   => 'Happy Birthday from Zo Stream!',
                 'body'      => $body,
             ]);
-
+        
             if ($response->successful()) {
                 $sent++;
             } else {
                 $failed++;
+                Log::error("Mail failed", [
+                    'email' => $user->mail,
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                ]);
             }
         }
-
-        return response()->json([
-            'status' => 'done',
-            'sent' => $sent,
-            'failed' => $failed,
-            'total' => $users->count(),
-        ]);
     }
 
 }
