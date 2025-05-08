@@ -1,32 +1,15 @@
 <?php
 
-namespace App\Console\Commands;
+namespace App\Http\Controllers;
 
 use App\Models\UserModel;
 use Carbon\Carbon;
-use Illuminate\Console\Command;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 
-class SendBirthdayWishes extends Command
+class BirthdayController extends Controller
 {
-    /**
-     * The name and signature of the console command.
-     *
-     * @var string
-     */
-    protected $signature = 'app:send-birthday-wishes';
-
-    /**
-     * The console command description.
-     *
-     * @var string
-     */
-    protected $description = 'Send birthday wishes to users via Zo Stream mail API';
-
-    /**
-     * Execute the console command.
-     */
-    public function handle()
+    public function sendWishes()
     {
         $now = Carbon::now();
 
@@ -43,7 +26,9 @@ class SendBirthdayWishes extends Command
             }
         });
 
-        // Message templates
+        $sent = 0;
+        $failed = 0;
+
         foreach ($users as $user) {
             $messages = [
                 "🎉 Happy Birthday, {$user->name}! Wishing you a day filled with love, laughter, and joy!",
@@ -56,21 +41,24 @@ class SendBirthdayWishes extends Command
 
             $body = $messages[array_rand($messages)];
 
-            // Send mail via Zo Stream API
             $response = Http::asForm()->post('https://zostream.in/mail/send_mail.php', [
                 'recipient' => $user->mail,
-                'subject' => 'Happy Birthday from Zo Stream!',
-                'body'     => $body,
+                'subject'   => 'Happy Birthday from Zo Stream!',
+                'body'      => $body,
             ]);
 
             if ($response->successful()) {
-                $this->info("✅ Sent to {$user->mail}");
+                $sent++;
             } else {
-                $this->error("❌ Failed to send to {$user->mail}");
+                $failed++;
             }
         }
 
-        $this->info("🎉 Finished sending birthday wishes to {$users->count()} user(s).");
-        return 0;
+        return response()->json([
+            'status' => 'done',
+            'sent' => $sent,
+            'failed' => $failed,
+            'total' => $users->count(),
+        ]);
     }
 }

@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AdsController;
 use App\Http\Controllers\AlsoLikeController;
+use App\Http\Controllers\BirthdayController;
 use App\Http\Controllers\CashFreeController;
 use App\Http\Controllers\EpisodeController;
 use App\Http\Controllers\CalculatePlan;
@@ -100,6 +101,9 @@ Route::get('/cash-free-payment', [CashFreeController::class, 'checkPayment']);
 Route::post('/cash-free-order', [CashFreeController::class, 'createOrder']);
 
 Route::get('/price-list', [PlanListController::class, 'getPriceList']);
+
+
+Route::get('/birthday/send', [BirthdayController::class, 'sendWishes']);
 
 
 
