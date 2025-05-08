@@ -78,7 +78,7 @@ class PaymentStatusController extends Controller
                                 'uid' => $tempData->user_id,
                                 'pid' => $tempData->transaction_id,
                                 'plan' => $tempData->plan,
-                                'amount' => $tempData->amount,
+                                'amount' => $tempData->total_pay,
                                 'plan_start' => $currentDate->toDateTimeString(),
                                 'plan_end' => $tempData->plan_end,
                                 'mail' => $tempData->user_mail ?? '',
