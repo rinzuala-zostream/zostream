@@ -103,7 +103,7 @@ Route::post('/cash-free-order', [CashFreeController::class, 'createOrder']);
 Route::get('/price-list', [PlanListController::class, 'getPriceList']);
 
 
-Route::get('/birthday/send', [BirthdayController::class, 'sendWishes']);
+Route::get('/birthday-send', [BirthdayController::class, 'sendWishes']);
 
 
 
