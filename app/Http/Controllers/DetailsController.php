@@ -66,9 +66,9 @@ class DetailsController extends Controller
                 'id' => $userId,
                 'device_type' => $deviceType,
             ]);
-    
+
             $subscriptionRequest->headers->set('X-Api-Key', $apiKey);
-    
+
             $response = $this->subscriptionController->getSubscription($subscriptionRequest);
             $subscriptionData = json_decode(json_encode($response->getData()), true);
 
@@ -117,7 +117,7 @@ class DetailsController extends Controller
             // PPV logic
             $ppvKey = $movie['isPayPerView'] ?? $movie['isPPV'] ?? null;
             if ($ppvKey) {
-                $movie['ppv_details'] = $this->fetchPPVDetails($userId, $movieId, $apiKey);
+                $movie['ppv_details'] = $this->fetchPPVDetails($userId, $movieId, $apiKey, $deviceType);
             }
 
             // Ad display time
@@ -147,10 +147,12 @@ class DetailsController extends Controller
         }
     }
 
-    private function fetchPPVDetails($userId, $movieId, $apiKey)
+    private function fetchPPVDetails($userId, $movieId, $apiKey, $deviceType)
     {
         $ppvData = PPVPaymentModel::where('user_id', $userId)
             ->where('movie_id', $movieId)
+            ->where('platform', $deviceType)
+            ->orderBy('id', 'desc')
             ->first();
 
         if (!$ppvData) {
@@ -195,6 +197,7 @@ class DetailsController extends Controller
             'daysLeft' => $daysLeft > 0 ? "Ni $daysLeft chhung ila en thei." : "Vawiin chiah i en thei tawh",
         ];
     }
+
 
     private function convertToMilliseconds($duration)
     {

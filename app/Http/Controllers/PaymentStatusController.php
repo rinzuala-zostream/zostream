@@ -89,9 +89,12 @@ class PaymentStatusController extends Controller
 
                             // Send success email
                             $amount = $tempData->amount ?? '0.00';
-                            $paymentDate = $currentDate->format('Y-m-d H:i:s');
+                            $paymentDate = $currentDate->format('F j, Y H:i:s');
                             $paymentMethod = $tempData->pg ?? 'Zo Stream Balance';
                             $uniqueTxnId = $tempData->transaction_id;
+                            $type = $tempData->payment_type;
+                            $platform = $tempData->device_type;
+                            $plan = $tempData->plan;
 
                             Http::asForm()->post('https://zostream.in/mail/success_payment.php', [
                                 'recipient' => $tempData->user_mail,
@@ -99,7 +102,10 @@ class PaymentStatusController extends Controller
                                 'amount' => $amount,
                                 'date' => $paymentDate,
                                 'method' => $paymentMethod,
+                                'type' => $type,
+                                'platform' => $platform,
                                 'transaction_id' => $uniqueTxnId,
+                                'plan' => $plan,
                             ]);
 
                             TempPaymentModel::where('transaction_id', $transactionId)->delete();
@@ -110,9 +116,6 @@ class PaymentStatusController extends Controller
                     }
                     // PPV
                     elseif ($tempData->payment_type === 'PPV') {
-                        $existing = PPVPaymentModel::where('user_id', $tempData->user_id)
-                            ->where('movie_id', $tempData->content_id)
-                            ->first();
 
                         $data = [
                             'payment_id' => $transactionId,
@@ -120,21 +123,15 @@ class PaymentStatusController extends Controller
                             'movie_id' => $tempData->content_id,
                             'rental_period' => $tempData->subscription_period,
                             'purchase_date' => $tempData->created_at,
-                            'amount_paid' => $tempData->amount,
+                            'amount_paid' => $tempData->total_pay,
                             'platform' => $tempData->device_type,
                             'payment_status' => 'completed',
                             'created_at' => $tempData->created_at,
                             'updated_at' => $tempData->created_at,
                         ];
 
-                        if ($existing) {
-                            PPVPaymentModel::where('user_id', $tempData->user_id)
-                                ->where('movie_id', $tempData->content_id)
-                                ->update($data);
-                        } else {
-                            PPVPaymentModel::insert($data);
-                        }
-
+                        PPVPaymentModel::insert($data);
+                    
                         TempPaymentModel::where('transaction_id', $transactionId)->delete();
                         $successCount++;
                     }
