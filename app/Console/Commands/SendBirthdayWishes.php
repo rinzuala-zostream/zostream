@@ -4,9 +4,8 @@ namespace App\Console\Commands;
 
 use App\Models\UserModel;
 use Carbon\Carbon;
-use Http;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Http;
 
 class SendBirthdayWishes extends Command
 {
@@ -22,7 +21,7 @@ class SendBirthdayWishes extends Command
      *
      * @var string
      */
-    protected $description = 'Send birthday wishes to users';
+    protected $description = 'Send birthday wishes to users via Zo Stream mail API';
 
     /**
      * Execute the console command.
@@ -34,6 +33,7 @@ class SendBirthdayWishes extends Command
         $todayMonth = $now->month;
         $todayDay = $now->day;
 
+        // Collect users whose birthday is today
         $users = UserModel::all()->filter(function ($user) use ($todayMonth, $todayDay) {
             try {
                 $dob = Carbon::parse($user->dob);
@@ -43,21 +43,34 @@ class SendBirthdayWishes extends Command
             }
         });
 
+        // Message templates
         foreach ($users as $user) {
+            $messages = [
+                "🎉 Happy Birthday, {$user->name}! Wishing you a day filled with love, laughter, and joy!",
+                "🎂 Cheers to you, {$user->name}! May your birthday be as amazing as you are!",
+                "🎈 Hey {$user->name}, it's your special day! Enjoy every moment of it – happy birthday!",
+                "🥳 Zo Stream wishes you the happiest of birthdays, {$user->name}! Stay awesome!",
+                "🎁 Warmest wishes on your birthday, {$user->name}! Hope your day is full of surprises and joy.",
+                "🌟 Happy Birthday, {$user->name}! May your year ahead be bright and full of success!",
+            ];
+
+            $body = $messages[array_rand($messages)];
+
+            // Send mail via Zo Stream API
             $response = Http::asForm()->post('https://zostream.in/mail/send_mail.php', [
                 'recipient' => $user->mail,
                 'subject' => '🎂 Happy Birthday from Zo Stream!',
-                'body' => "🎉 Happy Birthday, {$user->name}!",
+                'body'     => $body,
             ]);
 
             if ($response->successful()) {
-                $this->info("Sent to {$user->mail}");
+                $this->info("✅ Sent to {$user->mail}");
             } else {
-                $this->error("Failed to send to {$user->mail}");
+                $this->error("❌ Failed to send to {$user->mail}");
             }
         }
 
-        $this->info("Finished sending birthday wishes to {$users->count()} user(s).");
+        $this->info("🎉 Finished sending birthday wishes to {$users->count()} user(s).");
         return 0;
     }
 }
