@@ -16,7 +16,7 @@ class CashFreeController extends Controller
     {
         $this->clientId = config('cashfree.client_id');   // store these in config
         $this->clientSecret = config('cashfree.client_secret');
-        $this->apiVersion = '2022-01-01';
+        $this->apiVersion = '2025-01-01';
         $this->baseUrl = 'https://api.cashfree.com/pg/orders'; // change to production when ready
     }
 
