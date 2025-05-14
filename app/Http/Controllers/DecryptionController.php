@@ -39,7 +39,7 @@ class DecryptionController extends Controller
         $shaKey = $request->input('sha');
         $userId = $request->input('userId');
         $movieId = $request->input('movieId');
-        $isAgeRestricted = $request->boolean('isAgeRestricted');
+        $isAgeRestricted = $request->boolean('isAgeRectricted');
 
         // Package name check
         if (!$packageName || !in_array($packageName, $this->allowedPackageNames)) {
@@ -74,7 +74,8 @@ class DecryptionController extends Controller
         if ($isAgeRestricted && ($userAge === null || $userAge < 18)) {
             return response()->json([
                 'status' => '104',
-                'message' => 'Age restriction avangin i en thei lo. Khawngaihin adang en rawh'
+                'message' => 'Age restriction avangin i en thei lo. Khawngaihin adang en rawh',
+                'age' => $userAge
             ]);
         }
 
@@ -105,7 +106,8 @@ class DecryptionController extends Controller
         return response()->json([
             'status' => '103',
             'message' => $result,
-            'watchPosition' => $watchPosition
+            'watchPosition' => $watchPosition,
+            'age' => $userAge
         ]);
     }
 }
