@@ -100,11 +100,11 @@ class UserController extends Controller
 
         // Validate request
         $request->validate([
-            'uid'   => 'required|string',
+            'uid' => 'required|string',
             'token' => 'required|string',
         ]);
 
-        $uid   = $request->query('uid');
+        $uid = $request->query('uid');
         $token = $request->query('token');
 
         try {
@@ -129,11 +129,11 @@ class UserController extends Controller
 
         // Validate request
         $request->validate([
-            'uid'   => 'required|string',
+            'uid' => 'required|string',
             'lastLogin' => 'required|string',
         ]);
 
-        $uid   = $request->input('uid');
+        $uid = $request->input('uid');
         $lastLogin = $request->input('lastLogin');
 
         try {
@@ -154,45 +154,45 @@ class UserController extends Controller
     }
 
     public function updateProfile(Request $request)
-{
-    $request->validate([
-        'uid'              => 'required|string',
-        'call'             => 'required|string',
-        'edit_date'        => 'required|string',
-        'isAccountComplete' => 'boolean',
-        'khua'             => 'required|string',
-        'name'             => 'required|string',
-        'veng'             => 'required|string',
-    ]);
-
-    try {
-        $uid = $request->input('uid');
-
-        $user = UserModel::where('uid', $uid)->first();
-
-        if (!$user) {
-            return response()->json(['status' => 'error', 'message' => 'Record not found'], 404);
-        }
-
-        // Update fields
-        $user->update([
-            'call'              => $request->input('call'),
-            'edit_date'         => $request->input('edit_date'),
-            'isAccountComplete' => $request->input('isAccountComplete'),
-            'khua'              => $request->input('khua'),
-            'name'              => $request->input('name'),
-            'veng'              => $request->input('veng'),
+    {
+        $request->validate([
+            'uid' => 'required|string',
+            'call' => 'required|string',
+            'edit_date' => 'required|string',
+            'isAccountComplete' => 'boolean',
+            'khua' => 'required|string',
+            'name' => 'required|string',
+            'veng' => 'required|string',
         ]);
 
-        return response()->json(['status' => 'success', 'message' => 'Profile updated successfully'])
-        ->header('Content-Type', 'application/json');
-    } catch (\Exception $e) {
-        return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500)
-        ->header('Content-Type', 'application/json');
-    }
-}
+        try {
+            $uid = $request->input('uid');
 
-public function clearDeviceId(Request $request)
+            $user = UserModel::where('uid', $uid)->first();
+
+            if (!$user) {
+                return response()->json(['status' => 'error', 'message' => 'Record not found'], 404);
+            }
+
+            // Update fields
+            $user->update([
+                'call' => $request->input('call'),
+                'edit_date' => $request->input('edit_date'),
+                'isAccountComplete' => $request->input('isAccountComplete'),
+                'khua' => $request->input('khua'),
+                'name' => $request->input('name'),
+                'veng' => $request->input('veng'),
+            ]);
+
+            return response()->json(['status' => 'success', 'message' => 'Profile updated successfully'])
+                ->header('Content-Type', 'application/json');
+        } catch (\Exception $e) {
+            return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500)
+                ->header('Content-Type', 'application/json');
+        }
+    }
+
+    public function clearDeviceId(Request $request)
     {
 
         $request->validate([
@@ -221,7 +221,6 @@ public function clearDeviceId(Request $request)
         $todayMonth = $now->month;
         $todayDay = $now->day;
 
-        // Collect users whose birthday is today
         $users = UserModel::all()->filter(function ($user) use ($todayMonth, $todayDay) {
             try {
                 $dob = Carbon::parse($user->dob);
@@ -246,23 +245,36 @@ public function clearDeviceId(Request $request)
 
             $body = $messages[array_rand($messages)];
 
-            $response = Http::asForm()->post('https://zostream.in/mail/send_mail.php', [
-                'recipient' => $user->mail,
-                'subject'   => 'Happy Birthday from Zo Stream!',
-                'body'      => $body,
-            ]);
-        
-            if ($response->successful()) {
-                $sent++;
-            } else {
+            try {
+                $response = Http::asForm()->post('https://zostream.in/mail/send_mail.php', [
+                    'recipient' => $user->mail,
+                    'subject' => 'Happy Birthday from Zo Stream!',
+                    'body' => $body,
+                ]);
+
+                if ($response->successful()) {
+                    $sent++;
+                } else {
+                    $failed++;
+                    Log::error("Mail failed", [
+                        'email' => $user->mail,
+                        'status' => $response->status(),
+                        'body' => $response->body(),
+                    ]);
+                }
+            } catch (\Exception $e) {
                 $failed++;
-                Log::error("Mail failed", [
+                Log::error("HTTP request exception", [
                     'email' => $user->mail,
-                    'status' => $response->status(),
-                    'body' => $response->body(),
+                    'error' => $e->getMessage(),
                 ]);
             }
         }
-    }
 
+        return response()->json([
+            'status' => 'done',
+            'sent' => $sent,
+            'failed' => $failed,
+        ]);
+    }
 }
