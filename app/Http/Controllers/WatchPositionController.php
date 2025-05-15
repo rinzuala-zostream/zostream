@@ -82,12 +82,12 @@ class WatchPositionController extends Controller
         $request->validate([
             'userId' => 'required|string',
             'movieId' => 'required|string',
-            'isAgeRestricted' => 'required|boolean',
+            'isAgeRestricted' => 'required|string|in:true,false',
         ]);
 
         $userId = $request->query('userId');
         $movieId = $request->query('movieId');
-        $isAgeRestricted = $request->query('isAgeRestricted');
+        $isAgeRestricted = ($request->query('isAgeRestricted') ?? 'false') === 'true' ? 1 : 0;
 
         if (!$userId || !$movieId) {
             return response()->json([
