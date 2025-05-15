@@ -256,7 +256,7 @@ class UserController extends Controller
                     $sent++;
                 } else {
                     $failed++;
-                    Log::error("Mail failed", [
+                    return response()->json([
                         'email' => $user->mail,
                         'status' => $response->status(),
                         'body' => $response->body(),
@@ -264,7 +264,7 @@ class UserController extends Controller
                 }
             } catch (\Exception $e) {
                 $failed++;
-                Log::error("HTTP request exception", [
+                return response()->json([
                     'email' => $user->mail,
                     'error' => $e->getMessage(),
                 ]);
