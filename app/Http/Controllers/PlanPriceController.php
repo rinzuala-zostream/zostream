@@ -30,11 +30,11 @@ class PlanPriceController extends Controller
         ];
 
         $planDiscounts = [
-            'Kar 1' => 4,
-            'Thla 1' => 5.4,
-            'Thla 4' => 7,
-            'Thla 6' => 8.2,
-            'Kum 1' => 10.6
+            'Kar 1' => 3.6,
+            'Thla 1' => 4.1,
+            'Thla 4' => 5.6,
+            'Thla 6' => 7.2,
+            'Kum 1' => 9.6
         ];
 
         if (!$plan || !isset($planAmounts[$plan])) {
