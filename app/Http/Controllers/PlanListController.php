@@ -9,19 +9,19 @@ class PlanListController extends Controller
     public function getPriceList()
     {
         $planAmounts = [
-            'Kar 1' => 288,
-            'Thla 1' => 638,
-            'Thla 4' => 2407,
-            'Thla 6' => 3577,
-            'Kum 1' => 6991
+            'Kar 1' => 317,
+            'Thla 1' => 737,
+            'Thla 4' => 2797,
+            'Thla 6' => 4097,
+            'Kum 1' => 7897
         ];
 
         $planDevices = [
-            'Kar 1' => ['Mobile' => 84, 'Browser' => 99, 'TV' => 105],
-            'Thla 1' => ['Mobile' => 194, 'Browser' => 219, 'TV' => 225],
-            'Thla 4' => ['Mobile' => 719, 'Browser' => 829, 'TV' => 859],
-            'Thla 6' => ['Mobile' => 1089, 'Browser' => 1199, 'TV' => 1289],
-            'Kum 1' => ['Mobile' => 2133, 'Browser' => 2348, 'TV' => 2510]
+            'Kar 1' => ['Mobile' => 99, 'Browser' => 109, 'TV' => 109],
+            'Thla 1' => ['Mobile' => 199, 'Browser' => 269, 'TV' => 269],
+            'Thla 4' => ['Mobile' => 799, 'Browser' => 999, 'TV' => 999],
+            'Thla 6' => ['Mobile' => 1299, 'Browser' => 1399, 'TV' => 1399],
+            'Kum 1' => ['Mobile' => 2499, 'Browser' => 2699, 'TV' => 2699]
         ];
 
         $durations = [
