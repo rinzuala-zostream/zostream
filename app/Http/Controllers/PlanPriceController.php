@@ -11,7 +11,6 @@ class PlanPriceController extends Controller
     {
         $plan = $request->query('plan');
         $device = $request->query('device');
-
         $devices = $device ? array_map('trim', explode(',', $device)) : [];
 
         $planAmounts = [
@@ -42,33 +41,45 @@ class PlanPriceController extends Controller
             return response()->json(['error' => 'Invalid plan'], 400);
         }
 
-        $originalPrice = $planAmounts[$plan];
-        $discountData = $this->calculateDiscountSplit($planDiscounts[$plan]);
+        // Modified original_price: sum of selected devices
+        $originalPrice = 0;
+        foreach ($devices as $deviceName) {
+            if (isset($planDevices[$plan][$deviceName])) {
+                $originalPrice += $planDevices[$plan][$deviceName];
+            }
+        }
+        if ($originalPrice === 0 && isset($planAmounts[$plan])) {
+            $originalPrice = $planAmounts[$plan];
+        }
 
-        $totalDiscountPercent = 0;
+        $discountPercent = $planDiscounts[$plan];
+        $discountedPrice = 0;
         $discountDetails = [];
-        $discountedPrice = $originalPrice;
+        $totalDiscountPercent = 0;
 
         if (count($devices) === 1) {
             $selectedDevice = $devices[0];
-
             if (isset($planDevices[$plan][$selectedDevice])) {
                 $discountedPrice = $planDevices[$plan][$selectedDevice];
                 $discountDetails[$selectedDevice] = '0%';
             } else {
                 return response()->json(['error' => 'Invalid device selected'], 400);
             }
-        } else {
+        } elseif (count($devices) > 1) {
+            $discountSplit = $this->calculateDiscountSplit($discountPercent);
+
             foreach ($devices as $deviceName) {
-                if (isset($discountData[$deviceName])) {
-                    $totalDiscountPercent += $discountData[$deviceName];
-                    $discountDetails[$deviceName] = $discountData[$deviceName] . '%';
+                if (isset($planDevices[$plan][$deviceName])) {
+                    $devicePrice = $planDevices[$plan][$deviceName];
+                    $deviceDiscountPercent = $discountSplit[$deviceName] ?? 0;
+                    $deviceDiscountAmount = $devicePrice * ($deviceDiscountPercent / 100);
+                    $discountedPrice += ($devicePrice - $deviceDiscountAmount);
+                    $discountDetails[$deviceName] = round($deviceDiscountPercent, 2) . '%';
+                    $totalDiscountPercent += $deviceDiscountPercent;
                 } else {
-                    $discountDetails[$deviceName] = 'Invalid device';
+                    return response()->json(['error' => "Invalid device: $deviceName"], 400);
                 }
             }
-
-            $discountedPrice = $originalPrice - ($originalPrice * ($totalDiscountPercent / 100));
         }
 
         $startDate = Carbon::now();
@@ -95,7 +106,7 @@ class PlanPriceController extends Controller
                 'plan' => $plan,
                 'devices' => $discountDetails
             ]
-        ]);        
+        ]);
     }
 
     private function calculateDiscountSplit($discountPercent)
