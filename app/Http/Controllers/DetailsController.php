@@ -151,10 +151,9 @@ class DetailsController extends Controller
     {
         $ppvData = PPVPaymentModel::where('user_id', $userId)
             ->where('movie_id', $movieId)
-            ->where('platform', 'LIKE', "%{$deviceType}%")
+            ->where('platform', $deviceType)
             ->orderBy('id', 'desc')
             ->first();
-
 
         if (!$ppvData) {
             return [
