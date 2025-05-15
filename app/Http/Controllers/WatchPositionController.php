@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\UserModel;
 use App\Models\WatchHistoryModel;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 
 class WatchPositionController extends Controller
@@ -67,5 +69,55 @@ class WatchPositionController extends Controller
            
             return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
         }
+    }
+
+    public function getWatchPosition(Request $request)
+    {
+        $apiKey = $request->header('X-Api-Key');
+
+        if ($apiKey !== $this->validApiKey) {
+            return response()->json(['status' => 'error', 'message' => 'Invalid API key']);
+        }
+
+        $userId = $request->query('userId');
+        $movieId = $request->query('movieId');
+        $isAgeRestricted = $request->boolean('isAgeRestricted');
+
+        if (!$userId || !$movieId) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Missing userId or movieId'
+            ], 400);
+        }
+
+        // Get user age
+        $userAge = null;
+        $user = UserModel::select('dob')->where('uid', $userId)->first();
+        if ($user && $user->dob) {
+            $userAge = Carbon::parse($user->dob)->age;
+        }
+
+        // Age restriction check
+        if ($isAgeRestricted && ($userAge === null || $userAge < 18)) {
+            return response()->json([
+                'status' => '104',
+                'message' => 'Age restriction avangin i en thei lo. Khawngaihin adang en rawh',
+                'age' => $userAge
+            ]);
+        }
+
+        // Get watch position
+        $watchData = WatchHistoryModel::select('position')
+            ->where('user_id', $userId)
+            ->where('movie_id', $movieId)
+            ->first();
+
+        $watchPosition = $watchData->position ?? 0;
+
+        return response()->json([
+            'status' => 'success',
+            'watchPosition' => $watchPosition,
+            'age' => $userAge
+        ]);
     }
 }
