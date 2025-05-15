@@ -82,7 +82,6 @@ class WatchPositionController extends Controller
         $request->validate([
             'userId' => 'nullable|string',
             'movieId' => 'nullable|string',
-            'isAgeRestricted' => 'nullable|boolean',
         ]);
 
         $userId = $request->query('userId');
