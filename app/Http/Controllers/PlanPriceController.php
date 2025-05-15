@@ -15,10 +15,10 @@ class PlanPriceController extends Controller
 
         $planAmounts = [
             'Kar 1' => 317,
-            'Thla 1' => 638,
-            'Thla 4' => 2407,
-            'Thla 6' => 3577,
-            'Kum 1' => 6991
+            'Thla 1' => 737,
+            'Thla 4' => 2797,
+            'Thla 6' => 4097,
+            'Kum 1' => 7897
         ];
 
         $planDevices = [
