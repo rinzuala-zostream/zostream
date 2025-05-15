@@ -79,9 +79,15 @@ class WatchPositionController extends Controller
             return response()->json(['status' => 'error', 'message' => 'Invalid API key']);
         }
 
+        $request->validate([
+            'userId' => 'nullable|string',
+            'movieId' => 'nullable|string',
+            'isAgeRestricted' => 'nullable|string|in:true,false',
+        ]);
+
         $userId = $request->query('userId');
         $movieId = $request->query('movieId');
-        $isAgeRestricted = $request->boolean('isAgeRestricted');
+        $isAgeRestricted = $request->query('isAgeRestricted');
 
         if (!$userId || !$movieId) {
             return response()->json([
