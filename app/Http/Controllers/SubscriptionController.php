@@ -6,6 +6,8 @@ use App\Models\SubscriptionHistoryModel;
 use App\Models\SubscriptionModel;
 use App\Models\TVSubscriptionModel;
 use App\Models\BrowserSubscriptionModel;
+use App\Models\UserModel;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use DateInterval;
 use Illuminate\Http\Request;
@@ -129,7 +131,8 @@ class SubscriptionController extends Controller
                 return response()->json(['status' => 'error', 'message' => 'No data found for the given id']);
             }
 
-            return response()->json($results
+            return response()->json(
+                $results
             );
 
         } catch (\Illuminate\Contracts\Encryption\DecryptException $e) {
@@ -206,7 +209,7 @@ class SubscriptionController extends Controller
             }
 
             if ($saved) {
-                
+
                 $deleteResponse = $this->deleteSharedUser($id, $apiKey);
 
                 if ($deleteResponse instanceof \Illuminate\Http\JsonResponse && $deleteResponse->getStatusCode() !== 200) {
@@ -272,8 +275,8 @@ class SubscriptionController extends Controller
     private function fetchHistory($uid)
     {
         return SubscriptionHistoryModel::where('uid', $uid)
-                    ->orderByDesc('num')
-                    ->get();
+            ->orderByDesc('num')
+            ->get();
     }
 
     // GET request: /subscription-history?uid=123
@@ -281,9 +284,9 @@ class SubscriptionController extends Controller
     {
 
         $apiKey = $request->header('X-Api-Key');
-            if ($apiKey !== $this->validApiKey) {
-                return response()->json(["status" => "error", "message" => "Invalid API key"], 401);
-            }
+        if ($apiKey !== $this->validApiKey) {
+            return response()->json(["status" => "error", "message" => "Invalid API key"], 401);
+        }
 
         $validated = $request->validate([
             'uid' => 'required|string',
@@ -298,7 +301,8 @@ class SubscriptionController extends Controller
             ], 404);
         }
 
-        return response()->json($history
+        return response()->json(
+            $history
         );
     }
 
@@ -310,6 +314,8 @@ class SubscriptionController extends Controller
             'pid' => 'required|string',
             'plan' => 'required|string',
             'platform' => 'required|string',
+            'pg' => 'required|string',
+            'total_pay' => 'required|string',
             'amount' => 'required|int',
             'plan_start' => 'required|string',
             'plan_end' => 'nullable|string',
@@ -325,5 +331,33 @@ class SubscriptionController extends Controller
             'message' => 'Subscription history added successfully.',
             'entry' => $entry
         ]);
+    }
+
+    public function generateInvoice($num)
+    {
+        $subscription = SubscriptionHistoryModel::where('num', $num)->firstOrFail();
+        $user = UserModel::where('mail', $subscription->mail)->first();
+
+        $data = [
+            'hming'       => $user->name ?? 'N/A',
+            'mail'        => $user->mail ?? 'N/A',
+            'phone'       => $user->call ?? 'N/A',
+            'uid'         => $subscription->uid,
+            'plan'        => $subscription->plan,
+            'pid'         => $subscription->pid,
+            'amount'      => $subscription->amount,
+            'method'      => $subscription->method,
+            'plan_start'  => $subscription->plan_start,
+            'plan_end'    => $subscription->plan_end,
+            'invoice_no'  => 'INV-' . str_pad($subscription->id, 10, '0', STR_PAD_LEFT),
+            'created_at'  => $subscription->created_at,
+            'address'     => $user->address ?? 'Aizawl',
+            'total_pay'   => $subscription->total_pay,
+            'pg'          => $subscription->pg ?? 'N/A',
+        ];
+    
+        $pdf = Pdf::loadView('pdf.invoice', ['data' => (object) $data]);
+    
+        return $pdf->download("invoice_{$data['uid']}_{$data['pid']}.pdf");
     }
 }

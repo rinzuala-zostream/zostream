@@ -74,13 +74,18 @@ class PaymentStatusController extends Controller
                         $responseData = $response->getData(true);
 
                         if ($responseData['status'] === 'success') {
+
+                            $planEnd = $currentDate->copy()->addDays($tempData->period);
+
                             $historyRequest = new Request([
                                 'uid' => $tempData->user_id,
                                 'pid' => $tempData->transaction_id,
                                 'plan' => $tempData->plan,
+                                'pg' => $tempData->pg,
+                                'total_pay' => $tempData->total_pay,
                                 'amount' => $tempData->total_pay,
                                 'plan_start' => $currentDate->toDateTimeString(),
-                                'plan_end' => $tempData->plan_end,
+                                'plan_end' => $planEnd->toDateTimeString(),
                                 'mail' => $tempData->user_mail ?? '',
                                 'platform' => $tempData->device_type ?? '',
                                 'hming' => $tempData->hming ?? '',
@@ -125,6 +130,7 @@ class PaymentStatusController extends Controller
                             'purchase_date' => $tempData->created_at,
                             'amount_paid' => $tempData->total_pay,
                             'platform' => $tempData->device_type,
+                            'pg' => $tempData->pg,
                             'payment_status' => 'completed',
                             'created_at' => $tempData->created_at,
                             'updated_at' => $tempData->created_at,
