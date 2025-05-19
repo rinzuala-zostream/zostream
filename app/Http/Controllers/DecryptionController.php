@@ -39,8 +39,7 @@ class DecryptionController extends Controller
         $shaKey = $request->input('sha');
         $userId = $request->input('userId');
         $movieId = $request->input('movieId');
-        $isAgeRestricted = filter_var($request->input('isAgeRectricted'), FILTER_VALIDATE_BOOLEAN);
-
+        $isAgeRestricted = ($request->input('isAgeRectricted') ?? 'false') === 'true' ? 1 : 0;
 
         // Package name check
         if (!$packageName || !in_array($packageName, $this->allowedPackageNames)) {
