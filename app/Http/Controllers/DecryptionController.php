@@ -71,7 +71,7 @@ class DecryptionController extends Controller
         }
 
         // Age restriction check
-        if ($isAgeRestricted && ($userAge === null || $userAge < 18)) {
+        if ($isAgeRestricted && ($userAge === null || $userAge === 0 || $userAge < 18)) {
             return response()->json([
                 'status' => '104',
                 'message' => 'Age restriction avangin i en thei lo. Khawngaihin adang en rawh',
