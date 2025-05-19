@@ -119,6 +119,7 @@ class PaymentStatusController extends Controller
                             $failureCount++;
                         }
                     }
+
                     // PPV
                     elseif ($tempData->payment_type === 'PPV') {
 
@@ -137,7 +138,6 @@ class PaymentStatusController extends Controller
                         ];
 
                         PPVPaymentModel::insert($data);
-                    
                         TempPaymentModel::where('transaction_id', $transactionId)->delete();
                         $successCount++;
                     }

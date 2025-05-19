@@ -315,7 +315,7 @@ class SubscriptionController extends Controller
             'plan' => 'required|string',
             'platform' => 'required|string',
             'pg' => 'required|string',
-            'total_pay' => 'required|string',
+            'total_pay' => 'required|int',
             'amount' => 'required|int',
             'plan_start' => 'required|string',
             'plan_end' => 'nullable|string',
