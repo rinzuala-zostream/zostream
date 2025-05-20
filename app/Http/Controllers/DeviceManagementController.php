@@ -107,7 +107,6 @@ class DeviceManagementController extends Controller
 
     public function get(Request $request)
     {
-
         $apiKey = $request->header('X-Api-Key');
 
         if ($apiKey !== $this->validApiKey) {
@@ -122,50 +121,40 @@ class DeviceManagementController extends Controller
         $user_id = $request->query('user_id');
         $device_id = $request->query('device_id');
 
-        if ($request->has('device_id')) {
-            // 'device_id' exists in the query (even if it's null or empty)
-            if ($device_id) {
-                // Fetch specific device for the user
-                $device = UserDeviceModel::where('user_id', $user_id)
-                    ->where('device_id', $device_id)
-                    ->first();
+        if ($device_id) {
+            // device_id is present and non-empty, fetch specific device
+            $device = UserDeviceModel::where('user_id', $user_id)
+                ->where('device_id', $device_id)
+                ->first();
 
-                if ($device) {
-                    return response()->json([
-                        "status" => "success",
-                        "message" => "Device found",
-                        "deviceData" => $device
-                    ]);
-                } else {
-                    return response()->json([
-                        "status" => "error",
-                        "message" => "Device not found"
-                    ]);
-                }
+            if ($device) {
+                return response()->json([
+                    "status" => "success",
+                    "message" => "Device found",
+                    "deviceData" => $device
+                ]);
             } else {
-                // device_id is present but empty or null
-                $devices = UserDeviceModel::where('user_id', $user_id)->get();
-
-                if ($devices->isNotEmpty()) {
-                    return response()->json([
-                        "status" => "success",
-                        "message" => "Devices retrieved successfully",
-                        "deviceData" => $devices
-                    ]);
-                } else {
-                    return response()->json([
-                        "status" => "error",
-                        "message" => "No devices found for this user."
-                    ]);
-                }
+                return response()->json([
+                    "status" => "error",
+                    "message" => "Device not found"
+                ]);
             }
         } else {
-            // device_id is not present in the query; fetch all devices
+            // device_id is null, empty, or not provided — fetch all devices
+            $devices = UserDeviceModel::where('user_id', $user_id)->get();
 
-            return response()->json([
-                "status" => "error",
-                "message" => "Device ID is empty or invalid"
-            ]);
+            if ($devices->isNotEmpty()) {
+                return response()->json([
+                    "status" => "success",
+                    "message" => "Devices retrieved successfully",
+                    "deviceData" => $devices
+                ]);
+            } else {
+                return response()->json([
+                    "status" => "error",
+                    "message" => "No devices found for this user."
+                ]);
+            }
         }
     }
 
