@@ -86,6 +86,7 @@ Route::get('/price', [PlanPriceController::class, 'getPlanPrice']);
 Route::post('/temp-payment', [TempPayment::class, 'storeTempPayment']);
 
 Route::get('/episodes', [EpisodeController::class, 'getBySeason']);
+Route::post('/episode/insert', [EpisodeController::class, 'insert']);
 
 Route::get('/update-dob', [UserController::class, 'updateDob']);
 

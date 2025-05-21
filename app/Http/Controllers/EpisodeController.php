@@ -78,7 +78,7 @@ class EpisodeController extends Controller
         ]);
 
         // Generate a unique ID
-        $validated['id'] = Str::uuid()->toString(); // or Str::random(10)
+        $validated['id'] = Str::random(10); // or Str::random(10)
 
         // Set default views to 0
         $validated['views'] = 0;

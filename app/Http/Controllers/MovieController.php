@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\EpisodeModel;
 use App\Models\MovieModel;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Str;
 
@@ -262,6 +263,7 @@ class MovieController extends Controller
 
         // Add create_date manually if you want
         $validated['create_date'] = now()->format('F j, Y');
+        $validated['release_on'] = Carbon::parse($validated['release_on'])->format('F j, Y');
 
         $movie = MovieModel::create($validated);
 
@@ -271,5 +273,4 @@ class MovieController extends Controller
             'movie' => $movie
         ]);
     }
-
 }
