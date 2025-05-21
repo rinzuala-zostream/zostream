@@ -56,6 +56,7 @@ Route::get('/subscription-history', [SubscriptionController::class, 'getHistory'
 Route::get('/movies', [MovieController::class, 'getMovies']);
 
 Route::get('/view', [MovieController::class, 'incrementView']);
+Route::post('/movie/insert', [MovieController::class, 'insert']);
 
 //update device for new device or change device
 Route::get('/device', [UpdateUserDevice::class, 'updateDevice']);

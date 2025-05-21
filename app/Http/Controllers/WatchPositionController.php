@@ -26,21 +26,21 @@ class WatchPositionController extends Controller
 
         // Validate input
         $request->validate([
-            'movie_id'   => 'required|string',
-            'position'   => 'required|integer',
-            'user_id'    => 'required|string',
+            'movie_id' => 'required|string',
+            'position' => 'required|integer',
+            'user_id' => 'required|string',
             'movie_type' => 'nullable|string',
         ]);
 
         try {
 
-            $movieId   = $request->input('movie_id');
-            $position  = $request->input('position');
-            $userId    = $request->input('user_id');
+            $movieId = $request->input('movie_id');
+            $position = $request->input('position');
+            $userId = $request->input('user_id');
             $movieType = $request->input('movie_type');
 
             // Check if the record exists
-            $existing =  WatchHistoryModel::where('movie_id', $movieId)
+            $existing = WatchHistoryModel::where('movie_id', $movieId)
                 ->where('user_id', $userId)
                 ->lockForUpdate()
                 ->first();
@@ -50,24 +50,69 @@ class WatchPositionController extends Controller
                 WatchHistoryModel::where('movie_id', $movieId)
                     ->where('user_id', $userId)
                     ->update([
-                        'position'    => $position,
-                        'movie_type'  => $movieType,
+                        'position' => $position,
+                        'movie_type' => $movieType,
                     ]);
             } else {
                 // Insert new
                 WatchHistoryModel::insert([
-                    'movie_id'    => $movieId,
-                    'position'    => $position,
-                    'user_id'     => $userId,
-                    'movie_type'  => $movieType,
+                    'movie_id' => $movieId,
+                    'position' => $position,
+                    'user_id' => $userId,
+                    'movie_type' => $movieType,
                 ]);
             }
 
             return response()->json(['status' => 'success', 'message' => 'Record saved successfully']);
 
         } catch (\Exception $e) {
-           
+
             return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
+        }
+    }
+    public function getWatchContinue(Request $request)
+    {
+        $apiKey = $request->header('X-Api-Key');
+
+        if ($apiKey !== $this->validApiKey) {
+            return response()->json(['status' => 'error', 'message' => 'Invalid API key']);
+        }
+
+        $request->validate([
+            'userId' => 'required|string',
+            'isAgeRestricted' => 'required|string|in:true,false',
+        ]);
+
+        $userId = $request->query('userId');
+        $isAgeRestricted = ($request->query('isAgeRestricted') ?? 'false') === 'true' ? 1 : 0;
+
+        if (!$userId) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Missing userId or movieId'
+            ], 400);
+        }
+
+        // Get watch position
+        $watchData = WatchHistoryModel::where('user_id', $userId)
+            ->first();
+
+        $result = [];
+
+        foreach ($watchData as $history) {
+            $movie = $movies[$history->movie_id] ?? null;
+
+            // Skip if movie not found or is age restricted
+            if (!$movie || ($movie->is_age_restricted && $isAgeRestricted)) {
+                continue;
+            }
+
+            $result[] = [
+                'movie_id' => $history->movie_id,
+                'position' => $history->position,
+                'updated_at' => $history->updated_at,
+                'movie' => $movie
+            ];
         }
     }
 
