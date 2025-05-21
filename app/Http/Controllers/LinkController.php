@@ -8,7 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
-class DecryptionController extends Controller
+class LinkController extends Controller
 {
     private $validApiKey;
 
@@ -109,5 +109,36 @@ class DecryptionController extends Controller
             'watchPosition' => $watchPosition,
             'age' => $userAge
         ]);
+    }
+
+    public function encryptMessage(Request $request)
+    {
+        $password = 'd4c6198dabafb243b0d043a3c33a9fe171f81605158c267c7dfe5f66df29559a';
+
+        $message = $request->query('message');
+
+        if (!$message) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Message is required'
+            ], 400);
+        }
+
+        try {
+            $key = hash('sha256', $password, true);
+            $iv = random_bytes(16);
+            $cipherText = openssl_encrypt($message, 'aes-256-cbc', $key, OPENSSL_RAW_DATA, $iv);
+            $encryptedMessage = base64_encode($iv . $cipherText);
+
+            return response()->json([
+                'status' => 'success',
+                'encrypted' => $encryptedMessage
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Encryption failed: ' . $e->getMessage()
+            ], 500);
+        }
     }
 }

@@ -9,6 +9,7 @@ use App\Http\Controllers\CalculatePlan;
 use App\Http\Controllers\CheckDeviceAvailable;
 use App\Http\Controllers\DecryptionController;
 use App\Http\Controllers\DetailsController;
+use App\Http\Controllers\LinkController;
 use App\Http\Controllers\MovieController;
 use App\Http\Controllers\MovieSearchController;
 use App\Http\Controllers\PaymentStatusController;
@@ -56,7 +57,7 @@ Route::get('/subscription-history', [SubscriptionController::class, 'getHistory'
 Route::get('/movies', [MovieController::class, 'getMovies']);
 
 Route::get('/view', [MovieController::class, 'incrementView']);
-Route::post('/movie/insert', [MovieController::class, 'insert']);
+Route::post('/insert', [MovieController::class, 'insert']);
 
 //update device for new device or change device
 Route::get('/device', [UpdateUserDevice::class, 'updateDevice']);
@@ -77,7 +78,8 @@ Route::get('/ppv-price', [PPVPriceCalculate::class, 'getPPVPrice']);
 
 Route::get('/search', [MovieSearchController::class, 'search']);
 
-Route::post('/decrypt', [DecryptionController::class, 'decryptMessage']);
+Route::post('/decrypt', [LinkController::class, 'decryptMessage']);
+Route::get('/encrypt', [LinkController::class, 'encryptMessage']);
 
 Route::get('/alsolike', [AlsoLikeController::class, 'alsoLike']);
 
@@ -86,7 +88,7 @@ Route::get('/price', [PlanPriceController::class, 'getPlanPrice']);
 Route::post('/temp-payment', [TempPayment::class, 'storeTempPayment']);
 
 Route::get('/episodes', [EpisodeController::class, 'getBySeason']);
-Route::post('/episode/insert', [EpisodeController::class, 'insert']);
+Route::post('/episode-insert', [EpisodeController::class, 'insert']);
 
 Route::get('/update-dob', [UserController::class, 'updateDob']);
 

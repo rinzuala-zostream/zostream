@@ -224,53 +224,60 @@ class MovieController extends Controller
             return response()->json(['status' => 'error', 'message' => 'Invalid API key']);
         }
 
-        // Validate request data
-        $validated = $request->validate([
-            'title' => 'required|string|max:255',
-            'description' => 'nullable|string',
-            'genre' => 'nullable|string',
-            'director' => 'nullable|string',
-            'duration' => 'nullable|string',
-            'release_on' => 'nullable|string',
-            'cover_img' => 'nullable|string',
-            'poster' => 'nullable|string',
-            'url' => 'nullable|string',
-            'dash_url' => 'nullable|string',
-            'hls_url' => 'nullable|string',
-            'trailer' => 'nullable|string',
-            'subtitle' => 'nullable|string',
-            'token' => 'nullable|string',
-            'views' => 'nullable|int',
+        try {
+            $validated = $request->validate([
+                'title' => 'required|string|max:255',
+                'description' => 'nullable|string',
+                'genre' => 'nullable|string',
+                'director' => 'nullable|string',
+                'duration' => 'nullable|string',
+                'release_on' => 'nullable|string',
+                'cover_img' => 'nullable|string',
+                'poster' => 'nullable|string',
+                'url' => 'nullable|string',
+                'dash_url' => 'nullable|string',
+                'hls_url' => 'nullable|string',
+                'trailer' => 'nullable|string',
+                'subtitle' => 'nullable|string',
+                'token' => 'nullable|string',
+                'views' => 'nullable|int',
 
-            // Boolean flags
-            'isProtected' => 'boolean',
-            'isBollywood' => 'boolean',
-            'isCompleted' => 'boolean',
-            'isDocumentary' => 'boolean',
-            'isAgeRestricted' => 'boolean',
-            'isDubbed' => 'boolean',
-            'isEnable' => 'boolean',
-            'isHollywood' => 'boolean',
-            'isKorean' => 'boolean',
-            'isMizo' => 'boolean',
-            'isPayPerView' => 'boolean',
-            'isPremium' => 'boolean',
-            'isSeason' => 'boolean',
-            'isSubtitle' => 'boolean',
-        ]);
+                // Boolean flags
+                'isProtected' => 'boolean',
+                'isBollywood' => 'boolean',
+                'isCompleted' => 'boolean',
+                'isDocumentary' => 'boolean',
+                'isAgeRestricted' => 'boolean',
+                'isDubbed' => 'boolean',
+                'isEnable' => 'boolean',
+                'isHollywood' => 'boolean',
+                'isKorean' => 'boolean',
+                'isMizo' => 'boolean',
+                'isPayPerView' => 'boolean',
+                'isPremium' => 'boolean',
+                'isSeason' => 'boolean',
+                'isSubtitle' => 'boolean',
+            ]);
 
-        $validated['id'] = Str::random(10); // e.g., "A8dF02gLp9"
+            $validated['id'] = Str::random(10); // e.g., "A8dF02gLp9"
 
-        // Add create_date manually if you want
-        $validated['create_date'] = now()->format('F j, Y');
-        $validated['release_on'] = Carbon::parse($validated['release_on'])->format('F j, Y');
+            // Add create_date manually if you want
+            $validated['create_date'] = now()->format('F j, Y');
+            $validated['release_on'] = Carbon::parse($validated['release_on'])->format('F j, Y');
 
-        $movie = MovieModel::create($validated);
+            $movie = MovieModel::create($validated);
 
-        return response()->json([
-            'status' => 'success',
-            'message' => 'Movie inserted successfully',
-            'movie' => $movie
-        ]);
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Movie inserted successfully',
+                'movie' => $movie
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Insert failed.',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
     }
 }

@@ -28,7 +28,7 @@ class TempPayment extends Controller
             'user_mail' => 'nullable|string',
             'amount' => 'required|numeric',
             'transaction_id' => 'required|string',
-            'device_type' => 'nullable|string|',
+            'device_type' => 'required|string|',
             'payment_type' => 'nullable|string|in:Subscription,PPV',
             'subscription_period' => 'required|integer|min:1',
             'pg' => 'required|string',
