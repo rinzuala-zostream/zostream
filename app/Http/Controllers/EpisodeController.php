@@ -6,6 +6,7 @@ use App\Models\EpisodeModel;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Http\Controllers\Controller;
+use Str;
 
 class EpisodeController extends Controller
 {
@@ -46,5 +47,49 @@ class EpisodeController extends Controller
         }
 
         return response()->json($episodes);
+    }
+
+    public function insert(Request $request)
+    {
+        $apiKey = $request->header('X-Api-Key');
+
+        if ($apiKey !== $this->validApiKey) {
+            return response()->json(['status' => 'error', 'message' => 'Invalid API key']);
+        }
+
+        // Validate incoming request data
+        $validated = $request->validate([
+            'title' => 'required|string|max:255',
+            'desc' => 'nullable|string',
+            'txt' => 'nullable|string',
+            'season_id' => 'required|string',
+            'img' => 'nullable|string',
+            'url' => 'nullable|string',
+            'dash_url' => 'nullable|string',
+            'hls_url' => 'nullable|string',
+            'token' => 'nullable|string',
+            'ppv_amount' => 'nullable|string',
+
+            // Boolean flags
+            'isProtected' => 'boolean',
+            'isPPV' => 'boolean',
+            'isPremium' => 'boolean',
+            'isEnable' => 'boolean',
+        ]);
+
+        // Generate a unique ID
+        $validated['id'] = Str::uuid()->toString(); // or Str::random(10)
+
+        // Set default views to 0
+        $validated['views'] = 0;
+
+        // Create the episode
+        $episode = EpisodeModel::create($validated);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Episode inserted successfully',
+            'episode' => $episode
+        ]);
     }
 }
