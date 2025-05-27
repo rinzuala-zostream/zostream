@@ -280,4 +280,105 @@ class MovieController extends Controller
             ], 500);
         }
     }
+
+    public function update(Request $request, $id)
+    {
+        $apiKey = $request->header('X-Api-Key');
+
+        if ($apiKey !== $this->validApiKey) {
+            return response()->json(['status' => 'error', 'message' => 'Invalid API key']);
+        }
+
+        $movie = MovieModel::where('id', $id)->first();
+
+        if (!$movie) {
+            return response()->json(['status' => 'error', 'message' => 'Movie not found'], 404);
+        }
+
+        try {
+            $validated = $request->validate([
+                'title' => 'nullable|string|max:255',
+                'description' => 'nullable|string',
+                'genre' => 'nullable|string',
+                'director' => 'nullable|string',
+                'duration' => 'nullable|string',
+                'release_on' => 'nullable|string',
+                'cover_img' => 'nullable|string',
+                'poster' => 'nullable|string',
+                'url' => 'nullable|string',
+                'dash_url' => 'nullable|string',
+                'hls_url' => 'nullable|string',
+                'trailer' => 'nullable|string',
+                'subtitle' => 'nullable|string',
+                'token' => 'nullable|string',
+                'views' => 'nullable|int',
+
+                // Boolean flags
+                'isProtected' => 'boolean',
+                'isBollywood' => 'boolean',
+                'isCompleted' => 'boolean',
+                'isDocumentary' => 'boolean',
+                'isAgeRestricted' => 'boolean',
+                'isDubbed' => 'boolean',
+                'isEnable' => 'boolean',
+                'isHollywood' => 'boolean',
+                'isKorean' => 'boolean',
+                'isMizo' => 'boolean',
+                'isPayPerView' => 'boolean',
+                'isPremium' => 'boolean',
+                'isSeason' => 'boolean',
+                'isSubtitle' => 'boolean',
+            ]);
+
+            if (isset($validated['release_on'])) {
+                $validated['release_on'] = Carbon::parse($validated['release_on'])->format('F j, Y');
+            }
+
+            $movie->update($validated);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Movie updated successfully',
+                'movie' => $movie
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Update failed',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function destroy(Request $request, $id)
+    {
+        $apiKey = $request->header('X-Api-Key');
+
+        if ($apiKey !== $this->validApiKey) {
+            return response()->json(['status' => 'error', 'message' => 'Invalid API key']);
+        }
+
+        $movie = MovieModel::where('id', $id)->first();
+
+        if (!$movie) {
+            return response()->json(['status' => 'error', 'message' => 'Movie not found'], 404);
+        }
+
+        try {
+            $movie->delete();
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Movie deleted successfully',
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Delete failed',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
 }

@@ -55,7 +55,8 @@ Route::get('/add-subscription', [SubscriptionController::class, 'addSubscription
 Route::get('/subscription-history', [SubscriptionController::class, 'getHistory']);
 
 Route::get('/movies', [MovieController::class, 'getMovies']);
-
+Route::put('/movies/{id}', [MovieController::class, 'update']);
+Route::delete('/movies/{id}', [MovieController::class, 'destroy']);
 Route::get('/view', [MovieController::class, 'incrementView']);
 Route::post('/insert', [MovieController::class, 'insert']);
 
@@ -89,6 +90,9 @@ Route::post('/temp-payment', [TempPayment::class, 'storeTempPayment']);
 
 Route::get('/episodes', [EpisodeController::class, 'getBySeason']);
 Route::post('/episode-insert', [EpisodeController::class, 'insert']);
+Route::put('/episode/{id}', [EpisodeController::class, 'update']);
+Route::delete('/episode/{id}', [EpisodeController::class, 'destroy']);
+
 
 Route::get('/update-dob', [UserController::class, 'updateDob']);
 

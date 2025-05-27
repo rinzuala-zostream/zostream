@@ -92,4 +92,67 @@ class EpisodeController extends Controller
             'episode' => $episode
         ]);
     }
+
+    public function update(Request $request, $id)
+    {
+        $apiKey = $request->header('X-Api-Key');
+
+        if ($apiKey !== $this->validApiKey) {
+            return response()->json(['status' => 'error', 'message' => 'Invalid API key'], 401);
+        }
+
+        $episode = EpisodeModel::where('id', $id)->first();
+
+        if (!$episode) {
+            return response()->json(['status' => 'error', 'message' => 'Episode not found'], 404);
+        }
+
+        // Validate the incoming request
+        $validated = $request->validate([
+            'title' => 'sometimes|required|string|max:255',
+            'desc' => 'nullable|string',
+            'txt' => 'nullable|string',
+            'season_id' => 'sometimes|required|string',
+            'img' => 'nullable|string',
+            'url' => 'nullable|string',
+            'dash_url' => 'nullable|string',
+            'hls_url' => 'nullable|string',
+            'token' => 'nullable|string',
+            'ppv_amount' => 'nullable|string',
+            'isProtected' => 'boolean',
+            'isPPV' => 'boolean',
+            'isPremium' => 'boolean',
+            'isEnable' => 'boolean',
+        ]);
+
+        $episode->update($validated);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Episode updated successfully',
+            'episode' => $episode
+        ]);
+    }
+
+    public function destroy(Request $request, $id)
+    {
+        $apiKey = $request->header('X-Api-Key');
+
+        if ($apiKey !== $this->validApiKey) {
+            return response()->json(['status' => 'error', 'message' => 'Invalid API key'], 401);
+        }
+
+        $episode = EpisodeModel::where('id', $id)->first();
+
+        if (!$episode) {
+            return response()->json(['status' => 'error', 'message' => 'Episode not found'], 404);
+        }
+
+        $episode->delete();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Episode deleted successfully'
+        ]);
+    }
 }
