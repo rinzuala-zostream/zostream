@@ -96,6 +96,7 @@ Route::get('/episodes', [EpisodeController::class, 'getBySeason']);
 Route::post('/episode-insert', [EpisodeController::class, 'insert']);
 Route::put('/episode/{id}', [EpisodeController::class, 'update']);
 Route::delete('/episode/{id}', [EpisodeController::class, 'destroy']);
+Route::get('/episode/{id}', [EpisodeController::class, 'getById']);
 
 
 Route::get('/update-dob', [UserController::class, 'updateDob']);

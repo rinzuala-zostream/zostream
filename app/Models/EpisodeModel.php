@@ -33,6 +33,7 @@ class EpisodeModel extends Model
         'token',
         'status',
         'create_date',
+        'movie_id',
     ];
 
     protected $casts = [

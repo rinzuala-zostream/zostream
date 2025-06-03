@@ -278,14 +278,18 @@ class MovieController extends Controller
 
             $movie = MovieModel::create($validated);
 
-            $fakeRequest = new Request([
-                'title' => $movie->title,
-                'body' => 'Streaming on Zo Stream',
-                'image' => $movie->cover_img ?? '',
-                'key' => $movie->id ?? '',
-            ]);
+            if (($movie->status ?? '') === 'Published') {
 
-            //$this->fCMNotificationController->send($fakeRequest);
+                $fakeRequest = new Request([
+                    'title' => $movie->title,
+                    'body' => 'Streaming on Zo Stream',
+                    'image' => $movie->cover_img ?? '',
+                    'key' => $movie->id ?? '',
+                ]);
+
+                $this->fCMNotificationController->send($fakeRequest);
+
+            }
 
             return response()->json([
                 'status' => 'success',

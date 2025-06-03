@@ -38,6 +38,7 @@ class EpisodeController extends Controller
         }
 
         $episodes = EpisodeModel::where('season_id', $seasonId)
+            ->where('status', 'Published')
             ->where('isEnable', 1)
             ->orderByRaw("CAST(SUBSTRING_INDEX(title, 'Episode ', -1) AS UNSIGNED)")
             ->get();
@@ -52,72 +53,113 @@ class EpisodeController extends Controller
         return response()->json($episodes);
     }
 
+    public function getById(Request $request, $id)
+    {
+        $apiKey = $request->header('X-Api-Key');
+
+        if ($apiKey !== $this->validApiKey) {
+            return response()->json(['status' => 'error', 'message' => 'Invalid API key'], 401);
+        }
+
+        $episode = EpisodeModel::where('id', $id)->first();
+
+        if (!$episode) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Episode not found'
+            ], 404);
+        }
+
+        return response()->json(
+            $episode
+        );
+    }
+
     public function insert(Request $request)
     {
         $apiKey = $request->header('X-Api-Key');
 
         if ($apiKey !== $this->validApiKey) {
-            return response()->json(['status' => 'error', 'message' => 'Invalid API key']);
+            return response()->json(['status' => 'error', 'message' => 'Invalid API key'], 401);
         }
 
-        // Validate incoming request data
-        $validated = $request->validate([
-            'title' => 'required|string|max:255',
-            'desc' => 'nullable|string',
-            'txt' => 'nullable|string',
-            'season_id' => 'required|string',
-            'img' => 'nullable|string',
-            'url' => 'nullable|string',
-            'dash_url' => 'nullable|string',
-            'hls_url' => 'nullable|string',
-            'token' => 'nullable|string',
-            'ppv_amount' => 'nullable|string',
-            'status' => 'nullable|string|in:Published,Scheduled,Draft',
-            'create_date' => 'nullable|string',
-            'isProtected' => 'boolean',
-            'isPPV' => 'boolean',
-            'isPremium' => 'boolean',
-            'isEnable' => 'boolean',
-        ]);
-
-        // Format create_date to "June 5, 2025" format
         try {
+            // Validate incoming request data
+            $validated = $request->validate([
+                'title' => 'required|string|max:255',
+                'desc' => 'nullable|string',
+                'txt' => 'nullable|string',
+                'season_id' => 'required|string',
+                'img' => 'nullable|string',
+                'url' => 'nullable|string',
+                'dash_url' => 'nullable|string',
+                'hls_url' => 'nullable|string',
+                'token' => 'nullable|string',
+                'ppv_amount' => 'nullable|string',
+                'status' => 'nullable|string|in:Published,Scheduled,Draft',
+                'create_date' => 'nullable|string',
+                'isProtected' => 'boolean',
+                'isPPV' => 'boolean',
+                'isPremium' => 'boolean',
+                'isEnable' => 'boolean',
+                'movie_id' => 'nullable|int',
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
+        }
+
+        try {
+            // Format create_date to "June 5, 2025" format
             $validated['create_date'] = !empty($validated['create_date'])
                 ? (new DateTime($validated['create_date']))->format('F j, Y')
                 : now()->format('F j, Y');
         } catch (\Exception $e) {
-            return response()->json(['status' => 'error', 'message' => 'Invalid date format.']);
+            return response()->json(['status' => 'error', 'message' => 'Invalid date format.'], 400);
         }
 
-        // Add required fields
-        $validated['id'] = Str::uuid()->toString();  // safer than Str::random(10)
-        $validated['views'] = 0;
+        try {
+            // Add required fields
+            $validated['id'] = Str::random(10);
+            $validated['views'] = 0;
 
-        // Create the episode
-        $episode = EpisodeModel::create($validated);
+            // Create the episode
+            $episode = EpisodeModel::create($validated);
 
-        // Eager load movie if available via relationship (ensure you have a `movie()` relation in model)
-        $episode->load('movie');  // you must have `public function movie() { return $this->belongsTo(MovieModel::class, 'movie_id'); }`
+            // Eager load movie if available via relationship
+            $episode->load('movie');
 
-        $movieTitle = $episode->movie->title ?? 'Unknown Movie';
-        $movieImage = $episode->movie->cover_img ?? '';
+            // Only send notification if status is Published
+            if (($episode->status ?? '') === 'Published') {
+                $movieTitle = $episode->movie->title ?? 'Unknown Movie';
+                $movieImage = $episode->movie->cover_img ?? '';
 
-        // Prepare FCM notification
-        $fakeRequest = new Request([
-            'title' => "{$movieTitle} {$episode->txt}",
-            'body' => 'New episode streaming on Zo Stream',
-            'image' => $movieImage,
-            'key' => $episode->id ?? '',
-        ]);
+                // Prepare FCM notification
+                $fakeRequest = new Request([
+                    'title' => "{$movieTitle} {$episode->txt}",
+                    'body' => 'New episode streaming on Zo Stream',
+                    'image' => $movieImage,
+                    'key' => $episode->id ?? '',
+                ]);
 
-        // Send the notification
-        $this->fCMNotificationController->send($fakeRequest);
+                // Send the notification
+                $this->fCMNotificationController->send($fakeRequest);
+            }
 
-        return response()->json([
-            'status' => 'success',
-            'message' => 'Episode inserted successfully',
-            'episode' => $episode
-        ]);
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Episode inserted successfully',
+                'episode' => $episode
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to insert episode: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 
     public function update(Request $request, $id)
