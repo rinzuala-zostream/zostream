@@ -6,7 +6,10 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => ['https://play.zostream.in'],
+    'allowed_origins' => [
+        'https://play.zostream.in',
+        'https://admin.zostream.in', // ✅ Added another allowed domain
+    ],
 
     'allowed_origins_patterns' => [],
 
@@ -19,3 +22,4 @@ return [
     'supports_credentials' => true,
 
 ];
+
