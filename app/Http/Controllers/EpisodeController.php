@@ -136,13 +136,14 @@ class EpisodeController extends Controller
             if (($episode->status ?? '') === 'Published') {
                 $movieTitle = $episode->movie->title ?? 'Unknown Movie';
                 $movieImage = $episode->movie->cover_img ?? '';
+                $movieKey = $episode->movie->id ?? '';
 
                 // Prepare FCM notification
                 $fakeRequest = new Request([
                     'title' => "{$movieTitle} {$episode->txt}",
                     'body' => 'New episode streaming on Zo Stream',
                     'image' => $movieImage,
-                    'key' => $episode->id ?? '',
+                    'key' => $movieKey,
                 ]);
 
                 // Send the notification
