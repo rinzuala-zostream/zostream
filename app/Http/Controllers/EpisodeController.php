@@ -55,25 +55,37 @@ class EpisodeController extends Controller
 
     public function getById(Request $request, $id)
     {
-        $apiKey = $request->header('X-Api-Key');
+        try {
+            $apiKey = $request->header('X-Api-Key');
 
-        if ($apiKey !== $this->validApiKey) {
-            return response()->json(['status' => 'error', 'message' => 'Invalid API key'], 401);
-        }
+            if ($apiKey !== $this->validApiKey) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Invalid API key'
+                ], 401);
+            }
 
-        $episode = EpisodeModel::where('id', $id)->first();
+            $episode = EpisodeModel::where('id', $id)->first();
 
-        if (!$episode) {
+            if (!$episode) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Episode not found'
+                ], 404);
+            }
+
+            return response()->json([
+                'status' => 'success',
+                'episode' => $episode
+            ]);
+        } catch (\Exception $e) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Episode not found'
-            ], 404);
+                'message' => 'Something went wrong' . $e->getMessage(),
+            ], 500);
         }
-
-        return response()->json(
-            $episode
-        );
     }
+
 
     public function insert(Request $request)
     {
