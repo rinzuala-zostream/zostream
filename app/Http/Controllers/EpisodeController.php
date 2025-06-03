@@ -21,7 +21,6 @@ class EpisodeController extends Controller
     }
     public function getBySeason(Request $request)
     {
-        // Get API key from request headers
         $apiKey = $request->header('X-Api-Key');
 
         if ($apiKey !== $this->validApiKey) {
@@ -37,11 +36,17 @@ class EpisodeController extends Controller
             ], 400);
         }
 
-        $episodes = EpisodeModel::where('season_id', $seasonId)
-            ->where('status', 'Published')
-            ->where('isEnable', 1)
-            ->orderByRaw("CAST(SUBSTRING_INDEX(title, 'Episode ', -1) AS UNSIGNED)")
-            ->get();
+        // Get the is_enable query parameter, default is null
+        $isEnable = $request->query('is_enable', 'true'); // Default to 'true'
+
+
+        $query = EpisodeModel::where('season_id', $seasonId);
+
+        if ($isEnable === 'true') {
+            $query->where('status', 'Published')->where('isEnable', 1);
+        }
+
+        $episodes = $query->orderByRaw("CAST(SUBSTRING_INDEX(title, 'Episode ', -1) AS UNSIGNED)")->get();
 
         if ($episodes->isEmpty()) {
             return response()->json([
