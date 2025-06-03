@@ -62,6 +62,7 @@ class MovieModel extends Model
         'hls_url',
         'trailer',
         'views',
-        'token'
+        'token',
+        'status'
     ];
 }

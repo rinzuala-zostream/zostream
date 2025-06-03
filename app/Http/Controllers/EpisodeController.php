@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\EpisodeModel;
+use DateTime;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Http\Controllers\Controller;
@@ -69,6 +70,8 @@ class EpisodeController extends Controller
             'hls_url' => 'nullable|string',
             'token' => 'nullable|string',
             'ppv_amount' => 'nullable|string',
+            'status' => 'nullable|string|in:Published,Scheduled,Draft',
+            'create_date' => 'nullable|string',
 
             // Boolean flags
             'isProtected' => 'boolean',
@@ -76,6 +79,10 @@ class EpisodeController extends Controller
             'isPremium' => 'boolean',
             'isEnable' => 'boolean',
         ]);
+
+        $validated['create_date'] = !empty($validated['create_date'])
+            ? (new DateTime($validated['create_date']))->format('F j, Y')
+            : now()->format('F j, Y');
 
         // Generate a unique ID
         $validated['id'] = Str::random(10); // or Str::random(10)
@@ -123,7 +130,13 @@ class EpisodeController extends Controller
             'isPPV' => 'boolean',
             'isPremium' => 'boolean',
             'isEnable' => 'boolean',
+            'status' => 'nullable|string|in:Published,Scheduled,Draft',
+            'create_date' => 'nullable|string',
         ]);
+
+        $validated['create_date'] = !empty($validated['create_date'])
+            ? (new DateTime($validated['create_date']))->format('F j, Y')
+            : now()->format('F j, Y');
 
         $episode->update($validated);
 

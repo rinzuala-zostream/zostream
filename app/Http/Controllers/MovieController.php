@@ -5,21 +5,23 @@ namespace App\Http\Controllers;
 use App\Models\EpisodeModel;
 use App\Models\MovieModel;
 use Carbon\Carbon;
+use DateTime;
 use Illuminate\Http\Request;
 use Str;
 
 class MovieController extends Controller
 {
     private $validApiKey;
+    private $fCMNotificationController;
 
-    public function __construct()
+    public function __construct(FCMNotificationController $fCMNotificationController)
     {
         $this->validApiKey = config('app.api_key');
+        $this->fCMNotificationController = $fCMNotificationController;
     }
 
     public function getMovies(Request $request)
     {
-
         $apiKey = $request->header('X-Api-Key');
 
         if ($apiKey !== $this->validApiKey) {
@@ -41,7 +43,9 @@ class MovieController extends Controller
         $ageRestriction = ($request->query('age_restriction') ?? 'false') === 'true' ? 1 : 0;
 
         if ($id) {
-            $movie = MovieModel::where('id', $id)->first();
+            $movie = MovieModel::where('id', $id)
+                ->where('status', 'Published')
+                ->first();
 
             if (!$movie) {
                 return response()->json(['status' => 'error', 'message' => 'Movie not found']);
@@ -78,7 +82,9 @@ class MovieController extends Controller
                 return response()->json(['status' => 'error', 'message' => 'Invalid category']);
             }
 
-            $query = MovieModel::query()->where('isEnable', 1);
+            $query = MovieModel::query()
+                ->where('isEnable', 1)
+                ->where('status', 'Published');
 
             if ($column === 'newrelease') {
                 $query->whereNotNull('release_on')
@@ -152,6 +158,7 @@ class MovieController extends Controller
                 $order = $clause['order'];
 
                 $query = MovieModel::whereRaw("isEnable = 1 AND $where")
+                    ->where('status', 'Published')
                     ->when(!$ageRestriction && strpos($where, 'isAgeRestricted') === false, function ($q) use ($ageRestriction) {
                         return $q->where('isAgeRestricted', $ageRestriction);
                     })
@@ -164,10 +171,9 @@ class MovieController extends Controller
                 }
             }
 
-            // Return the JSON response with actual data, and set proper response headers
             return response()->json(
                 $data
-            )->header('Content-Type', 'application/json'); // Ensure proper content type
+            )->header('Content-Type', 'application/json');
         }
     }
 
@@ -241,6 +247,8 @@ class MovieController extends Controller
                 'subtitle' => 'nullable|string',
                 'token' => 'nullable|string',
                 'views' => 'nullable|int',
+                'status' => 'nullable|string|in:Published,Draft,Scheduled',
+                'create_date' => 'nullable|string',
 
                 // Boolean flags
                 'isProtected' => 'boolean',
@@ -262,10 +270,22 @@ class MovieController extends Controller
             $validated['id'] = Str::random(10); // e.g., "A8dF02gLp9"
 
             // Add create_date manually if you want
-            $validated['create_date'] = now()->format('F j, Y');
+            $validated['create_date'] = !empty($validated['create_date'])
+                ? (new DateTime($validated['create_date']))->format('F j, Y')
+                : now()->format('F j, Y');
+
             $validated['release_on'] = Carbon::parse($validated['release_on'])->format('F j, Y');
 
             $movie = MovieModel::create($validated);
+
+            $fakeRequest = new Request([
+                'title' => $movie->title,
+                'body' => 'Streaming on Zo Stream',
+                'image' => $movie->cover_img ?? '',
+                'key' => $movie->id ?? '',
+            ]);
+
+            $this->fCMNotificationController->send($fakeRequest);
 
             return response()->json([
                 'status' => 'success',

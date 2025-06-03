@@ -31,13 +31,22 @@ class EpisodeModel extends Model
         'views',
         'isEnable',
         'token',
+        'status',
+        'create_date',
     ];
 
     protected $casts = [
         'isProtected' => 'boolean',
-        'isPPV'       => 'boolean',
-        'isPremium'   => 'boolean',
-        'isEnable'    => 'boolean',
-        'views'       => 'integer',
+        'isPPV' => 'boolean',
+        'isPremium' => 'boolean',
+        'isEnable' => 'boolean',
+        'views' => 'integer',
     ];
+
+    // app/Models/EpisodeModel.php
+
+    public function movie()
+    {
+        return $this->belongsTo(MovieModel::class, 'movie_id');
+    }
 }

@@ -9,6 +9,7 @@ use App\Http\Controllers\CalculatePlan;
 use App\Http\Controllers\CheckDeviceAvailable;
 use App\Http\Controllers\DecryptionController;
 use App\Http\Controllers\DetailsController;
+use App\Http\Controllers\FCMNotificationController;
 use App\Http\Controllers\LinkController;
 use App\Http\Controllers\MovieController;
 use App\Http\Controllers\MovieSearchController;
@@ -18,6 +19,7 @@ use App\Http\Controllers\PlanPriceController;
 use App\Http\Controllers\PPVPriceCalculate;
 use App\Http\Controllers\RegisterController;
 use App\Http\Controllers\RequestOTPController;
+use App\Http\Controllers\SearchController;
 use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\TempPayment;
 use App\Http\Controllers\UpdateUserDevice;
@@ -77,7 +79,9 @@ Route::get('/calculate', [CalculatePlan::class, 'calculate']);
 
 Route::get('/ppv-price', [PPVPriceCalculate::class, 'getPPVPrice']);
 
+//Search
 Route::get('/search', [MovieSearchController::class, 'search']);
+Route::get('/movies/search', [SearchController::class, 'searchMovies']);
 
 Route::post('/decrypt', [LinkController::class, 'decryptMessage']);
 Route::get('/encrypt', [LinkController::class, 'encryptMessage']);
@@ -113,7 +117,7 @@ Route::post('/cash-free-order', [CashFreeController::class, 'createOrder']);
 Route::get('/price-list', [PlanListController::class, 'getPriceList']);
 Route::get('/invoice/{num}', [SubscriptionController::class, 'generateInvoice']);
 
-
+Route::post('/send-fcm', [FCMNotificationController::class, 'send']);
 
 
 
