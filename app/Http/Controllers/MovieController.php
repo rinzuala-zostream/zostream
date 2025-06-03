@@ -285,7 +285,7 @@ class MovieController extends Controller
                 'key' => $movie->id ?? '',
             ]);
 
-            $this->fCMNotificationController->send($fakeRequest);
+            //$this->fCMNotificationController->send($fakeRequest);
 
             return response()->json([
                 'status' => 'success',

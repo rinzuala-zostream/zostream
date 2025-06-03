@@ -12,10 +12,12 @@ use Str;
 class EpisodeController extends Controller
 {
     private $validApiKey;
+    protected $fCMNotificationController;
 
-    public function __construct()
+    public function __construct(FCMNotificationController $fCMNotificationController)
     {
         $this->validApiKey = config('app.api_key');
+        $this->fCMNotificationController = $fCMNotificationController;
     }
     public function getBySeason(Request $request)
     {
@@ -72,26 +74,44 @@ class EpisodeController extends Controller
             'ppv_amount' => 'nullable|string',
             'status' => 'nullable|string|in:Published,Scheduled,Draft',
             'create_date' => 'nullable|string',
-
-            // Boolean flags
             'isProtected' => 'boolean',
             'isPPV' => 'boolean',
             'isPremium' => 'boolean',
             'isEnable' => 'boolean',
         ]);
 
-        $validated['create_date'] = !empty($validated['create_date'])
-            ? (new DateTime($validated['create_date']))->format('F j, Y')
-            : now()->format('F j, Y');
+        // Format create_date to "June 5, 2025" format
+        try {
+            $validated['create_date'] = !empty($validated['create_date'])
+                ? (new DateTime($validated['create_date']))->format('F j, Y')
+                : now()->format('F j, Y');
+        } catch (\Exception $e) {
+            return response()->json(['status' => 'error', 'message' => 'Invalid date format.']);
+        }
 
-        // Generate a unique ID
-        $validated['id'] = Str::random(10); // or Str::random(10)
-
-        // Set default views to 0
+        // Add required fields
+        $validated['id'] = Str::uuid()->toString();  // safer than Str::random(10)
         $validated['views'] = 0;
 
         // Create the episode
         $episode = EpisodeModel::create($validated);
+
+        // Eager load movie if available via relationship (ensure you have a `movie()` relation in model)
+        $episode->load('movie');  // you must have `public function movie() { return $this->belongsTo(MovieModel::class, 'movie_id'); }`
+
+        $movieTitle = $episode->movie->title ?? 'Unknown Movie';
+        $movieImage = $episode->movie->cover_img ?? '';
+
+        // Prepare FCM notification
+        $fakeRequest = new Request([
+            'title' => "{$movieTitle} {$episode->txt}",
+            'body' => 'New episode streaming on Zo Stream',
+            'image' => $movieImage,
+            'key' => $episode->id ?? '',
+        ]);
+
+        // Send the notification
+        $this->fCMNotificationController->send($fakeRequest);
 
         return response()->json([
             'status' => 'success',

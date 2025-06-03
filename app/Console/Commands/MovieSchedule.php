@@ -74,7 +74,7 @@ class MovieSchedule extends Command
 
                 $this->sendNotification(
                     title: "{$movieTitle} {$episode->txt}",
-                    body: 'New episode streaming on Zo Stream!',
+                    body: 'New episode streaming on Zo Stream',
                     image: $movieImage,
                     key: $movieKey
                 );
