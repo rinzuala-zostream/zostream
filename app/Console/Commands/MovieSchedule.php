@@ -74,7 +74,7 @@ class MovieSchedule extends Command
 
                 $this->sendNotification(
                     title: "{$movieTitle} {$episode->txt}",
-                    body: 'Test episode streaming on Zo Stream',
+                    body: 'New episode streaming on Zo Stream',
                     image: $movieImage,
                     key: $movieKey
                 );
@@ -92,6 +92,6 @@ class MovieSchedule extends Command
         ]);
 
         $this->fCMNotificationController->send($fakeRequest);
-        $this->info("Notification sent: {$title}");
+        $this->info("Notification sent: {$title}"); 
     }
 }
