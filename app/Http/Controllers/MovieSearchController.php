@@ -48,7 +48,7 @@ class MovieSearchController extends Controller
         }
 
         // Apply isEnable only if not requesting all
-        if (!$isEnableRequest) {
+        if ($isEnableRequest === 0) {
             $moviesQuery->where('isEnable', 1);
         }
 
