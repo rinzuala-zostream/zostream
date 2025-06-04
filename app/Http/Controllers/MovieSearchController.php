@@ -22,8 +22,8 @@ class MovieSearchController extends Controller
         }
 
         $query = strtolower(trim(preg_replace('/\s+/', ' ', $request->query('q', ''))));
-        $ageRestriction = $request->query('age_restriction') === 'true' ? 1 : 0;
-        $isEnableRequest = $request->query('is_enable', 'false') === 'true';
+        $ageRestriction = $request->query('age_restriction') === 'false' ? 1 : 0;
+        $isEnableRequest = $request->query('is_enable', 'true') ? 1 : 0;
 
         if (empty($query)) {
             return response()->json(['error' => 'Search query is required.'], 400);
@@ -33,23 +33,18 @@ class MovieSearchController extends Controller
         $moviesQuery = MovieModel::query();
 
         // Apply "status = Published" only if is_enable is not true
-        if (!$isEnableRequest) {
-            $moviesQuery->where('status', 'Published');
+        if ($isEnableRequest === 1 || $isEnableRequest === true) {
+            $moviesQuery->where('status', 'Published')->where('isEnable', 1);
         }
 
         $moviesQuery->where(function ($q) use ($query) {
             $q->whereRaw('LOWER(title) LIKE ?', ['%' . $query . '%'])
-              ->orWhereRaw('LOWER(genre) LIKE ?', ['%' . $query . '%']);
+                ->orWhereRaw('LOWER(genre) LIKE ?', ['%' . $query . '%']);
         });
 
         // Age restriction
-        if ($ageRestriction === 0) {
+        if ($ageRestriction === 0 || $ageRestriction === false) {
             $moviesQuery->where('isAgeRestricted', 0);
-        }
-
-        // Apply isEnable only if not requesting all
-        if (!$isEnableRequest) {
-            $moviesQuery->where('isEnable', 1);
         }
 
         $movies = $moviesQuery->limit(50)->get()->toArray();
@@ -79,17 +74,25 @@ class MovieSearchController extends Controller
             $aScore = 0;
             $bScore = 0;
 
-            if ($aTitle === $query) $aScore += 10;
-            if ($bTitle === $query) $bScore += 10;
+            if ($aTitle === $query)
+                $aScore += 10;
+            if ($bTitle === $query)
+                $bScore += 10;
 
-            if (str_starts_with($aTitle, $query)) $aScore += 5;
-            if (str_starts_with($bTitle, $query)) $bScore += 5;
+            if (str_starts_with($aTitle, $query))
+                $aScore += 5;
+            if (str_starts_with($bTitle, $query))
+                $bScore += 5;
 
-            if (strpos($aTitle, $query) !== false) $aScore += 2;
-            if (strpos($bTitle, $query) !== false) $bScore += 2;
+            if (strpos($aTitle, $query) !== false)
+                $aScore += 2;
+            if (strpos($bTitle, $query) !== false)
+                $bScore += 2;
 
-            if (preg_match('/\d+/', $aTitle)) $aScore += 1;
-            if (preg_match('/\d+/', $bTitle)) $bScore += 1;
+            if (preg_match('/\d+/', $aTitle))
+                $aScore += 1;
+            if (preg_match('/\d+/', $bTitle))
+                $bScore += 1;
 
             return $bScore <=> $aScore;
         });
