@@ -42,9 +42,20 @@ class MovieController extends Controller
         $categoryType = strtolower($request->query('category_type') ?? '');
         $ageRestriction = ($request->query('age_restriction') ?? 'false') === 'true' ? 1 : 0;
 
+        $isEnableRequest = filter_var($request->query('is_enable', true), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+        $isEnableRequest = $isEnableRequest === null ? true : $isEnableRequest;
+
+
+
         if ($id) {
-            $movie = MovieModel::where('id', $id)
-                ->where('status', 'Published')
+
+            if ($isEnableRequest) {
+                $query = MovieModel::where('status', 'Published')->where('isEnable', 1);
+            } else {
+                $query = MovieModel::query();
+            }
+
+            $movie = $query->where('id', $id)
                 ->first();
 
             if (!$movie) {

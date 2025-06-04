@@ -10,7 +10,6 @@ class MovieModel extends Model
 
     protected $primaryKey = 'num'; // Since the primary key is 'num', not 'id'
     public $incrementing = true;   // true if it's AUTO_INCREMENT
-    protected $keyType = 'int';    // integer primary key
 
     public $timestamps = false;    // 'create_date' is not standard 'created_at'
 
