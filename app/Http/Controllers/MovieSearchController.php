@@ -27,12 +27,16 @@ class MovieSearchController extends Controller
         $ageRestrictionRaw = $request->query('age_restriction');
         $isEnableRaw = $request->query('is_enable');
 
-        $ageRestriction = filter_var($ageRestrictionRaw, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
-        $isEnableRequest = filter_var($isEnableRaw, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+        if (request()->has('is_enable')) {
+            $ageRestriction = filter_var($ageRestrictionRaw, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+            $isEnableRequest = filter_var($isEnableRaw, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
 
-        // Set defaults
-        $ageRestriction = is_null($ageRestriction) ? false : $ageRestriction;
-        $isEnableRequest = is_null($isEnableRequest) ? true : $isEnableRequest;
+            $isEnableRequest = $isEnableRequest === true || $isEnableRequest === 'true' ? true : false;
+            $ageRestriction = $ageRestriction === true || $ageRestriction === 'false' ? false : true; // Default to false if not specified
+        } else {
+            $isEnableRequest = true; // Default to true if not specified
+            $ageRestriction = false; // Default to false if not specified
+        }
 
         if (empty($query)) {
             return response()->json(['error' => 'Search query is required.'], 400);
