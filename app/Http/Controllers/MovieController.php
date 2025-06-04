@@ -347,6 +347,9 @@ class MovieController extends Controller
                 'subtitle' => 'nullable|string',
                 'token' => 'nullable|string',
                 'views' => 'nullable|int',
+                'status' => 'nullable|string|in:Published,Draft,Scheduled',
+                'create_date' => 'nullable|string',
+                
 
                 // Boolean flags
                 'isProtected' => 'boolean',
