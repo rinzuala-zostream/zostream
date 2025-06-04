@@ -62,6 +62,7 @@ class MovieModel extends Model
         'trailer',
         'views',
         'token',
-        'status'
+        'status',
+        'ppv_amount',
     ];
 }
