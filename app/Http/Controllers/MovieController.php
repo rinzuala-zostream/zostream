@@ -260,6 +260,7 @@ class MovieController extends Controller
                 'views' => 'nullable|int',
                 'status' => 'nullable|string|in:Published,Draft,Scheduled',
                 'create_date' => 'nullable|string',
+                'ppv_amount' => 'nullable|string',
 
                 // Boolean flags
                 'isProtected' => 'boolean',
@@ -349,7 +350,8 @@ class MovieController extends Controller
                 'views' => 'nullable|int',
                 'status' => 'nullable|string|in:Published,Draft,Scheduled',
                 'create_date' => 'nullable|string',
-                
+                'ppv_amount' => 'nullable|string',
+
 
                 // Boolean flags
                 'isProtected' => 'boolean',
