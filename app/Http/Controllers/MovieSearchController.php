@@ -22,8 +22,17 @@ class MovieSearchController extends Controller
         }
 
         $query = strtolower(trim(preg_replace('/\s+/', ' ', $request->query('q', ''))));
-        $ageRestriction = $request->query('age_restriction') === 'false' ? 1 : 0; // Default to 'false'
-        $isEnableRequest = $request->query('is_enable') === 'true' ? 1 : 0; // Default to 'false'
+
+        // Normalize booleans
+        $ageRestrictionRaw = $request->query('age_restriction');
+        $isEnableRaw = $request->query('is_enable');
+
+        $ageRestriction = filter_var($ageRestrictionRaw, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+        $isEnableRequest = filter_var($isEnableRaw, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+
+        // Default to true if null (parameter missing or invalid)
+        $ageRestriction = is_null($ageRestriction) ? true : $ageRestriction;
+        $isEnableRequest = is_null($isEnableRequest) ? false : $isEnableRequest;
 
         if (empty($query)) {
             return response()->json(['error' => 'Search query is required.'], 400);
@@ -32,18 +41,18 @@ class MovieSearchController extends Controller
         // Build query
         $moviesQuery = MovieModel::query();
 
-        // Apply "status = Published" only if is_enable is not true
-        if ($isEnableRequest === 1) {
+        // Apply "status = Published" only if is_enable is true
+        if ($isEnableRequest) {
             $moviesQuery->where('status', 'Published')->where('isEnable', 1);
         }
 
         $moviesQuery->where(function ($q) use ($query) {
             $q->whereRaw('LOWER(title) LIKE ?', ['%' . $query . '%'])
-              ->orWhereRaw('LOWER(genre) LIKE ?', ['%' . $query . '%']);
+                ->orWhereRaw('LOWER(genre) LIKE ?', ['%' . $query . '%']);
         });
 
-        // Age restriction
-        if ($ageRestriction === 0 || $ageRestriction === 'false') {
+        // Apply age restriction if it's enabled (i.e., user wants non-age-restricted movies)
+        if ($ageRestriction) {
             $moviesQuery->where('isAgeRestricted', 0);
         }
 
@@ -63,6 +72,7 @@ class MovieSearchController extends Controller
         return response()->json($isEnableRequest ? $movies : array_slice($sortedEnabledMovies, 0, 20));
     }
 
+
     private function prioritizeSequels(array $movies, string $query): array
     {
         $query = strtolower($query);
@@ -74,17 +84,25 @@ class MovieSearchController extends Controller
             $aScore = 0;
             $bScore = 0;
 
-            if ($aTitle === $query) $aScore += 10;
-            if ($bTitle === $query) $bScore += 10;
+            if ($aTitle === $query)
+                $aScore += 10;
+            if ($bTitle === $query)
+                $bScore += 10;
 
-            if (str_starts_with($aTitle, $query)) $aScore += 5;
-            if (str_starts_with($bTitle, $query)) $bScore += 5;
+            if (str_starts_with($aTitle, $query))
+                $aScore += 5;
+            if (str_starts_with($bTitle, $query))
+                $bScore += 5;
 
-            if (strpos($aTitle, $query) !== false) $aScore += 2;
-            if (strpos($bTitle, $query) !== false) $bScore += 2;
+            if (strpos($aTitle, $query) !== false)
+                $aScore += 2;
+            if (strpos($bTitle, $query) !== false)
+                $bScore += 2;
 
-            if (preg_match('/\d+/', $aTitle)) $aScore += 1;
-            if (preg_match('/\d+/', $bTitle)) $bScore += 1;
+            if (preg_match('/\d+/', $aTitle))
+                $aScore += 1;
+            if (preg_match('/\d+/', $bTitle))
+                $bScore += 1;
 
             return $bScore <=> $aScore;
         });
