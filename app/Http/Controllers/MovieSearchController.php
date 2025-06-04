@@ -27,12 +27,14 @@ class MovieSearchController extends Controller
         $ageRestrictionRaw = $request->query('age_restriction');
         $isEnableRaw = $request->query('is_enable');
 
+        // Convert to boolean or null
         $ageRestriction = filter_var($ageRestrictionRaw, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
         $isEnableRequest = filter_var($isEnableRaw, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
 
-        // Default to true if null (parameter missing or invalid)
-        $ageRestriction = is_null($ageRestriction) ? false : $ageRestriction;
+        // Default to true if not present
         $isEnableRequest = is_null($isEnableRequest) ? true : $isEnableRequest;
+        // Default to true (restrict adult content) if not present
+        $ageRestriction = is_null($ageRestriction) ? true : $ageRestriction;
 
         if (empty($query)) {
             return response()->json(['error' => 'Search query is required.'], 400);
@@ -51,7 +53,7 @@ class MovieSearchController extends Controller
                 ->orWhereRaw('LOWER(genre) LIKE ?', ['%' . $query . '%']);
         });
 
-        // Apply age restriction if it's enabled (i.e., user wants non-age-restricted movies)
+        // Apply age restriction if enabled (true = exclude adult content)
         if ($ageRestriction) {
             $moviesQuery->where('isAgeRestricted', 0);
         }
@@ -71,7 +73,6 @@ class MovieSearchController extends Controller
         // Response
         return response()->json($isEnableRequest ? $movies : array_slice($sortedEnabledMovies, 0, 20));
     }
-
 
     private function prioritizeSequels(array $movies, string $query): array
     {
