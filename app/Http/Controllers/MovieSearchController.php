@@ -22,7 +22,7 @@ class MovieSearchController extends Controller
         }
 
         $query = strtolower(trim(preg_replace('/\s+/', ' ', $request->query('q', ''))));
-        $ageRestriction = $request->query('age_restriction', 'false') ? 1 : 0; // Default to 'false'
+        $ageRestriction = $request->query('age_restriction', 'false') === 'true' ? 1 : 0; // Default to 'false'
         $isEnableRequest = $request->query('is_enable', 'true');
 
         if (empty($query)) {
