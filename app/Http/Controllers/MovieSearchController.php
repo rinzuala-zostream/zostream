@@ -31,8 +31,8 @@ class MovieSearchController extends Controller
         $isEnableRequest = filter_var($isEnableRaw, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
 
         // Default to true if null (parameter missing or invalid)
-        $ageRestriction = is_null($ageRestriction) ? true : $ageRestriction;
-        $isEnableRequest = is_null($isEnableRequest) ? false : $isEnableRequest;
+        $ageRestriction = is_null($ageRestriction) ? false : $ageRestriction;
+        $isEnableRequest = is_null($isEnableRequest) ? true : $isEnableRequest;
 
         if (empty($query)) {
             return response()->json(['error' => 'Search query is required.'], 400);
