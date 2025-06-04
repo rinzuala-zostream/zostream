@@ -23,7 +23,7 @@ class MovieSearchController extends Controller
 
         $query = strtolower(trim(preg_replace('/\s+/', ' ', $request->query('q', ''))));
         $ageRestriction = $request->query('age_restriction') === 'true' ? 1 : 0;
-        $isEnableRequest = $request->query('is_enable', 'false') === 'true';
+        $isEnableRequest = $request->query('is_enable', 'true');
 
         if (empty($query)) {
             return response()->json(['error' => 'Search query is required.'], 400);
@@ -33,7 +33,7 @@ class MovieSearchController extends Controller
         $moviesQuery = MovieModel::query();
 
         // Apply "status = Published" only if is_enable is not true
-        if (!$isEnableRequest) {
+        if ($isEnableRequest === 'true') {
             $moviesQuery->where('status', 'Published');
         }
 
