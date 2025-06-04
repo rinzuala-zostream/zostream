@@ -33,7 +33,7 @@ class MovieSearchController extends Controller
         $moviesQuery = MovieModel::query();
 
         // Apply "status = Published" only if is_enable is not true
-        if ($isEnableRequest === 1 || $isEnableRequest === true) {
+        if ($isEnableRequest === 1 || $isEnableRequest === 'true') {
             $moviesQuery->where('status', 'Published')->where('isEnable', 1);
         }
 
@@ -43,7 +43,7 @@ class MovieSearchController extends Controller
         });
 
         // Age restriction
-        if ($ageRestriction === 0 || $ageRestriction === false) {
+        if ($ageRestriction === 0 || $ageRestriction === 'false') {
             $moviesQuery->where('isAgeRestricted', 0);
         }
 
