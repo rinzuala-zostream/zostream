@@ -37,7 +37,7 @@ class EpisodeController extends Controller
         }
 
         // Get the is_enable query parameter, default is null
-        $isEnable = $request->query('is_enable', 'true'); // Default to 'true'
+        $isEnable = $request->query('is_enable', 'true') ? 1 : 0; // Default to 'true'
 
 
         $query = EpisodeModel::where('season_id', $seasonId);
