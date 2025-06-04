@@ -45,7 +45,7 @@ class MovieSearchController extends Controller
                 ->orWhereRaw('LOWER(genre) LIKE ?', ['%' . $query . '%']);
         });
 
-        if ($ageRestriction) {
+        if (!$ageRestriction) {
             $moviesQuery->where('isAgeRestricted', 0);
         }
 
