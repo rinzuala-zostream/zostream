@@ -23,7 +23,7 @@ class MovieSearchController extends Controller
 
         $query = strtolower(trim(preg_replace('/\s+/', ' ', $request->query('q', ''))));
         $ageRestriction = $request->query('age_restriction') === 'true' ? 1 : 0;
-        $isEnableRequest = $request->query('is_enable', 'true') ? 1 : 0;
+        $isEnableRequest = $request->query('is_enable', 'true');
 
         if (empty($query)) {
             return response()->json(['error' => 'Search query is required.'], 400);
@@ -43,7 +43,7 @@ class MovieSearchController extends Controller
         });
 
         // Age restriction
-        if ($ageRestriction) {
+        if ($ageRestriction === 0) {
             $moviesQuery->where('isAgeRestricted', 0);
         }
 
