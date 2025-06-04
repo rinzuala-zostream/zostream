@@ -43,12 +43,12 @@ class MovieSearchController extends Controller
         });
 
         // Age restriction
-        if ($ageRestriction === 0) {
+        if ($ageRestriction === true) {
             $moviesQuery->where('isAgeRestricted', 0);
         }
 
         // Apply isEnable only if not requesting all
-        if ($isEnableRequest === 0) {
+        if ($isEnableRequest === true) {
             $moviesQuery->where('isEnable', 1);
         }
 
