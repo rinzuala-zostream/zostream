@@ -37,12 +37,12 @@ class EpisodeController extends Controller
         }
 
         // Get the is_enable query parameter, default is null
-        $isEnable = $request->query('is_enable', 'true') ? 1 : 0; // Default to 'true'
-
+        $isEnableRequest = filter_var($request->query('is_enable', true), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+        $isEnableRequest = $isEnableRequest === null ? true : $isEnableRequest;
 
         $query = EpisodeModel::where('season_id', $seasonId);
 
-        if ($isEnable === 'true') {
+        if ($isEnableRequest) {
             $query->where('status', 'Published')->where('isEnable', 1);
         }
 
