@@ -41,7 +41,6 @@ class EpisodeController extends Controller
 
 
         $query = EpisodeModel::where('season_id', $seasonId);
-    
 
         if ($isEnable === 'true') {
             $query->where('status', 'Published')->where('isEnable', 1);
