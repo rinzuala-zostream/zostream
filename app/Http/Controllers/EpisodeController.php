@@ -40,9 +40,8 @@ class EpisodeController extends Controller
         $isEnable = $request->query('is_enable', 'true') ? 1 : 0; // Default to 'true'
 
 
-        $query = EpisodeModel::where('season_id', $seasonId)
-        ->where('Published', 1)
-        ->where('isEnable', $isEnable);
+        $query = EpisodeModel::where('season_id', $seasonId);
+    
 
         if ($isEnable === 'true') {
             $query->where('status', 'Published')->where('isEnable', 1);
