@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class MovieModel extends Model
 {
-    protected $table = 'movie'; // adjust if your table name is different
+    protected $table = 'movie';    // adjust if your table name is different
 
     protected $primaryKey = 'num'; // Since the primary key is 'num', not 'id'
     public $incrementing = true;   // true if it's AUTO_INCREMENT
