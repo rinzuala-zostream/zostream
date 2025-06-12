@@ -281,17 +281,22 @@ class MovieController extends Controller
 
             $validated['id'] = Str::random(10); // e.g., "A8dF02gLp9"
 
-            // Add create_date manually if you want
+            // Format create_date
             $validated['create_date'] = !empty($validated['create_date'])
                 ? (new DateTime($validated['create_date']))->format('F j, Y')
                 : now()->format('F j, Y');
 
-            $validated['release_on'] = Carbon::parse($validated['release_on'])->format('F j, Y');
+            // Format release_on if present
+            if (!empty($validated['release_on'])) {
+                $validated['release_on'] = Carbon::parse($validated['release_on'])->format('F j, Y');
+            }
 
             $movie = MovieModel::create($validated);
 
-            if (($movie->status ?? '') === 'Published') {
+            // Check if notification should be sent
+            $shouldNotify = $request->boolean('notification', true); // Default false
 
+            if ($shouldNotify && ($movie->status ?? '') === 'Published') {
                 $fakeRequest = new Request([
                     'title' => $movie->title,
                     'body' => 'Streaming on Zo Stream',
@@ -300,7 +305,6 @@ class MovieController extends Controller
                 ]);
 
                 $this->fCMNotificationController->send($fakeRequest);
-
             }
 
             return response()->json([

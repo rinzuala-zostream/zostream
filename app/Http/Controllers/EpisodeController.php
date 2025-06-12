@@ -150,7 +150,9 @@ class EpisodeController extends Controller
             $episode->load('movie');
 
             // Only send notification if status is Published
-            if (($episode->status ?? '') === 'Published') {
+            $shouldNotify = $request->boolean('notification', true); // Default false
+
+            if ($shouldNotify && ($episode->status ?? '') === 'Published') {
                 $movieTitle = $episode->movie->title ?? 'Unknown Movie';
                 $movieImage = $episode->movie->cover_img ?? '';
                 $movieKey = $episode->movie->id ?? '';
