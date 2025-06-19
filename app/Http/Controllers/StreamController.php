@@ -10,7 +10,8 @@ class StreamController extends Controller
     {
 
         try {
-            $data = json_decode(file_get_contents("https://ipinfo.io/json"), true);
+            $ip = $request->query('ip', $request->ip());
+            $data = json_decode(file_get_contents("https://ipinfo.io/{$ip}/json"), true);
 
             return response()->json([
                     'status' => true,
