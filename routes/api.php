@@ -20,6 +20,7 @@ use App\Http\Controllers\PPVPriceCalculate;
 use App\Http\Controllers\RegisterController;
 use App\Http\Controllers\RequestOTPController;
 use App\Http\Controllers\SearchController;
+use App\Http\Controllers\StreamController;
 use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\TempPayment;
 use App\Http\Controllers\UpdateUserDevice;
@@ -119,6 +120,8 @@ Route::get('/price-list', [PlanListController::class, 'getPriceList']);
 Route::get('/invoice/{num}', [SubscriptionController::class, 'generateInvoice']);
 
 Route::post('/send-fcm', [FCMNotificationController::class, 'send']);
+
+Route::get('/stream', [StreamController::class, 'stream']);
 
 
 
