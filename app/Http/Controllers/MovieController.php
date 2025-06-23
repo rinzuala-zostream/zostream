@@ -249,6 +249,7 @@ class MovieController extends Controller
                 'director' => 'nullable|string',
                 'duration' => 'nullable|string',
                 'release_on' => 'nullable|string',
+                'title_img' => 'nullable|string',
                 'cover_img' => 'nullable|string',
                 'poster' => 'nullable|string',
                 'url' => 'nullable|string',

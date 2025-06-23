@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AdsController;
 use App\Http\Controllers\AlsoLikeController;
+use App\Http\Controllers\AxinomLicense;
 use App\Http\Controllers\BirthdayController;
 use App\Http\Controllers\CashFreeController;
 use App\Http\Controllers\EpisodeController;
@@ -124,4 +125,4 @@ Route::post('/send-fcm', [FCMNotificationController::class, 'send']);
 Route::get('/stream', [StreamController::class, 'stream']);
 
 
-
+Route::post('/axinom', [AxinomLicense::class, 'invokeWidevineCommonEncryption']);

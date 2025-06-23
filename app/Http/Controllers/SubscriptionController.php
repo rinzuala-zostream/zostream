@@ -7,23 +7,27 @@ use App\Models\SubscriptionModel;
 use App\Models\TVSubscriptionModel;
 use App\Models\BrowserSubscriptionModel;
 use App\Models\UserModel;
+use App\Models\ZonetModel;
+use App\Models\ZonetSubscriptionModel;
+use App\Models\ZonetUserModel;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use DateInterval;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\DB;
 use DateTime;
 
 class SubscriptionController extends Controller
 {
     private $validApiKey;
     protected $deviceManagementController;
+    protected $streamController;
 
-    public function __construct(DeviceManagementController $deviceManagementController)
+    public function __construct(DeviceManagementController $deviceManagementController, StreamController $streamController)
     {
         $this->validApiKey = config('app.api_key');
         $this->deviceManagementController = $deviceManagementController;
+        $this->streamController = $streamController;
     }
 
     public function getSubscription(Request $request)
@@ -36,10 +40,12 @@ class SubscriptionController extends Controller
 
             $request->validate([
                 'id' => 'required|string',
+                'ip' => 'required|string',
             ]);
 
             $uid = $request->query('id');
             $device = $request->query('device_type');
+            $ip = $request->query('ip');
 
             $subscriptions = [];
 
@@ -56,16 +62,56 @@ class SubscriptionController extends Controller
                     'device_type' => 'Browser',
                     'data' => BrowserSubscriptionModel::where('id', $uid)->first()
                 ];
-            } else {
-                $model = match ($device) {
-                    'Mobile' => SubscriptionModel::class,
-                    'TV' => TVSubscriptionModel::class,
-                    default => BrowserSubscriptionModel::class
-                };
                 $subscriptions[] = [
-                    'device_type' => $device,
-                    'data' => $model::where('id', $uid)->first()
+                    'device_type' => 'TV',
+                    'data' => ZonetUserModel::where('id', $uid)->first()
                 ];
+            } else {
+                if ($device === 'TV') {
+                    // Call route to check if IP is from ISP
+                    $ispRequest = new Request(['ip' => $ip]);
+                    $ispResponse = $this->streamController->stream($ispRequest);
+                    $responseData = $ispResponse->getData(true);
+
+                    $isFromISP = $responseData['is_from_isp'] ?? false;
+
+                    if ($isFromISP) {
+                        $zonetUser = ZonetUserModel::where('id', $uid)->first();
+
+                        if ($zonetUser) {
+                            $subscription = ZonetSubscriptionModel::where('user_num', $zonetUser->num)
+                                ->orderByDesc('id')
+                                ->first();
+
+                            $subscriptions[] = [
+                                'device_type' => 'TV',
+                                'data' => $subscription
+                            ];
+                        } else {
+                            $subscriptions[] = [
+                                'device_type' => 'TV',
+                                'data' => null
+                            ];
+                        }
+                    } else {
+                        $subscription = TVSubscriptionModel::where('id', $uid)->first();
+
+                        $subscriptions[] = [
+                            'device_type' => 'TV',
+                            'data' => $subscription
+                        ];
+                    }
+                } else {
+                    $model = match ($device) {
+                        'Mobile' => SubscriptionModel::class,
+                        default => BrowserSubscriptionModel::class
+                    };
+
+                    $subscriptions[] = [
+                        'device_type' => $device,
+                        'data' => $model::where('id', $uid)->first()
+                    ];
+                }
             }
 
             $results = [];
@@ -142,8 +188,6 @@ class SubscriptionController extends Controller
             return response()->json(['status' => 'error', 'message' => 'Internal Server Error: ' . $e->getMessage()], 500);
         }
     }
-
-
 
     public function addSubscription(Request $request)
     {
@@ -339,25 +383,25 @@ class SubscriptionController extends Controller
         $user = UserModel::where('mail', $subscription->mail)->first();
 
         $data = [
-            'hming'       => $user->name ?? 'N/A',
-            'mail'        => $user->mail ?? 'N/A',
-            'phone'       => $user->call ?? 'N/A',
-            'uid'         => $subscription->uid,
-            'plan'        => $subscription->plan,
-            'pid'         => $subscription->pid,
-            'amount'      => $subscription->amount,
-            'method'      => $subscription->method,
-            'plan_start'  => $subscription->plan_start,
-            'plan_end'    => $subscription->plan_end,
-            'invoice_no'  => 'INV-' . str_pad($subscription->id, 10, '0', STR_PAD_LEFT),
-            'created_at'  => $subscription->created_at,
-            'address'     => $user->address ?? 'Aizawl',
-            'total_pay'   => $subscription->total_pay,
-            'pg'          => $subscription->pg ?? 'N/A',
+            'hming' => $user->name ?? 'N/A',
+            'mail' => $user->mail ?? 'N/A',
+            'phone' => $user->call ?? 'N/A',
+            'uid' => $subscription->uid,
+            'plan' => $subscription->plan,
+            'pid' => $subscription->pid,
+            'amount' => $subscription->amount,
+            'method' => $subscription->method,
+            'plan_start' => $subscription->plan_start,
+            'plan_end' => $subscription->plan_end,
+            'invoice_no' => 'INV-' . str_pad($subscription->id, 10, '0', STR_PAD_LEFT),
+            'created_at' => $subscription->created_at,
+            'address' => $user->address ?? 'Aizawl',
+            'total_pay' => $subscription->total_pay,
+            'pg' => $subscription->pg ?? 'N/A',
         ];
-    
+
         $pdf = Pdf::loadView('pdf.invoice', ['data' => (object) $data]);
-    
+
         return $pdf->download("invoice_{$data['uid']}_{$data['pid']}.pdf");
     }
 }

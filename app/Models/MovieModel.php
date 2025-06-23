@@ -28,10 +28,12 @@ class MovieModel extends Model
         'isPremium' => 'boolean',
         'isSeason' => 'boolean',
         'isSubtitle' => 'boolean',
+       
     ];
 
     protected $fillable = [
         'cover_img',
+        'title_img',
         'create_date',
         'description',
         'director',

@@ -65,6 +65,7 @@ class DetailsController extends Controller
             $subscriptionRequest = new Request([
                 'id' => $userId,
                 'device_type' => $deviceType,
+                'ip' => $request->query('ip')
             ]);
 
             $subscriptionRequest->headers->set('X-Api-Key', $apiKey);
