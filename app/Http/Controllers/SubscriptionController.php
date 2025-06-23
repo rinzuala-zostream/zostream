@@ -68,32 +68,42 @@ class SubscriptionController extends Controller
                 ];
             } else {
                 if ($device === 'TV') {
-                    // Call route to check if IP is from ISP
-                    $ispRequest = new Request(['ip' => $ip]);
-                    $ispResponse = $this->streamController->stream($ispRequest);
-                    $responseData = $ispResponse->getData(true);
+                    if ($ip) {
+                        // Call route to check if IP is from ISP
+                        $ispRequest = new Request(['ip' => $ip]);
+                        $ispResponse = $this->streamController->stream($ispRequest);
+                        $responseData = $ispResponse->getData(true);
 
-                    $isFromISP = $responseData['is_from_isp'] ?? false;
+                        $isFromISP = $responseData['is_from_isp'] ?? false;
 
-                    if ($isFromISP) {
-                        $zonetUser = ZonetUserModel::where('id', $uid)->first();
+                        if ($isFromISP) {
+                            $zonetUser = ZonetUserModel::where('id', $uid)->first();
 
-                        if ($zonetUser) {
-                            $subscription = ZonetSubscriptionModel::where('user_num', $zonetUser->num)
-                                ->orderByDesc('id')
-                                ->first();
+                            if ($zonetUser) {
+                                $subscription = ZonetSubscriptionModel::where('user_num', $zonetUser->num)
+                                    ->orderByDesc('id')
+                                    ->first();
+
+                                $subscriptions[] = [
+                                    'device_type' => 'TV',
+                                    'data' => $subscription
+                                ];
+                            } else {
+                                $subscriptions[] = [
+                                    'device_type' => 'TV',
+                                    'data' => null
+                                ];
+                            }
+                        } else {
+                            $subscription = TVSubscriptionModel::where('id', $uid)->first();
 
                             $subscriptions[] = [
                                 'device_type' => 'TV',
                                 'data' => $subscription
                             ];
-                        } else {
-                            $subscriptions[] = [
-                                'device_type' => 'TV',
-                                'data' => null
-                            ];
                         }
                     } else {
+                        // If ip is null, skip the ISP check and fetch the TV subscription
                         $subscription = TVSubscriptionModel::where('id', $uid)->first();
 
                         $subscriptions[] = [
