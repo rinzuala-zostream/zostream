@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
+use Firebase\JWT\JWT;
 use Illuminate\Support\Facades\Http;
 use Nette\Utils\Random;
 
@@ -24,16 +24,22 @@ class AxinomLicense extends Controller
 
         // Extract only key_id and key, and convert to hex
         $keys = collect($response['tracks'] ?? [])->map(function ($track) {
+            $keyId = bin2hex(base64_decode($track['key_id'] ?? '')); // Extract the key_id
+
             return [
                 'type' => $track['type'] ?? null,
-                'key_id' => bin2hex(base64_decode($track['key_id'] ?? '')),
+                'key_id' => $keyId,  // Use the extracted key_id
                 'key' => bin2hex(base64_decode($track['key'] ?? '')),
             ];
         });
 
+        // Generate JWT Token with dynamic keyId
+        $jwtToken = $this->generateJwtToken($keys);
+
         return response()->json([
             'status' => 'OK',
             'keys' => $keys,
+            'token' => $jwtToken, // Include the token in the response
         ]);
     }
 
@@ -81,5 +87,40 @@ class AxinomLicense extends Controller
         $decoded = json_decode(base64_decode($response->json('response')), true);
 
         return $decoded ?? ['error' => 'Invalid response from Axinom DRM'];
+    }
+
+    // Method to generate JWT Token
+    private function generateJwtToken($keys): string
+    {
+        $communicationKeyAsBase64 = "uoy1wOPkyPQznp7MIb8auiSoaeSbRn2ExzQdFZrsuPQ=";
+        $communicationKeyId = "c52ad793-022a-447f-8250-b2ba00568b80";
+
+        // Decode communication key from base64
+        $communicationKey = base64_decode($communicationKeyAsBase64);
+
+        // Extract the first keyId from the keys (you may want to adjust this if there are multiple keys)
+        $keyId = $keys[0]['key_id'] ?? null;
+
+        // Prepare the payload with the dynamic keyId
+        $payload = [
+            "version" => 1,
+            "com_key_id" => $communicationKeyId,
+            "message" => [
+                "type" => "entitlement_message",
+                "version" => 2,
+                "content_keys_source" => [
+                    "inline" => [
+                        [
+                            "id" => $keyId  // Use the dynamic keyId in the payload
+                        ]
+                    ]
+                ]
+            ]
+        ];
+
+        // Encode the JWT
+        $jwtToken = JWT::encode($payload, $communicationKey, 'HS256'); // Generate the JWT token
+
+        return $jwtToken; // Return the generated JWT token
     }
 }
