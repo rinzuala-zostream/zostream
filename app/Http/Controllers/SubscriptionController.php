@@ -40,7 +40,7 @@ class SubscriptionController extends Controller
 
             $request->validate([
                 'id' => 'required|string',
-                'ip' => 'required|string',
+                'ip' => 'nullable|string',
             ]);
 
             $uid = $request->query('id');
