@@ -127,3 +127,4 @@ Route::get('/stream', [StreamController::class, 'stream']);
 
 Route::post('/axinom', [AxinomLicense::class, 'invokeWidevineCommonEncryption']);
 
+Route::get('/generate-token', [MovieController::class, 'generateFromMpd']);
