@@ -4,9 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Models\EpisodeModel;
 use DateTime;
+use Firebase\JWT\JWT;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Http\Controllers\Controller;
+use SimpleXMLElement;
 use Str;
 
 class EpisodeController extends Controller
@@ -111,7 +113,6 @@ class EpisodeController extends Controller
                 'url' => 'nullable|string',
                 'dash_url' => 'nullable|string',
                 'hls_url' => 'nullable|string',
-                'token' => 'nullable|string',
                 'ppv_amount' => 'nullable|string',
                 'status' => 'nullable|string|in:Published,Scheduled,Draft',
                 'create_date' => 'nullable|string',
@@ -142,6 +143,13 @@ class EpisodeController extends Controller
             // Add required fields
             $validated['id'] = Str::random(10);
             $validated['views'] = 0;
+
+            if (!empty($validated['dash_url']) && !empty($validated['isProtected'])) {
+                $token = $this->generateFromMpd($validated['dash_url']);
+                if ($token) {
+                    $validated['token'] = $token;
+                }
+            }
 
             // Create the episode
             $episode = EpisodeModel::create($validated);
@@ -206,7 +214,6 @@ class EpisodeController extends Controller
             'url' => 'nullable|string',
             'dash_url' => 'nullable|string',
             'hls_url' => 'nullable|string',
-            'token' => 'nullable|string',
             'ppv_amount' => 'nullable|string',
             'isProtected' => 'boolean',
             'isPPV' => 'boolean',
@@ -219,6 +226,13 @@ class EpisodeController extends Controller
         $validated['create_date'] = !empty($validated['create_date'])
             ? (new DateTime($validated['create_date']))->format('F j, Y')
             : now()->format('F j, Y');
+
+        if (!empty($validated['dash_url']) && !empty($validated['isProtected'])) {
+            $token = $this->generateFromMpd($validated['dash_url']);
+            if ($token) {
+                $validated['token'] = $token;
+            }
+        }
 
         $episode->update($validated);
 
@@ -249,5 +263,81 @@ class EpisodeController extends Controller
             'status' => 'success',
             'message' => 'Episode deleted successfully'
         ]);
+    }
+
+    private function generateFromMpd(string $encryptedMpd): ?string
+    {
+        if (!$encryptedMpd)
+            return null;
+
+        $shaKey = 'd4c6198dabafb243b0d043a3c33a9fe171f81605158c267c7dfe5f66df29559a';
+
+        if (!$encryptedMpd) {
+            return response()->json(['error' => 'Missing mpd parameter'], 400);
+        }
+
+        $decryptionKey = hash(
+            'sha256',
+            $shaKey,
+            true
+        );
+
+        // === Step 1: Decrypt MPD URL ===
+        $data = base64_decode($encryptedMpd);
+        $iv = substr($data, 0, 16);
+        $cipherText = substr($data, 16);
+
+        $decryptedMessage = openssl_decrypt(
+            $cipherText,
+            'aes-256-cbc',
+            $decryptionKey,
+            OPENSSL_RAW_DATA,
+            $iv
+        );
+
+        if (!$decryptedMessage) {
+            return response()->json(['error' => 'Failed to decrypt MPD URL'], 500);
+        }
+
+        // === Step 2: Fetch and parse MPD XML ===
+        $xmlString = @file_get_contents($decryptedMessage);
+        if (!$xmlString) {
+            return response()->json(['error' => 'Unable to load MPD'], 500);
+        }
+
+        $xml = new SimpleXMLElement($xmlString);
+        $namespaces = $xml->getNamespaces(true);
+
+        foreach ($xml->Period->AdaptationSet as $adaptationSet) {
+            foreach ($adaptationSet->ContentProtection as $cp) {
+                $attrs = $cp->attributes($namespaces['cenc'] ?? '');
+                if (isset($attrs['default_KID'])) {
+                    $uuid = str_replace(['-', '{', '}'], '', (string) $attrs['default_KID']);
+                    $keyHex = bin2hex(hex2bin($uuid));
+
+                    $communicationKeyAsBase64 = "uoy1wOPkyPQznp7MIb8auiSoaeSbRn2ExzQdFZrsuPQ=";
+                    $communicationKeyId = "c52ad793-022a-447f-8250-b2ba00568b80";
+                    $communicationKey = base64_decode($communicationKeyAsBase64);
+
+                    $payload = [
+                        "version" => 1,
+                        "com_key_id" => $communicationKeyId,
+                        "message" => [
+                            "type" => "entitlement_message",
+                            "version" => 2,
+                            "content_keys_source" => [
+                                "inline" => [
+                                    ["id" => $keyHex]
+                                ]
+                            ]
+                        ]
+                    ];
+
+                    return JWT::encode($payload, $communicationKey, 'HS256');
+                }
+            }
+        }
+
+        return null;
     }
 }
