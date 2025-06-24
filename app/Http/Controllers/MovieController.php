@@ -282,40 +282,35 @@ class MovieController extends Controller
                 'isSubtitle' => 'boolean',
             ]);
 
-            $validated['id'] = Str::random(10); // e.g., "A8dF02gLp9"
+            $validated['id'] = Str::random(10);
 
-            // Format create_date
             $validated['create_date'] = !empty($validated['create_date'])
                 ? (new DateTime($validated['create_date']))->format('F j, Y')
                 : now()->format('F j, Y');
 
-            // Format release_on if present
             if (!empty($validated['release_on'])) {
                 $validated['release_on'] = Carbon::parse($validated['release_on'])->format('F j, Y');
             }
 
-            if (isset($validated['dash_url']) && !empty($validated['dash_url']) && $validated['isProtected']) {
-                $keyId = $this->generateTokenFromEncryptedMpd($validated['dash_url']);
-                if ($keyId) {
-                    $validated['token'] = $keyId;
-                    $movie = MovieModel::create($validated);
+            if (!empty($validated['dash_url']) && !empty($validated['isProtected'])) {
+                $token = $this->generateFromMpd($validated['dash_url']);
+                if ($token) {
+                    $validated['token'] = $token;
                 }
-            } else {
-                $movie = MovieModel::create($validated);
-
             }
 
-            // Check if notification should be sent
-            $shouldNotify = $request->boolean('notification', true); // Default false
+            // ✅ Always create the movie
+            $movie = MovieModel::create($validated);
 
-            if ($shouldNotify && ($movie->status ?? '') === 'Published') {
+            // Notification
+            $shouldNotify = $request->boolean('notification', true);
+            if ($shouldNotify && $movie->status === 'Published') {
                 $fakeRequest = new Request([
                     'title' => $movie->title,
                     'body' => 'Streaming on Zo Stream',
                     'image' => $movie->cover_img ?? '',
                     'key' => $movie->id ?? '',
                 ]);
-
                 $this->fCMNotificationController->send($fakeRequest);
             }
 
@@ -391,16 +386,14 @@ class MovieController extends Controller
                 $validated['release_on'] = Carbon::parse($validated['release_on'])->format('F j, Y');
             }
 
-            if (isset($validated['dash_url']) && !empty($validated['dash_url']) && $validated['isProtected']) {
-                $keyId = $this->generateTokenFromEncryptedMpd($validated['dash_url']);
-                if ($keyId) {
-                    $validated['token'] = $keyId;
-                    $movie->update($validated);
+            if (!empty($validated['dash_url']) && !empty($validated['isProtected'])) {
+                $token = $this->generateFromMpd($validated['dash_url']);
+                if ($token) {
+                    $validated['token'] = $token;
                 }
-            } else {
-                $movie->update($validated);
-
             }
+
+            $movie->update($validated);
 
             return response()->json([
                 'status' => 'success',
@@ -448,24 +441,29 @@ class MovieController extends Controller
         }
     }
 
-
-    private function generateTokenFromEncryptedMpd(string $encryptedMpdUrl): ?string
+    private function generateFromMpd(string $encryptedMpd): ?string
     {
-        $shaKey = '24a4785bb225d7392aa419e218d9e2e7461e193a27c42d8af8418d28e0d53676';
-        $communicationKeyAsBase64 = "uoy1wOPkyPQznp7MIb8auiSoaeSbRn2ExzQdFZrsuPQ=";
-        $communicationKeyId = "c52ad793-022a-447f-8250-b2ba00568b80";
-
-        if (!$encryptedMpdUrl) {
+        if (!$encryptedMpd)
             return null;
+
+        $shaKey = 'd4c6198dabafb243b0d043a3c33a9fe171f81605158c267c7dfe5f66df29559a';
+
+        if (!$encryptedMpd) {
+            return response()->json(['error' => 'Missing mpd parameter'], 400);
         }
 
-        // Step 1: Decrypt the MPD URL
-        $decryptionKey = hash('sha256', $shaKey, true);
-        $data = base64_decode($encryptedMpdUrl);
+        $decryptionKey = hash(
+            'sha256',
+            $shaKey,
+            true
+        );
+
+        // === Step 1: Decrypt MPD URL ===
+        $data = base64_decode($encryptedMpd);
         $iv = substr($data, 0, 16);
         $cipherText = substr($data, 16);
 
-        $decryptedMpdUrl = openssl_decrypt(
+        $decryptedMessage = openssl_decrypt(
             $cipherText,
             'aes-256-cbc',
             $decryptionKey,
@@ -473,17 +471,17 @@ class MovieController extends Controller
             $iv
         );
 
-        if (!$decryptedMpdUrl) {
-            return null;
+        if (!$decryptedMessage) {
+            return response()->json(['error' => 'Failed to decrypt MPD URL'], 500);
         }
 
-        // Step 2: Fetch and parse MPD XML
-        $xmlString = @file_get_contents($decryptedMpdUrl);
+        // === Step 2: Fetch and parse MPD XML ===
+        $xmlString = @file_get_contents($decryptedMessage);
         if (!$xmlString) {
-            return null;
+            return response()->json(['error' => 'Unable to load MPD'], 500);
         }
 
-        $xml = new \SimpleXMLElement($xmlString);
+        $xml = new SimpleXMLElement($xmlString);
         $namespaces = $xml->getNamespaces(true);
 
         foreach ($xml->Period->AdaptationSet as $adaptationSet) {
@@ -493,7 +491,10 @@ class MovieController extends Controller
                     $uuid = str_replace(['-', '{', '}'], '', (string) $attrs['default_KID']);
                     $keyHex = bin2hex(hex2bin($uuid));
 
-                    // Step 3: Generate JWT Token
+                    $communicationKeyAsBase64 = "uoy1wOPkyPQznp7MIb8auiSoaeSbRn2ExzQdFZrsuPQ=";
+                    $communicationKeyId = "c52ad793-022a-447f-8250-b2ba00568b80";
+                    $communicationKey = base64_decode($communicationKeyAsBase64);
+
                     $payload = [
                         "version" => 1,
                         "com_key_id" => $communicationKeyId,
@@ -508,7 +509,6 @@ class MovieController extends Controller
                         ]
                     ];
 
-                    $communicationKey = base64_decode($communicationKeyAsBase64);
                     return JWT::encode($payload, $communicationKey, 'HS256');
                 }
             }
