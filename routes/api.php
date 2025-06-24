@@ -126,3 +126,4 @@ Route::get('/stream', [StreamController::class, 'stream']);
 
 
 Route::post('/axinom', [AxinomLicense::class, 'invokeWidevineCommonEncryption']);
+

@@ -6,7 +6,9 @@ use App\Models\EpisodeModel;
 use App\Models\MovieModel;
 use Carbon\Carbon;
 use DateTime;
+use Firebase\JWT\JWT;
 use Illuminate\Http\Request;
+use SimpleXMLElement;
 use Str;
 
 class MovieController extends Controller
@@ -257,7 +259,6 @@ class MovieController extends Controller
                 'hls_url' => 'nullable|string',
                 'trailer' => 'nullable|string',
                 'subtitle' => 'nullable|string',
-                'token' => 'nullable|string',
                 'views' => 'nullable|int',
                 'status' => 'nullable|string|in:Published,Draft,Scheduled',
                 'create_date' => 'nullable|string',
@@ -290,6 +291,13 @@ class MovieController extends Controller
             // Format release_on if present
             if (!empty($validated['release_on'])) {
                 $validated['release_on'] = Carbon::parse($validated['release_on'])->format('F j, Y');
+            }
+
+            if (isset($validated['dash_url']) && !empty($validated['dash_url']) && $validated['isProtected']) {
+                $keyId = $this->getKeyIdFromMpd($validated['dash_url']);
+                if ($keyId) {
+                    $validated['token'] = $this->generateJwtToken([['key_id' => $keyId]]);
+                }
             }
 
             $movie = MovieModel::create($validated);
@@ -352,12 +360,10 @@ class MovieController extends Controller
                 'hls_url' => 'nullable|string',
                 'trailer' => 'nullable|string',
                 'subtitle' => 'nullable|string',
-                'token' => 'nullable|string',
                 'views' => 'nullable|int',
                 'status' => 'nullable|string|in:Published,Draft,Scheduled',
                 'create_date' => 'nullable|string',
                 'ppv_amount' => 'nullable|string',
-
 
                 // Boolean flags
                 'isProtected' => 'boolean',
@@ -378,6 +384,13 @@ class MovieController extends Controller
 
             if (isset($validated['release_on'])) {
                 $validated['release_on'] = Carbon::parse($validated['release_on'])->format('F j, Y');
+            }
+
+            if (isset($validated['dash_url']) && !empty($validated['dash_url']) && $validated['isProtected']) {
+                $keyId = $this->getKeyIdFromMpd($validated['dash_url']);
+                if ($keyId) {
+                    $validated['token'] = $this->generateJwtToken([['key_id' => $keyId]]);
+                }
             }
 
             $movie->update($validated);
@@ -426,5 +439,60 @@ class MovieController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    public function getKeyIdFromMpd(string $mpdUrl): ?string
+    {
+        $xmlString = file_get_contents($mpdUrl);
+        if (!$xmlString)
+            return null;
+
+        $xml = new SimpleXMLElement($xmlString);
+        $namespaces = $xml->getNamespaces(true);
+
+        foreach ($xml->Period->AdaptationSet as $adaptationSet) {
+            foreach ($adaptationSet->ContentProtection as $cp) {
+                $attrs = $cp->attributes($namespaces['cenc'] ?? '');
+
+                if (isset($attrs['default_KID'])) {
+                    $uuid = str_replace(['-', '{', '}'], '', (string) $attrs['default_KID']);
+                    $keyHex = bin2hex(hex2bin($uuid)); // Ensure hex format
+
+                    // Now call generateJwtToken with keyId
+                    $jwt = $this->generateJwtToken([
+                        ['key_id' => $keyHex]
+                    ]);
+
+                    return $jwt;
+                }
+            }
+        }
+
+        return null; // No key found
+    }
+
+    public function generateJwtToken(array $keys): string
+    {
+        $communicationKeyAsBase64 = "uoy1wOPkyPQznp7MIb8auiSoaeSbRn2ExzQdFZrsuPQ=";
+        $communicationKeyId = "c52ad793-022a-447f-8250-b2ba00568b80";
+        $communicationKey = base64_decode($communicationKeyAsBase64);
+
+        $keyId = $keys[0]['key_id'] ?? null;
+
+        $payload = [
+            "version" => 1,
+            "com_key_id" => $communicationKeyId,
+            "message" => [
+                "type" => "entitlement_message",
+                "version" => 2,
+                "content_keys_source" => [
+                    "inline" => [
+                        ["id" => $keyId]
+                    ]
+                ]
+            ]
+        ];
+
+        return JWT::encode($payload, $communicationKey, 'HS256');
     }
 }
