@@ -29,7 +29,7 @@ class CheckDeviceAvailable extends Controller
 
         $request->validate([
             'user_id' => 'required|string',
-            'device_id' => 'required|string',
+            'device_id' => 'nullable|string',
             'device_type' => 'required|string',
         ]);
 
