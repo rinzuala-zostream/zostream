@@ -476,7 +476,20 @@ class MovieController extends Controller
         }
 
         // === Step 2: Fetch and parse MPD XML ===
-        $xmlString = @file_get_contents($decryptedMessage);
+        $parsed = parse_url($decryptedMessage);
+
+        if (!$parsed || !isset($parsed['scheme'], $parsed['host'], $parsed['path'])) {
+            return null;
+        }
+
+        $rebuiltUrl = $parsed['scheme'] . '://' . $parsed['host'] . rawurlencode($parsed['path']);
+
+        if (isset($parsed['query'])) {
+            $rebuiltUrl .= '?' . $parsed['query'];
+        }
+
+        $xmlString = @file_get_contents($rebuiltUrl);
+
         if (!$xmlString) {
             return response()->json(['error' => 'Unable to load MPD'], 500);
         }
