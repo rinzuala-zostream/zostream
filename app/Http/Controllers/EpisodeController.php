@@ -300,23 +300,11 @@ class EpisodeController extends Controller
         }
 
         // === Step 2: Fetch and parse MPD XML ===
-        $parsed = parse_url($decryptedMessage);
-
-        if (!$parsed || !isset($parsed['scheme'], $parsed['host'], $parsed['path'])) {
-            return null;
-        }
-
-        $rebuiltUrl = $parsed['scheme'] . '://' . $parsed['host'] . rawurlencode($parsed['path']);
-
-        if (isset($parsed['query'])) {
-            $rebuiltUrl .= '?' . $parsed['query'];
-        }
-
-        $xmlString = @file_get_contents($rebuiltUrl);
-
+        $xmlString = @file_get_contents($decryptedMessage);
         if (!$xmlString) {
             return response()->json(['error' => 'Unable to load MPD'], 500);
         }
+
 
         $xml = new SimpleXMLElement($xmlString);
         $namespaces = $xml->getNamespaces(true);
