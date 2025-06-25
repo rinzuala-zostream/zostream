@@ -61,10 +61,7 @@ class SubscriptionController extends Controller
                     'device_type' => 'Browser',
                     'data' => BrowserSubscriptionModel::where('id', $uid)->first()
                 ];
-                $subscriptions[] = [
-                    'device_type' => 'TV',
-                    'data' => ZonetUserModel::where('id', $uid)->first()
-                ];
+                
             }
             if ($ip) {
                 // Call route to check if IP is from ISP
