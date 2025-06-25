@@ -28,6 +28,7 @@ use App\Http\Controllers\UpdateUserDevice;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\VerifyOTPController;
 use App\Http\Controllers\WatchPositionController;
+use App\Http\Controllers\ZonetController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\DeviceManagementController;
@@ -128,3 +129,13 @@ Route::get('/stream', [StreamController::class, 'stream']);
 Route::post('/axinom', [AxinomLicense::class, 'invokeWidevineCommonEncryption']);
 
 Route::get('/generate-token', [MovieController::class, 'generateFromMpd']);
+
+//Zonet
+Route::post('/zonet-users/insert', [ZonetController::class, 'insert']);
+Route::get('/zonet-users', [ZonetController::class, 'getAll']);
+Route::delete('/zonet-users/{id}', [ZonetController::class, 'delete']);
+
+// Zonet Subscription routes
+Route::post('/zonet-subscriptions/insert', [ZonetController::class, 'insertSubscription']);
+Route::get('/zonet-subscriptions/all', [ZonetController::class, 'getAllSubscriptions']);
+Route::delete('/zonet-subscriptions/{id}', [ZonetController::class, 'deleteSubscription']);

@@ -24,8 +24,14 @@ class ZonetUserModel extends Model
     public $timestamps = false;
 
     // Relationship: one user has many subscriptions
+
+    public function user()
+    {
+        return $this->belongsTo(UserModel::class, 'id', 'uid');
+    }
+
     public function subscriptions()
     {
-        return $this->hasMany(ZonetSubscriptionModel::class, 'user_num', 'num');
+        return $this->belongsTo(ZonetSubscriptionModel::class, 'num', 'user_num');
     }
 }
