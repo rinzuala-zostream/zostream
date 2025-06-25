@@ -162,7 +162,6 @@ class SubscriptionController extends Controller
                         'sub_plan' => $isFromISP
                             ? $subscription->sub_plan . ' + Zonet free subscription'
                             : $subscription->sub_plan,
-
                         'sub' => $isActive,
                         'expiry_date' => $expiryDate->format('F j, Y'),
                         'device_support' => $deviceSupport,
