@@ -45,6 +45,7 @@ class SubscriptionController extends Controller
             $uid = $request->query('id');
             $device = $request->query('device_type');
             $ip = $request->query('ip');
+            $isFromISP = false;
 
             $subscriptions = [];
 
