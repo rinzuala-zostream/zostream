@@ -61,7 +61,7 @@ class SubscriptionController extends Controller
                     'device_type' => 'Browser',
                     'data' => BrowserSubscriptionModel::where('id', $uid)->first()
                 ];
-                
+
             }
             if ($ip) {
                 // Call route to check if IP is from ISP
@@ -158,7 +158,10 @@ class SubscriptionController extends Controller
                         'create_date' => $createDate->format('F j, Y'),
                         'current_date' => $currentDate->format('F j, Y'),
                         'period' => $subscription->period,
-                        'sub_plan' => $subscription->sub_plan,
+                        'sub_plan' => $isFromISP
+                            ? $subscription->sub_plan . ' + Zonet free subscription'
+                            : $subscription->sub_plan,
+
                         'sub' => $isActive,
                         'expiry_date' => $expiryDate->format('F j, Y'),
                         'device_support' => $deviceSupport,
