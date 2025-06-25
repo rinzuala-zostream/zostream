@@ -300,7 +300,7 @@ class EpisodeController extends Controller
         }
 
         // === Step 2: Fetch and parse MPD XML ===
-        $xmlString = $xmlString = @file_get_contents(rawurlencode($decryptedMessage));
+        $xmlString = @file_get_contents(rawurlencode($decryptedMessage));
         if (!$xmlString) {
             return response()->json(['error' => 'Unable to load MPD'], 500);
         }
