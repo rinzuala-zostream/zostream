@@ -19,7 +19,7 @@ class ZonetController extends Controller
             $request->validate([
                 'id' => 'nullable|string|required_without:email',
                 'email' => 'nullable|email|required_without:id',
-                'operator_id' => 'required|integer|exists:users,uid',
+                'operator_id' => 'required|integer',
             ]);
 
             // Check if user exists in the users table
