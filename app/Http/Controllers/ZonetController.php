@@ -68,10 +68,17 @@ class ZonetController extends Controller
         }
     }
 
-    public function getAll()
+    public function getAll(Request $request)
     {
         try {
-            $users = ZonetUserModel::with('user', 'subscriptions')->orderByDesc('created_at')->paginate(10);
+            $operatorId = $request->query('operator_id');
+
+            $users = ZonetUserModel::when($operatorId, function ($query) use ($operatorId) {
+                return $query->where('operator_id', $operatorId);
+            })
+                ->with(['user', 'subscriptions'])
+                ->orderByDesc('created_at')
+                ->paginate(10);
 
             $users->getCollection()->transform(function ($zonetUser) {
                 if ($zonetUser->subscriptions) {
