@@ -22,29 +22,30 @@ class ZonetController extends Controller
                 'operator_id' => 'required|integer',
             ]);
 
-            // Check if user exists in the users table
-            $userExists = UserModel::where('uid', $request->id)
-                ->orWhere('mail', $request->email)
-                ->exists();
+            // Step 1: Get user from `user` table based on `id` or `email`
+            $user = UserModel::when($request->id, fn($q) => $q->where('uid', $request->id))
+                ->when($request->email, fn($q) => $q->orWhere('mail', $request->email))
+                ->first();
 
-            if (!$userExists) {
+            if (!$user) {
                 return response()->json([
                     'status' => 'error',
                     'message' => 'User not found in main user table, please register first'
                 ]);
             }
 
-            // Check if already added to ZonetUserModel
-            if ($request->id && ZonetUserModel::where('id', $request->id)->exists()) {
+            // Step 2: Prevent duplicate entry
+            if (ZonetUserModel::where('id', $user->uid)->exists()) {
                 return response()->json([
                     'status' => 'error',
                     'message' => 'User already exists in Zonet users'
                 ]);
             }
 
-            // Create new zonet user
+            // Step 3: Create new Zonet user
             $zonetUser = new ZonetUserModel();
-            $zonetUser->id = $request->id ?: UserModel::where('mail', $request->email)->value('uid');
+            $zonetUser->id = $user->uid;
+            $zonetUser->operator_id = $request->operator_id;
             $zonetUser->save();
 
             return response()->json([
