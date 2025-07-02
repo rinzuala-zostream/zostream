@@ -17,11 +17,12 @@ class ZonetController extends Controller
     {
         try {
             $request->validate([
-                'id' => 'nullable|string',
-                'email' => 'nullable|email'
+                'id' => 'nullable|string|required_without:email',
+                'email' => 'nullable|email|required_without:id',
+                'operator_id' => 'required|integer|exists:users,uid',
             ]);
 
-            // Check if user exists in the `users` table
+            // Check if user exists in the users table
             $userExists = UserModel::where('uid', $request->id)
                 ->orWhere('mail', $request->email)
                 ->exists();
@@ -34,7 +35,7 @@ class ZonetController extends Controller
             }
 
             // Check if already added to ZonetUserModel
-            if (ZonetUserModel::where('id', $request->id)->exists()) {
+            if ($request->id && ZonetUserModel::where('id', $request->id)->exists()) {
                 return response()->json([
                     'status' => 'error',
                     'message' => 'User already exists in Zonet users'
@@ -43,7 +44,7 @@ class ZonetController extends Controller
 
             // Create new zonet user
             $zonetUser = new ZonetUserModel();
-            $zonetUser->id = $request->id;
+            $zonetUser->id = $request->id ?: UserModel::where('mail', $request->email)->value('uid');
             $zonetUser->save();
 
             return response()->json([
