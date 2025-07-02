@@ -19,24 +19,26 @@ class ZonetController extends Controller
             ]);
 
             if (ZonetUserModel::where('id', $request->id)->exists()) {
-                return response()->json(['message' => 'User already exists'], 409);
+                return response()->json(['status' => 'error', 'message' => 'User already exists']);
             }
 
             $zonetUser = new ZonetUserModel();
             $zonetUser->id = $request->id;
             $zonetUser->save();
 
-            return response()->json(['message' => 'Inserted successfully', 'data' => $zonetUser]);
+            return response()->json(['status' => 'success', 'message' => 'Inserted successfully', 'data' => $zonetUser]);
         } catch (ValidationException $ve) {
             return response()->json([
-                'error' => 'Validation failed',
+                'status' => 'error',
+                'message' => 'Validation failed',
                 'details' => $ve->errors()
-            ], 422);
+            ]);
         } catch (\Exception $e) {
             return response()->json([
-                'error' => 'Failed to insert user',
+                'status' => 'error',
+                'message' => 'Failed to insert user',
                 'details' => $e->getMessage()
-            ], 500);
+            ]);
         }
     }
 
@@ -44,9 +46,9 @@ class ZonetController extends Controller
     {
         try {
             $users = ZonetUserModel::with('user', 'subscriptions')->orderByDesc('created_at')->paginate(10);
-            return response()->json($users);
+            return response()->json(['status' => 'success', 'message' => 'Fetched successfully', 'data' => $users]);
         } catch (\Exception $e) {
-            return response()->json(['error' => 'Failed to fetch users', 'details' => $e->getMessage()], 500);
+            return response()->json(['status' => 'error', 'message' => 'Failed to fetch users', 'details' => $e->getMessage()]);
         }
     }
 
@@ -56,12 +58,12 @@ class ZonetController extends Controller
             $deleted = ZonetUserModel::where('id', $id)->delete();
 
             if ($deleted) {
-                return response()->json(['message' => 'Deleted successfully']);
+                return response()->json(['status' => 'success', 'message' => 'Deleted successfully']);
             } else {
-                return response()->json(['message' => 'User not found'], 404);
+                return response()->json(['status' => 'error', 'message' => 'User not found']);
             }
         } catch (\Exception $e) {
-            return response()->json(['error' => 'Failed to delete user', 'details' => $e->getMessage()], 500);
+            return response()->json(['status' => 'error', 'message' => 'Failed to delete user', 'details' => $e->getMessage()]);
         }
     }
 
@@ -78,25 +80,27 @@ class ZonetController extends Controller
             $zonetUser = ZonetUserModel::where('num', $request->num)->first();
 
             if (!$zonetUser) {
-                return response()->json(['message' => 'Zonet user not found'], 404);
+                return response()->json(['status' => 'error', 'message' => 'Zonet user not found']);
             }
 
             $subscription = ZonetSubscriptionModel::create([
                 'period' => $request->period,
                 'user_num' => $zonetUser->num,
-                'sub_plan' => $request->sub_plan ?? 'Thla 1', // Default to 'default' if not provided
-                'create_date' => now()->format('F j, Y') // Store as formatted string
+                'sub_plan' => $request->sub_plan ?? 'Thla 1',
+                'create_date' => now()->format('F j, Y')
             ]);
 
             return response()->json([
+                'status' => 'success',
                 'message' => 'Subscription created successfully',
                 'data' => $subscription
             ]);
         } catch (\Exception $e) {
             return response()->json([
-                'error' => 'Failed to insert subscription',
+                'status' => 'error',
+                'message' => 'Failed to insert subscription',
                 'details' => $e->getMessage()
-            ], 500);
+            ]);
         }
     }
 
@@ -104,9 +108,9 @@ class ZonetController extends Controller
     {
         try {
             $subscriptions = ZonetSubscriptionModel::orderByDesc('created_at')->paginate(10);
-            return response()->json($subscriptions);
+            return response()->json(['status' => 'success', 'message' => 'Fetched successfully', 'data' => $subscriptions]);
         } catch (\Exception $e) {
-            return response()->json(['error' => 'Failed to fetch subscriptions', 'details' => $e->getMessage()], 500);
+            return response()->json(['status' => 'error', 'message' => 'Failed to fetch subscriptions', 'details' => $e->getMessage()]);
         }
     }
 
@@ -116,12 +120,12 @@ class ZonetController extends Controller
             $deleted = ZonetSubscriptionModel::where('id', $id)->delete();
 
             if ($deleted) {
-                return response()->json(['message' => 'Subscription deleted successfully']);
+                return response()->json(['status' => 'success', 'message' => 'Subscription deleted successfully']);
             } else {
-                return response()->json(['message' => 'Subscription not found'], 404);
+                return response()->json(['status' => 'error', 'message' => 'Subscription not found']);
             }
         } catch (\Exception $e) {
-            return response()->json(['error' => 'Failed to delete subscription', 'details' => $e->getMessage()], 500);
+            return response()->json(['status' => 'error', 'message' => 'Failed to delete subscription', 'details' => $e->getMessage()]);
         }
     }
 }

@@ -19,6 +19,7 @@ class ZonetUserModel extends Model
     protected $fillable = [
         'id', // user.uid
         'created_at',
+        'operator_id', // operator.uid
     ];
 
     public $timestamps = false;
