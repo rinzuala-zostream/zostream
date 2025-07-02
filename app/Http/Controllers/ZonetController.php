@@ -127,19 +127,25 @@ class ZonetController extends Controller
             $request->validate([
                 'period' => 'required|int|max:255',
                 'num' => 'required|int|exists:zonet_users,num',
+                'create_date' => 'nullable|date', // ✅ allow passing custom date
             ]);
 
             $zonetUser = ZonetUserModel::where('num', $request->num)->first();
 
             if (!$zonetUser) {
-                return response()->json(['status' => 'error', 'message' => 'Zonet user not found']);
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Zonet user not found'
+                ]);
             }
 
             $subscription = ZonetSubscriptionModel::create([
                 'period' => $request->period,
                 'user_num' => $zonetUser->num,
                 'sub_plan' => $request->sub_plan ?? 'Thla 1',
-                'create_date' => now()->format('F j, Y')
+                'create_date' => $request->create_date
+                    ? Carbon::parse($request->create_date)->format('F j, Y')
+                    : now()->format('F j, Y') // ✅ fallback to current date
             ]);
 
             return response()->json([
