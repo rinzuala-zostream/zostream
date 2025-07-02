@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\UserModel;
 use App\Models\ZonetSubscriptionModel;
 use App\Models\ZonetUserModel;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
+use Carbon\Carbon;
 
 class ZonetController extends Controller
 {
@@ -15,18 +17,40 @@ class ZonetController extends Controller
     {
         try {
             $request->validate([
-                'id' => 'required|string'
+                'id' => 'nullable|string',
+                'email' => 'nullable|email'
             ]);
 
-            if (ZonetUserModel::where('id', $request->id)->exists()) {
-                return response()->json(['status' => 'error', 'message' => 'User already exists']);
+            // Check if user exists in the `users` table
+            $userExists = UserModel::where('uid', $request->id)
+                ->orWhere('mail', $request->email)
+                ->exists();
+
+            if (!$userExists) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'User not found in main user table, please register first'
+                ]);
             }
 
+            // Check if already added to ZonetUserModel
+            if (ZonetUserModel::where('id', $request->id)->exists()) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'User already exists in Zonet users'
+                ]);
+            }
+
+            // Create new zonet user
             $zonetUser = new ZonetUserModel();
             $zonetUser->id = $request->id;
             $zonetUser->save();
 
-            return response()->json(['status' => 'success', 'message' => 'Inserted successfully', 'data' => $zonetUser]);
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Inserted successfully',
+                'data' => $zonetUser
+            ]);
         } catch (ValidationException $ve) {
             return response()->json([
                 'status' => 'error',
@@ -46,9 +70,35 @@ class ZonetController extends Controller
     {
         try {
             $users = ZonetUserModel::with('user', 'subscriptions')->orderByDesc('created_at')->paginate(10);
-            return response()->json(['status' => 'success', 'message' => 'Fetched successfully', 'data' => $users]);
+
+            $users->getCollection()->transform(function ($zonetUser) {
+                if ($zonetUser->subscriptions) {
+                    try {
+                        $startDate = Carbon::createFromFormat('F j, Y', $zonetUser->subscriptions->create_date);
+                        $endDate = $startDate->copy()->addDays($zonetUser->subscriptions->period);
+
+                        $zonetUser->subscriptions->end_date = $endDate->format('F j, Y');
+                        $zonetUser->subscriptions->is_subscription_active = $endDate->isFuture();
+                    } catch (\Exception $e) {
+                        $zonetUser->subscriptions->end_date = null;
+                        $zonetUser->subscriptions->is_subscription_active = false;
+                    }
+                }
+
+                return $zonetUser;
+            });
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Fetched successfully',
+                'data' => $users
+            ]);
         } catch (\Exception $e) {
-            return response()->json(['status' => 'error', 'message' => 'Failed to fetch users', 'details' => $e->getMessage()]);
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to fetch users',
+                'details' => $e->getMessage()
+            ]);
         }
     }
 
@@ -108,9 +158,34 @@ class ZonetController extends Controller
     {
         try {
             $subscriptions = ZonetSubscriptionModel::orderByDesc('created_at')->paginate(10);
-            return response()->json(['status' => 'success', 'message' => 'Fetched successfully', 'data' => $subscriptions]);
+
+            // Add end_date and is_subscription_active
+            $subscriptions->getCollection()->transform(function ($subscription) {
+                try {
+                    $startDate = Carbon::createFromFormat('F j, Y', $subscription->create_date);
+                    $endDate = $startDate->copy()->addDays($subscription->period);
+
+                    $subscription->end_date = $endDate->format('F j, Y');
+                    $subscription->is_subscription_active = $endDate->isFuture();
+                } catch (\Exception $e) {
+                    $subscription->end_date = null;
+                    $subscription->is_subscription_active = false;
+                }
+
+                return $subscription;
+            });
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Fetched successfully',
+                'data' => $subscriptions
+            ]);
         } catch (\Exception $e) {
-            return response()->json(['status' => 'error', 'message' => 'Failed to fetch subscriptions', 'details' => $e->getMessage()]);
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to fetch subscriptions',
+                'details' => $e->getMessage()
+            ]);
         }
     }
 
