@@ -82,7 +82,7 @@ class ZonetOperatorController extends Controller
                 return $this->respond('false', 'Invalid phone or password', 401);
             }
 
-            return $this->respond('true', 'Login successful');
+            return $this->respond('true', $operator->id);
         } catch (\Exception $e) {
             return $this->respond('false', 'Login failed', 500);
         }
