@@ -19,7 +19,7 @@ class ZonetController extends Controller
             $request->validate([
                 'id' => 'nullable|string|required_without:email',
                 'email' => 'nullable|email|required_without:id',
-                'operator_id' => 'required|integer',
+                'operator_id' => 'required|string',
             ]);
 
             // Step 1: Get user from `user` table based on `id` or `email`

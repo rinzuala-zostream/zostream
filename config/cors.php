@@ -9,6 +9,8 @@ return [
     'allowed_origins' => [
         'https://play.zostream.in',
         'https://admin.zostream.in', // ✅ Added another allowed domain
+        'http://locahost:8000',
+        'http://192.168.137.160:8000'
     ],
 
     'allowed_origins_patterns' => [],
