@@ -6,6 +6,7 @@ use App\Models\PPVPaymentModel;
 use App\Models\TempPaymentModel;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
+use Carbon\Carbon;
 
 class PaymentStatusController extends Controller
 {
@@ -54,12 +55,14 @@ class PaymentStatusController extends Controller
 
                 $paymentSuccess = isset($paymentResponse['success']) && $paymentResponse['success'] === true;
                 $paymentCompleted = isset($paymentResponse['code']) && $paymentResponse['code'] === 'PAYMENT_SUCCESS' ||
-                                    isset($paymentResponse['data']['state']) && $paymentResponse['data']['state'] === 'COMPLETED';
+                    isset($paymentResponse['data']['state']) && $paymentResponse['data']['state'] === 'COMPLETED';
 
                 if ($paymentSuccess && $paymentCompleted) {
                     // Subscription
                     if ($tempData->payment_type === 'Subscription') {
-                        $currentDate = $tempData->created_at;
+
+                        $currentDate = Carbon::parse($tempData->created_at);
+
 
                         $fakeRequest = new Request([
                             'id' => $tempData->user_id,

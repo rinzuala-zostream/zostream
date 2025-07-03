@@ -72,15 +72,16 @@ class ZonetController extends Controller
     {
         try {
             $operatorId = $request->query('operator_id');
+            $subscribe = $request->query('subscribe'); // true / false / null
 
             $users = ZonetUserModel::when($operatorId, function ($query) use ($operatorId) {
                 return $query->where('operator_id', $operatorId);
             })
                 ->with(['user', 'subscriptions'])
                 ->orderByDesc('created_at')
-                ->paginate(10);
+                ->get(); // get all to process subscription logic before filtering
 
-            $users->getCollection()->transform(function ($zonetUser) {
+            $users = $users->map(function ($zonetUser) {
                 if ($zonetUser->subscriptions) {
                     try {
                         $startDate = Carbon::createFromFormat('F j, Y', $zonetUser->subscriptions->create_date);
@@ -97,10 +98,27 @@ class ZonetController extends Controller
                 return $zonetUser;
             });
 
+            // Apply subscribe=true/false filter
+            if ($subscribe === 'true') {
+                $users = $users->filter(fn($u) => $u->subscriptions?->is_subscription_active === true);
+            } elseif ($subscribe === 'false') {
+                $users = $users->filter(fn($u) => !$u->subscriptions || $u->subscriptions->is_subscription_active === false);
+            }
+
+            // Paginate manually since we're working with a Collection now
+            $page = $request->query('page', 1);
+            $perPage = 10;
+            $paginated = new \Illuminate\Pagination\LengthAwarePaginator(
+                $users->forPage($page, $perPage)->values(),
+                $users->count(),
+                $perPage,
+                $page
+            );
+
             return response()->json([
                 'status' => 'success',
                 'message' => 'Fetched successfully',
-                'data' => $users
+                'data' => $paginated
             ]);
         } catch (\Exception $e) {
             return response()->json([
