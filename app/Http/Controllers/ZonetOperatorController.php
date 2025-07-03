@@ -34,7 +34,7 @@ class ZonetOperatorController extends Controller
                 'created_at' => now(),
             ]);
 
-            return $this->respond('true', 'Operator added successfully', 201);
+            return $this->respond('true', $randomId, 201);
         } catch (\Exception $e) {
             return $this->respond('false', 'Failed to add operator', 500);
         }
