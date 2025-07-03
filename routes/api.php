@@ -29,6 +29,7 @@ use App\Http\Controllers\UserController;
 use App\Http\Controllers\VerifyOTPController;
 use App\Http\Controllers\WatchPositionController;
 use App\Http\Controllers\ZonetController;
+use App\Http\Controllers\ZonetOperatorController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\DeviceManagementController;
@@ -139,3 +140,12 @@ Route::delete('/zonet-users/{id}', [ZonetController::class, 'delete']);
 Route::post('/zonet-subscriptions/insert', [ZonetController::class, 'insertSubscription']);
 Route::get('/zonet-subscriptions/all', [ZonetController::class, 'getAllSubscriptions']);
 Route::delete('/zonet-subscriptions/{id}', [ZonetController::class, 'deleteSubscription']);
+
+// Zonet Operator routes
+Route::prefix('zonet-operator')->group(function () {
+    Route::post('/add', [ZonetOperatorController::class, 'add']);
+    Route::put('/update/{num}', [ZonetOperatorController::class, 'update']);
+    Route::delete('/delete/{num}', [ZonetOperatorController::class, 'delete']);
+    Route::post('/login', [ZonetOperatorController::class, 'login']);
+
+});
