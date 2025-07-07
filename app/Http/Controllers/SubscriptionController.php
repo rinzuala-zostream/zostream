@@ -64,7 +64,8 @@ class SubscriptionController extends Controller
                 ];
 
             }
-            if ($ip) {
+
+            if ($ip && $device) {
                 // Call route to check if IP is from ISP
                 $ispRequest = new Request(['ip' => $ip]);
                 $ispResponse = $this->streamController->stream($ispRequest);
@@ -102,8 +103,8 @@ class SubscriptionController extends Controller
                         'data' => $model::where('id', $uid)->first()
                     ];
                 }
-            } else {
-                // If IP is null, skip the ISP check and fetch from regular model
+            } elseif ($device) {
+                // If IP is null and device is provided, skip the ISP check and fetch from regular model
                 $model = match ($device) {
                     'TV' => TVSubscriptionModel::class,
                     'Mobile' => SubscriptionModel::class,
@@ -115,6 +116,7 @@ class SubscriptionController extends Controller
                     'data' => $model::where('id', $uid)->first()
                 ];
             }
+
 
             $results = [];
 
@@ -279,7 +281,7 @@ class SubscriptionController extends Controller
 
     }
 
-    private function deleteSharedUser($id, $apiKey)
+    public function deleteSharedUser($id, $apiKey)
     {
         try {
             $deviceRequest = new Request([
