@@ -117,7 +117,6 @@ class SubscriptionController extends Controller
                 ];
             }
 
-
             $results = [];
 
             foreach ($subscriptions as $entry) {

@@ -98,6 +98,10 @@ class ZonetController extends Controller
                 return $zonetUser;
             });
 
+            // Count subscriptions before filtering
+            $subscribeCount = $users->filter(fn($u) => $u->subscriptions?->is_subscription_active === true)->count();
+            $unsubscribeCount = $users->filter(fn($u) => !$u->subscriptions || $u->subscriptions->is_subscription_active === false)->count();
+
             // Apply subscribe=true/false filter
             if ($subscribe === 'true') {
                 $users = $users->filter(fn($u) => $u->subscriptions?->is_subscription_active === true);
@@ -105,7 +109,7 @@ class ZonetController extends Controller
                 $users = $users->filter(fn($u) => !$u->subscriptions || $u->subscriptions->is_subscription_active === false);
             }
 
-            // Paginate manually since we're working with a Collection now
+            // Paginate manually
             $page = $request->query('page', 1);
             $perPage = 10;
             $paginated = new \Illuminate\Pagination\LengthAwarePaginator(
@@ -118,7 +122,9 @@ class ZonetController extends Controller
             return response()->json([
                 'status' => 'success',
                 'message' => 'Fetched successfully',
-                'data' => $paginated
+                'data' => $paginated,
+                'subscribe_count' => $subscribeCount,
+                'unsubscribe_count' => $unsubscribeCount,
             ]);
         } catch (\Exception $e) {
             return response()->json([
