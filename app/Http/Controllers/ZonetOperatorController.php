@@ -106,13 +106,13 @@ class ZonetOperatorController extends Controller
         }
     }
 
-    public function topUpWallet(Request $request, $num)
+    public function topUpWallet(Request $request, $operator_id)
     {
         $validated = $request->validate([
             'amount' => 'required|numeric|min:1',
         ]);
 
-        $operator = ZonetOperator::find($num);
+        $operator = ZonetOperator::where('id', $operator_id)->first();
 
         if (!$operator) {
             return $this->respond('false', 'Operator not found', 404);

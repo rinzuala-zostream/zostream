@@ -147,6 +147,6 @@ Route::prefix('zonet-operator')->group(function () {
     Route::put('/update/{num}', [ZonetOperatorController::class, 'update']);
     Route::delete('/delete/{num}', [ZonetOperatorController::class, 'delete']);
     Route::post('/login', [ZonetOperatorController::class, 'login']);
-    Route::post('/operator/{num}/wallet/topup', [ZonetOperatorController::class, 'topUpWallet']);
+    Route::post('/operator/{operator_id}/wallet/topup', [ZonetOperatorController::class, 'topUpWallet']);
 
 });
