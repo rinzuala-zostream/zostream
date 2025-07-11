@@ -124,6 +124,25 @@ class ZonetOperatorController extends Controller
         return $this->respond('true', 'Wallet topped up successfully');
     }
 
+    public function getAll()
+    {
+        try {
+            $operators = ZonetOperator::orderByDesc('created_at')->get();
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Fetched all operators successfully',
+                'data' => $operators
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to fetch operators',
+                'details' => $e->getMessage()
+            ]);
+        }
+    }
+
     /**
      * Response helper
      * status: "true" | "false"
