@@ -20,6 +20,8 @@ class ZonetUserModel extends Model
         'id', // user.uid
         'created_at',
         'operator_id', // operator.uid
+        'username', // username
+        'name', // user.name
     ];
 
     public $timestamps = false;

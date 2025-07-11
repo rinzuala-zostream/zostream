@@ -6,6 +6,7 @@ use App\Models\UserModel;
 use App\Models\ZonetSubscriptionModel;
 use App\Models\ZonetUserModel;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Validation\ValidationException;
 use Carbon\Carbon;
 
@@ -20,6 +21,8 @@ class ZonetController extends Controller
                 'id' => 'nullable|string|required_without:email',
                 'email' => 'nullable|email|required_without:id',
                 'operator_id' => 'required|string',
+                'username' => 'required|string',
+                'name' => 'required|string',
             ]);
 
             // Step 1: Get user from `user` table based on `id` or `email`
@@ -46,6 +49,8 @@ class ZonetController extends Controller
             $zonetUser = new ZonetUserModel();
             $zonetUser->id = $user->uid;
             $zonetUser->operator_id = $request->operator_id;
+            $zonetUser->username = $request->username;
+            $zonetUser->name = $request->name;
             $zonetUser->save();
 
             return response()->json([
@@ -112,7 +117,7 @@ class ZonetController extends Controller
             // Paginate manually
             $page = $request->query('page', 1);
             $perPage = 10;
-            $paginated = new \Illuminate\Pagination\LengthAwarePaginator(
+            $paginated = new LengthAwarePaginator(
                 $users->forPage($page, $perPage)->values(),
                 $users->count(),
                 $perPage,
