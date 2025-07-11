@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\UserModel;
+use App\Models\ZonetOperator;
 use App\Models\ZonetSubscriptionModel;
 use App\Models\ZonetUserModel;
 use Illuminate\Http\Request;
@@ -84,7 +85,7 @@ class ZonetController extends Controller
             })
                 ->with(['user', 'subscriptions'])
                 ->orderByDesc('created_at')
-                ->get(); // get all to process subscription logic before filtering
+                ->get();
 
             $users = $users->map(function ($zonetUser) {
                 if ($zonetUser->subscriptions) {
@@ -124,12 +125,20 @@ class ZonetController extends Controller
                 $page
             );
 
+            // Get operator wallet balance if operator_id is provided
+            $walletBalance = null;
+            if ($operatorId) {
+                $operator = ZonetOperator::where('id', $operatorId)->first();
+                $walletBalance = $operator?->wallet;
+            }
+
             return response()->json([
                 'status' => 'success',
                 'message' => 'Fetched successfully',
                 'data' => $paginated,
                 'subscribe_count' => $subscribeCount,
                 'unsubscribe_count' => $unsubscribeCount,
+                'wallet_balance' => $walletBalance, // ✅ Added here
             ]);
         } catch (\Exception $e) {
             return response()->json([
@@ -163,9 +172,10 @@ class ZonetController extends Controller
             $request->validate([
                 'period' => 'required|int|max:255',
                 'num' => 'required|int|exists:zonet_users,num',
-                'create_date' => 'nullable|date', // ✅ allow passing custom date
+                'create_date' => 'nullable|date',
             ]);
 
+            // Step 1: Find Zonet user
             $zonetUser = ZonetUserModel::where('num', $request->num)->first();
 
             if (!$zonetUser) {
@@ -175,19 +185,43 @@ class ZonetController extends Controller
                 ]);
             }
 
+            // Step 2: Find the operator
+            $operator = ZonetOperator::where('id', $zonetUser->operator_id)->first();
+            if (!$operator) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Operator not found'
+                ]);
+            }
+
+            // Step 3: Check wallet balance
+            $subscriptionCost = 122;
+            if ($operator->wallet < $subscriptionCost) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Insufficient wallet balance. ₹122 required.'
+                ]);
+            }
+
+            // Step 4: Deduct wallet
+            $operator->wallet -= $subscriptionCost;
+            $operator->save();
+
+            // Step 5: Create subscription
             $subscription = ZonetSubscriptionModel::create([
                 'period' => $request->period,
                 'user_num' => $zonetUser->num,
                 'sub_plan' => $request->sub_plan ?? 'Thla 1',
                 'create_date' => $request->create_date
                     ? Carbon::parse($request->create_date)->format('F j, Y')
-                    : now()->format('F j, Y') // ✅ fallback to current date
+                    : now()->format('F j, Y')
             ]);
 
             return response()->json([
                 'status' => 'success',
-                'message' => 'Subscription created successfully',
-                'data' => $subscription
+                'message' => 'Subscription created and ₹122 deducted from wallet',
+                'data' => $subscription,
+                'wallet_balance' => $operator->wallet
             ]);
         } catch (\Exception $e) {
             return response()->json([

@@ -13,7 +13,7 @@ class ZonetOperatorController extends Controller
     {
         try {
             $validated = $request->validate([
-        
+
                 'password' => 'required|string|min:6',
                 'name' => 'required|string|max:30',
                 'phone' => 'required|string|max:15|unique:zonet_operators,phone',
@@ -31,6 +31,7 @@ class ZonetOperatorController extends Controller
                 'name' => $validated['name'],
                 'phone' => $validated['phone'],
                 'address' => $validated['address'],
+                'wallet' => 0, // ✅ Set initial wallet amount
                 'created_at' => now(),
             ]);
 
@@ -54,6 +55,7 @@ class ZonetOperatorController extends Controller
                 'name' => 'nullable|string|max:30',
                 'phone' => 'nullable|string|max:15',
                 'address' => 'nullable|string|max:225',
+                'wallet' => 'nullable|numeric|min:0', // ✅ Add this line
             ]);
 
             if (isset($validated['password'])) {
@@ -102,6 +104,24 @@ class ZonetOperatorController extends Controller
         } catch (\Exception $e) {
             return $this->respond('false', 'Failed to delete operator', 500);
         }
+    }
+
+    public function topUpWallet(Request $request, $num)
+    {
+        $validated = $request->validate([
+            'amount' => 'required|numeric|min:1',
+        ]);
+
+        $operator = ZonetOperator::find($num);
+
+        if (!$operator) {
+            return $this->respond('false', 'Operator not found', 404);
+        }
+
+        $operator->wallet += $validated['amount'];
+        $operator->save();
+
+        return $this->respond('true', 'Wallet topped up successfully');
     }
 
     /**

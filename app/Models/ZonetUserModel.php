@@ -37,4 +37,10 @@ class ZonetUserModel extends Model
     {
         return $this->belongsTo(ZonetSubscriptionModel::class, 'num', 'user_num');
     }
+
+    public function operator()
+    {
+        return $this->belongsTo(ZonetOperator::class, 'operator_id', 'id');
+    }
+
 }

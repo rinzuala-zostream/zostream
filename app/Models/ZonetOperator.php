@@ -15,9 +15,10 @@ class ZonetOperator extends Model
     protected $fillable = [
         'id',
         'password',
-        'created_at',
         'name',
         'phone',
         'address',
+        'wallet',
+        'created_at',
     ];
 }
