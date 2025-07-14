@@ -215,26 +215,22 @@ class MovieController extends Controller
             'movie_type' => 'required|string|in:movie,episode',
         ]);
 
-        $id = $request->query('movie_id');
-        $type = strtolower($request->query('movie_type'));
+        $id = $request->input('movie_id');
+        $type = strtolower($request->input('movie_type'));
 
-        if ($type === 'movie') {
-            $movie = MovieModel::where('id', $id)->first();
-        } elseif ($type === 'episode') {
-            // Assuming you have an EpisodeModel for episodes
-            $movie = EpisodeModel::where('id', $id)->first();
-        } else {
-            return response()->json(['status' => 'error', 'message' => 'Invalid type']);
-        }
+        $model = $type === 'movie' ? MovieModel::class : EpisodeModel::class;
 
-        if (!$movie) {
+        $item = $model::where('id', $id)->first();
+
+        if (!$item) {
             return response()->json(['status' => 'error', 'message' => 'Content not found']);
         }
 
-        $movie->increment('views');
+        $item->increment('views');
 
         return response()->json(['status' => 'success', 'message' => 'View count incremented']);
     }
+
     public function insert(Request $request)
     {
         $apiKey = $request->header('X-Api-Key');

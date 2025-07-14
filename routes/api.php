@@ -3,12 +3,10 @@
 use App\Http\Controllers\AdsController;
 use App\Http\Controllers\AlsoLikeController;
 use App\Http\Controllers\AxinomLicense;
-use App\Http\Controllers\BirthdayController;
 use App\Http\Controllers\CashFreeController;
 use App\Http\Controllers\EpisodeController;
 use App\Http\Controllers\CalculatePlan;
 use App\Http\Controllers\CheckDeviceAvailable;
-use App\Http\Controllers\DecryptionController;
 use App\Http\Controllers\DetailsController;
 use App\Http\Controllers\FCMNotificationController;
 use App\Http\Controllers\LinkController;
