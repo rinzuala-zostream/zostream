@@ -199,7 +199,7 @@ class ZonetController extends Controller
             if ($operator->wallet < $subscriptionCost) {
                 return response()->json([
                     'status' => 'error',
-                    'message' => 'Insufficient wallet balance. ₹122 required.'
+                    'message' => 'Insufficient wallet balance. 122 required.'
                 ]);
             }
 
@@ -219,7 +219,7 @@ class ZonetController extends Controller
 
             return response()->json([
                 'status' => 'success',
-                'message' => 'Subscription created and ₹122 deducted from wallet',
+                'message' => 'Subscription created and 122 deducted from wallet',
                 'data' => $subscription,
                 'wallet_balance' => $operator->wallet
             ]);
