@@ -226,7 +226,7 @@ class MovieController extends Controller
             return response()->json(['status' => 'error', 'message' => 'Content not found']);
         }
 
-        $item->increment('views');
+        $item->increment('views', 1);
 
         return response()->json(['status' => 'success', 'message' => 'View count incremented']);
     }
