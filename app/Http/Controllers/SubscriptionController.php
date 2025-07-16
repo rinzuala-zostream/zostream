@@ -45,53 +45,66 @@ class SubscriptionController extends Controller
             $uid = $request->query('id');
             $device = $request->query('device_type');
             $ip = $request->query('ip');
-            $isFromISP = false;
 
             $subscriptions = [];
 
             if (!$device) {
                 $subscriptions[] = [
                     'device_type' => 'Mobile',
-                    'data' => SubscriptionModel::where('id', $uid)->first()
+                    'data' => SubscriptionModel::where('id', $uid)->first(),
+                    'is_from_isp' => false,
                 ];
                 $subscriptions[] = [
                     'device_type' => 'TV',
-                    'data' => TVSubscriptionModel::where('id', $uid)->first()
+                    'data' => TVSubscriptionModel::where('id', $uid)->first(),
+                    'is_from_isp' => false,
                 ];
                 $subscriptions[] = [
                     'device_type' => 'Browser',
-                    'data' => BrowserSubscriptionModel::where('id', $uid)->first()
+                    'data' => BrowserSubscriptionModel::where('id', $uid)->first(),
+                    'is_from_isp' => false,
                 ];
-
             }
 
             if ($ip && $device) {
-                // Call route to check if IP is from ISP
+                // Check if IP is from ISP
                 $ispRequest = new Request(['ip' => $ip]);
                 $ispResponse = $this->streamController->stream($ispRequest);
                 $responseData = $ispResponse->getData(true);
+                $rawIsFromISP = $responseData['is_from_isp'] ?? false;
 
-                $isFromISP = $responseData['is_from_isp'] ?? false;
-
-                if ($isFromISP) {
+                if ($rawIsFromISP) {
                     $zonetUser = ZonetUserModel::where('id', $uid)->first();
+                    $subscription = null;
 
                     if ($zonetUser) {
                         $subscription = ZonetSubscriptionModel::where('user_num', $zonetUser->num)
                             ->orderByDesc('id')
                             ->first();
+                    }
+
+                    if ($subscription) {
+                        $subscriptions[] = [
+                            'device_type' => $device,
+                            'data' => $subscription,
+                            'is_from_isp' => true,
+                        ];
+                    } else {
+                        // fallback to default subscription
+                        $model = match ($device) {
+                            'TV' => TVSubscriptionModel::class,
+                            'Mobile' => SubscriptionModel::class,
+                            default => BrowserSubscriptionModel::class,
+                        };
 
                         $subscriptions[] = [
                             'device_type' => $device,
-                            'data' => $subscription
-                        ];
-                    } else {
-                        $subscriptions[] = [
-                            'device_type' => $device,
-                            'data' => null
+                            'data' => $model::where('id', $uid)->first(),
+                            'is_from_isp' => false,
                         ];
                     }
                 } else {
+                    // Non-ISP IP, get default model
                     $model = match ($device) {
                         'TV' => TVSubscriptionModel::class,
                         'Mobile' => SubscriptionModel::class,
@@ -100,11 +113,12 @@ class SubscriptionController extends Controller
 
                     $subscriptions[] = [
                         'device_type' => $device,
-                        'data' => $model::where('id', $uid)->first()
+                        'data' => $model::where('id', $uid)->first(),
+                        'is_from_isp' => false,
                     ];
                 }
             } elseif ($device) {
-                // If IP is null and device is provided, skip the ISP check and fetch from regular model
+                // If IP is null and device is provided
                 $model = match ($device) {
                     'TV' => TVSubscriptionModel::class,
                     'Mobile' => SubscriptionModel::class,
@@ -113,7 +127,8 @@ class SubscriptionController extends Controller
 
                 $subscriptions[] = [
                     'device_type' => $device,
-                    'data' => $model::where('id', $uid)->first()
+                    'data' => $model::where('id', $uid)->first(),
+                    'is_from_isp' => false,
                 ];
             }
 
@@ -122,6 +137,7 @@ class SubscriptionController extends Controller
             foreach ($subscriptions as $entry) {
                 $deviceType = $entry['device_type'];
                 $subscription = $entry['data'];
+                $isFromISP = $entry['is_from_isp'] ?? false;
 
                 if ($subscription) {
                     $createDate = new DateTime($subscription->create_date);
@@ -160,9 +176,7 @@ class SubscriptionController extends Controller
                         'create_date' => $createDate->format('F j, Y'),
                         'current_date' => $currentDate->format('F j, Y'),
                         'period' => $subscription->period,
-                        'sub_plan' => $isFromISP
-                            ? 'Zonet free subscription'
-                            : $subscription->sub_plan,
+                        'sub_plan' => $isFromISP ? 'Zonet free subscription' : $subscription->sub_plan,
                         'sub' => $isActive,
                         'expiry_date' => $expiryDate->format('F j, Y'),
                         'device_support' => $deviceSupport,
@@ -170,7 +184,6 @@ class SubscriptionController extends Controller
                     ];
 
                     if ($device) {
-                        // Return single object directly if device_type is provided
                         return response()->json($subscriptionResult);
                     }
 
@@ -182,9 +195,7 @@ class SubscriptionController extends Controller
                 return response()->json(['status' => 'error', 'message' => 'No data found for the given id']);
             }
 
-            return response()->json(
-                $results
-            );
+            return response()->json($results);
 
         } catch (\Illuminate\Contracts\Encryption\DecryptException $e) {
             return response()->json(['status' => 'error', 'message' => 'Invalid encrypted API key'], 403);
