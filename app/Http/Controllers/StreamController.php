@@ -20,34 +20,30 @@ class StreamController extends Controller
             if ($ipinfoResponse->successful()) {
                 $ipInfo = $ipinfoResponse->json();
 
+                // Step 2: Only do fallback if org matches from ipinfo.io
                 if (
                     isset($ipInfo['org']) &&
                     $ipInfo['org'] === 'AS141253 Hyosec Solutions Private Limited'
                 ) {
-                    $isFromISP = true;
+                    // Fetch more details from ipwhois.app
+                    $fallbackData = json_decode(@file_get_contents("https://ipwhois.app/json/{$ip}"), true);
+
+                    if (
+                        isset($fallbackData['asn']) &&
+                        $fallbackData['asn'] === 'AS141253' &&
+                        ($fallbackData['org'] ?? '') === 'ZONET COMMUNICATIONS' &&
+                        ($fallbackData['isp'] ?? '') === 'Hyosec Solutions Private Limited'
+                    ) {
+                        $isFromISP = true;
+                    }
+
+                    // Use fallback data if available
+                    if (!empty($fallbackData)) {
+                        $ipInfo = $fallbackData;
+                    }
                 }
             }
 
-            // Step 2: Fallback to ipwhois.app if not matched
-            if (!$isFromISP) {
-                $fallbackData = json_decode(@file_get_contents("https://ipwhois.app/json/{$ip}"), true);
-
-                if (
-                    isset($fallbackData['asn']) &&
-                    $fallbackData['asn'] === 'AS141253' &&
-                    ($fallbackData['org'] ?? '') === 'ZONET COMMUNICATIONS' &&
-                    ($fallbackData['isp'] ?? '') === 'Hyosec Solutions Private Limited'
-                ) {
-                    $isFromISP = true;
-                }
-
-                // Use fallback data if available
-                if (!empty($fallbackData)) {
-                    $ipInfo = $fallbackData;
-                }
-            }
-
-            // Final response
             return response()->json([
                 'status' => true,
                 'is_from_isp' => $isFromISP,
