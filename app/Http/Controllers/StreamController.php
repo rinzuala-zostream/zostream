@@ -20,13 +20,14 @@ class StreamController extends Controller
             if ($ipinfoResponse->successful()) {
                 $ipInfo = $ipinfoResponse->json();
 
-                // Step 2: Only do fallback if org matches from ipinfo.io
+                // Step 2: Only check ipwhois.app if ipinfo.org matches expected org
                 if (
                     isset($ipInfo['org']) &&
                     $ipInfo['org'] === 'AS141253 Hyosec Solutions Private Limited'
                 ) {
-                    // Fetch more details from ipwhois.app
-                    $fallbackData = json_decode(@file_get_contents("https://ipwhois.app/json/{$ip}"), true);
+                    $apiKey = config('app.ipwhois_api_key');
+                    $url = "https://ipwhois.app/json/{$ip}?apikey={$apiKey}";
+                    $fallbackData = json_decode(@file_get_contents($url), true);
 
                     if (
                         isset($fallbackData['asn']) &&
@@ -37,7 +38,6 @@ class StreamController extends Controller
                         $isFromISP = true;
                     }
 
-                    // Use fallback data if available
                     if (!empty($fallbackData)) {
                         $ipInfo = $fallbackData;
                     }

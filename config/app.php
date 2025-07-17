@@ -7,6 +7,7 @@ return [
     'twilio_id' => env('TWILIO_ID', 'default_value'),
     'cashfree_id' => env('CASHFREE_CLIENT_ID', 'default_value'),
     'cashfree_secret' => env('CASHFREE_CLIENT_SECRET', 'default_value'),
+    'ipwhois_api_key' => env('IPWHOIS_API_KEY', 'default_value'),
 
     /*
     |--------------------------------------------------------------------------
