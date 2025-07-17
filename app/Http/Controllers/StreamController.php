@@ -20,7 +20,7 @@ class StreamController extends Controller
             if ($ipinfoResponse->successful()) {
                 $ipInfo = $ipinfoResponse->json();
 
-                // Step 2: Only check ipwhois.app if ipinfo.org matches expected org
+                // Step 2: Only check ipwhois.pro if org matches
                 if (
                     isset($ipInfo['org']) &&
                     $ipInfo['org'] === 'AS141253 Hyosec Solutions Private Limited'
@@ -29,11 +29,13 @@ class StreamController extends Controller
                     $url = "https://ipwhois.pro/{$ip}?key={$apiKey}";
                     $fallbackData = json_decode(@file_get_contents($url), true);
 
+                    $connection = $fallbackData['connection'] ?? [];
+
                     if (
-                        isset($fallbackData['asn']) &&
-                        $fallbackData['asn'] === 'AS141253' &&
-                        ($fallbackData['org'] ?? '') === 'ZONET COMMUNICATIONS' &&
-                        ($fallbackData['isp'] ?? '') === 'Hyosec Solutions Private Limited'
+                        isset($connection['asn']) &&
+                        $connection['asn'] == 141253 &&
+                        ($connection['org'] ?? '') === 'ZONET COMMUNICATIONS' &&
+                        ($connection['isp'] ?? '') === 'Hyosec Solutions Private Limited'
                     ) {
                         $isFromISP = true;
                     }
