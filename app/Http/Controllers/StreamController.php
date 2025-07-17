@@ -26,7 +26,7 @@ class StreamController extends Controller
                     $ipInfo['org'] === 'AS141253 Hyosec Solutions Private Limited'
                 ) {
                     $apiKey = config('app.ipwhois_api_key');
-                    $url = "https://ipwhois.app/json/{$ip}?apikey={$apiKey}";
+                    $url = "https://ipwhois.pro/{$ip}?key={$apiKey}";
                     $fallbackData = json_decode(@file_get_contents($url), true);
 
                     if (
