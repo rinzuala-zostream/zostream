@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AdminDashboardController;
 use App\Http\Controllers\AdsController;
 use App\Http\Controllers\AlsoLikeController;
 use App\Http\Controllers\AxinomLicense;
@@ -149,3 +150,8 @@ Route::prefix('zonet-operator')->group(function () {
     Route::get('/operators', [ZonetOperatorController::class, 'getAll']);
 
 });
+
+Route::get('/admin/users', [AdminDashboardController::class, 'getUserStats']);
+Route::get('/admin/movies', [AdminDashboardController::class, 'getMovieStats']);
+Route::get('/admin/subscriptions', [AdminDashboardController::class, 'getSubscriptionStats']);
+
