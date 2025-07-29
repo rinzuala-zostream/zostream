@@ -324,7 +324,7 @@ class MovieController extends Controller
         }
     }
 
-    public function update(Request $request, $id)
+    public function update(Request $request, $id): JsonResponse
     {
         $apiKey = $request->header('X-Api-Key');
 

@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use Firebase\JWT\JWT;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Nette\Utils\Random;
 
@@ -122,5 +124,82 @@ class AxinomLicense extends Controller
         $jwtToken = JWT::encode($payload, $communicationKey, 'HS256'); // Generate the JWT token
 
         return $jwtToken; // Return the generated JWT token
+    }
+
+    public function previewMPD(Request $request): JsonResponse
+    {
+        $mpdInput = $request->query('mpd');
+
+        if (!$mpdInput) {
+            return response()->json(['error' => 'Missing mpd parameter'], 400);
+        }
+
+        // === Step 1: Check if it's encrypted ===
+        if (str_contains($mpdInput, 'mpd')) {
+            $finalUrl = $mpdInput; // plain URL
+        } else {
+            // === Decrypt ===
+            $shaKey = 'd4c6198dabafb243b0d043a3c33a9fe171f81605158c267c7dfe5f66df29559a';
+            $decryptionKey = hash('sha256', $shaKey, true);
+
+            $data = base64_decode($mpdInput, true);
+            if (!$data || strlen($data) <= 16) {
+                return response()->json(['error' => 'Invalid encrypted data'], 400);
+            }
+
+            $iv = substr($data, 0, 16);
+            $cipherText = substr($data, 16);
+
+            $decrypted = openssl_decrypt($cipherText, 'aes-256-cbc', $decryptionKey, OPENSSL_RAW_DATA, $iv);
+            if (!$decrypted || !str_starts_with($decrypted, 'http')) {
+                return response()->json(['error' => 'Failed to decrypt MPD URL'], 500);
+            }
+
+            $finalUrl = $decrypted;
+        }
+
+        // === Step 2: Fetch and parse MPD XML ===
+        $fixedUrl = str_replace(' ', '%20', $finalUrl);
+        $xmlString = @file_get_contents($fixedUrl);
+
+        if (!$xmlString) {
+            return response()->json(['error' => 'Unable to load MPD'], 500);
+        }
+
+        $xml = new \SimpleXMLElement($xmlString);
+        $namespaces = $xml->getNamespaces(true);
+
+        foreach ($xml->Period->AdaptationSet as $adaptationSet) {
+            foreach ($adaptationSet->ContentProtection as $cp) {
+                $attrs = $cp->attributes($namespaces['cenc'] ?? '');
+                if (isset($attrs['default_KID'])) {
+                    $uuid = str_replace(['-', '{', '}'], '', (string) $attrs['default_KID']);
+                    $keyHex = bin2hex(hex2bin($uuid));
+
+                    $communicationKeyAsBase64 = "uoy1wOPkyPQznp7MIb8auiSoaeSbRn2ExzQdFZrsuPQ=";
+                    $communicationKeyId = "c52ad793-022a-447f-8250-b2ba00568b80";
+                    $communicationKey = base64_decode($communicationKeyAsBase64);
+
+                    $payload = [
+                        "version" => 1,
+                        "com_key_id" => $communicationKeyId,
+                        "message" => [
+                            "type" => "entitlement_message",
+                            "version" => 2,
+                            "content_keys_source" => [
+                                "inline" => [
+                                    ["id" => $keyHex]
+                                ]
+                            ]
+                        ]
+                    ];
+
+                    $jwt = JWT::encode($payload, $communicationKey, 'HS256');
+                    return response()->json(['token' => $jwt]);
+                }
+            }
+        }
+
+        return response()->json(['error' => 'No key ID found in MPD'], 404);
     }
 }

@@ -126,9 +126,10 @@ Route::post('/send-fcm', [FCMNotificationController::class, 'send']);
 Route::get('/stream', [StreamController::class, 'stream']);
 
 
+Route::get('/preview', [AxinomLicense::class, 'previewMPD']);
 Route::post('/axinom', [AxinomLicense::class, 'invokeWidevineCommonEncryption']);
-
 Route::get('/generate-token', [MovieController::class, 'generateFromMpd']);
+
 
 //Zonet
 Route::post('/zonet-users/insert', [ZonetController::class, 'insert']);
