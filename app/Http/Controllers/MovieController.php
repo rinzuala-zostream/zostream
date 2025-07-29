@@ -7,6 +7,7 @@ use App\Models\MovieModel;
 use Carbon\Carbon;
 use DateTime;
 use Firebase\JWT\JWT;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use SimpleXMLElement;
 use Str;
