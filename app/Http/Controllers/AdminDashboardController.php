@@ -45,6 +45,8 @@ class AdminDashboardController extends Controller
                 'PayPerView' => 'isPayPerView',
                 'Premium' => 'isPremium',
                 'Age Restricted' => 'isAgeRestricted',
+                'Protected' => 'isProtected',
+                'Enable' => 'isEnable',
             ];
 
             $movieCounts = collect($categoryFlags)->mapWithKeys(function ($column, $label) use ($start, $end) {

@@ -14,9 +14,10 @@ class UserDeviceModel extends Model
     protected $fillable = [
         'user_id',
         'device_id',
+        'device_type',
         'device_name',
         'role', // 'owner' or 'shared'
-        'last_login'
+        'last_login',
     ];
 
     public $timestamps = false; // Disable timestamps if not using created_at/updated_at

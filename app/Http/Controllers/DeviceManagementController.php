@@ -19,45 +19,81 @@ class DeviceManagementController extends Controller
 
     }
     public function store(Request $request)
-    {
-        $apiKey = $request->header('X-Api-Key');
+{
+    $apiKey = $request->header('X-Api-Key');
 
-        if ($apiKey !== $this->validApiKey) {
-            return response()->json(["status" => "error", "message" => "Invalid API key"], 401);
+    if ($apiKey !== $this->validApiKey) {
+        return response()->json(["status" => "error", "message" => "Invalid API key"], 401);
+    }
+
+    $request->validate([
+        'user_id' => 'required|string',
+        'device_id' => 'required|string',
+        'device_type' => 'required|string',
+        'device_name' => 'required|string'
+    ]);
+
+    try {
+        $user_id = $request->query('user_id');
+        $device_id = $request->query('device_id');
+        $device_type = $request->query('device_type');
+        $device_name = $request->query('device_name');
+
+        $user = UserModel::where('uid', $user_id)->first();
+        if (!$user) {
+            return response()->json(['status' => 'error', 'message' => 'User not found'], 404);
         }
 
-        // Validate query parameters
-        $request->validate([
-            'user_id' => 'required|string',
-            'device_id' => 'required|string',
-            'device_name' => 'required|string'
+        // ✅ Device limit check
+        $activeSub = $user->subscription; // Assuming you have a relationship
+        $limit = 1; // default before subscribing
+
+        if ($activeSub && $activeSub->isActive()) {
+            $days = $activeSub->period ?? 30;
+            $limit = $this->getDeviceLimit($days);
+        }
+
+        $deviceCount = UserDeviceModel::where('user_id', $user_id)->count();
+        if ($deviceCount >= $limit) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Device limit reached for your plan'
+            ], 403);
+        }
+
+        // Check if this device is already registered
+        $already = UserDeviceModel::where('user_id', $user_id)
+            ->where('device_id', $device_id)
+            ->first();
+
+        if ($already) {
+            return response()->json(['status' => 'already_registered']);
+        }
+
+        // Save the new device
+        UserDeviceModel::create([
+            'user_id' => $user_id,
+            'device_id' => $device_id,
+            'device_type' => $device_type,
+            'device_name' => $device_name,
+            'role' => 'shared',
         ]);
 
-        try {
-            $user_id = $request->query('user_id');
-            $device_id = $request->query('device_id');
-            $device_name = $request->query('device_name');
+        return response()->json(['status' => 'success', 'message' => 'Device registered successfully']);
 
-            $user = UserModel::where('uid', $user_id)->first();
-            if (!$user) {
-                return response()->json(['status' => 'error', 'message' => 'User not found'], 404);
-            }
-
-            $role = 'shared';
-
-            UserDeviceModel::create([
-                'user_id' => $user_id,
-                'device_id' => $device_id,
-                'device_name' => $device_name,
-                'role' => $role
-            ]);
-
-            return response()->json(['status' => 'success', 'message' => 'Device registered successfully']);
-        } catch (\Exception $e) {
-            Log::error('Database Error: ' . $e->getMessage());
-            return response()->json(['status' => 'error', 'message' => 'Database error'], 500);
-        }
+    } catch (\Exception $e) {
+        Log::error('Device Register Error: ' . $e->getMessage());
+        return response()->json(['status' => 'error', 'message' => 'Something went wrong'], 500);
     }
+}
+
+private function getDeviceLimit($days)
+{
+    if ($days < 30) return 1;
+    if ($days < 90) return 2;
+    if ($days < 180) return 3;
+    return 4;
+}
 
     public function delete(Request $request)
     {

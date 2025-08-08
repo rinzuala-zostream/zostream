@@ -24,52 +24,45 @@ class WatchPositionController extends Controller
             return response()->json(['status' => 'error', 'message' => 'Invalid API key']);
         }
 
-        // Validate input
         $request->validate([
             'movie_id' => 'required|string',
             'position' => 'required|integer',
+            'duration' => 'nullable|integer',
             'user_id' => 'required|string',
+            'cover_img' => 'required|string',
             'movie_type' => 'nullable|string',
+            'title' => 'nullable|string', // <-- new validation
         ]);
 
         try {
-
             $movieId = $request->input('movie_id');
             $position = $request->input('position');
+            $duration = $request->input('duration');
             $userId = $request->input('user_id');
+            $coverImg = $request->input('cover_img');
             $movieType = $request->input('movie_type');
+            $title = $request->input('title');
 
-            // Check if the record exists
-            $existing = WatchHistoryModel::where('movie_id', $movieId)
-                ->where('user_id', $userId)
-                ->lockForUpdate()
-                ->first();
-
-            if ($existing) {
-                // Update existing
-                WatchHistoryModel::where('movie_id', $movieId)
-                    ->where('user_id', $userId)
-                    ->update([
-                        'position' => $position,
-                        'movie_type' => $movieType,
-                    ]);
-            } else {
-                // Insert new
-                WatchHistoryModel::insert([
-                    'movie_id' => $movieId,
+            WatchHistoryModel::updateOrInsert(
+                ['movie_id' => $movieId, 'user_id' => $userId],
+                [
                     'position' => $position,
-                    'user_id' => $userId,
                     'movie_type' => $movieType,
-                ]);
-            }
+                    'cover_img' => $coverImg,
+                    'title' => $title,
+                    'duration' => $duration,
+                    'updated_at' => now(),
+                    'created_at' => now(),
+                ]
+            );
 
             return response()->json(['status' => 'success', 'message' => 'Record saved successfully']);
 
         } catch (\Exception $e) {
-
             return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
         }
     }
+
     public function getWatchContinue(Request $request)
     {
         $apiKey = $request->header('X-Api-Key');
@@ -171,4 +164,28 @@ class WatchPositionController extends Controller
             'age' => $userAge
         ]);
     }
+
+    public function getWatchHistory(Request $request)
+{
+    $apiKey = $request->header('X-Api-Key');
+
+    if ($apiKey !== $this->validApiKey) {
+        return response()->json(['status' => 'error', 'message' => 'Invalid API key']);
+    }
+
+    $request->validate([
+        'userId' => 'required|string',
+    ]);
+
+    $userId = $request->query('userId');
+
+    $history = WatchHistoryModel::where('user_id', $userId)
+        ->orderByDesc('updated_at')
+        ->get(['movie_id', 'position', 'movie_type', 'updated_at', 'cover_img', 'title', 'duration']);
+
+    return response()->json([
+        'status' => 'success',
+        'history' => $history,
+    ]);
+}
 }

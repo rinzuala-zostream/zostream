@@ -14,7 +14,7 @@ class RegisterModel extends Model
     protected $fillable = [
         'call', 'created_date', 'device_id', 'dob', 'edit_date', 'img',
         'isACActive', 'isAccountComplete', 'khua', 'lastLogin', 'mail',
-        'name', 'uid', 'veng', 'device_name', 'token'
+        'name', 'uid', 'veng', 'device_name', 'device_type', 'token'
     ];
 
     protected $casts = [

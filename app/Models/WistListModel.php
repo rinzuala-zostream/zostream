@@ -4,24 +4,21 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-class WatchHistoryModel extends Model
+class WistListModel extends Model
 {
-    protected $table = 'watch_position';
+    protected $table = 'wist_list';
     protected $primaryKey = 'num';
 
     public $incrementing = true;
     protected $keyType = 'int';
 
-    public $timestamps = true; // Let Eloquent handle timestamps
+    public $timestamps = false;
 
     protected $fillable = [
+        'uid',
         'movie_id',
-        'movie_type',
-        'position',
-        'user_id',
-        'cover_img',
+        'poster',
         'title',
-        'duration',
+        'create_date',
     ];
 }
-

@@ -45,8 +45,9 @@ class RegisterController extends Controller
             'uid' => 'required|string',
             'veng' => 'nullable|string',
             'device_name' => 'required|string',
+            'device_type' => 'required|string',
             'token' => 'nullable|string'
-            
+
         ]);
 
         try {
@@ -56,15 +57,16 @@ class RegisterController extends Controller
             // Check if user registration was successful
             if ($response) {
                 try {
-                
+
                     $role =  'owner';
-                    UserDeviceModel::create([ 
+                    UserDeviceModel::create([
                         'user_id' => $validatedData['uid'],
                         'device_id' => $validatedData['device_id'],
+                        'device_type' => $validatedData['device_type'],
                         'device_name' => $validatedData['device_name'],
                         'role' => $role
                     ]);
-        
+
                     return response()->json(['status' => 'success', 'message' => 'Device registered successfully']);
                 } catch (\Exception $e) {
                     Log::error('Database Error: ' . $e->getMessage());

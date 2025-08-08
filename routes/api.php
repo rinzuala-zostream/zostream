@@ -27,11 +27,13 @@ use App\Http\Controllers\UpdateUserDevice;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\VerifyOTPController;
 use App\Http\Controllers\WatchPositionController;
+use App\Http\Controllers\WistListController;
 use App\Http\Controllers\ZonetController;
 use App\Http\Controllers\ZonetOperatorController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\DeviceManagementController;
+use App\Http\Controllers\LoginController;
 
 Route::get('/user', function (Request $request) {
     return $request->user();
@@ -65,6 +67,10 @@ Route::delete('/movies/{id}', [MovieController::class, 'destroy']);
 Route::get('/view', [MovieController::class, 'incrementView']);
 Route::post('/insert', [MovieController::class, 'insert']);
 
+//Login
+Route::post('/login', [LoginController::class, 'login']);
+Route::post('/logout', [LoginController::class, 'logout']);
+
 //update device for new device or change device
 Route::get('/device', [UpdateUserDevice::class, 'updateDevice']);
 
@@ -81,6 +87,7 @@ Route::get('/details', [DetailsController::class, 'getDetails']);
 Route::get('/calculate', [CalculatePlan::class, 'calculate']);
 
 Route::get('/ppv-price', [PPVPriceCalculate::class, 'getPPVPrice']);
+
 
 //Search
 Route::get('/search', [MovieSearchController::class, 'search']);
@@ -106,6 +113,12 @@ Route::get('/update-dob', [UserController::class, 'updateDob']);
 
 Route::post('/watch-position', [WatchPositionController::class, 'save']);
 Route::get('/get-position', [WatchPositionController::class, 'getWatchPosition']);
+Route::get('/watch-history', [WatchPositionController::class, 'getWatchHistory']);
+Route::get('/watch-historyy', [WatchPositionController::class, 'getWatchContinue']);
+
+//wist_list
+Route::post('/wist-list', [WistListController::class, 'addToWistList']);
+Route::get('/wist-list', [WistListController::class, 'getWistList']);
 
 Route::get('/update-token', [UserController::class, 'updateToken']);
 
