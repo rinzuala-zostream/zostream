@@ -13,6 +13,29 @@ class PlanPriceController extends Controller
         $device = $request->query('device');
         $devices = $device ? array_map('trim', explode(',', $device)) : [];
 
+        // 🔹 Check if Browser is in request devices
+        // 🔹 Put this near the top of getPlanPrice() after you parse $devices
+        if (in_array('Browser', $devices, true)) {
+            return response()->json([
+                'status' => 'error',
+                'errorData' => [
+                    'code' => 'BROWSER_UNAVAILABLE',
+                    'message' => 'Browser is no longer available'
+                ],
+                'data' => [
+                    'original_price' => 0,
+                    'discounted_price' => 0,
+                    'total_discount_percent' => '0%',
+                    'start_date' => null,
+                    'expiry_date' => null,
+                    'period' => 0,
+                    'plan' => $plan ?? '',
+                    'devices' => ['Browser' => 'unavailable']
+                ]
+            ], 200);
+        }
+
+
         $planAmounts = [
             'Kar 1' => 317,
             'Thla 1' => 737,
