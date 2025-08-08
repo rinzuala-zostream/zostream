@@ -44,8 +44,8 @@ class RegisterController extends Controller
             'name' => 'nullable|string',
             'uid' => 'required|string',
             'veng' => 'nullable|string',
-            'device_name' => 'required|string',
-            'device_type' => 'required|string',
+            'device_name' => 'nullable|string',
+            'device_type' => 'nullable|string',
             'token' => 'nullable|string'
 
         ]);
