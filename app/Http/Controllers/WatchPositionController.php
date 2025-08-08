@@ -29,7 +29,7 @@ class WatchPositionController extends Controller
             'position' => 'required|integer',
             'duration' => 'nullable|integer',
             'user_id' => 'required|string',
-            'cover_img' => 'required|string',
+            'cover_img' => 'nullable|string',
             'movie_type' => 'nullable|string',
             'title' => 'nullable|string', // <-- new validation
         ]);
