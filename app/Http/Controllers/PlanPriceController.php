@@ -18,7 +18,7 @@ class PlanPriceController extends Controller
         if (in_array('Browser', $devices, true)) {
             return response()->json([
                 'status' => 'error',
-                'errorData' => [
+                'error_data' => [
                     'code' => 'BROWSER_UNAVAILABLE',
                     'message' => 'Browser is no longer available'
                 ],
