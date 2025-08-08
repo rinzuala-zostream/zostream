@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class WistListModel extends Model
 {
     protected $table = 'wist_list';
-    protected $primaryKey = 'num';
+    protected $primaryKey = 'id';
 
     public $incrementing = true;
     protected $keyType = 'int';
