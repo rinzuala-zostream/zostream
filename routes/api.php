@@ -74,6 +74,7 @@ Route::post('/request-otp', [RequestOTPController::class, 'sendOTP']);
 Route::post('/verify-otp', [VerifyOTPController::class, 'verify']);
 
 Route::get('/ads', [AdsController::class, 'getAds']);
+Route::post('/ads', [AdsController::class, 'store']);
 
 Route::get('/details', [DetailsController::class, 'getDetails']);
 
