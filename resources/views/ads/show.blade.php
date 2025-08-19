@@ -159,7 +159,7 @@
         {{-- Footer --}}
         <div class="text-center opacity-80 text-sm mt-10">
             <p class="font-semibold text-white/90">
-                ❤️ Ads you’ll love — powered by <span class="text-indigo-400">ZoStream</span>
+                ❤️ Ads you’ll love — powered by <span class="text-indigo-400">Zo Stream</span>
         </div>
 
     </main>
@@ -195,7 +195,7 @@
         document.getElementById('shareBtn')?.addEventListener('click', async () => {
             const data = {
                 title: @json($pageTitle),
-                text: 'Check out this ad on ZoStream',
+                text: 'Check out this ad on Zo Stream',
                 url: @json($ad->ads_url)
             };
             if (navigator.share) { try { await navigator.share(data); } catch (e) { } }
