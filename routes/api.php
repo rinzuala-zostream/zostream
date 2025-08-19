@@ -74,8 +74,9 @@ Route::post('/request-otp', [RequestOTPController::class, 'sendOTP']);
 Route::post('/verify-otp', [VerifyOTPController::class, 'verify']);
 
 Route::get('/ads', [AdsController::class, 'getAds']);
-
 Route::post('/ads', [AdsController::class, 'store']);
+Route::put('/ads/{num}', [AdsController::class, 'update']);
+Route::delete('/ads/{num}', [AdsController::class, 'destroy']);
 
 Route::get('/details', [DetailsController::class, 'getDetails']);
 
