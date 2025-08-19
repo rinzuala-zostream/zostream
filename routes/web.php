@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AdsController;
 use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
@@ -13,3 +14,6 @@ Route::get('/', function () {
 Route::get('/check', function () {
     return view('Test');
 });
+
+Route::get('/ads/{ad}', [AdsController::class, 'show'])->name('ads.show');
+

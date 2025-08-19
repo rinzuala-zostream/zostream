@@ -6,6 +6,7 @@ use App\Models\AdsModel;
 use Illuminate\Http\Request;
 use Carbon\Carbon;
 use Exception;
+use Str;
 
 class AdsController extends Controller
 {
@@ -71,8 +72,9 @@ class AdsController extends Controller
                 'ads_name' => 'required|string|max:255',
                 'description' => 'nullable|string',
                 'period' => 'required|integer|min:0',
-                'type' => 'required|string',
+                'type' => 'required|string|in:website,video,image',
                 'video_url' => 'nullable|url',
+                // keep for backward compat; will be ignored & overwritten
                 'ads_url' => 'nullable|url',
                 'feature_img' => 'nullable|url',
                 'img1' => 'nullable|url',
@@ -90,11 +92,13 @@ class AdsController extends Controller
 
             $createDate = $validated['create_date'] ?? Carbon::now()->format('F j, Y');
 
+            // If client sends images[], spread into img1..img4
             if (!empty($validated['images'])) {
                 $pad = array_pad($validated['images'], 4, null);
                 [$validated['img1'], $validated['img2'], $validated['img3'], $validated['img4']] = $pad;
             }
 
+            // Create without trusting client ads_url
             $ad = AdsModel::create([
                 'ads_name' => $validated['ads_name'],
                 'create_date' => $createDate,
@@ -102,7 +106,7 @@ class AdsController extends Controller
                 'period' => $validated['period'],
                 'type' => $validated['type'],
                 'video_url' => $validated['video_url'] ?? null,
-                'ads_url' => $validated['ads_url'] ?? null,
+                'ads_url' => null, // set after permalink generation
                 'feature_img' => $validated['feature_img'] ?? null,
                 'img1' => $validated['img1'] ?? null,
                 'img2' => $validated['img2'] ?? null,
@@ -110,11 +114,31 @@ class AdsController extends Controller
                 'img4' => $validated['img4'] ?? null,
             ]);
 
-            return $this->success("Ad created successfully", $ad, 201);
-        } catch (Exception $e) {
+            // Generate permalink like /ads/12-i1-thrift-store
+            $pk = $ad->getKey(); // ✅ works regardless of PK name (num/id/uuid)
+            $slug = Str::slug($ad->ads_name);
+            $permalink = route('ads.show', ['ad' => "{$pk}-{$slug}"]);
+            $ad->ads_url = $permalink;
+            $ad->save();
+
+            return $this->success("Ad created successfully", $ad->fresh(), 201);
+        } catch (\Throwable $e) {
             return $this->error("Failed to create ad", 500, $e->getMessage());
         }
     }
+
+    // in AdsController
+    public function show(string $ad)
+    {
+        // supports /ads/10 or /ads/10-i1-thrift-store
+        $numPart = (int) \Illuminate\Support\Str::before($ad, '-');
+        if ($numPart <= 0) {
+            abort(404); // no numeric id/num in URL
+        }
+        $adModel = AdsModel::findOrFail($numPart);
+        return view('ads.show', ['ad' => $adModel]);
+    }
+
 
     public function update(Request $request, $num)
     {
@@ -143,7 +167,7 @@ class AdsController extends Controller
             'img3' => 'sometimes|nullable|url',
             'img4' => 'sometimes|nullable|url',
             'create_date' => 'sometimes|nullable|string', // keeping your existing format
-        
+
         ]);
 
         // Business rule: if resulting type is "video", ensure we end up with a video_url
