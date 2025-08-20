@@ -94,7 +94,36 @@
                     class="w-full md:w-[320px] h-[220px] md:h-[260px] object-cover rounded-2xl shadow-2xl ring-1 ring-white/10"
                     alt="Cover">
 
-                {{-- Title + Meta --}}
+                {{-- Title + Meta (with keyword parsing) --}}
+                @php
+                    $rawDesc = $ad->description ?? '';
+
+                    $links = [];
+                    $phones = [];
+
+                    // Regex to match "link: url - display_name: text"
+                    if (preg_match_all('/link\s*:\s*(https?:\/\/\S+)\s*-\s*display_name\s*:\s*([^\n]+)/i', $rawDesc, $matches, PREG_SET_ORDER)) {
+                        foreach ($matches as $m) {
+                            $links[] = ['url' => trim($m[1]), 'name' => trim($m[2])];
+                        }
+                    }
+
+                    // Regex to match "phone: number - display_name: text"
+                    if (preg_match_all('/phone\s*:\s*([+()\- \d]{6,20})\s*-\s*display_name\s*:\s*([^\n]+)/i', $rawDesc, $matches, PREG_SET_ORDER)) {
+                        foreach ($matches as $m) {
+                            $phones[] = ['num' => trim($m[1]), 'name' => trim($m[2])];
+                        }
+                    }
+
+                    // Clean description (remove keyword patterns)
+                    $cleanDesc = preg_replace([
+                        '/link\s*:\s*https?:\/\/\S+\s*-\s*display_name\s*:[^\n]+/i',
+                        '/phone\s*:\s*[+()\- \d]{6,20}\s*-\s*display_name\s*:[^\n]+/i'
+                    ], '', $rawDesc);
+
+                    $cleanDesc = trim(preg_replace('/\s{2,}/', ' ', $cleanDesc));
+                @endphp
+
                 <div class="flex-1">
                     <div class="flex flex-wrap items-center gap-3 mb-3">
                         <h1 class="text-3xl md:text-5xl font-extrabold tracking-tight">{{ $ad->ads_name }}</h1>
@@ -104,31 +133,41 @@
                         </span>
                     </div>
 
-                    @if ($ad->description)
+                    {{-- Description (keywords removed) --}}
+                    @if ($cleanDesc !== '')
                         <p class="text-base md:text-lg/relaxed text-white/85 max-w-3xl">
-                            {{ $ad->description }}
+                            {{ $cleanDesc }}
                         </p>
                     @endif
 
-                    <div class="mt-5 flex flex-wrap items-center gap-2 md:gap-3 text-xs md:text-sm">
-                        @if ($ad->type)
-                            <span class="px-3 py-1 rounded-full badge">Type: {{ ucfirst($ad->type) }}</span>
-                        @endif
-                        <span class="px-3 py-1 rounded-full badge">Created: {{ $ad->create_date }}</span>
-                        <span class="px-3 py-1 rounded-full badge">Duration: {{ $period }}
-                            day{{ $period === 1 ? '' : 's' }}</span>
-                        <span class="px-3 py-1 rounded-full badge">Ends: {{ $end->format('F j, Y') }}</span>
-                    </div>
+                    {{-- Render extracted buttons --}}
+                    @if ($links || $phones)
+                        <div class="mt-4 flex flex-wrap gap-3">
+                            @foreach ($links as $l)
+                                <a href="{{ $l['url'] }}" target="_blank" rel="noopener"
+                                    class="inline-flex items-center px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 transition shadow-lg shadow-indigo-900/30">
+                                    🔗 {{ $l['name'] }}
+                                </a>
+                            @endforeach
 
-                    {{-- Actions --}}
+                            @foreach ($phones as $p)
+                                <a href="tel:{{ preg_replace('/[^\d+]/', '', $p['num']) }}"
+                                    class="inline-flex items-center px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 transition shadow-lg">
+                                    📞 {{ $p['name'] }}
+                                </a>
+                            @endforeach
+                        </div>
+                    @endif
+
+                    {{-- Actions (hidden on mobile) --}}
                     <div class="mt-6 flex flex-wrap gap-3">
                         <button id="copyBtn"
-                            class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 transition shadow-lg shadow-indigo-900/30"
+                            class="hidden sm:inline-flex px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 transition shadow-lg shadow-indigo-900/30"
                             data-link="{{ $ad->ads_url }}">
                             Copy Link
                         </button>
                         <button id="shareBtn"
-                            class="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 transition ring-1 ring-white/10">
+                            class="hidden sm:inline-flex px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 transition ring-1 ring-white/10">
                             Share
                         </button>
                     </div>
