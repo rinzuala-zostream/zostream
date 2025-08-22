@@ -10,6 +10,7 @@ use App\Http\Controllers\CalculatePlan;
 use App\Http\Controllers\CheckDeviceAvailable;
 use App\Http\Controllers\DetailsController;
 use App\Http\Controllers\FCMNotificationController;
+use App\Http\Controllers\HlsFolderController;
 use App\Http\Controllers\LinkController;
 use App\Http\Controllers\MovieController;
 use App\Http\Controllers\MovieSearchController;
@@ -158,4 +159,6 @@ Route::prefix('zonet-operator')->group(function () {
 Route::get('/admin/users', [AdminDashboardController::class, 'getUserStats']);
 Route::get('/admin/movies', [AdminDashboardController::class, 'getMovieStats']);
 Route::get('/admin/subscriptions', [AdminDashboardController::class, 'getSubscriptionStats']);
+
+Route::get('/hls/check-folder', [HlsFolderController::class, 'check']);
 
