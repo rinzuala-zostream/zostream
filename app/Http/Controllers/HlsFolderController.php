@@ -103,55 +103,35 @@ class HlsFolderController extends Controller
      */
     private function decryptMpdUrl(string $raw): array
     {
-        try {
-            $shaKey = 'd4c6198dabafb243b0d043a3c33a9fe171f81605158c267c7dfe5f66df29559a';
 
-            // Key rotation / fallback support
-            $keyToUse = ($shaKey === '24a4785bb225d7392aa419e218d9e2e7461e193a27c42d8af8418d28e0d53676')
-                ? 'd4c6198dabafb243b0d043a3c33a9fe171f81605158c267c7dfe5f66df29559a'
-                : $shaKey;
+        $shaKey = 'd4c6198dabafb243b0d043a3c33a9fe171f81605158c267c7dfe5f66df29559a';
 
-            // Hash to get binary decryption key
-            $decryptionKey = hash('sha256', $keyToUse, true);
+        $decryptionKey = hash(
+            'sha256',
+            ($shaKey === '24a4785bb225d7392aa419e218d9e2e7461e193a27c42d8af8418d28e0d53676') ?
+            'd4c6198dabafb243b0d043a3c33a9fe171f81605158c267c7dfe5f66df29559a' :
+            $shaKey,
+            true
+        );
 
-            // Step 1: Base64 decode
-            $data = base64_decode($raw, true);
-            if ($data === false) {
-                return [false, null, 'Invalid base64 input'];
-            }
+        // Decrypt the message
+        $data = base64_decode($raw);
+        $iv = substr($data, 0, 16);
+        $cipherText = substr($data, 16);
 
-            // Step 2: Validate minimum length (IV + cipher)
-            if (strlen($data) <= 16) {
-                return [false, null, 'Data too short'];
-            }
+        $decryptedMessage = openssl_decrypt(
+            $cipherText,
+            'aes-256-cbc',
+            $decryptionKey,
+            OPENSSL_RAW_DATA,
+            $iv
+        );
 
-            $iv = substr($data, 0, 16);
-            $cipherText = substr($data, 16);
+        $result = str_replace(["\n", "\r"], "", $decryptedMessage);
 
-            // Step 3: Decrypt
-            $decryptedMessage = openssl_decrypt(
-                $cipherText,
-                'aes-256-cbc',
-                $decryptionKey,
-                OPENSSL_RAW_DATA,
-                $iv
-            );
-
-            if ($decryptedMessage === false) {
-                return [false, null, 'OpenSSL decryption failed'];
-            }
-
-            // Step 4: Clean output
-            $result = str_replace(["\n", "\r"], "", $decryptedMessage);
-
-            return [true, $result, null];
-
-        } catch (\Throwable $e) {
-            // Catch any unexpected runtime error
-            return [false, null, $e->getMessage()];
-        }
+        
+        return [true, $result, null];
     }
-
 
     /**
      * Call the Node mpd-to-hls script safely (no shell).
