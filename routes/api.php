@@ -55,6 +55,7 @@ Route::get('/test', function () {
 
 Route::get('/user', [UserController::class, 'getUserData']);
 Route::get('/birthday-send', [UserController::class, 'sendWishes']);
+Route::delete('/user-delete', [UserController::class, 'deleteUser']);
 
 Route::get('/get-subscription', [SubscriptionController::class, 'getSubscription']);
 Route::get('/add-subscription', [SubscriptionController::class, 'addSubscription']);
