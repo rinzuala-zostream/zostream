@@ -37,7 +37,7 @@ class HlsFolderController extends Controller
         // 2) Derive relative directory from URL path
         $path = parse_url($mpdUrl, PHP_URL_PATH);
         if (!$path) {
-            return $this->error('Could not parse URL path. ' . $path);
+            return $this->error('Could not parse URL path.');
         }
         $dirPathEncoded = dirname($path);
         $relativeDir = trim(urldecode($dirPathEncoded), '/');
@@ -101,7 +101,7 @@ class HlsFolderController extends Controller
      *
      * @return array [ok(bool), url(string|null), error(string|null)]
      */
-    private function decryptMpdUrl(string $encrypted): array
+    private function decryptMpdUrl(string $raw): array
     {
 
         $shaKey = 'd4c6198dabafb243b0d043a3c33a9fe171f81605158c267c7dfe5f66df29559a';
@@ -115,7 +115,7 @@ class HlsFolderController extends Controller
         );
 
         // Decrypt the message
-        $data = base64_decode($encrypted);
+        $data = base64_decode($raw);
         $iv = substr($data, 0, 16);
         $cipherText = substr($data, 16);
 
