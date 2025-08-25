@@ -26,7 +26,7 @@ class HlsFolderController extends Controller
             $source = 'plaintext';
         } else {
 
-            $rawParam = str_replace('+', ' ', $raw);
+            $rawParam = str_replace(' ', '+', $raw);
 
             // Not a valid URL → try decrypt
             $shaKey = 'd4c6198dabafb243b0d043a3c33a9fe171f81605158c267c7dfe5f66df29559a';
