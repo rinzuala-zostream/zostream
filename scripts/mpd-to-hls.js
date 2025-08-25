@@ -29,6 +29,20 @@ function escUri(u) {
   return u.replace(/ /g, '%20');
 }
 
+// add near the top with other helpers
+function safeName(s) {
+  // Replace path separators and other unsafe chars
+  return String(s).trim() === '' ? 'rep' : String(s).replace(/[\/\\:*?"<>|]/g, '_');
+}
+
+// Optional: fallback name builder if id missing
+function fallbackRepName(rep, isAudio) {
+  if (rep.id) return safeName(rep.id);
+  const bw = rep.bandwidth ? `bw${rep.bandwidth}` : 'bw0';
+  const res = (rep.width && rep.height) ? `${rep.width}x${rep.height}` : (isAudio ? 'audio' : 'video');
+  return `${res}_${bw}`;
+}
+
 // URL join that respects absolute URLs / roots
 function joinUrl(base, relative) {
   if (!relative) return base || '';
@@ -46,7 +60,7 @@ function joinUrl(base, relative) {
   if (isHttpUrl(base)) {
     const url = new URL(base);
     // Ensure single slash
-    const merged = [url.pathname.replace(/\/+$/,'') , relative.replace(/^\/+/,'')].join('/');
+    const merged = [url.pathname.replace(/\/+$/, ''), relative.replace(/^\/+/, '')].join('/');
     url.pathname = merged;
     return url.toString();
   } else {
@@ -181,9 +195,9 @@ function makeMediaPlaylist({ initUrlAbs, segUrlsAbs, items, playlistType = 'VOD'
 
 function repIsAudio(as, rep) {
   return (as.contentType === 'audio') ||
-         (rep.audioSamplingRate != null) ||
-         (as.mimeType && as.mimeType.startsWith('audio/')) ||
-         (rep.mimeType && rep.mimeType.startsWith('audio/'));
+    (rep.audioSamplingRate != null) ||
+    (as.mimeType && as.mimeType.startsWith('audio/')) ||
+    (rep.mimeType && rep.mimeType.startsWith('audio/'));
 }
 
 // ---------- Load MPD (local or URL) ----------
@@ -273,7 +287,14 @@ function deriveBaseFromInput(input) {
 
           // Write media playlist
           const isAudio = repIsAudio(as, rep);
-          const m3u8Name = `${repId}${isAudio ? '_audio' : '_video'}.m3u8`;
+
+          // choose a safe filename (use id if present else a fallback)
+          const fileStem = rep.id ? safeName(rep.id) : fallbackRepName(rep, isAudio);
+          const m3u8Name = `${fileStem}${isAudio ? '_audio' : '_video'}.m3u8`;
+          const outPath = path.join(outDir, m3u8Name);
+
+          // ensure target dir exists even if fileStem accidentally includes a slash (defensive)
+          fs.mkdirSync(path.dirname(outPath), { recursive: true });
 
           const playlistText = makeMediaPlaylist({
             initUrlAbs: initAbs,
@@ -282,7 +303,7 @@ function deriveBaseFromInput(input) {
             playlistType,
           });
 
-          fs.writeFileSync(path.join(outDir, m3u8Name), playlistText, 'utf-8');
+          fs.writeFileSync(outPath, playlistText, 'utf-8');
 
           variants.push({
             type: isAudio ? 'audio' : 'video',
@@ -290,12 +311,13 @@ function deriveBaseFromInput(input) {
             bw: Number(rep.bandwidth || 0),
             res: (rep.width && rep.height) ? `${rep.width}x${rep.height}` : null,
             codecs: rep.codecs || (isAudio ? 'mp4a.40.2' : 'avc1.640028'),
-            uri: m3u8Name,
+            uri: m3u8Name,               // use sanitized filename in master
             groupId: isAudio ? `audio-${as.lang || 'und'}` : null,
             lang: as.lang || 'und',
           });
 
           console.log(`Wrote ${m3u8Name} (${items.length} segments)`);
+
         }
       }
     }
@@ -319,7 +341,7 @@ function deriveBaseFromInput(input) {
       // Mark the first entry in each group as DEFAULT
       list.forEach((a, idx) => {
         master.push(
-          `#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="${groupId}",NAME="${a.lang}",LANGUAGE="${a.lang}",AUTOSELECT=YES,DEFAULT=${idx===0?'YES':'NO'},URI="${a.uri}"`
+          `#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="${groupId}",NAME="${a.lang}",LANGUAGE="${a.lang}",AUTOSELECT=YES,DEFAULT=${idx === 0 ? 'YES' : 'NO'},URI="${a.uri}"`
         );
       });
     }
