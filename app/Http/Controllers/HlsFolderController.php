@@ -20,7 +20,7 @@ class HlsFolderController extends Controller
         // 1) Resolve MPD URL:
         //    - If it's a real http(s) URL -> use directly
         //    - Else -> attempt to decrypt and expect a valid URL
-        if ($this->isHttpUrl($raw) && Str::contains($raw, 'mpd')) {
+        if (Str::contains($raw, 'http') && Str::contains($raw, 'mpd')) {
             // Valid MPD URL with http/https
             $mpdUrl = $raw;
             $source = 'plaintext';
@@ -92,16 +92,6 @@ class HlsFolderController extends Controller
                 ],
             ],
         ], $masterExists ? 200 : 500);
-    }
-
-    private function isHttpUrl(string $s): bool
-    {
-        if ($s === '')
-            return false;
-        if (!filter_var($s, FILTER_VALIDATE_URL))
-            return false;
-        $scheme = parse_url($s, PHP_URL_SCHEME);
-        return in_array($scheme, ['http', 'https'], true);
     }
 
     /**
