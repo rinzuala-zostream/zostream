@@ -10,9 +10,10 @@ const __dirname = path.dirname(__filename);
 const inputArg = process.argv[2];
 const outDir = process.argv[3] || path.join(__dirname, 'out_hls');
 if (!inputArg) {
-  console.error('Usage: node mpd-to-hls.js /path/or/url/to/manifest.mpd ./out_hls');
+  console.error('Usage: node mpd-to-hls.js /path/or/url/to/{manifest|stream}.mpd ./out_hls');
   process.exit(1);
 }
+
 fs.mkdirSync(outDir, { recursive: true });
 
 // ---------- Helpers ----------
@@ -198,14 +199,19 @@ async function loadMpdText(src) {
 
 function deriveBaseFromInput(input) {
   if (isHttpUrl(input)) {
-    // e.g. https://cdn/foo/bar/manifest.mpd => base is its directory
+    // e.g. https://cdn/foo/bar/stream.mpd?token=abc#frag => https://cdn/foo/bar/
     const u = new URL(input);
-    const base = u.toString().replace(/\/[^/]*$/, '/'); // keep trailing slash
-    return base;
+    // Remove last path segment (whatever it is: manifest.mpd, stream.mpd, etc.)
+    const parts = u.pathname.split('/');
+    parts.pop(); // drop last component
+    u.pathname = parts.join('/') + (parts.length > 1 ? '/' : '/');
+    u.search = ''; // base shouldn't carry the MPD's query string
+    u.hash = '';
+    return u.toString();
   } else {
     // local file path base
     const dir = path.resolve(path.dirname(input)).replace(/\\/g, '/');
-    return dir + '/';
+    return dir.endsWith('/') ? dir : dir + '/';
   }
 }
 
