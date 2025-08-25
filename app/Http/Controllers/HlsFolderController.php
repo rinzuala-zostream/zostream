@@ -71,10 +71,6 @@ class HlsFolderController extends Controller
             // Some encoders double-encode; attempt a cautious urldecode once
             $maybeUrl = filter_var($result, FILTER_VALIDATE_URL) ? $result : urldecode($result);
 
-            if (!filter_var($maybeUrl, FILTER_VALIDATE_URL)) {
-                return $this->error('Decryption did not yield a valid URL.', 422);
-            }
-
             // Require it to look like an MPD linkS
             if (stripos($maybeUrl, '.mpd') === false) {
                 return $this->error('Decrypted URL is not an MPD manifest.', 422);
