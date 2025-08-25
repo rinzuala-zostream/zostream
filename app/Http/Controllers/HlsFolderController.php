@@ -96,33 +96,47 @@ class HlsFolderController extends Controller
 
     private function decryptMpdUrl(string $raw): array
     {
+        // 1) Your 256-bit key as hex (64 chars)
+        $keyHex = 'd4c6198dabafb243b0d043a3c33a9fe171f81605158c267c7dfe5f66df29559a';
 
-        $shaKey = 'd4c6198dabafb243b0d043a3c33a9fe171f81605158c267c7dfe5f66df29559a';
+        // 2) Convert hex → binary key (DO NOT hash the hex string again)
+        if (strlen($keyHex) !== 64 || !ctype_xdigit($keyHex)) {
+            return [false, null, 'Key is not a 64-character hex string.'];
+        }
+        $key = hex2bin($keyHex); // 32 bytes
 
-        $decryptionKey = hash(
-            'sha256',
-            ($shaKey === '24a4785bb225d7392aa419e218d9e2e7461e193a27c42d8af8418d28e0d53676') ?
-            'd4c6198dabafb243b0d043a3c33a9fe171f81605158c267c7dfe5f66df29559a' :
-            $shaKey,
-            true
-        );
+        // 3) Handle URL-safe Base64 and decode in strict mode
+        $rawNorm = strtr($raw, ['-' => '+', '_' => '/']);
+        $padLen = (4 - (strlen($rawNorm) % 4)) % 4;
+        if ($padLen)
+            $rawNorm .= str_repeat('=', $padLen);
 
-        // Decrypt the message
-        $data = base64_decode($raw);
+        $data = base64_decode($rawNorm, true);
+        if ($data === false) {
+            return [false, null, 'Invalid base64 input.'];
+        }
+
+        // 4) Split IV (first 16 bytes) + ciphertext
+        if (strlen($data) < 17) {
+            return [false, null, 'Ciphertext too short (missing IV).'];
+        }
         $iv = substr($data, 0, 16);
         $cipherText = substr($data, 16);
 
-        $decryptedMessage = openssl_decrypt(
+        // 5) Decrypt (PKCS#7 padding is default)
+        $plain = openssl_decrypt(
             $cipherText,
             'aes-256-cbc',
-            $decryptionKey,
+            $key,
             OPENSSL_RAW_DATA,
             $iv
         );
 
-        $result = str_replace(["\n", "\r"], "", $decryptedMessage);
+        if ($plain === false) {
+            return [false, null, 'OpenSSL decryption failed (wrong key/IV/mode?).'];
+        }
 
-        
+        $result = str_replace(["\n", "\r"], '', $plain);
         return [true, $result, null];
     }
 
