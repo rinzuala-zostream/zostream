@@ -26,10 +26,8 @@ class HlsFolderController extends Controller
             $source = 'plaintext';
         } else {
             // Not a valid URL → try decrypt
-            [$ok, $dec, $err] = $this->decryptMpdUrl($raw);
-            if (!$ok) {
-                return $this->error($err ?: 'Failed to resolve MPD URL from "url".', 422);
-            }
+            $dec = $this->decryptMpdUrl($raw);
+
             $mpdUrl = $dec;
             $source = 'decrypted';
         }
@@ -37,7 +35,7 @@ class HlsFolderController extends Controller
         // 2) Derive relative directory from URL path
         $path = parse_url($mpdUrl, PHP_URL_PATH);
         if (!$path) {
-            return $this->error('Could not parse URL path.');
+            return $this->error('Could not parse URL path.' . $mpdUrl);
         }
         $dirPathEncoded = dirname($path);
         $relativeDir = trim(urldecode($dirPathEncoded), '/');
@@ -130,7 +128,7 @@ class HlsFolderController extends Controller
         $result = str_replace(["\n", "\r"], "", $decryptedMessage);
 
         
-        return [true, $result, null];
+        return $result;
     }
 
     /**
