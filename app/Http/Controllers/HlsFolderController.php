@@ -10,7 +10,7 @@ class HlsFolderController extends Controller
 {
     public function check(Request $request)
     {
-        $raw = $request->query('url', '');
+        $raw = (string) $request->query('url', '');
         $force = (bool) $request->boolean('force', false);
 
         if ($raw === '') {
@@ -35,7 +35,7 @@ class HlsFolderController extends Controller
             );
 
             // Decrypt the message
-            $data = base64_decode('N0JY2ULgm9zWi1K8Z/++K+NVeQTnhZWf4AyKLyYEzpHwCzfqxWUm4Ia2q6CM7BScGgHzd6/+mArNJFSTDeAuppl8gogVNMLdB220yUBKBWg=');
+            $data = base64_decode($raw);
             $iv = substr($data, 0, 16);
             $cipherText = substr($data, 16);
 
