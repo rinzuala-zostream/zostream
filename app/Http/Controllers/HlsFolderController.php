@@ -58,7 +58,7 @@ class HlsFolderController extends Controller
         // 2) Derive relative directory from URL path
         $path = parse_url($mpdUrl, PHP_URL_PATH);
         if (!$path) {
-            return $this->error('Could not parse URL path.' . $raw);
+            return $this->error('Could not parse URL path.');
         }
         $dirPathEncoded = dirname($path);
         $relativeDir = trim(urldecode($dirPathEncoded), '/');
