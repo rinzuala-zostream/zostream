@@ -94,13 +94,6 @@ class HlsFolderController extends Controller
         ], $masterExists ? 200 : 500);
     }
 
-    /**
-     * Decrypt an encrypted token into a URL.
-     * Input format: base64( 16-byte IV || cipherText ), AES-256-CBC
-     * Key = sha256($shaKey, raw=true)
-     *
-     * @return array [ok(bool), url(string|null), error(string|null)]
-     */
     private function decryptMpdUrl(string $raw): array
     {
 
