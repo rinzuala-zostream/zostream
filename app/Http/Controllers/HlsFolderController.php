@@ -28,40 +28,27 @@ class HlsFolderController extends Controller
             // Not a valid URL → try decrypt
             $shaKey = 'd4c6198dabafb243b0d043a3c33a9fe171f81605158c267c7dfe5f66df29559a';
 
-            // 🔧 Normalize the query param to proper base64 bytes
-            $rawParam = (string) $request->query('url', '');
-            $rawParam = urldecode($rawParam);              // decode %2B etc.
+            $decryptionKey = hash(
+                'sha256',
+                $shaKey,
+                true
+            );
 
-            // If '+' were turned into spaces by the query parser, put them back
-            if (strpos($rawParam, ' ') !== false && strpos($rawParam, '+') === false) {
-                $rawParam = str_replace(' ', '+', $rawParam);
-            }
-
-            // Accept base64url as well
-            $b64 = strtr($rawParam, '-_', '+/');
-
-            // Fix missing padding
-            $pad = (4 - (strlen($b64) % 4)) % 4;
-            if ($pad)
-                $b64 .= str_repeat('=', $pad);
-
-            $data = base64_decode($b64, true);
-            if ($data === false || strlen($data) < 17) {
-                return $this->error('Invalid encrypted payload (bad base64 or too short).', 422);
-            }
-
-            // ⚠️ Use the REAL AES-256 key bytes (hex → 32 bytes). Do NOT hash the string again.
-            $key = preg_match('/^[0-9a-fA-F]{64}$/', $shaKey) ? hex2bin($shaKey) : hash('sha256', $shaKey, true);
-
+            // Decrypt the message
+            $data = base64_decode('N0JY2ULgm9zWi1K8Z/++K+NVeQTnhZWf4AyKLyYEzpHwCzfqxWUm4Ia2q6CM7BScGgHzd6/+mArNJFSTDeAuppl8gogVNMLdB220yUBKBWg=');
             $iv = substr($data, 0, 16);
             $cipherText = substr($data, 16);
 
-            $plain = openssl_decrypt($cipherText, 'aes-256-cbc', $key, OPENSSL_RAW_DATA, $iv);
-            if ($plain === false) {
-                return $this->error('Decrypt failed (OpenSSL).', 422);
-            }
+            $decryptedMessage = openssl_decrypt(
+                $cipherText,
+                'aes-256-cbc',
+                $decryptionKey,
+                OPENSSL_RAW_DATA,
+                $iv
+            );
 
-            $mpdUrl = trim(str_replace(["\r", "\n"], '', $plain));
+            $result = str_replace(["\n", "\r"], "", $decryptedMessage);
+            $mpdUrl = $result;
             $source = 'decrypted';
         }
 
