@@ -26,11 +26,31 @@ class HlsFolderController extends Controller
             $source = 'plaintext';
         } else {
             // Not a valid URL → try decrypt
-            [$ok, $dec, $err] = $this->decryptMpdUrl($raw);
-            if (!$ok) {
-                return $this->error($err ?: 'Failed to resolve MPD URL from "url".', 422);
-            }
-            $mpdUrl = $dec;
+            $shaKey = 'd4c6198dabafb243b0d043a3c33a9fe171f81605158c267c7dfe5f66df29559a';
+
+            $decryptionKey = hash(
+                'sha256',
+                ($shaKey === '24a4785bb225d7392aa419e218d9e2e7461e193a27c42d8af8418d28e0d53676') ?
+                'd4c6198dabafb243b0d043a3c33a9fe171f81605158c267c7dfe5f66df29559a' :
+                $shaKey,
+                true
+            );
+
+            // Decrypt the message
+            $data = base64_decode($raw);
+            $iv = substr($data, 0, 16);
+            $cipherText = substr($data, 16);
+
+            $decryptedMessage = openssl_decrypt(
+                $cipherText,
+                'aes-256-cbc',
+                $decryptionKey,
+                OPENSSL_RAW_DATA,
+                $iv
+            );
+
+            $result = str_replace(["\n", "\r"], "", $decryptedMessage);
+            $mpdUrl = $result;
             $source = 'decrypted';
         }
 
@@ -92,38 +112,6 @@ class HlsFolderController extends Controller
                 ],
             ],
         ], $masterExists ? 200 : 500);
-    }
-
-    private function decryptMpdUrl(string $raw): array
-    {
-
-        $shaKey = 'd4c6198dabafb243b0d043a3c33a9fe171f81605158c267c7dfe5f66df29559a';
-
-        $decryptionKey = hash(
-            'sha256',
-            ($shaKey === '24a4785bb225d7392aa419e218d9e2e7461e193a27c42d8af8418d28e0d53676') ?
-            'd4c6198dabafb243b0d043a3c33a9fe171f81605158c267c7dfe5f66df29559a' :
-            $shaKey,
-            true
-        );
-
-        // Decrypt the message
-        $data = base64_decode($raw);
-        $iv = substr($data, 0, 16);
-        $cipherText = substr($data, 16);
-
-        $decryptedMessage = openssl_decrypt(
-            $cipherText,
-            'aes-256-cbc',
-            $decryptionKey,
-            OPENSSL_RAW_DATA,
-            $iv
-        );
-
-        $result = str_replace(["\n", "\r"], "", $decryptedMessage);
-
-        
-        return [true, $result, null];
     }
 
     /**
