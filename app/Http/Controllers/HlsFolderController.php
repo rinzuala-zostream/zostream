@@ -124,6 +124,10 @@ class HlsFolderController extends Controller
             OPENSSL_RAW_DATA,
             $iv
         );
+
+        if (!$decryptedMessage) {
+            return [false, null, 'Failed to decrypt MPD URL'];
+        }
         
         return [true, $decryptedMessage, null];
     }
