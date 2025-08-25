@@ -25,6 +25,9 @@ class HlsFolderController extends Controller
             $mpdUrl = $raw;
             $source = 'plaintext';
         } else {
+
+            $rawParam = str_replace('+', ' ', $raw);
+
             // Not a valid URL → try decrypt
             $shaKey = 'd4c6198dabafb243b0d043a3c33a9fe171f81605158c267c7dfe5f66df29559a';
 
@@ -35,7 +38,7 @@ class HlsFolderController extends Controller
             );
 
             // Decrypt the message
-            $data = base64_decode('N0JY2ULgm9zWi1K8Z/++K+NVeQTnhZWf4AyKLyYEzpHwCzfqxWUm4Ia2q6CM7BScGgHzd6/+mArNJFSTDeAuppl8gogVNMLdB220yUBKBWg=');
+            $data = base64_decode($rawParam);
             $iv = substr($data, 0, 16);
             $cipherText = substr($data, 16);
 
