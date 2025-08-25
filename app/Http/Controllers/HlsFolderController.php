@@ -25,22 +25,33 @@ class HlsFolderController extends Controller
             $mpdUrl = $raw;
             $source = 'plaintext';
         } else {
-
-            $rawParam = str_replace(' ', '+', $raw);
-
             // Not a valid URL → try decrypt
+            $rawParam = str_replace(' ', '+', $raw); // common “space becomes +” fix
+
             $shaKey = 'd4c6198dabafb243b0d043a3c33a9fe171f81605158c267c7dfe5f66df29559a';
 
-            $decryptionKey = hash(
-                'sha256',
-                $shaKey,
-                true
-            );
+            // Derive 32-byte key for AES-256-CBC
+            $decryptionKey = hash('sha256', $shaKey, true);
 
-            // Decrypt the message
-            $data = base64_decode($rawParam);
+            // ---- Flexible Base64 decode (supports URL-safe, missing padding) ----
+            $b64 = strtr($rawParam, '-_', '+/');              // URL-safe → standard
+            $pad = strlen($b64) % 4;
+            if ($pad) {
+                $b64 .= str_repeat('=', 4 - $pad);
+            }  // fix missing padding
+            $data = @base64_decode($b64, true);
+
+            if ($data === false || strlen($data) < 17) {
+                return $this->error('Invalid encrypted payload.', 422);
+            }
+
+            // First 16 bytes are IV, remainder is ciphertext
             $iv = substr($data, 0, 16);
             $cipherText = substr($data, 16);
+
+            if (strlen($iv) !== 16 || $cipherText === '') {
+                return $this->error('Corrupt encrypted payload.', 422);
+            }
 
             $decryptedMessage = openssl_decrypt(
                 $cipherText,
@@ -50,10 +61,29 @@ class HlsFolderController extends Controller
                 $iv
             );
 
-            $result = str_replace(["\n", "\r"], "", $decryptedMessage);
-            $mpdUrl = $result;
+            if ($decryptedMessage === false) {
+                return $this->error('Decryption failed.', 422);
+            }
+
+            // Normalize and sanity-check the result
+            $result = trim(str_replace(["\r", "\n"], '', $decryptedMessage));
+
+            // Some encoders double-encode; attempt a cautious urldecode once
+            $maybeUrl = filter_var($result, FILTER_VALIDATE_URL) ? $result : urldecode($result);
+
+            if (!filter_var($maybeUrl, FILTER_VALIDATE_URL)) {
+                return $this->error('Decryption did not yield a valid URL.', 422);
+            }
+
+            // Require it to look like an MPD linkS
+            if (stripos($maybeUrl, '.mpd') === false) {
+                return $this->error('Decrypted URL is not an MPD manifest.', 422);
+            }
+
+            $mpdUrl = $maybeUrl;
             $source = 'decrypted';
         }
+
 
         // 2) Derive relative directory from URL path
         $path = parse_url($mpdUrl, PHP_URL_PATH);
