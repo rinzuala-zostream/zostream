@@ -28,29 +28,11 @@ class HlsFolderController extends Controller
             // Not a valid URL → try decrypt
             $shaKey = 'd4c6198dabafb243b0d043a3c33a9fe171f81605158c267c7dfe5f66df29559a';
 
-            $decryptionKey = hash(
-                'sha256',
-                ($shaKey === '24a4785bb225d7392aa419e218d9e2e7461e193a27c42d8af8418d28e0d53676') ?
-                'd4c6198dabafb243b0d043a3c33a9fe171f81605158c267c7dfe5f66df29559a' :
-                $shaKey,
-                true
-            );
+            [$ok, $mpdUrl, $why] = $this->decodeAndDecryptMpd($raw, $shaKey);
+            if (!$ok || !$mpdUrl) {
+                return $this->error('Decrypt failed: ' . ($why ?: 'unknown'));
+            }
 
-            // Decrypt the message
-            $data = base64_decode($raw);
-            $iv = substr($data, 0, 16);
-            $cipherText = substr($data, 16);
-
-            $decryptedMessage = openssl_decrypt(
-                $cipherText,
-                'aes-256-cbc',
-                $decryptionKey,
-                OPENSSL_RAW_DATA,
-                $iv
-            );
-
-            $result = str_replace(["\n", "\r"], "", $decryptedMessage);
-            $mpdUrl = $result;
             $source = 'decrypted';
         }
 
@@ -112,6 +94,63 @@ class HlsFolderController extends Controller
                 ],
             ],
         ], $masterExists ? 200 : 500);
+    }
+
+    private function decodeAndDecryptMpd(string $raw, string $keyString): array
+    {
+        // 1) Make sure we undo URL encoding first (query string-safe)
+        $raw = urldecode($raw);
+
+        // 2) Accept both base64 and base64url
+        $b64fix = strtr($raw, '-_', '+/');                // base64url -> base64
+        $padLen = (4 - (strlen($b64fix) % 4)) % 4;        // pad with '=' if needed
+        if ($padLen)
+            $b64fix .= str_repeat('=', $padLen);
+
+        $data = base64_decode($b64fix, true);
+        if ($data === false || strlen($data) < 17) {
+            return [false, null, 'Invalid base64 payload or too short'];
+        }
+
+        // 3) Split IV + ciphertext
+        $iv = substr($data, 0, 16);
+        $cipherText = substr($data, 16);
+
+        // 4) Build candidate keys
+        $candidates = [];
+
+        // If keyString looks like 64 hex chars → treat as hex key
+        if (preg_match('/^[0-9a-fA-F]{64}$/', $keyString)) {
+            $bin = @hex2bin($keyString);
+            if ($bin !== false && strlen($bin) === 32) {
+                $candidates[] = $bin; // correct: 32-byte key
+            }
+        }
+
+        // Fallback 1: the original (likely-wrong) "hash of the string"
+        $candidates[] = hash('sha256', $keyString, true);
+
+        // Fallback 2: direct bytes of the provided string (rare but sometimes used)
+        if (strlen($keyString) === 32) {
+            $candidates[] = $keyString;
+        }
+
+        // 5) Try decrypt with candidates
+        foreach ($candidates as $key) {
+            $plain = openssl_decrypt($cipherText, 'aes-256-cbc', $key, OPENSSL_RAW_DATA, $iv);
+            if ($plain !== false) {
+                $plain = trim(str_replace(["\r", "\n"], '', $plain));
+                // Basic sanity: must be a URL
+                if (filter_var($plain, FILTER_VALIDATE_URL)) {
+                    return [true, $plain, null];
+                } else {
+                    // It decrypted, but not a URL; still return
+                    return [true, $plain, 'Decrypted but not a valid URL'];
+                }
+            }
+        }
+
+        return [false, null, 'OpenSSL decrypt failed with all key variants'];
     }
 
     /**
