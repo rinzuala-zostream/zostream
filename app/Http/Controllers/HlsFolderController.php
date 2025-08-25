@@ -104,7 +104,7 @@ class HlsFolderController extends Controller
     private function decryptMpdUrl(string $encrypted): array
     {
         // Move/override this via .env: STREAMING_SHA_KEY=...
-        $shaKey = config('streaming.sha_key', env('STREAMING_SHA_KEY', 'd4c6198dabafb243b0d043a3c33a9fe171f81605158c267c7dfe5f66df29559a'));
+        $shaKey = 'd4c6198dabafb243b0d043a3c33a9fe171f81605158c267c7dfe5f66df29559a';
 
         $data = base64_decode($encrypted, true);
         if ($data === false || strlen($data) < 17) {
@@ -119,10 +119,7 @@ class HlsFolderController extends Controller
         if (!is_string($plain) || $plain === '') {
             return [false, null, 'Decryption failed.'];
         }
-        if (!$this->isHttpUrl($plain)) {
-            return [false, null, 'Decrypted value is not a valid URL.'];
-        }
-
+        
         return [true, $plain, null];
     }
 
