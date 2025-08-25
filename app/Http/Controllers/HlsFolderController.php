@@ -108,6 +108,8 @@ class HlsFolderController extends Controller
 
         $decryptionKey = hash(
             'sha256',
+            ($shaKey === '24a4785bb225d7392aa419e218d9e2e7461e193a27c42d8af8418d28e0d53676') ?
+            'd4c6198dabafb243b0d043a3c33a9fe171f81605158c267c7dfe5f66df29559a' :
             $shaKey,
             true
         );
@@ -125,9 +127,10 @@ class HlsFolderController extends Controller
             $iv
         );
 
-        $fixedUrl = str_replace(["\n", "\r"], "", $decryptedMessage);
+        $result = str_replace(["\n", "\r"], "", $decryptedMessage);
 
-        return [true, $fixedUrl, null];
+        
+        return [true, $result, null];
     }
 
     /**
