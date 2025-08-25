@@ -106,21 +106,26 @@ class HlsFolderController extends Controller
         // Move/override this via .env: STREAMING_SHA_KEY=...
         $shaKey = 'd4c6198dabafb243b0d043a3c33a9fe171f81605158c267c7dfe5f66df29559a';
 
-        $data = base64_decode($encrypted, true);
-        if ($data === false || strlen($data) < 17) {
-            return [false, null, 'Invalid base64 or data too short.'];
-        }
+        $decryptionKey = hash(
+            'sha256',
+            $shaKey,
+            true
+        );
 
+        // === Step 1: Decrypt MPD URL ===
+        $data = base64_decode($encrypted);
         $iv = substr($data, 0, 16);
         $cipherText = substr($data, 16);
-        $key = hash('sha256', $shaKey, true);
 
-        $plain = openssl_decrypt($cipherText, 'aes-256-cbc', $key, OPENSSL_RAW_DATA, $iv);
-        if (!is_string($plain) || $plain === '') {
-            return [false, null, 'Decryption failed.'];
-        }
+        $decryptedMessage = openssl_decrypt(
+            $cipherText,
+            'aes-256-cbc',
+            $decryptionKey,
+            OPENSSL_RAW_DATA,
+            $iv
+        );
         
-        return [true, $plain, null];
+        return [true, $decryptedMessage, null];
     }
 
     /**
