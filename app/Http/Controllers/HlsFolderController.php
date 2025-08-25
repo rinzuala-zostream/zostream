@@ -103,8 +103,14 @@ class HlsFolderController extends Controller
      */
     private function decryptMpdUrl(string $encrypted): array
     {
-        // Move/override this via .env: STREAMING_SHA_KEY=...
+        if (!$encrypted)
+            return [false, null, 'Missing mpd parameter'];
+
         $shaKey = 'd4c6198dabafb243b0d043a3c33a9fe171f81605158c267c7dfe5f66df29559a';
+
+        if (!$encrypted) {
+            return [false, null, 'Missing mpd parameter'];
+        }
 
         $decryptionKey = hash(
             'sha256',
@@ -128,8 +134,11 @@ class HlsFolderController extends Controller
         if (!$decryptedMessage) {
             return [false, null, 'Failed to decrypt MPD URL'];
         }
+
+        // === Step 2: Fetch and parse MPD XML ===
+        $fixedUrl = str_replace(' ', '%20', $decryptedMessage);
         
-        return [true, $decryptedMessage, null];
+        return [true, $fixedUrl, null];
     }
 
     /**
