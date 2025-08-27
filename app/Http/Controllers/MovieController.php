@@ -296,6 +296,9 @@ class MovieController extends Controller
                 }
             }
 
+            // ✅ Ensure trailer is stored as empty string if null
+            $validated['trailer'] = $validated['trailer'] ?? '';
+
             // ✅ Always create the movie
             $movie = MovieModel::create($validated);
 
@@ -361,7 +364,6 @@ class MovieController extends Controller
                 'create_date' => 'nullable|string',
                 'ppv_amount' => 'nullable|string',
 
-
                 // Boolean flags
                 'isProtected' => 'boolean',
                 'isBollywood' => 'boolean',
@@ -388,6 +390,11 @@ class MovieController extends Controller
                 if ($token) {
                     $validated['token'] = $token;
                 }
+            }
+
+            // ✅ Ensure trailer is stored as empty string if null
+            if (!isset($validated['trailer']) || $validated['trailer'] === null) {
+                $validated['trailer'] = '';
             }
 
             $movie->update($validated);
