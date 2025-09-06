@@ -7,6 +7,8 @@ use App\Models\EpisodeModel;
 use App\Models\MovieModel;
 use App\Models\PPVPaymentModel;
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
+use Symfony\Component\HttpFoundation\Response as BaseResponse;
 use Illuminate\Support\Facades\Http;
 use Carbon\Carbon;
 
@@ -18,13 +20,15 @@ class DetailsController extends Controller
     protected $subscriptionController;
     protected $adsController;
     protected $calculatePlan;
+    protected $linkController;
 
     public function __construct(
         PaymentStatusController $paymentStatusController,
         DeviceManagementController $deviceManagementController,
         SubscriptionController $subscriptionController,
         AdsController $adsController,
-        CalculatePlan $calculatePlan
+        CalculatePlan $calculatePlan,
+        LinkController $linkController
     ) {
         $this->validApiKey = config('app.api_key');
         $this->paymentStatusController = $paymentStatusController;
@@ -32,6 +36,7 @@ class DetailsController extends Controller
         $this->subscriptionController = $subscriptionController;
         $this->adsController = $adsController;
         $this->calculatePlan = $calculatePlan;
+        $this->linkController = $linkController;
     }
 
     public function getDetails(Request $request)
@@ -124,7 +129,7 @@ class DetailsController extends Controller
             // Ad display time
             if ($type === 'episode') {
                 $url = $movie['isProtected'] ? $movie['dash_url'] : $movie['url'];
-                $duration = $this->getEpisodeDuration($url);
+                $duration = $this->getEpisodeDuration($url, $apiKey);
                 $ms = $this->convertToMilliseconds($duration);
                 $movie['adDisplayTimes'] = ['second' => $ms / 2 + rand(1, $ms / 2)];
             } elseif (!$subscriptionData['isAdsFree'] && !empty($movie['duration'])) {
@@ -210,25 +215,38 @@ class DetailsController extends Controller
         return $milliseconds;
     }
 
-    private function getEpisodeDuration($encryptedUrl)
+    private function getEpisodeDuration(string $encryptedUrl, string $apiKey)
     {
         $payload = [
             'msg' => $encryptedUrl,
             'packageName' => 'com.buannel.studio.pvt.ltd.zostream',
-            'sha' => 'd4c6198dabafb243b0d043a3c33a9fe171f81605158c267c7dfe5f66df29559a'
+            'sha' => 'd4c6198dabafb243b0d043a3c33a9fe171f81605158c267c7dfe5f66df29559a',
         ];
 
-        $response = Http::timeout(10)
-            ->withHeaders(['Content-Type' => 'application/json'])
-            ->post('https://api.zostream.in/link_check.php', $payload);
+        $request = new Request($payload);
+        $request->headers->set('X-Api-Key', $apiKey);
 
-        $data = $response->json();
+        $response = $this->linkController->decryptMessage($request);
 
-        if (!isset($data['response']) || $data['code'] !== '103') {
+        // Normalize response to an array
+        if ($response instanceof JsonResponse) {
+            $data = $response->getData(true); // associative array
+        } elseif ($response instanceof BaseResponse) {
+            $data = json_decode($response->getContent(), true) ?? [];
+        } elseif (is_array($response)) {
+            $data = $response;
+        } else {
+            // Unexpected return type
             return "0";
         }
 
-        return $this->parseMPD($data['response']);
+        // Be tolerant of code being string or int
+        $code = $data['code'] ?? null;
+        if (!isset($data['message']) || !in_array((string) $code, ['103'], true)) {
+            return "0";
+        }
+
+        return $this->parseMPD($data['message'] ?? '');
     }
 
     private function parseMPD($mpdUrl)
