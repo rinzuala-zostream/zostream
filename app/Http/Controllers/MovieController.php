@@ -43,7 +43,7 @@ class MovieController extends Controller
         // ✅ Read platform (header first, then query)
         $platform = strtolower($request->header('X-Platform') ?? $request->query('platform', ''));
 
-        // ✅ Configure which categories to hide per platform
+        // ✅ Configure which categories to hide per platform (section names)
         $hiddenByPlatform = [
             'ios' => ['Hollywood', 'Bollywood', '18+'],
             'tvos' => ['18+'],
@@ -53,12 +53,37 @@ class MovieController extends Controller
             '_default' => ['18+'], // fallback for unknown platforms
         ];
 
-        // ✅ Decide hidden categories
+        // ✅ Decide hidden categories (only if platform explicitly passed)
         $hiddenCategories = [];
         if ($platform !== '') {
-            // only hide if platform is explicitly passed
             $hiddenCategories = $hiddenByPlatform[$platform] ?? $hiddenByPlatform['_default'];
         }
+
+        // ✅ Movie-level skip checks (map section/display → movie attribute predicate)
+        $skipChecks = [
+            'Hollywood' => fn($m) => (int) ($m->isHollywood ?? 0) === 1,
+            'Bollywood' => fn($m) => (int) ($m->isBollywood ?? 0) === 1,
+            'Mizo' => fn($m) => (int) ($m->isMizo ?? 0) === 1,
+            'Asian' => fn($m) => (int) ($m->isKorean ?? 0) === 1,
+            'Series' => fn($m) => (int) ($m->isSeason ?? 0) === 1,
+            'Documentary' => fn($m) => (int) ($m->isDocumentary ?? 0) === 1,
+            'Pay Per View' => fn($m) => (int) ($m->isPayPerView ?? 0) === 1,
+            '18+' => fn($m) => (int) ($m->isAgeRestricted ?? 0) === 1,
+            'Free' => fn($m) => (int) ($m->isPremium ?? 0) === 0,
+            'Animation' => fn($m) => stripos((string) ($m->genre ?? ''), 'animation') !== false,
+            // "Most Watched", "Latest Update", "New Release" are list types → no direct movie flag
+        ];
+
+        $shouldSkip = function ($movie) use ($platform, $hiddenCategories, $skipChecks) {
+            if ($platform === '')
+                return false; // no platform → no skipping
+            foreach ($hiddenCategories as $name) {
+                if (isset($skipChecks[$name]) && $skipChecks[$name]($movie)) {
+                    return true;
+                }
+            }
+            return false;
+        };
 
         $id = $request->query('id') ?? null;
         $range = $request->query('range') ?? null;
@@ -81,13 +106,15 @@ class MovieController extends Controller
                 return response()->json(['status' => 'error', 'message' => 'Movie not found']);
             }
 
+            // (Optional) If you want single-item view to respect skips too:
+            // if ($shouldSkip($movie)) { return response()->json(['status'=>'success','data'=>[]]); }
+
             return response()->json($this->transformMovie($movie))
                 ->header('Content-Type', 'application/json');
 
         } else if ($range || $categoryKey) {
 
-            // If the requested category is hidden on this platform, block it.
-            // We compare against display names; map to display first then validate below.
+            // Map display names to columns for category path
             $displayToColumn = [
                 "hollywood" => "isHollywood",
                 "bollywood" => "isBollywood",
@@ -104,15 +131,12 @@ class MovieController extends Controller
                 "free" => "free",
             ];
 
-            // If a platform is present, prevent fetching hidden categories directly.
+            // If platform present, block fetching a hidden category by name directly
             if ($platform !== '') {
-                // If the raw "category" matches any hidden display name (case-insensitive), block it.
                 foreach ($hiddenCategories as $hiddenName) {
                     if (strtolower($hiddenName) === $categoryKey) {
-                        return response()->json([
-                            'status' => 'success',
-                            'data' => [] // or return an error if you prefer
-                        ])->header('Content-Type', 'application/json');
+                        return response()->json(['status' => 'success', 'data' => []])
+                            ->header('Content-Type', 'application/json');
                     }
                 }
             }
@@ -121,8 +145,7 @@ class MovieController extends Controller
             $start = max(((int) $rangeParts[0] - 1), 0);
             $count = max(((int) $rangeParts[1] - $start), 10);
 
-            $categoryMapping = $displayToColumn; // reuse
-
+            $categoryMapping = $displayToColumn;
             $column = $categoryType ? $categoryKey : ($categoryMapping[$categoryKey] ?? null);
 
             if (!$column) {
@@ -175,13 +198,17 @@ class MovieController extends Controller
 
             $movies = $query->offset($start)->limit($count)->get();
 
+            // ✅ Per-movie skip (platform present)
+            if ($platform !== '') {
+                $movies = $movies->reject($shouldSkip)->values();
+            }
+
             return response()->json(
                 data: $movies->map(fn($m) => $this->transformMovie($m))
             )->header('Content-Type', 'application/json');
 
         } else {
             // Full sections response (default path)
-            // Full sections response
             $categories = [
                 "New Release" => ["where" => "release_on IS NOT NULL", "order" => "STR_TO_DATE(release_on, '%d %b, %Y') DESC"],
                 "Most Watched" => ["where" => "1", "order" => "views DESC"],
@@ -198,7 +225,7 @@ class MovieController extends Controller
                 "Free" => ["where" => "isPremium = 0", "order" => "num DESC"],
             ];
 
-            // ✅ Only apply filtering if platform was provided
+            // ✅ Remove whole sections if platform was provided (keeps UI headings clean)
             if ($platform !== '') {
                 foreach ($hiddenCategories as $hiddenName) {
                     unset($categories[$hiddenName]);
@@ -206,6 +233,7 @@ class MovieController extends Controller
             }
 
             $data = [];
+            $fetchSize = ($platform !== '') ? 50 : 10; // over-fetch when skipping to keep ~10 items
 
             foreach ($categories as $name => $clause) {
                 if ($name === "18+" && !$ageRestriction)
@@ -214,17 +242,25 @@ class MovieController extends Controller
                 $where = $clause['where'];
                 $order = $clause['order'];
 
-                $query = MovieModel::whereRaw("isEnable = 1 AND $where")
+                $list = MovieModel::whereRaw("isEnable = 1 AND $where")
                     ->where('status', 'Published')
                     ->when(!$ageRestriction && strpos($where, 'isAgeRestricted') === false, function ($q) use ($ageRestriction) {
                         return $q->where('isAgeRestricted', $ageRestriction);
                     })
                     ->orderByRaw($order)
-                    ->limit(10)
+                    ->limit($fetchSize)
                     ->get();
 
-                if (!$query->isEmpty()) {
-                    $data[$name] = $query->map(fn($m) => $this->transformMovie($m));
+                // ✅ Per-movie skip inside each section
+                if ($platform !== '') {
+                    $list = $list->reject($shouldSkip)->values();
+                }
+
+                // keep at most 10 items per section
+                $list = $list->take(10);
+
+                if (!$list->isEmpty()) {
+                    $data[$name] = $list->map(fn($m) => $this->transformMovie($m));
                 }
             }
 
