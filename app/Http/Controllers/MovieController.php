@@ -37,7 +37,28 @@ class MovieController extends Controller
             'category' => 'nullable|string',
             'category_type' => 'nullable|string',
             'age_restriction' => 'nullable|string|in:true,false',
+            'platform' => 'nullable|string', // optional query fallback
         ]);
+
+        // ✅ Read platform (header first, then query)
+        $platform = strtolower($request->header('X-Platform') ?? $request->query('platform', ''));
+
+        // ✅ Configure which categories to hide per platform
+        $hiddenByPlatform = [
+            'ios' => ['Hollywood', 'Bollywood', '18+'],
+            'tvos' => ['18+'],
+            'macos' => [],
+            'android' => [],
+            'web' => [],
+            '_default' => ['18+'], // fallback for unknown platforms
+        ];
+
+        // ✅ Decide hidden categories
+        $hiddenCategories = [];
+        if ($platform !== '') {
+            // only hide if platform is explicitly passed
+            $hiddenCategories = $hiddenByPlatform[$platform] ?? $hiddenByPlatform['_default'];
+        }
 
         $id = $request->query('id') ?? null;
         $range = $request->query('range') ?? null;
@@ -48,33 +69,26 @@ class MovieController extends Controller
         $isEnableRequest = filter_var($request->query('is_enable', true), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
         $isEnableRequest = $isEnableRequest === null ? true : $isEnableRequest;
 
-
-
         if ($id) {
 
-            if ($isEnableRequest) {
-                $query = MovieModel::where('status', 'Published')->where('isEnable', 1);
-            } else {
-                $query = MovieModel::query();
-            }
+            $query = $isEnableRequest
+                ? MovieModel::where('status', 'Published')->where('isEnable', 1)
+                : MovieModel::query();
 
-            $movie = $query->where('id', $id)
-                ->first();
+            $movie = $query->where('id', $id)->first();
 
             if (!$movie) {
                 return response()->json(['status' => 'error', 'message' => 'Movie not found']);
             }
 
-            return response()->json(
-                $this->transformMovie($movie)
-            )->header('Content-Type', 'application/json');
+            return response()->json($this->transformMovie($movie))
+                ->header('Content-Type', 'application/json');
+
         } else if ($range || $categoryKey) {
 
-            $rangeParts = explode('-', $range ?? '1-10');
-            $start = max(((int) $rangeParts[0] - 1), 0);
-            $count = max(((int) $rangeParts[1] - $start), 10);
-
-            $categoryMapping = [
+            // If the requested category is hidden on this platform, block it.
+            // We compare against display names; map to display first then validate below.
+            $displayToColumn = [
                 "hollywood" => "isHollywood",
                 "bollywood" => "isBollywood",
                 "mizo" => "isMizo",
@@ -89,6 +103,25 @@ class MovieController extends Controller
                 "18+" => "isAgeRestricted",
                 "free" => "free",
             ];
+
+            // If a platform is present, prevent fetching hidden categories directly.
+            if ($platform !== '') {
+                // If the raw "category" matches any hidden display name (case-insensitive), block it.
+                foreach ($hiddenCategories as $hiddenName) {
+                    if (strtolower($hiddenName) === $categoryKey) {
+                        return response()->json([
+                            'status' => 'success',
+                            'data' => [] // or return an error if you prefer
+                        ])->header('Content-Type', 'application/json');
+                    }
+                }
+            }
+
+            $rangeParts = explode('-', $range ?? '1-10');
+            $start = max(((int) $rangeParts[0] - 1), 0);
+            $count = max(((int) $rangeParts[1] - $start), 10);
+
+            $categoryMapping = $displayToColumn; // reuse
 
             $column = $categoryType ? $categoryKey : ($categoryMapping[$categoryKey] ?? null);
 
@@ -145,7 +178,10 @@ class MovieController extends Controller
             return response()->json(
                 data: $movies->map(fn($m) => $this->transformMovie($m))
             )->header('Content-Type', 'application/json');
+
         } else {
+            // Full sections response (default path)
+            // Full sections response
             $categories = [
                 "New Release" => ["where" => "release_on IS NOT NULL", "order" => "STR_TO_DATE(release_on, '%d %b, %Y') DESC"],
                 "Most Watched" => ["where" => "1", "order" => "views DESC"],
@@ -161,6 +197,13 @@ class MovieController extends Controller
                 "Documentary" => ["where" => "isDocumentary = 1", "order" => "num DESC"],
                 "Free" => ["where" => "isPremium = 0", "order" => "num DESC"],
             ];
+
+            // ✅ Only apply filtering if platform was provided
+            if ($platform !== '') {
+                foreach ($hiddenCategories as $hiddenName) {
+                    unset($categories[$hiddenName]);
+                }
+            }
 
             $data = [];
 
@@ -185,9 +228,7 @@ class MovieController extends Controller
                 }
             }
 
-            return response()->json(
-                $data
-            )->header('Content-Type', 'application/json');
+            return response()->json($data)->header('Content-Type', 'application/json');
         }
     }
 
