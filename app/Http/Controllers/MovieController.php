@@ -284,7 +284,7 @@ class MovieController extends Controller
                     ->get();
 
                 if ($platform !== '' || $isKidsMode) {
-                    $movies = $movies->reject($shouldSkip)->values();
+                    $list = $list->reject($shouldSkip)->values();
                 }
 
                 $list = $list->take(10);
