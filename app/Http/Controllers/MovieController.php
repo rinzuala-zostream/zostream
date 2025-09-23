@@ -43,10 +43,8 @@ class MovieController extends Controller
         // ✅ Header/Query mode detection
         $modeHeader = strtolower($request->header('X-Mode', ''));
         $isKidsByHeader = $modeHeader === 'kids';
-        // If you also want age_restriction=true to imply Kids mode, keep the next line; otherwise set to false.
-        $isKidsByAge = ($request->query('age_restriction') ?? 'false') === 'true';
-
-        $isKidsMode = $isKidsByHeader || $isKidsByAge;
+        $isKidsByQuery = ($request->query('isChildMode') ?? 'false') === 'true';
+        $isKidsMode = $isKidsByHeader || $isKidsByQuery;
 
         // ✅ Read platform (header first, then query)
         $platform = strtolower($request->header('X-Platform') ?? $request->query('platform', ''));
@@ -64,6 +62,8 @@ class MovieController extends Controller
         $hiddenCategories = [];
         if ($platform !== '') {
             $hiddenCategories = $hiddenByPlatform[$platform] ?? $hiddenByPlatform['_default'];
+        } elseif ($isKidsMode) {
+            $hiddenCategories = $hiddenByPlatform['_default'];
         }
 
         $skipChecks = [
@@ -79,9 +79,10 @@ class MovieController extends Controller
             'Animation' => fn($m) => stripos((string) ($m->genre ?? ''), 'animation') !== false,
         ];
 
-        $shouldSkip = function ($movie) use ($platform, $hiddenCategories, $skipChecks) {
-            if ($platform === '')
+        $shouldSkip = function ($movie) use ($platform, $isKidsMode, $hiddenCategories, $skipChecks) {
+            if ($platform === '' && !$isKidsMode)
                 return false;
+
             foreach ($hiddenCategories as $name) {
                 if (isset($skipChecks[$name]) && $skipChecks[$name]($movie)) {
                     return true;
@@ -218,7 +219,7 @@ class MovieController extends Controller
 
             $movies = $query->offset($start)->limit($count)->get();
 
-            if ($platform !== '') {
+            if ($platform !== '' || $isKidsMode) {
                 $movies = $movies->reject($shouldSkip)->values();
             }
 
@@ -244,19 +245,21 @@ class MovieController extends Controller
                 "Free" => ["where" => "isPremium = 0", "order" => "num DESC"],
             ];
 
-            if ($platform !== '') {
+            // Remove sections via platform or kids rules
+            if ($platform !== '' || $isKidsMode) {
                 foreach ($hiddenCategories as $hiddenName) {
                     unset($categories[$hiddenName]);
                 }
             }
 
-            // 🚸 Kids mode: also remove the "18+" section entirely
+            // 🚸 Kids mode: also remove the "18+" section entirely (you already have this)
             if ($isKidsMode) {
                 unset($categories["18+"]);
             }
 
+
             $data = [];
-            $fetchSize = ($platform !== '') ? 50 : 10;
+            $fetchSize = ($platform !== '' || $isKidsMode) ? 50 : 10;
 
             foreach ($categories as $name => $clause) {
                 // Keep your existing guard based on ageRestriction
@@ -280,8 +283,8 @@ class MovieController extends Controller
                     ->limit($fetchSize)
                     ->get();
 
-                if ($platform !== '') {
-                    $list = $list->reject($shouldSkip)->values();
+                if ($platform !== '' || $isKidsMode) {
+                    $movies = $movies->reject($shouldSkip)->values();
                 }
 
                 $list = $list->take(10);
