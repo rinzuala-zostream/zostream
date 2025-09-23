@@ -40,6 +40,14 @@ class MovieController extends Controller
             'platform' => 'nullable|string', // optional query fallback
         ]);
 
+        // ✅ Header/Query mode detection
+        $modeHeader = strtolower($request->header('X-Mode', ''));
+        $isKidsByHeader = $modeHeader === 'kids';
+        // If you also want age_restriction=true to imply Kids mode, keep the next line; otherwise set to false.
+        $isKidsByAge = ($request->query('age_restriction') ?? 'false') === 'true';
+
+        $isKidsMode = $isKidsByHeader || $isKidsByAge;
+
         // ✅ Read platform (header first, then query)
         $platform = strtolower($request->header('X-Platform') ?? $request->query('platform', ''));
 
@@ -50,16 +58,14 @@ class MovieController extends Controller
             'macos' => [],
             'android' => [],
             'web' => [],
-            '_default' => ['18+'], // fallback for unknown platforms
+            '_default' => ['18+'],
         ];
 
-        // ✅ Decide hidden categories (only if platform explicitly passed)
         $hiddenCategories = [];
         if ($platform !== '') {
             $hiddenCategories = $hiddenByPlatform[$platform] ?? $hiddenByPlatform['_default'];
         }
 
-        // ✅ Movie-level skip checks (map section/display → movie attribute predicate)
         $skipChecks = [
             'Hollywood' => fn($m) => (int) ($m->isHollywood ?? 0) === 1,
             'Bollywood' => fn($m) => (int) ($m->isBollywood ?? 0) === 1,
@@ -71,12 +77,11 @@ class MovieController extends Controller
             '18+' => fn($m) => (int) ($m->isAgeRestricted ?? 0) === 1,
             'Free' => fn($m) => (int) ($m->isPremium ?? 0) === 0,
             'Animation' => fn($m) => stripos((string) ($m->genre ?? ''), 'animation') !== false,
-            // "Most Watched", "Latest Update", "New Release" are list types → no direct movie flag
         ];
 
         $shouldSkip = function ($movie) use ($platform, $hiddenCategories, $skipChecks) {
             if ($platform === '')
-                return false; // no platform → no skipping
+                return false;
             foreach ($hiddenCategories as $name) {
                 if (isset($skipChecks[$name]) && $skipChecks[$name]($movie)) {
                     return true;
@@ -89,16 +94,32 @@ class MovieController extends Controller
         $range = $request->query('range') ?? null;
         $categoryKey = strtolower($request->query('category') ?? '');
         $categoryType = strtolower($request->query('category_type') ?? '');
+
+        // Existing flag: when 0, you filter out age-restricted content.
         $ageRestriction = ($request->query('age_restriction') ?? 'false') === 'true' ? 1 : 0;
+
+        // 🔒 If Kids mode, force "no age-restricted content"
+        if ($isKidsMode) {
+            $ageRestriction = 0;
+        }
 
         $isEnableRequest = filter_var($request->query('is_enable', true), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
         $isEnableRequest = $isEnableRequest === null ? true : $isEnableRequest;
 
-        if ($id) {
+        // 🔧 Helper to apply Kids filter
+        $applyKidsFilter = function (\Illuminate\Database\Eloquent\Builder $q) use ($isKidsMode) {
+            if ($isKidsMode) {
+                $q->where('isChildMode', 1);
+            }
+            return $q;
+        };
 
+        if ($id) {
             $query = $isEnableRequest
                 ? MovieModel::where('status', 'Published')->where('isEnable', 1)
                 : MovieModel::query();
+
+            $query = $applyKidsFilter($query); // ✅ enforce Kids content when needed
 
             $movie = $query->where('id', $id)->first();
 
@@ -106,15 +127,11 @@ class MovieController extends Controller
                 return response()->json(['status' => 'error', 'message' => 'Movie not found']);
             }
 
-            // (Optional) If you want single-item view to respect skips too:
-            // if ($shouldSkip($movie)) { return response()->json(['status'=>'success','data'=>[]]); }
-
             return response()->json($this->transformMovie($movie))
                 ->header('Content-Type', 'application/json');
 
         } else if ($range || $categoryKey) {
 
-            // Map display names to columns for category path
             $displayToColumn = [
                 "hollywood" => "isHollywood",
                 "bollywood" => "isBollywood",
@@ -131,7 +148,6 @@ class MovieController extends Controller
                 "free" => "free",
             ];
 
-            // If platform present, block fetching a hidden category by name directly
             if ($platform !== '') {
                 foreach ($hiddenCategories as $hiddenName) {
                     if (strtolower($hiddenName) === $categoryKey) {
@@ -155,6 +171,9 @@ class MovieController extends Controller
             $query = MovieModel::query()
                 ->where('isEnable', 1)
                 ->where('status', 'Published');
+
+            // ✅ Kids filter applied early
+            $query = $applyKidsFilter($query);
 
             if ($column === 'newrelease') {
                 $query->whereNotNull('release_on')
@@ -191,6 +210,7 @@ class MovieController extends Controller
                     ->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', $ageRestriction))
                     ->orderByDesc('num');
             } else {
+                // genre LIKE
                 $query->where('genre', 'LIKE', "%$categoryKey%")
                     ->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', $ageRestriction))
                     ->orderByDesc('num');
@@ -198,7 +218,6 @@ class MovieController extends Controller
 
             $movies = $query->offset($start)->limit($count)->get();
 
-            // ✅ Per-movie skip (platform present)
             if ($platform !== '') {
                 $movies = $movies->reject($shouldSkip)->values();
             }
@@ -208,7 +227,7 @@ class MovieController extends Controller
             )->header('Content-Type', 'application/json');
 
         } else {
-            // Full sections response (default path)
+            // Full sections response
             $categories = [
                 "New Release" => ["where" => "release_on IS NOT NULL", "order" => "STR_TO_DATE(release_on, '%d %b, %Y') DESC"],
                 "Most Watched" => ["where" => "1", "order" => "views DESC"],
@@ -225,17 +244,22 @@ class MovieController extends Controller
                 "Free" => ["where" => "isPremium = 0", "order" => "num DESC"],
             ];
 
-            // ✅ Remove whole sections if platform was provided (keeps UI headings clean)
             if ($platform !== '') {
                 foreach ($hiddenCategories as $hiddenName) {
                     unset($categories[$hiddenName]);
                 }
             }
 
+            // 🚸 Kids mode: also remove the "18+" section entirely
+            if ($isKidsMode) {
+                unset($categories["18+"]);
+            }
+
             $data = [];
-            $fetchSize = ($platform !== '') ? 50 : 10; // over-fetch when skipping to keep ~10 items
+            $fetchSize = ($platform !== '') ? 50 : 10;
 
             foreach ($categories as $name => $clause) {
+                // Keep your existing guard based on ageRestriction
                 if ($name === "18+" && !$ageRestriction)
                     continue;
 
@@ -243,20 +267,23 @@ class MovieController extends Controller
                 $order = $clause['order'];
 
                 $list = MovieModel::whereRaw("isEnable = 1 AND $where")
-                    ->where('status', 'Published')
-                    ->when(!$ageRestriction && strpos($where, 'isAgeRestricted') === false, function ($q) use ($ageRestriction) {
-                        return $q->where('isAgeRestricted', $ageRestriction);
-                    })
+                    ->where('status', 'Published');
+
+                // ✅ Kids filter
+                $list = $applyKidsFilter($list);
+
+                // Filter out 18+ items if not allowed
+                $list = $list->when(!$ageRestriction && strpos($where, 'isAgeRestricted') === false, function ($q) use ($ageRestriction) {
+                    return $q->where('isAgeRestricted', $ageRestriction);
+                })
                     ->orderByRaw($order)
                     ->limit($fetchSize)
                     ->get();
 
-                // ✅ Per-movie skip inside each section
                 if ($platform !== '') {
                     $list = $list->reject($shouldSkip)->values();
                 }
 
-                // keep at most 10 items per section
                 $list = $list->take(10);
 
                 if (!$list->isEmpty()) {
