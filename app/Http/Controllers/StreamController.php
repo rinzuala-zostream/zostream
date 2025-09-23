@@ -22,8 +22,8 @@ class StreamController extends Controller
 
                 // Step 2: Only check ipwhois.pro if org matches
                 if (
-                    isset($ipInfo['org']) &&
-                    $ipInfo['org'] === 'AS141253 Hyosec Solutions Private Limited'
+                    isset($ipInfo['asn.asn']) &&
+                    $ipInfo['asn.name'] === 'Hyosec Solutions Private Limited'
                 ) {
                     $apiKey = config('app.ipwhois_api_key');
                     $url = "https://ipwhois.pro/{$ip}?key={$apiKey}";
