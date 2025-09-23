@@ -52,6 +52,7 @@ class MovieModel extends Model
         'isKorean',
         'isMizo',
         'isPayPerView',
+        'isChildMode',
         'isPremium',
         'isSeason',
         'isSubtitle',
