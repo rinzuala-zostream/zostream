@@ -384,6 +384,7 @@ class MovieController extends Controller
                 'isPremium' => 'boolean',
                 'isSeason' => 'boolean',
                 'isSubtitle' => 'boolean',
+                "isChildMode" => "boolean"
             ]);
 
             $validated['id'] = Str::random(10);
@@ -486,6 +487,7 @@ class MovieController extends Controller
                 'isPremium' => 'boolean',
                 'isSeason' => 'boolean',
                 'isSubtitle' => 'boolean',
+                "isChildMode" => "boolean"
             ]);
 
             if (isset($validated['release_on'])) {
