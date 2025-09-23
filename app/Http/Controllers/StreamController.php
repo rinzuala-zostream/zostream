@@ -15,7 +15,7 @@ class StreamController extends Controller
             $ipInfo = [];
 
             // Step 1: Try ipinfo.io
-            $ipinfoResponse = Http::timeout(5)->get("https://ipinfo.io/{$ip}/json");
+            $ipinfoResponse = Http::timeout(5)->get("https://ipinfo.io/{$ip}/json?token=45341976cbdb77");
 
             if ($ipinfoResponse->successful()) {
                 $ipInfo = $ipinfoResponse->json();
