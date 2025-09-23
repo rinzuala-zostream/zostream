@@ -44,6 +44,14 @@ class StreamController extends Controller
                         $ipInfo = $fallbackData;
                     }
                 }
+            } else {
+                // 👇 add this
+                $ipInfo = [
+                    'error' => 'ipinfo.io request failed',
+                    'status' => $ipinfoResponse->status(),
+                    'body' => $ipinfoResponse->body(),
+                    'message' => 'Falling back to ipwhois only'
+                ];
             }
 
             return response()->json([
