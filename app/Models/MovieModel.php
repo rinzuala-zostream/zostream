@@ -28,6 +28,7 @@ class MovieModel extends Model
         'isPremium' => 'boolean',
         'isSeason' => 'boolean',
         'isSubtitle' => 'boolean',
+        'isChildMode' => 'boolean',
        
     ];
 
