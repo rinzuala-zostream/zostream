@@ -15,6 +15,7 @@ use App\Http\Controllers\LinkController;
 use App\Http\Controllers\MovieController;
 use App\Http\Controllers\MovieSearchController;
 use App\Http\Controllers\PaymentStatusController;
+use App\Http\Controllers\PhonePeSdkV2Controller;
 use App\Http\Controllers\PlanListController;
 use App\Http\Controllers\PlanPriceController;
 use App\Http\Controllers\PPVPriceCalculate;
@@ -70,6 +71,7 @@ Route::post('/insert', [MovieController::class, 'insert']);
 Route::get('/device', [UpdateUserDevice::class, 'updateDevice']);
 
 Route::get('/payment-status', [PaymentStatusController::class, 'processUserPayments']);
+Route::post('/phonepe/sdk-order', [PhonePeSdkV2Controller::class, 'createSdkOrder']);
 
 Route::post('/request-otp', [RequestOTPController::class, 'sendOTP']);
 Route::post('/verify-otp', [VerifyOTPController::class, 'verify']);
