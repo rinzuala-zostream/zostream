@@ -20,9 +20,9 @@ class PhonePeSdkV2Controller extends Controller
     public function createSdkOrder(Request $req)
     {
         $req->validate([
-            'amount' => 'required|integer|min:100',  // paise
+            'amount' => 'required|integer|min:100', // paise
             'merchantOrderId' => 'required|string',
-            'expireAfter' => 'nullable|integer|min:60',
+            'expireAfter' => 'nullable|integer|min:300|max:3600',
         ]);
 
         $amountPaise = (int) $req->amount;
@@ -30,7 +30,7 @@ class PhonePeSdkV2Controller extends Controller
         $expireAfter = $req->input('expireAfter');
 
         try {
-            // 1) Get OAuth Token
+            // 1) OAuth -> O-Bearer token
             $oauthUrl = $this->baseSandbox . '/v1/oauth/token';
             $tokenResp = Http::asForm()->post($oauthUrl, [
                 'client_version' => 1,
@@ -38,61 +38,38 @@ class PhonePeSdkV2Controller extends Controller
                 'client_id' => $this->clientId,
                 'client_secret' => $this->clientSecret,
             ]);
-
             if (!$tokenResp->successful()) {
-                return response()->json([
-                    'ok' => false,
-                    'error' => 'AUTH_TOKEN_FAILED',
-                    'raw' => $tokenResp->json(),
-                ], 500);
+                return response()->json(['ok' => false, 'error' => 'AUTH_TOKEN_FAILED', 'raw' => $tokenResp->json()], 500);
             }
-
-            $tokJson = $tokenResp->json();
-            $accessToken = $tokJson['accessToken'] ?? $tokJson['access_token'] ?? null;
+            $accessToken = $tokenResp->json('accessToken') ?? $tokenResp->json('access_token');
             if (!$accessToken) {
-                return response()->json([
-                    'ok' => false,
-                    'error' => 'AUTH_TOKEN_MISSING',
-                    'raw' => $tokJson,
-                ], 500);
+                return response()->json(['ok' => false, 'error' => 'AUTH_TOKEN_MISSING'], 500);
             }
 
-            // 2) Create Order
-            $payUrl = $this->baseSandbox . '/checkout/v2/pay';
+            // 2) Create SDK Order -> returns token
+            $sdkUrl = $this->baseSandbox . '/checkout/v2/sdk/order';
             $payload = [
                 'merchantOrderId' => $merchantOrderId,
                 'amount' => $amountPaise,
                 'paymentFlow' => ['type' => 'PG_CHECKOUT'],
-                'merchantUrls' => [
-                    'redirectUrl' => route('phonepe.success', ['id' => $merchantOrderId]),
-                    // 'callbackUrl' => route('phonepe.callback'),
-                ],
             ];
             if (!is_null($expireAfter)) {
                 $payload['expireAfter'] = (int) $expireAfter;
             }
 
-            $payResp = Http::withHeaders([
+            $sdkResp = Http::withHeaders([
                 'Authorization' => 'O-Bearer ' . $accessToken,
-            ])->acceptJson()->post($payUrl, $payload);
+            ])->acceptJson()->post($sdkUrl, $payload);
 
-            if (!$payResp->successful()) {
-                return response()->json([
-                    'ok' => false,
-                    'error' => 'PAY_REQUEST_FAILED',
-                    'raw' => $payResp->json(),
-                ], 500);
+            if (!$sdkResp->successful()) {
+                return response()->json(['ok' => false, 'error' => 'SDK_ORDER_FAILED', 'raw' => $sdkResp->json()], 500);
             }
 
-            // ✅ Return the raw PhonePe response
-            return response()->json($payResp->json());
+            // ✅ This contains { orderId, state, expireAt, token }
+            return response()->json($sdkResp->json());
 
         } catch (\Throwable $e) {
-            return response()->json([
-                'ok' => false,
-                'error' => 'SERVER_ERROR',
-                'message' => $e->getMessage(),
-            ], 500);
+            return response()->json(['ok' => false, 'error' => 'SERVER_ERROR', 'message' => $e->getMessage()], 500);
         }
     }
 
