@@ -72,6 +72,7 @@ Route::get('/device', [UpdateUserDevice::class, 'updateDevice']);
 
 Route::get('/payment-status', [PaymentStatusController::class, 'processUserPayments']);
 Route::post('/phonepe/sdk-order', [PhonePeSdkV2Controller::class, 'createSdkOrder']);
+Route::get('/phonepe/success/{id}', [PhonePeSdkV2Controller::class, 'success'])->name('phonepe.success');
 
 Route::post('/request-otp', [RequestOTPController::class, 'sendOTP']);
 Route::post('/verify-otp', [VerifyOTPController::class, 'verify']);
