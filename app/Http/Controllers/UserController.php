@@ -179,7 +179,7 @@ class UserController extends Controller
             $normalize = fn($v) => ($v === '' ? null : $v);
 
             $dobInput = $request->input('dob');
-            $dob = $dobInput ? Carbon::createFromFormat('M d, Y', $dobInput)->format('Y-m-d') : null;
+            $dob = $dobInput->format('Y-m-d');
 
 
             // Only set keys that were actually provided (avoid overwriting with null accidentally)
@@ -191,9 +191,8 @@ class UserController extends Controller
                 'khua' => $normalize($request->input('khua')),
                 'name' => $normalize($request->input('name')),
                 'veng' => $normalize($request->input('veng')),
-                'dob' => $dob,
                 'edit_date' => $editDate,
-                // 'dob' => optional: $request->date('dob')?->format('Y-m-d'),
+                'dob' => $dob,
             ];
 
             // Fill then detect dirty fields
