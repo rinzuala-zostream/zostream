@@ -162,37 +162,63 @@ class UserController extends Controller
             'khua' => 'nullable|string',
             'name' => 'nullable|string',
             'veng' => 'nullable|string',
+            'dob' => 'nullable|string' // add when you start saving DOB
         ]);
 
         try {
-            $uid = $request->input('uid');
-
-            $user = UserModel::where('uid', $uid)->first();
+            $user = UserModel::where('uid', $request->input('uid'))->first();
 
             if (!$user) {
                 return response()->json(['status' => 'error', 'message' => 'Record not found'], 404);
             }
 
-            // Set edit_date to current time with pattern "Jul 31 2025, 11:32:59 PM"
-            $editDate = now()->format('M d Y, h:i:s A');
+            // Use India timezone if that’s your source of truth
+            $editDate = now('Asia/Kolkata')->format('M d Y, h:i:s A'); // e.g., "Sep 29 2025, 11:32:59 AM"
 
-            $user->update([
-                'call' => $request->input('call'),
+            // Normalize incoming values: convert "" to null for nullable columns
+            $normalize = fn($v) => ($v === '' ? null : $v);
+
+            $dobInput = $request->input('dob');
+            $dob = $dobInput ? Carbon::createFromFormat('M d, Y', $dobInput)->format('Y-m-d') : null;
+
+
+            // Only set keys that were actually provided (avoid overwriting with null accidentally)
+            $payload = [
+                'call' => $normalize($request->input('call')),
+                'isAccountComplete' => $request->has('isAccountComplete')
+                    ? $request->boolean('isAccountComplete')
+                    : $user->isAccountComplete, // keep current if not provided
+                'khua' => $normalize($request->input('khua')),
+                'name' => $normalize($request->input('name')),
+                'veng' => $normalize($request->input('veng')),
+                'dob' => $dob,
                 'edit_date' => $editDate,
-                'isAccountComplete' => $request->input('isAccountComplete'),
-                'khua' => $request->input('khua'),
-                'name' => $request->input('name'),
-                'veng' => $request->input('veng'),
-            ]);
+                // 'dob' => optional: $request->date('dob')?->format('Y-m-d'),
+            ];
+
+            // Fill then detect dirty fields
+            $user->fill($payload);
+
+            if (!$user->isDirty()) {
+                // Nothing changed
+                return response()->json([
+                    'status' => 'no_change',
+                    'message' => 'No fields changed',
+                    'edit_date' => $editDate,
+                ]);
+            }
+
+            $user->save();
 
             return response()->json([
                 'status' => 'success',
                 'message' => 'Profile updated successfully',
-                'edit_date' => $editDate
-            ])->header('Content-Type', 'application/json');
-        } catch (\Exception $e) {
-            return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500)
-                ->header('Content-Type', 'application/json');
+                'edit_date' => $editDate,
+                'changed' => array_keys($user->getChanges()), // which columns changed
+                'data' => $user->only(['uid', 'name', 'khua', 'veng', 'call', 'isAccountComplete', 'edit_date']),
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
         }
     }
 
