@@ -20,7 +20,7 @@ class PhonePeSdkV2Controller extends Controller
     public function createSdkOrder(Request $req)
     {
         $req->validate([
-            'amount' => 'required|integer|min:100', // paise
+            'amount' => 'required|numeric|min:100', // paise
             'merchantOrderId' => 'required|string',
             'expireAfter' => 'nullable|integer|min:300|max:3600',
         ]);
