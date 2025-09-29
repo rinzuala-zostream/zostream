@@ -157,12 +157,12 @@ class UserController extends Controller
     {
         $request->validate([
             'uid' => 'required|string',
-            'call' => 'required|string',
-            'edit_date' => 'required|string',
-            'isAccountComplete' => 'boolean',
-            'khua' => 'required|string',
-            'name' => 'required|string',
-            'veng' => 'required|string',
+            'call' => 'nullable|string',
+            'edit_date' => 'nullable|string',
+            'isAccountComplete' => 'nullable|boolean',
+            'khua' => 'nullable|string',
+            'name' => 'nullable|string',
+            'veng' => 'nullable|string',
         ]);
 
         try {
