@@ -13,97 +13,104 @@ class PhonePeSdkV2Controller extends Controller
     private string $clientId     = 'TEST-M221AEW7ARW15_25082';
     private string $clientSecret = 'MjVhOTBmNjYtYjQ0OC00Y2FkLTlhZTEtMTJjMmVkZmIyYWVj';
 
-    /**
-     * POST /api/phonepe/web-pay
-     * Body: { amount: <paise>, merchantOrderId: "..." , expireAfter?: <secs> }
-     */
-    public function createSdkOrder(Request $req)
+    // 1) OAuth helper (O-Bearer)
+    private function fetchAuthToken(): ?string
     {
-        $req->validate([
-            'amount'          => 'required|integer|min:100',  // paise
-            'merchantOrderId' => 'required|string',
-            'expireAfter'     => 'nullable|integer|min:60',
-        ]);
-
-        $amountPaise     = (int) $req->amount;
-        $merchantOrderId = $req->merchantOrderId;
-        $expireAfter     = $req->input('expireAfter'); // optional
-
         try {
-            // 1) OAuth: form-urlencoded
-            $oauthUrl = $this->baseSandbox . '/v1/oauth/token';
-            $tokenResp = Http::asForm()->post($oauthUrl, [
+            $resp = Http::asForm()->post($this->baseSandbox . '/v1/oauth/token', [
                 'client_version' => 1,
                 'grant_type'     => 'client_credentials',
                 'client_id'      => $this->clientId,
                 'client_secret'  => $this->clientSecret,
             ]);
 
-            if (!$tokenResp->successful()) {
-                Log::error('PhonePe token request failed', [
-                    'status' => $tokenResp->status(),
-                    'body'   => $tokenResp->body(),
-                ]);
-                return response()->json(['ok' => false, 'error' => 'AUTH_TOKEN_FAILED'], 500);
+            if (!$resp->successful()) {
+                Log::error('PhonePe OAuth failed', ['status' => $resp->status(), 'body' => $resp->body()]);
+                return null;
             }
 
-            $tokJson     = $tokenResp->json();
-            $accessToken = $tokJson['accessToken'] ?? $tokJson['access_token'] ?? null;
-            if (!$accessToken) {
-                Log::error('PhonePe token missing in response', ['json' => $tokJson]);
-                return response()->json(['ok' => false, 'error' => 'AUTH_TOKEN_MISSING'], 500);
-            }
-
-            // 2) Create Pay (web redirect) — merchantUrls MUST be top-level
-            $payUrl = $this->baseSandbox . '/checkout/v2/pay';
-            $payload = [
-                'merchantOrderId' => $merchantOrderId,
-                'amount'          => $amountPaise,
-                'paymentFlow'     => [
-                    'type' => 'PG_CHECKOUT',
-                    // 'message' => 'Optional message',
-                ],
-                'merchantUrls'    => [
-                    'redirectUrl' => route('phonepe.success', ['id' => $merchantOrderId]),
-                    // 'callbackUrl' => route('phonepe.callback'), // optional server-to-server
-                ],
-            ];
-            if (!is_null($expireAfter)) {
-                $payload['expireAfter'] = (int) $expireAfter;
-            }
-
-            $payResp = Http::withHeaders([
-                'Authorization' => 'O-Bearer ' . $accessToken,
-            ])->acceptJson()->post($payUrl, $payload);
-
-            if (!$payResp->successful()) {
-                Log::error('PhonePe PAY request failed', [
-                    'status' => $payResp->status(),
-                    'body'   => $payResp->body(),
-                ]);
-                return response()->json(['ok' => false, 'error' => 'PAY_REQUEST_FAILED'], 500);
-            }
-
-            $payJson     = $payResp->json();
-            $redirectUrl = data_get($payJson, 'data.redirectUrl') ?? data_get($payJson, 'redirectUrl');
-
-            if (!$redirectUrl) {
-                Log::error('PhonePe redirectUrl missing', ['json' => $payJson]);
-                return response()->json(['ok' => false, 'error' => 'REDIRECT_URL_MISSING', 'raw' => $payJson], 500);
-            }
-
-            // 3) Redirect user to PhonePe checkout
-            return redirect()->away($redirectUrl);
-
+            $json = $resp->json();
+            return $json['accessToken'] ?? $json['access_token'] ?? null;
         } catch (\Throwable $e) {
-            Log::error('PhonePe createSdkOrder exception', ['e' => $e->getMessage()]);
-            return response()->json(['ok' => false, 'error' => 'SERVER_ERROR', 'message' => $e->getMessage()], 500);
+            Log::error('PhonePe OAuth exception', ['e' => $e->getMessage()]);
+            return null;
         }
     }
 
-    public function success($id)
+    /**
+     * POST /api/phonepe/sdk-order
+     * Body: {
+     *   "amount": 100,                // paise
+     *   "merchantOrderId": "order_...", 
+     *   "expireAfter": 1200           // optional seconds
+     * }
+     *
+     * Returns (example):
+     * {
+     *   "orderId": "OMO2509291639353360187324",
+     *   "state": "PENDING",
+     *   "expireAt": 1759316975337,
+     *   "token": "eyJhbGciOi..."
+     * }
+     */
+    public function createSdkOrder(Request $req)
     {
-        // TODO: Ideally verify with /checkout/v2/order/{merchantOrderId}/status before confirming
-        return response()->json(['status' => 'success', 'merchantOrderId' => $id]);
+        $req->validate([
+            'amount'          => 'required|integer|min:100',
+            'merchantOrderId' => 'required|string',
+            'expireAfter'     => 'nullable|integer|min:60',
+        ]);
+
+        $amountPaise     = (int) $req->amount;
+        $merchantOrderId = $req->merchantOrderId;
+        $expireAfter     = $req->input('expireAfter');
+
+        // 2) Get O-Bearer
+        $bearer = $this->fetchAuthToken();
+        if (!$bearer) {
+            return response()->json(['ok' => false, 'error' => 'AUTH_TOKEN_FAILED'], 500);
+        }
+
+        // 3) Create SDK order (NO REDIRECT)
+        $payload = [
+            'amount'          => $amountPaise,
+            'merchantOrderId' => $merchantOrderId,
+            'paymentFlow'     => ['type' => 'PG_CHECKOUT'],
+            // Optional META/UDFs if you need:
+            // 'metaInfo' => ['udf1' => '', 'udf2' => '', ...],
+        ];
+        if (!is_null($expireAfter)) {
+            $payload['expireAfter'] = (int) $expireAfter;
+        }
+
+        try {
+            $resp = Http::withHeaders([
+                'Authorization' => 'O-Bearer ' . $bearer,
+                'Content-Type'  => 'application/json',
+            ])->post($this->baseSandbox . '/checkout/v2/sdk/order', $payload);
+
+            if (!$resp->successful()) {
+                return response()->json([
+                    'ok'   => false,
+                    'code' => $resp->status(),
+                    'body' => $resp->json(),
+                ], $resp->status());
+            }
+
+            $json     = $resp->json();
+            $data     = $json['data'] ?? [];
+
+            // Shape the response exactly like your sample:
+            return response()->json([
+                'orderId'  => $data['orderId']  ?? $data['merchantOrderId'] ?? $merchantOrderId,
+                'state'    => $data['state']    ?? 'PENDING',
+                'expireAt' => $data['expireAt'] ?? null,
+                'token'    => $data['token']    ?? null,
+            ]);
+
+        } catch (\Throwable $e) {
+            Log::error('PhonePe SDK order exception', ['e' => $e->getMessage()]);
+            return response()->json(['ok' => false, 'error' => 'SERVER_ERROR', 'message' => $e->getMessage()], 500);
+        }
     }
 }
