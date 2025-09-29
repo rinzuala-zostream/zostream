@@ -30,7 +30,7 @@ class PhonePeSdkV2Controller extends Controller
         $expireAfter = $req->input('expireAfter');
 
         try {
-            // 1) OAuth -> O-Bearer token
+            // 1) OAuth token
             $oauthUrl = $this->baseSandbox . '/v1/oauth/token';
             $tokenResp = Http::asForm()->post($oauthUrl, [
                 'client_version' => 1,
@@ -46,30 +46,65 @@ class PhonePeSdkV2Controller extends Controller
                 return response()->json(['ok' => false, 'error' => 'AUTH_TOKEN_MISSING'], 500);
             }
 
-            // 2) Create SDK Order -> returns token
+            // 2a) SDK order (for token)
             $sdkUrl = $this->baseSandbox . '/checkout/v2/sdk/order';
-            $payload = [
+            $sdkPayload = [
                 'merchantOrderId' => $merchantOrderId,
                 'amount' => $amountPaise,
                 'paymentFlow' => ['type' => 'PG_CHECKOUT'],
             ];
             if (!is_null($expireAfter)) {
-                $payload['expireAfter'] = (int) $expireAfter;
+                $sdkPayload['expireAfter'] = (int) $expireAfter;
             }
 
             $sdkResp = Http::withHeaders([
                 'Authorization' => 'O-Bearer ' . $accessToken,
-            ])->acceptJson()->post($sdkUrl, $payload);
+            ])->acceptJson()->post($sdkUrl, $sdkPayload);
 
             if (!$sdkResp->successful()) {
                 return response()->json(['ok' => false, 'error' => 'SDK_ORDER_FAILED', 'raw' => $sdkResp->json()], 500);
             }
+            $sdkJson = $sdkResp->json();
 
-            // ✅ This contains { orderId, state, expireAt, token }
-            return response()->json($sdkResp->json());
+            // 2b) Pay order (for redirect URL)
+            $payUrl = $this->baseSandbox . '/checkout/v2/pay';
+            $payPayload = [
+                'merchantOrderId' => $merchantOrderId,
+                'amount' => $amountPaise,
+                'paymentFlow' => ['type' => 'PG_CHECKOUT'],
+                'merchantUrls' => [
+                    'redirectUrl' => route('phonepe.success', ['id' => $merchantOrderId]),
+                ],
+            ];
+            if (!is_null($expireAfter)) {
+                $payPayload['expireAfter'] = (int) $expireAfter;
+            }
+
+            $payResp = Http::withHeaders([
+                'Authorization' => 'O-Bearer ' . $accessToken,
+            ])->acceptJson()->post($payUrl, $payPayload);
+
+            $redirectUrl = null;
+            if ($payResp->successful()) {
+                $redirectUrl = data_get($payResp->json(), 'data.redirectUrl') ?? data_get($payResp->json(), 'redirectUrl');
+            }
+
+            // ✅ Merge both results
+            return response()->json([
+                'ok' => true,
+                'orderId' => $sdkJson['orderId'] ?? null,
+                'state' => $sdkJson['state'] ?? null,
+                'expireAt' => $sdkJson['expireAt'] ?? null,
+                'token' => $sdkJson['token'] ?? null,
+                'redirectUrl' => $redirectUrl,
+            ]);
 
         } catch (\Throwable $e) {
-            return response()->json(['ok' => false, 'error' => 'SERVER_ERROR', 'message' => $e->getMessage()], 500);
+            return response()->json([
+                'ok' => false,
+                'error' => 'SERVER_ERROR',
+                'message' => $e->getMessage(),
+            ], 500);
         }
     }
 
