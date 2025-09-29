@@ -178,10 +178,6 @@ class UserController extends Controller
             // Normalize incoming values: convert "" to null for nullable columns
             $normalize = fn($v) => ($v === '' ? null : $v);
 
-            $dobInput = $request->input('dob');
-            $dob = $dobInput->format('Y-m-d');
-
-
             // Only set keys that were actually provided (avoid overwriting with null accidentally)
             $payload = [
                 'call' => $normalize($request->input('call')),
@@ -191,8 +187,8 @@ class UserController extends Controller
                 'khua' => $normalize($request->input('khua')),
                 'name' => $normalize($request->input('name')),
                 'veng' => $normalize($request->input('veng')),
+                'dob' => $normalize($request->input('dob')),
                 'edit_date' => $editDate,
-                'dob' => $dob,
             ];
 
             // Fill then detect dirty fields
