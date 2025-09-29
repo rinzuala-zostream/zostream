@@ -158,7 +158,6 @@ class UserController extends Controller
         $request->validate([
             'uid' => 'required|string',
             'call' => 'nullable|string',
-            'edit_date' => 'nullable|string',
             'isAccountComplete' => 'nullable|boolean',
             'khua' => 'nullable|string',
             'name' => 'nullable|string',
@@ -174,18 +173,23 @@ class UserController extends Controller
                 return response()->json(['status' => 'error', 'message' => 'Record not found'], 404);
             }
 
-            // Update fields
+            // Set edit_date to current time with pattern "Jul 31 2025, 11:32:59 PM"
+            $editDate = now()->format('M d Y, h:i:s A');
+
             $user->update([
                 'call' => $request->input('call'),
-                'edit_date' => $request->input('edit_date'),
+                'edit_date' => $editDate,
                 'isAccountComplete' => $request->input('isAccountComplete'),
                 'khua' => $request->input('khua'),
                 'name' => $request->input('name'),
                 'veng' => $request->input('veng'),
             ]);
 
-            return response()->json(['status' => 'success', 'message' => 'Profile updated successfully'])
-                ->header('Content-Type', 'application/json');
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Profile updated successfully',
+                'edit_date' => $editDate
+            ])->header('Content-Type', 'application/json');
         } catch (\Exception $e) {
             return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500)
                 ->header('Content-Type', 'application/json');
