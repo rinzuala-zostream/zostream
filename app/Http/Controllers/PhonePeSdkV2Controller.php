@@ -19,13 +19,14 @@ class PhonePeSdkV2Controller extends Controller
      */
     public function createSdkOrder(Request $req)
     {
+        // Validate only expireAfter if provided
         $req->validate([
-            'amount' => 'required|numeric|min:100', // paise
-            'merchantOrderId' => 'required|string',
+            'amount' => 'nullable|numeric|min:100', // paise
+            'merchantOrderId' => 'nullable|string',
             'expireAfter' => 'nullable|integer|min:300|max:3600',
         ]);
 
-        $amountPaise = (int) $req->amount;
+        $amountPaise = $req->amount;
         $merchantOrderId = $req->merchantOrderId;
         $expireAfter = $req->input('expireAfter');
 
@@ -38,19 +39,33 @@ class PhonePeSdkV2Controller extends Controller
                 'client_id' => $this->clientId,
                 'client_secret' => $this->clientSecret,
             ]);
+
             if (!$tokenResp->successful()) {
-                return response()->json(['ok' => false, 'error' => 'AUTH_TOKEN_FAILED', 'raw' => $tokenResp->json()], 500);
+                return response()->json([
+                    'ok' => false,
+                    'error' => 'AUTH_TOKEN_FAILED',
+                    'raw' => $tokenResp->json()
+                ], 500);
             }
+
             $accessToken = $tokenResp->json('accessToken') ?? $tokenResp->json('access_token');
             if (!$accessToken) {
                 return response()->json(['ok' => false, 'error' => 'AUTH_TOKEN_MISSING'], 500);
             }
 
-            // 2a) SDK order (for token)
+            // ✅ If no order info passed → return only token
+            if (empty($amountPaise) || empty($merchantOrderId)) {
+                return response()->json([
+                    'ok' => true,
+                    'token' => $accessToken
+                ]);
+            }
+
+            // 2a) SDK order
             $sdkUrl = $this->baseSandbox . '/checkout/v2/sdk/order';
             $sdkPayload = [
                 'merchantOrderId' => $merchantOrderId,
-                'amount' => $amountPaise,
+                'amount' => (int) $amountPaise,
                 'paymentFlow' => ['type' => 'PG_CHECKOUT'],
             ];
             if (!is_null($expireAfter)) {
@@ -62,15 +77,20 @@ class PhonePeSdkV2Controller extends Controller
             ])->acceptJson()->post($sdkUrl, $sdkPayload);
 
             if (!$sdkResp->successful()) {
-                return response()->json(['ok' => false, 'error' => 'SDK_ORDER_FAILED', 'raw' => $sdkResp->json()], 500);
+                return response()->json([
+                    'ok' => false,
+                    'error' => 'SDK_ORDER_FAILED',
+                    'raw' => $sdkResp->json()
+                ], 500);
             }
+
             $sdkJson = $sdkResp->json();
 
             // 2b) Pay order (for redirect URL)
             $payUrl = $this->baseSandbox . '/checkout/v2/pay';
             $payPayload = [
                 'merchantOrderId' => $merchantOrderId,
-                'amount' => $amountPaise,
+                'amount' => (int) $amountPaise,
                 'paymentFlow' => ['type' => 'PG_CHECKOUT'],
                 'merchantUrls' => [
                     'redirectUrl' => route('phonepe.success', ['id' => $merchantOrderId]),
