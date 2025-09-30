@@ -8,130 +8,155 @@ use Illuminate\Support\Facades\Log;
 
 class PhonePeSdkV2Controller extends Controller
 {
-    // ==== HARDCODED CONFIG (Sandbox) ====
-    private string $baseSandbox = 'https://api.phonepe.com/apis/identity-manager';
-    private string $baseOrder = 'https://api.phonepe.com/apis/pg';
-    private string $clientId = 'M221AEW7ARW15';
-    private string $clientSecret = '1d8c7b88-710d-4c48-a70a-cdd08c8cabac';
+    // ==== LIVE CONFIG (Hardcoded) ====
+    private string $pgBaseLive   = 'https://api.phonepe.com/apis/pg';
+    private string $merchantId   = 'M221AEW7ARW15';
+    private string $keyIndex     = '1';   // use "1" unless you’ve rotated keys
+    private string $saltKey      = '1d8c7b88-710d-4c48-a70a-cdd08c8cabac';
+
+    /** Helper: build checksum for payload (POST /v1/pay) */
+    private function xVerifyForPayload(string $endpointPath, array $payload): string
+    {
+        $json   = json_encode($payload, JSON_UNESCAPED_SLASHES);
+        $digest = hash('sha256', $json . $endpointPath . $this->saltKey, true);
+        return base64_encode($digest) . "###" . $this->keyIndex;
+    }
+
+    /** Helper: build checksum for status (GET /v1/status/{mid}/{orderId}) */
+    private function xVerifyForPath(string $endpointPath): string
+    {
+        $digest = hash('sha256', $endpointPath . $this->saltKey, true);
+        return base64_encode($digest) . "###" . $this->keyIndex;
+    }
+
+    /** Convert rupees/paise into paise integer */
+    private function toPaise($amount): int
+    {
+        if (is_null($amount) || $amount === '') return 0;
+        if (is_numeric($amount) && (strpos((string)$amount, '.') !== false || (int)$amount < 1000)) {
+            return (int) round(((float)$amount) * 100); // treat as rupees
+        }
+        return (int) $amount; // already paise
+    }
 
     /**
      * POST /api/phonepe/web-pay
-     * Body: { amount: <paise>, merchantOrderId: "..." , expireAfter?: <secs> }
+     * Body: { amount: number, merchantOrderId: string, expireAfter?: int, flow?: "PAY_PAGE" | "PG_CHECKOUT" }
      */
     public function createSdkOrder(Request $req)
     {
-        // Validate only expireAfter if provided
         $req->validate([
-            'amount' => 'nullable|numeric|min:100', // paise
-            'merchantOrderId' => 'nullable|string',
-            'expireAfter' => 'nullable|integer|min:300|max:3600',
+            'amount'          => 'required|numeric|min:0.5',
+            'merchantOrderId' => 'required|string',
+            'expireAfter'     => 'nullable|integer|min:300|max:3600',
+            'flow'            => 'nullable|string|in:PAY_PAGE,PG_CHECKOUT',
         ]);
 
-        $amountPaise = $req->amount;
-        $merchantOrderId = $req->merchantOrderId;
-        $expireAfter = $req->input('expireAfter');
+        $merchantOrderId = $req->string('merchantOrderId');
+        $amountPaise     = $this->toPaise($req->input('amount'));
+        $expireAfter     = $req->input('expireAfter');
+        $flow            = $req->input('flow', 'PAY_PAGE');
 
         try {
-            // 1) OAuth token
-            $oauthUrl = $this->baseSandbox . '/v1/oauth/token';
-            $tokenResp = Http::asForm()->post($oauthUrl, [
-                'client_version' => 1,
-                'grant_type' => 'client_credentials',
-                'client_id' => $this->clientId,
-                'client_secret' => $this->clientSecret,
-            ]);
+            $endpoint = '/v1/pay';
+            $url      = rtrim($this->pgBaseLive, '/') . $endpoint;
 
-            if (!$tokenResp->successful()) {
-                return response()->json([
-                    'ok' => false,
-                    'error' => 'AUTH_TOKEN_FAILED',
-                    'raw' => $tokenResp->json()
-                ], 500);
-            }
-
-            $accessToken = $tokenResp->json('accessToken') ?? $tokenResp->json('access_token');
-            if (!$accessToken) {
-                return response()->json(['ok' => false, 'error' => 'AUTH_TOKEN_MISSING'], 500);
-            }
-
-            // ✅ If no order info passed → return only token
-            if (empty($amountPaise) || empty($merchantOrderId)) {
-                return response()->json([
-                    'ok' => true,
-                    'token' => $accessToken
-                ]);
-            }
-
-            // 2a) SDK order
-            $sdkUrl = $this->baseOrder . '/checkout/v2/sdk/order';
-            $sdkPayload = [
-                'merchantOrderId' => $merchantOrderId,
-                'amount' => (int) $amountPaise,
-                'paymentFlow' => ['type' => 'PG_CHECKOUT'],
-            ];
-            if (!is_null($expireAfter)) {
-                $sdkPayload['expireAfter'] = (int) $expireAfter;
-            }
-
-            $sdkResp = Http::withHeaders([
-                'Authorization' => 'O-Bearer ' . $accessToken,
-            ])->acceptJson()->post($sdkUrl, $sdkPayload);
-
-            if (!$sdkResp->successful()) {
-                return response()->json([
-                    'ok' => false,
-                    'error' => 'SDK_ORDER_FAILED',
-                    'raw' => $sdkResp->json()
-                ], 500);
-            }
-
-            $sdkJson = $sdkResp->json();
-
-            // 2b) Pay order (for redirect URL)
-            $payUrl = $this->baseOrder . '/checkout/v2/pay';
-            $payPayload = [
-                'merchantOrderId' => $merchantOrderId,
-                'amount' => (int) $amountPaise,
-                'paymentFlow' => ['type' => 'PG_CHECKOUT'],
-                'merchantUrls' => [
+            $payload = [
+                'merchantId'      => $this->merchantId,
+                'merchantOrderId' => (string) $merchantOrderId,
+                'amount'          => $amountPaise,
+                'merchantUrls'    => [
                     'redirectUrl' => route('phonepe.success', ['id' => $merchantOrderId]),
+                    'callbackUrl' => route('phonepe.success', ['id' => $merchantOrderId]),
+                ],
+                'paymentInstrument' => [
+                    'type' => $flow === 'PG_CHECKOUT' ? 'PG_CHECKOUT' : 'PAY_PAGE',
                 ],
             ];
             if (!is_null($expireAfter)) {
-                $payPayload['expireAfter'] = (int) $expireAfter;
+                $payload['expireAfter'] = (int) $expireAfter;
             }
 
-            $payResp = Http::withHeaders([
-                'Authorization' => 'O-Bearer ' . $accessToken,
-            ])->acceptJson()->post($payUrl, $payPayload);
+            $xVerify = $this->xVerifyForPayload($endpoint, $payload);
 
-            $redirectUrl = null;
-            if ($payResp->successful()) {
-                $redirectUrl = data_get($payResp->json(), 'data.redirectUrl') ?? data_get($payResp->json(), 'redirectUrl');
+            $resp = Http::withHeaders([
+                'Content-Type'  => 'application/json',
+                'X-VERIFY'      => $xVerify,
+                'X-MERCHANT-ID' => $this->merchantId,
+            ])->post($url, $payload);
+
+            $body = $resp->json();
+
+            if (!$resp->successful() || !data_get($body, 'success', false)) {
+                return response()->json([
+                    'ok'    => false,
+                    'error' => 'LIVE_PAY_FAILED',
+                    'raw'   => $body ?? $resp->body(),
+                ], 502);
             }
 
-            // ✅ Merge both results
+            $redirectUrl = data_get($body, 'data.instrumentResponse.redirectInfo.url')
+                        ?? data_get($body, 'data.redirectUrl');
+
             return response()->json([
-                'ok' => true,
-                'orderId' => $sdkJson['orderId'] ?? null,
-                'state' => $sdkJson['state'] ?? null,
-                'expireAt' => $sdkJson['expireAt'] ?? null,
-                'token' => $sdkJson['token'] ?? null,
+                'ok'          => true,
+                'mode'        => 'live',
+                'orderId'     => data_get($body, 'data.merchantTransactionId') ?? (string) $merchantOrderId,
                 'redirectUrl' => $redirectUrl,
+                'raw'         => $body,
             ]);
+        } catch (\Throwable $e) {
+            Log::error('PhonePe LIVE pay error: '.$e->getMessage());
+            return response()->json([
+                'ok'    => false,
+                'error' => 'SERVER_ERROR',
+                'msg'   => $e->getMessage(),
+            ], 500);
+        }
+    }
 
+    /** GET /phonepe/status/{id} */
+    public function status(string $id)
+    {
+        try {
+            $endpoint = "/v1/status/{$this->merchantId}/{$id}";
+            $url      = rtrim($this->pgBaseLive, '/') . $endpoint;
+
+            $xVerify = $this->xVerifyForPath($endpoint);
+
+            $resp = Http::withHeaders([
+                'Content-Type'  => 'application/json',
+                'X-VERIFY'      => $xVerify,
+                'X-MERCHANT-ID' => $this->merchantId,
+            ])->get($url);
+
+            $body = $resp->json();
+
+            if (!$resp->successful() || !data_get($body, 'success', false)) {
+                return response()->json([
+                    'ok'    => false,
+                    'error' => 'LIVE_STATUS_FAILED',
+                    'raw'   => $body ?? $resp->body(),
+                ], 502);
+            }
+
+            return response()->json([
+                'ok'    => true,
+                'state' => data_get($body, 'data.state') ?? null, // CREATED / PENDING / COMPLETED / FAILED
+                'raw'   => $body,
+            ]);
         } catch (\Throwable $e) {
             return response()->json([
-                'ok' => false,
+                'ok'    => false,
                 'error' => 'SERVER_ERROR',
-                'message' => $e->getMessage(),
+                'msg'   => $e->getMessage(),
             ], 500);
         }
     }
 
     public function success($id)
     {
-        // TODO: Ideally verify with /checkout/v2/order/{merchantOrderId}/status before confirming
+        // Better: call status() internally and check COMPLETED
         return response()->json(['status' => 'success', 'merchantOrderId' => $id]);
     }
 }
