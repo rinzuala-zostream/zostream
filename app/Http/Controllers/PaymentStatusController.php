@@ -168,8 +168,11 @@ class PaymentStatusController extends Controller
     private function checkPaymentStatus($merchantOrderId)
     {
         $phonepeResponse = $this->PhonepePaymentController->getOrderStatus($merchantOrderId);
+
+        // Decode JSON into array
         $paymentResponse = json_decode($phonepeResponse->getContent(), true);
 
-        return $paymentResponse->json();
+        return $paymentResponse; // ✅ return as array
     }
+
 }
