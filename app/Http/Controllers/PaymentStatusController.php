@@ -26,7 +26,7 @@ class PaymentStatusController extends Controller
         $this->validApiKey = config('app.api_key');
         $this->subscriptionController = $subscriptionController;
         $this->cashfreeController = $cashFreeController;
-        $this->phonepePaymentController = $phonepePaymentController;
+        $this->PhonepePaymentController = $phonepePaymentController;
     }
 
     public function processUserPayments(Request $request)
@@ -167,8 +167,8 @@ class PaymentStatusController extends Controller
 
     private function checkPaymentStatus($merchantOrderId)
     {
-        $cashfreeResponse = $this->PhonepePaymentController->getOrderStatus($merchantOrderId);
-        $paymentResponse = json_decode($cashfreeResponse->getContent(), true);
+        $phonepeResponse = $this->PhonepePaymentController->getOrderStatus($merchantOrderId);
+        $paymentResponse = json_decode($phonepeResponse->getContent(), true);
 
         return $paymentResponse->json();
     }
