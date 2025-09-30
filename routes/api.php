@@ -71,19 +71,12 @@ Route::post('/insert', [MovieController::class, 'insert']);
 Route::get('/device', [UpdateUserDevice::class, 'updateDevice']);
 
 Route::get('/payment-status', [PaymentStatusController::class, 'processUserPayments']);
-Route::match(['GET','POST'], '/phonepe/sdk-order', [PhonePeSdkV2Controller::class, 'createSdkOrder'])
-    ->name('phonepe.sdkOrder');
-Route::get('/phonepe/success/{id}', [PhonePeSdkV2Controller::class, 'success'])->name('phonepe.success');
 
-// Check order status
-Route::get('/api/phonepe/status/{merchantOrderId}', [PhonePeSdkV2Controller::class, 'orderStatus'])->name('phonepe.status');
-
-// Create refund
-Route::post('/api/phonepe/refund', [PhonePeSdkV2Controller::class, 'refund'])->name('phonepe.refund');
-
-// Check refund status
-Route::get('/api/phonepe/refund-status/{merchantRefundId}', [PhonePeSdkV2Controller::class, 'refundStatus'])->name('phonepe.refundStatus');
-
+Route::prefix('phonepe')->group(function () {
+    Route::get('token', [PhonePeSdkV2Controller::class, 'getAuthToken']);                 // GET /api/phonepe/token
+    Route::post('order', [PhonePeSdkV2Controller::class, 'createOrder']);                 // POST /api/phonepe/order
+    Route::get('order/{merchantOrderId}/status', [PhonePeSdkV2Controller::class, 'getOrderStatus']); // GET /api/phonepe/order/{merchantOrderId}/status
+});
 
 Route::post('/request-otp', [RequestOTPController::class, 'sendOTP']);
 Route::post('/verify-otp', [VerifyOTPController::class, 'verify']);

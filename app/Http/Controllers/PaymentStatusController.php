@@ -16,12 +16,17 @@ class PaymentStatusController extends Controller
     private $validApiKey;
     protected $subscriptionController;
     protected $cashfreeController;
+    protected $PhonepePaymentController;
 
-    public function __construct(SubscriptionController $subscriptionController, CashFreeController $cashFreeController)
-    {
+    public function __construct(
+        SubscriptionController $subscriptionController,
+        CashFreeController $cashFreeController,
+        PhonePeSdkV2Controller $phonepePaymentController
+    ) {
         $this->validApiKey = config('app.api_key');
         $this->subscriptionController = $subscriptionController;
         $this->cashfreeController = $cashFreeController;
+        $this->phonepePaymentController = $phonepePaymentController;
     }
 
     public function processUserPayments(Request $request)
@@ -42,13 +47,13 @@ class PaymentStatusController extends Controller
 
         try {
             foreach ($tempDataList as $tempData) {
-                $transactionId = $tempData->transaction_id;
+                $merchantOrderId = $tempData->transaction_id;
 
                 // Step 1: Get payment status
                 if ($tempData->pg === 'phonepe') {
-                    $paymentResponse = $this->checkPaymentStatus($transactionId);
+                    $paymentResponse = $this->checkPaymentStatus($merchantOrderId);
                 } else {
-                    $cashfreeReq = new Request(['order_id' => $transactionId]);
+                    $cashfreeReq = new Request(['order_id' => $merchantOrderId]);
                     $cashfreeResponse = $this->cashfreeController->checkPayment($cashfreeReq);
                     $paymentResponse = json_decode($cashfreeResponse->getContent(), true);
                 }
@@ -116,7 +121,7 @@ class PaymentStatusController extends Controller
                                 'plan' => $plan,
                             ]);
 
-                            TempPaymentModel::where('transaction_id', $transactionId)->delete();
+                            TempPaymentModel::where('transaction_id', $merchantOrderId)->delete();
                             $successCount++;
                         } else {
                             $failureCount++;
@@ -127,7 +132,7 @@ class PaymentStatusController extends Controller
                     elseif ($tempData->payment_type === 'PPV') {
 
                         $data = [
-                            'payment_id' => $transactionId,
+                            'payment_id' => $merchantOrderId,
                             'user_id' => $tempData->user_id,
                             'movie_id' => $tempData->content_id,
                             'rental_period' => $tempData->subscription_period,
@@ -141,12 +146,12 @@ class PaymentStatusController extends Controller
                         ];
 
                         PPVPaymentModel::insert($data);
-                        TempPaymentModel::where('transaction_id', $transactionId)->delete();
+                        TempPaymentModel::where('transaction_id', $merchantOrderId)->delete();
                         $successCount++;
                     }
                 } else {
                     // Payment failed or status invalid
-                    TempPaymentModel::where('transaction_id', $transactionId)->delete();
+                    TempPaymentModel::where('transaction_id', $merchantOrderId)->delete();
                     $failureCount++;
                 }
             }
@@ -160,18 +165,11 @@ class PaymentStatusController extends Controller
         }
     }
 
-    private function checkPaymentStatus($transactionId)
+    private function checkPaymentStatus($merchantOrderId)
     {
-        $path = "/pg/v1/status/{$this->merchantId}/{$transactionId}";
-        $checksum = hash('sha256', $path . $this->saltKey) . "###1";
-        $url = "https://api.phonepe.com/apis/hermes{$path}";
+        $cashfreeResponse = $this->PhonepePaymentController->getOrderStatus($merchantOrderId);
+        $paymentResponse = json_decode($cashfreeResponse->getContent(), true);
 
-        $response = Http::withHeaders([
-            'Content-Type' => 'application/json',
-            'X-VERIFY' => $checksum,
-            'X-MERCHANT-ID' => $this->merchantId
-        ])->get($url);
-
-        return $response->json();
+        return $paymentResponse->json();
     }
 }
