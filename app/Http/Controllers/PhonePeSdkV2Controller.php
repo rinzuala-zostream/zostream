@@ -9,9 +9,10 @@ use Illuminate\Support\Facades\Log;
 class PhonePeSdkV2Controller extends Controller
 {
     // ==== HARDCODED CONFIG (Sandbox) ====
-    private string $baseSandbox = 'https://api-preprod.phonepe.com/apis/pg-sandbox';
-    private string $clientId = 'TEST-M221AEW7ARW15_25082';
-    private string $clientSecret = 'MjVhOTBmNjYtYjQ0OC00Y2FkLTlhZTEtMTJjMmVkZmIyYWVj';
+    private string $baseSandbox = 'https://api.phonepe.com/apis/identity-manager';
+    private string $baseOrder = 'https://api.phonepe.com/apis/pg';
+    private string $clientId = 'M221AEW7ARW15';
+    private string $clientSecret = '1d8c7b88-710d-4c48-a70a-cdd08c8cabac';
 
     /**
      * POST /api/phonepe/web-pay
@@ -62,7 +63,7 @@ class PhonePeSdkV2Controller extends Controller
             }
 
             // 2a) SDK order
-            $sdkUrl = $this->baseSandbox . '/checkout/v2/sdk/order';
+            $sdkUrl = $this->baseOrder . '/checkout/v2/sdk/order';
             $sdkPayload = [
                 'merchantOrderId' => $merchantOrderId,
                 'amount' => (int) $amountPaise,
@@ -87,7 +88,7 @@ class PhonePeSdkV2Controller extends Controller
             $sdkJson = $sdkResp->json();
 
             // 2b) Pay order (for redirect URL)
-            $payUrl = $this->baseSandbox . '/checkout/v2/pay';
+            $payUrl = $this->baseOrder . '/checkout/v2/pay';
             $payPayload = [
                 'merchantOrderId' => $merchantOrderId,
                 'amount' => (int) $amountPaise,
