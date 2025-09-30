@@ -74,6 +74,16 @@ Route::get('/payment-status', [PaymentStatusController::class, 'processUserPayme
 Route::post('/phonepe/sdk-order', [PhonePeSdkV2Controller::class, 'createSdkOrder']);
 Route::get('/phonepe/success/{id}', [PhonePeSdkV2Controller::class, 'success'])->name('phonepe.success');
 
+// Check order status
+Route::get('/api/phonepe/status/{merchantOrderId}', [PhonePeSdkV2Controller::class, 'orderStatus'])->name('phonepe.status');
+
+// Create refund
+Route::post('/api/phonepe/refund', [PhonePeSdkV2Controller::class, 'refund'])->name('phonepe.refund');
+
+// Check refund status
+Route::get('/api/phonepe/refund-status/{merchantRefundId}', [PhonePeSdkV2Controller::class, 'refundStatus'])->name('phonepe.refundStatus');
+
+
 Route::post('/request-otp', [RequestOTPController::class, 'sendOTP']);
 Route::post('/verify-otp', [VerifyOTPController::class, 'verify']);
 
