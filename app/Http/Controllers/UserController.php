@@ -155,63 +155,70 @@ class UserController extends Controller
 
     public function updateProfile(Request $request)
     {
-        $request->validate([
-            'uid' => 'required|string',
-            'call' => 'nullable|string',
-            'isAccountComplete' => 'nullable|boolean',
-            'khua' => 'nullable|string',
-            'name' => 'nullable|string',
-            'veng' => 'nullable|string',
-            'dob' => 'nullable|string' // add when you start saving DOB
-        ]);
-
         try {
+            // Always require UID
+            $rules = [
+                'uid' => 'required|string',
+            ];
+
+            // Add rules only for inputs that are present and not empty
+            $optionalFields = [
+                'call' => 'string',
+                'isAccountComplete' => 'boolean',
+                'khua' => 'string',
+                'name' => 'string',
+                'veng' => 'string',
+                'dob' => 'string',
+            ];
+
+            foreach ($optionalFields as $field => $rule) {
+                if ($request->filled($field)) { // only if not null and not ""
+                    $rules[$field] = $rule;
+                }
+            }
+
+            $request->validate($rules);
+
             $user = UserModel::where('uid', $request->input('uid'))->first();
 
             if (!$user) {
                 return response()->json(['status' => 'error', 'message' => 'Record not found'], 404);
             }
 
-            // Use India timezone if that’s your source of truth
-            $editDate = now('Asia/Kolkata')->format('M d Y, h:i:s A'); // e.g., "Sep 29 2025, 11:32:59 AM"
+            $editDate = now('Asia/Kolkata')->format('M d Y, h:i:s A');
 
-            // Normalize incoming values: convert "" to null for nullable columns
-            $normalize = fn($v) => ($v === '' ? null : $v);
-
-            // Only set keys that were actually provided (avoid overwriting with null accidentally)
-            $payload = [
-                'call' => $normalize($request->input('call')),
-                'isAccountComplete' => $request->has('isAccountComplete')
-                    ? $request->boolean('isAccountComplete')
-                    : $user->isAccountComplete, // keep current if not provided
-                'khua' => $normalize($request->input('khua')),
-                'name' => $normalize($request->input('name')),
-                'veng' => $normalize($request->input('veng')),
-                'dob' => $normalize($request->input('dob')),
-                'edit_date' => $editDate,
-            ];
-
-            // Fill then detect dirty fields
-            $user->fill($payload);
-
-            if (!$user->isDirty()) {
-                // Nothing changed
-                return response()->json([
-                    'status' => 'no_change',
-                    'message' => 'No fields changed',
-                    'edit_date' => $editDate,
-                ]);
+            $payload = [];
+            foreach ($optionalFields as $field => $rule) {
+                if ($request->filled($field)) {
+                    // boolean normalization
+                    $payload[$field] = $field === 'isAccountComplete'
+                        ? $request->boolean($field)
+                        : $request->input($field);
+                }
             }
 
-            $user->save();
+            if (!empty($payload)) {
+                $payload['edit_date'] = $editDate;
+                $user->fill($payload);
+
+                if ($user->isDirty()) {
+                    $user->save();
+                    return response()->json([
+                        'status' => 'success',
+                        'message' => 'Profile updated successfully',
+                        'edit_date' => $editDate,
+                        'changed' => array_keys($user->getChanges()),
+                        'data' => $user->only(['uid', 'name', 'khua', 'veng', 'call', 'dob', 'isAccountComplete', 'edit_date']),
+                    ]);
+                }
+            }
 
             return response()->json([
-                'status' => 'success',
-                'message' => 'Profile updated successfully',
+                'status' => 'no_change',
+                'message' => 'No valid fields provided or nothing changed',
                 'edit_date' => $editDate,
-                'changed' => array_keys($user->getChanges()), // which columns changed
-                'data' => $user->only(['uid', 'name', 'khua', 'veng', 'call', 'isAccountComplete', 'edit_date']),
             ]);
+
         } catch (\Throwable $e) {
             return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
         }
