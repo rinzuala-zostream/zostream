@@ -43,7 +43,14 @@ class UserController extends Controller
             }
 
             if ($user) {
-                return response()->json($user);
+                $data = $user->toArray();
+
+                // Normalize dob: if null or empty, set to "0"
+                if (empty($data['dob'])) {
+                    $data['dob'] = "0";
+                }
+
+                return response()->json($data);
             } else {
                 return response()->json(['status' => 'error', 'message' => 'User not found']);
             }
