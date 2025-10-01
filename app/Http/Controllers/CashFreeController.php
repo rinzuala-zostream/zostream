@@ -101,7 +101,7 @@ class CashFreeController extends Controller
 
         try {
             // 1) Verify order status
-            $respOrder = $client->get("pg/orders/{$orderId}", [
+            $respOrder = $client->get("/pg/orders/{$orderId}", [
                 'headers' => $this->headers(),
             ]);
             $order = json_decode($respOrder->getBody()->getContents(), true) ?: [];
@@ -112,7 +112,7 @@ class CashFreeController extends Controller
             // 2) Optional: check payments list (some integrations prefer this extra signal)
             $payments = [];
             try {
-                $respPayments = $client->get("pg/orders/{$orderId}/payments", [
+                $respPayments = $client->get("/pg/orders/{$orderId}/payments", [
                     'headers' => $this->headers(),
                 ]);
                 $payments = json_decode($respPayments->getBody()->getContents(), true) ?: [];
