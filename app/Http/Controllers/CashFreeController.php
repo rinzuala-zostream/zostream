@@ -27,8 +27,8 @@ class CashFreeController extends Controller
         // Sandbox:    https://sandbox.cashfree.com/pg
         // Production: https://api.cashfree.com/pg
         $this->baseUrl = $this->environment === 'PRODUCTION'
-            ? 'https://api.cashfree.com/pg'
-            : 'https://sandbox.cashfree.com/pg';  // default sandbox
+            ? 'https://api.cashfree.com'
+            : 'https://sandbox.cashfree.com';  // default sandbox
     }
 
     /**
@@ -56,7 +56,7 @@ class CashFreeController extends Controller
         ]);
 
         try {
-            $resp = $client->post('/orders', [
+            $resp = $client->post('/pg/orders', [
                 'headers' => $this->headers(),
                 'json'    => $validated,
             ]);
