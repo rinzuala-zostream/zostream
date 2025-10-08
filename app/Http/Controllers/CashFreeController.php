@@ -10,7 +10,7 @@ use Illuminate\Support\Arr;
 class CashFreeController extends Controller
 {
     /** @var string */
-    private string $apiVersion = '2023-08-01'; // Cashfree PG API version
+    private string $apiVersion = '2025-01-01'; // Cashfree PG API version
 
     /**
      * Create Order (per-request environment)
