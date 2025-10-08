@@ -65,12 +65,13 @@ class CashFreeController extends Controller
                 'status' => 'success',
                 'env' => $env,
                 'data' => Arr::only($data, ['order_id', 'payment_session_id']) + ['raw' => $data],
-                
+
             ]);
         } catch (RequestException $e) {
             $body = $e->getResponse()?->getBody()?->getContents();
             return response()->json([
                 'status' => 'error',
+                'env' => $env,
                 'message' => $e->getMessage(),
                 'body' => $this->safeJson($body),
             ], $e->getResponse()?->getStatusCode() ?: 500);
@@ -86,7 +87,7 @@ class CashFreeController extends Controller
     {
         $request->validate([
             'order_id' => 'required|string',
-            'env'      => 'nullable|string|in:PRODUCTION,SANDBOX,production,sandbox',
+            'env' => 'nullable|string|in:PRODUCTION,SANDBOX,production,sandbox',
         ]);
 
         $orderId = $request->query('order_id');
@@ -96,7 +97,7 @@ class CashFreeController extends Controller
 
         $client = new Client([
             'base_uri' => $baseUrl,
-            'timeout'  => 15,
+            'timeout' => 15,
         ]);
 
         try {
@@ -132,22 +133,22 @@ class CashFreeController extends Controller
 
             return response()->json([
                 'success' => $isPaid,
-                'env'     => $env,
-                'code'    => $isPaid ? 'PAYMENT_SUCCESS' : $orderStatus,
-                'data'    => [
-                    'state'     => $isPaid ? 'COMPLETED' : ($orderStatus === 'ACTIVE' ? 'PENDING' : $orderStatus),
-                    'order'     => $order,
-                    'payments'  => $payments,
+                'env' => $env,
+                'code' => $isPaid ? 'PAYMENT_SUCCESS' : $orderStatus,
+                'data' => [
+                    'state' => $isPaid ? 'COMPLETED' : ($orderStatus === 'ACTIVE' ? 'PENDING' : $orderStatus),
+                    'order' => $order,
+                    'payments' => $payments,
                 ],
             ]);
         } catch (RequestException $e) {
             $body = $e->getResponse()?->getBody()?->getContents();
             return response()->json([
                 'success' => false,
-                'env'     => $env,
-                'code'    => 'EXCEPTION',
+                'env' => $env,
+                'code' => 'EXCEPTION',
                 'message' => $e->getMessage(),
-                'body'    => $this->safeJson($body),
+                'body' => $this->safeJson($body),
             ], $e->getResponse()?->getStatusCode() ?: 500);
         }
     }
@@ -193,13 +194,14 @@ class CashFreeController extends Controller
             $id = (string) config('cashfree.client_id');
             $sec = (string) config('cashfree.client_secret');
         } else {
-            $id = (string) config('cashfree.      ');
+            // SANDBOX
+            $id = (string) config('cashfree.sandbox_client_id');
             $sec = (string) config('cashfree.sandbox_client_secret');
         }
 
         // Fallback to legacy flat keys if someone hasn’t split config yet.
         if ($id === '' || $sec === '') {
-            $id  = (string) config('cashfree.client_id', $id);
+            $id = (string) config('cashfree.client_id', $id);
             $sec = (string) config('cashfree.client_secret', $sec);
         }
 
@@ -212,18 +214,22 @@ class CashFreeController extends Controller
     private function headers(string $clientId, string $clientSecret): array
     {
         return [
-            'Accept'          => 'application/json',
-            'Content-Type'    => 'application/json',
-            'x-api-version'   => $this->apiVersion,
-            'x-client-id'     => $clientId,
+            'Accept' => 'application/json',
+            'Content-Type' => 'application/json',
+            'x-api-version' => $this->apiVersion,
+            'x-client-id' => $clientId,
             'x-client-secret' => $clientSecret,
         ];
     }
 
     private function safeJson(?string $body)
     {
-        if (!$body) return null;
-        try { return json_decode($body, true); }
-        catch (\Throwable) { return $body; }
+        if (!$body)
+            return null;
+        try {
+            return json_decode($body, true);
+        } catch (\Throwable) {
+            return $body;
+        }
     }
 }
