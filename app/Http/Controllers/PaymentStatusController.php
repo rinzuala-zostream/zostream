@@ -17,6 +17,7 @@ class PaymentStatusController extends Controller
     protected $subscriptionController;
     protected $cashfreeController;
     protected $PhonepePaymentController;
+    
 
     public function __construct(
         SubscriptionController $subscriptionController,
@@ -51,7 +52,9 @@ class PaymentStatusController extends Controller
 
                 // Step 1: Get payment status
                 if ($tempData->pg === 'phonepe') {
-                    $paymentResponse = $this->checkPaymentStatus($merchantOrderId);
+                     $h = strtolower(trim((string) $request->header('X-PP-Env', 'production')));
+                     $phonepeReq = new Request(['X-PP-Env' => $h]);
+                    $paymentResponse = $this->checkPaymentStatus($phonepeReq, $merchantOrderId);
                 } else {
                     $cashfreeReq = new Request(['order_id' => $merchantOrderId]);
                     $cashfreeResponse = $this->cashfreeController->checkPayment($cashfreeReq);
@@ -165,9 +168,9 @@ class PaymentStatusController extends Controller
         }
     }
 
-    private function checkPaymentStatus($merchantOrderId)
+    private function checkPaymentStatus($phonepeReq, $merchantOrderId)
     {
-        $phonepeResponse = $this->PhonepePaymentController->getOrderStatus($merchantOrderId);
+        $phonepeResponse = $this->PhonepePaymentController->getOrderStatus($phonepeReq, $merchantOrderId);
 
         // Decode JSON into array
         $paymentResponse = json_decode($phonepeResponse->getContent(), true);
