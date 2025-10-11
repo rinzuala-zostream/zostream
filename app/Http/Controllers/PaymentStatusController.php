@@ -59,7 +59,8 @@ class PaymentStatusController extends Controller
                     $paymentResponse = $this->checkPaymentStatus($phonepeReq, $merchantOrderId);
                 } else if ($tempData->pg === 'razorpay') {
                     $orderId = $tempData->transaction_id;
-                    $paymentResponse = $this->razorpayController->checkPaymentStatus($orderId);
+                    $razorResponse = $this->razorpayController->checkPaymentStatus($orderId);
+                    $paymentResponse = json_decode($razorResponse->getContent(), true);
                 } else {
                     $cashfreeReq = new Request(['order_id' => $merchantOrderId]);
                     $cashfreeResponse = $this->cashfreeController->checkPayment($cashfreeReq);
