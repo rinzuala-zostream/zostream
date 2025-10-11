@@ -17,17 +17,19 @@ class PaymentStatusController extends Controller
     protected $subscriptionController;
     protected $cashfreeController;
     protected $PhonepePaymentController;
+    protected $razorpayController;
     
-
     public function __construct(
         SubscriptionController $subscriptionController,
         CashFreeController $cashFreeController,
-        PhonePeSdkV2Controller $phonepePaymentController
+        PhonePeSdkV2Controller $phonepePaymentController,
+        RazorpayController $razorpayController
     ) {
         $this->validApiKey = config('app.api_key');
         $this->subscriptionController = $subscriptionController;
         $this->cashfreeController = $cashFreeController;
         $this->PhonepePaymentController = $phonepePaymentController;
+        $this->razorpayController = $razorpayController;
     }
 
     public function processUserPayments(Request $request)
@@ -55,6 +57,9 @@ class PaymentStatusController extends Controller
                      $h = strtolower(trim((string) $request->header('X-PP-Env', 'production')));
                      $phonepeReq = new Request(['X-PP-Env' => $h]);
                     $paymentResponse = $this->checkPaymentStatus($phonepeReq, $merchantOrderId);
+                } else if ($tempData->pg === 'razorpay') {
+                    $orderId = $tempData->transaction_id;
+                    $paymentResponse = $this->razorpayController->checkPaymentStatus($orderId);
                 } else {
                     $cashfreeReq = new Request(['order_id' => $merchantOrderId]);
                     $cashfreeResponse = $this->cashfreeController->checkPayment($cashfreeReq);
