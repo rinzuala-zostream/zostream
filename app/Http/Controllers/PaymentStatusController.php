@@ -57,7 +57,7 @@ class PaymentStatusController extends Controller
                      $h = strtolower(trim((string) $request->header('X-PP-Env', 'production')));
                      $phonepeReq = new Request(['X-PP-Env' => $h]);
                     $paymentResponse = $this->checkPaymentStatus($phonepeReq, $merchantOrderId);
-                } else if ($tempData->pg === 'razorpay') {
+                } else if ($tempData->pg === 'Razorpay') {
                     $orderId = $tempData->transaction_id;
                     $h = strtolower(trim((string) $request->header('X-RZ-Env', 'production')));
                     $razorpayReq = new Request(['X-RZ-Env' => $h]);
