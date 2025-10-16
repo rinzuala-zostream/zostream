@@ -53,11 +53,11 @@ class PaymentStatusController extends Controller
                 $merchantOrderId = $tempData->transaction_id;
 
                 // Step 1: Get payment status
-                if ($tempData->pg === 'phonepe') {
+                if (strtolower($tempData->pg) === 'phonepe') {
                      $h = strtolower(trim((string) $request->header('X-PP-Env', 'production')));
                      $phonepeReq = new Request(['X-PP-Env' => $h]);
                     $paymentResponse = $this->checkPaymentStatus($phonepeReq, $merchantOrderId);
-                } else if ($tempData->pg === 'Razorpay') {
+                } else if (strtolower($tempData->pg) === 'razorpay') {
                     $orderId = $tempData->transaction_id;
                     $h = strtolower(trim((string) $request->header('X-RZ-Env', 'production')));
                     $razorpayReq = new Request(['X-RZ-Env' => $h]);
