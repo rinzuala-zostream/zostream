@@ -63,7 +63,12 @@ class DetailsController extends Controller
 
         if (Str::contains($movieId, '+')) {
             $ids = explode('+', $movieId);         // PHP explode by '+' :contentReference[oaicite:0]{index=0}
-            $movieId = $ids[0];               // pick the first part (or you could loop through all)
+
+            if ($type === 'movie') {
+                $movieId = $ids[0];
+            } else {
+                $movieId = $ids[1];
+            }
         }
 
         try {
