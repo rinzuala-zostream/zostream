@@ -67,12 +67,10 @@ class DetailsController extends Controller
             list($mainMovieId, $episodeId) = explode('+', $movieId, 2);
             $mainMovieId = trim($mainMovieId);
             $episodeId = trim($episodeId);
-            if ($episodeId === '') {
-                $episodeId = null;
-            }
+            
         } else {
             $mainMovieId = trim($movieId);
-            $episodeId = null;
+            $episodeId = $movieId;
         }
 
         try {
