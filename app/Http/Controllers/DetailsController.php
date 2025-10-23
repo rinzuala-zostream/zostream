@@ -64,7 +64,7 @@ class DetailsController extends Controller
         $hasPlus = Str::contains($movieId, '+');
 
         if ($hasPlus) {
-            $ids = explode('+', $movieId);
+            $ids = explode('_', $movieId);
             $mainMovieId = $ids[0];
             $episodeId = $ids[1]; // handle if "+" is at the end accidentally
         } else {
@@ -172,10 +172,10 @@ class DetailsController extends Controller
     private function fetchPPVDetails($userId, $movieId, $apiKey, $deviceType)
     {
         // Determine if we have the “+” scenario
-        $hasPlus = strpos($movieId, '+') !== false;
+        $hasPlus = strpos($movieId, '_') !== false;
 
         if ($hasPlus) {
-            list($mainMovieId, $episodeId) = explode('+', $movieId, 2);
+            list($mainMovieId, $episodeId) = explode('_', $movieId, 2);
             $mainMovieId = trim($mainMovieId);
             $episodeId = trim($episodeId);
             if ($episodeId === '') {
