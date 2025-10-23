@@ -8,6 +8,7 @@ use App\Models\MovieModel;
 use App\Models\PPVPaymentModel;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Str;
 use Symfony\Component\HttpFoundation\Response as BaseResponse;
 use Illuminate\Support\Facades\Http;
 use Carbon\Carbon;
@@ -59,6 +60,11 @@ class DetailsController extends Controller
         $deviceId = $request->query('device_id');
         $deviceType = $request->query('device_type');
         $type = $request->query('type', 'movie');
+
+        if (Str::contains($movieId, '+')) {
+            $ids = explode('+', $movieId);         // PHP explode by '+' :contentReference[oaicite:0]{index=0}
+            $movieId = $ids[0];               // pick the first part (or you could loop through all)
+        }
 
         try {
             // Call sub-controllers and decode JSON responses
