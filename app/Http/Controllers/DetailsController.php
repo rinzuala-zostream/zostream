@@ -155,11 +155,36 @@ class DetailsController extends Controller
 
     private function fetchPPVDetails($userId, $movieId, $apiKey, $deviceType)
     {
+        // Determine if we have the “+” scenario
+        $hasPlus = strpos($movieId, '+') !== false;
+
+        if ($hasPlus) {
+            list($mainMovieId, $episodeId) = explode('+', $movieId, 2);
+            $mainMovieId = trim($mainMovieId);
+            $episodeId = trim($episodeId);
+            if ($episodeId === '') {
+                $episodeId = null;
+            }
+        } else {
+            $mainMovieId = trim($movieId);
+            $episodeId = null;
+        }
+
+        // Try main movie ID first
         $ppvData = PPVPaymentModel::where('user_id', $userId)
-            ->where('movie_id', $movieId)
+            ->where('movie_id', $mainMovieId)
             ->where('platform', $deviceType)
             ->orderBy('id', 'desc')
             ->first();
+
+        // If no data and there is an episode ID, try that
+        if (!$ppvData && $episodeId) {
+            $ppvData = PPVPaymentModel::where('user_id', $userId)
+                ->where('movie_id', $episodeId)
+                ->where('platform', $deviceType)
+                ->orderBy('id', 'desc')
+                ->first();
+        }
 
         if (!$ppvData) {
             return [
@@ -170,6 +195,7 @@ class DetailsController extends Controller
             ];
         }
 
+        // The rest of your logic remains (calculating expiry etc.)
         $purchaseDate = Carbon::parse($ppvData->purchase_date)->format('Y-m-d');
         $period = $ppvData->rental_period;
 
@@ -203,7 +229,6 @@ class DetailsController extends Controller
             'daysLeft' => $daysLeft > 0 ? "Ni $daysLeft chhung ila en thei." : "Vawiin chiah i en thei tawh",
         ];
     }
-
 
     private function convertToMilliseconds($duration)
     {
