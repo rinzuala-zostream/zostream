@@ -66,10 +66,10 @@ class DetailsController extends Controller
         if ($hasPlus) {
             $ids = explode('+', $movieId);
             $mainMovieId = $ids[0];
-            $episodeId = $ids[1] ?? null; // handle if "+" is at the end accidentally
+            $episodeId = $ids[1]; // handle if "+" is at the end accidentally
         } else {
             $mainMovieId = $movieId;
-            $episodeId = $movieId; 
+            $episodeId = $movieId;
         }
 
         try {
@@ -118,7 +118,11 @@ class DetailsController extends Controller
             if (!$movie) {
                 return response()->json([
                     'status' => 'error',
-                    'message' => 'No movie data found'
+                    'message' => 'No movie data found',
+                    'error' => [
+                        'mainMovieId' => $ids[0] ?? null,
+                        'episodeId' => $ids[1] ?? null,
+                    ],
                 ], 404);
             }
 
