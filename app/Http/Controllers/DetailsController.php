@@ -61,14 +61,18 @@ class DetailsController extends Controller
         $deviceType = $request->query('device_type');
         $type = $request->query('type', 'movie');
 
-        if (Str::contains($movieId, '+')) {
-            $ids = explode('+', $movieId);         // PHP explode by '+' :contentReference[oaicite:0]{index=0}
+        $hasPlus = strpos($movieId, '+') !== false;
 
-            if ($type === 'movie') {
-                $movieId = $ids[0];
-            } else {
-                $movieId = $ids[1];
+        if ($hasPlus) {
+            list($mainMovieId, $episodeId) = explode('+', $movieId, 2);
+            $mainMovieId = trim($mainMovieId);
+            $episodeId = trim($episodeId);
+            if ($episodeId === '') {
+                $episodeId = null;
             }
+        } else {
+            $mainMovieId = trim($movieId);
+            $episodeId = null;
         }
 
         try {
@@ -111,8 +115,8 @@ class DetailsController extends Controller
 
             // Get movie or episode
             $movie = $type === 'movie'
-                ? MovieModel::where('id', $movieId)->first()
-                : EpisodeModel::where('id', $movieId)->first();
+                ? MovieModel::where('id', $mainMovieId)->first()
+                : EpisodeModel::where('id', $episodeId)->first();
 
             if (!$movie) {
                 return response()->json([
