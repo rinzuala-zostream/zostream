@@ -61,7 +61,7 @@ class DetailsController extends Controller
         $deviceType = $request->query('device_type');
         $type = $request->query('type', 'movie');
 
-        $hasPlus = Str::contains($movieId, '+');
+        $hasPlus = Str::contains($movieId, '_');
 
         if ($hasPlus) {
             $ids = explode('_', $movieId);
