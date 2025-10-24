@@ -66,7 +66,7 @@ class DetailsController extends Controller
         if ($hasPlus) {
             $ids = explode('_', $movieId);
             $mainMovieId = $ids[0];
-            $episodeId = $ids[1]; // handle if "+" is at the end accidentally
+            $episodeId = $ids[1]; // handle if "_" is at the end accidentally
         } else {
             $mainMovieId = $movieId;
             $episodeId = $movieId;
@@ -171,7 +171,7 @@ class DetailsController extends Controller
 
     private function fetchPPVDetails($userId, $movieId, $apiKey, $deviceType)
     {
-        // Determine if we have the “+” scenario
+        // Determine if we have the “_” scenario
         $hasPlus = strpos($movieId, '_') !== false;
 
         if ($hasPlus) {
