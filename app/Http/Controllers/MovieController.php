@@ -81,8 +81,9 @@ class MovieController extends Controller
         ];
 
         $shouldSkip = function ($movie) use ($platform, $isKidsMode, $hiddenCategories, $skipChecks) {
-            if ($platform === '' && !$isKidsMode)
-                return false;
+            if ($isKidsMode && (int) ($movie->isChildMode ?? 0) !== 1) {
+                return true;
+            }
 
             foreach ($hiddenCategories as $name) {
                 if (isset($skipChecks[$name]) && $skipChecks[$name]($movie)) {
