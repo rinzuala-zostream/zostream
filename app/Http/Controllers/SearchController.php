@@ -7,7 +7,6 @@ use Illuminate\Http\Request;
 
 class SearchController extends Controller
 {
-    // Clean input to avoid BOOLEAN MODE syntax errors
     public function searchMovies(Request $request)
     {
         $rawQuery = $request->input('q');
@@ -17,16 +16,14 @@ class SearchController extends Controller
             return response()->json(['message' => 'Search query is required.'], 400);
         }
 
-        // ✅ Kids mode and platform detection
+        // ✅ Kids mode + platform detection
         $modeHeader = strtolower($request->header('X-Mode', ''));
         $isKidsByHeader = $modeHeader === 'kids';
         $isKidsByQuery = ($request->query('isChildMode') ?? 'false') === 'true';
         $isKidsMode = $isKidsByHeader || $isKidsByQuery;
 
-        // ✅ Platform detection (header first, then query)
         $platform = strtolower($request->header('X-Platform') ?? $request->query('platform', ''));
 
-        // ✅ Configure which categories to hide per platform
         $hiddenByPlatform = [
             'ios' => ['Hollywood', 'Bollywood', '18+', 'Asian', 'Series', 'Documentary', 'Animation'],
             'tvos' => ['18+'],
@@ -36,22 +33,44 @@ class SearchController extends Controller
             '_default' => ['18+'],
         ];
 
-        // ✅ Determine categories to hide
         $hiddenCategories = $hiddenByPlatform[$platform] ?? $hiddenByPlatform['_default'];
 
-        // ✅ Clean query for BOOLEAN MODE
+        // ✅ Skip check definitions
+        $skipChecks = [
+            'Hollywood' => fn($m) => (int) ($m->isHollywood ?? 0) === 1,
+            'Bollywood' => fn($m) => (int) ($m->isBollywood ?? 0) === 1,
+            'Mizo' => fn($m) => (int) ($m->isMizo ?? 0) === 1,
+            'Asian' => fn($m) => (int) ($m->isKorean ?? 0) === 1,
+            'Series' => fn($m) => (int) ($m->isSeason ?? 0) === 1,
+            'Documentary' => fn($m) => (int) ($m->isDocumentary ?? 0) === 1,
+            '18+' => fn($m) => (int) ($m->isAgeRestricted ?? 0) === 1,
+            'Animation' => fn($m) => stripos((string) ($m->genre ?? ''), 'animation') !== false,
+        ];
+
+        $shouldSkip = function ($movie) use ($isKidsMode, $hiddenCategories, $skipChecks) {
+            if ($isKidsMode && (int) ($movie->isChildMode ?? 0) !== 1) {
+                return true;
+            }
+            foreach ($hiddenCategories as $name) {
+                if (isset($skipChecks[$name]) && $skipChecks[$name]($movie)) {
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        // ✅ Clean up the query for boolean search
         $cleanQuery = $this->cleanFullTextInput($rawQuery) . '*';
 
-        // ✅ Step 1: Fulltext Search
-        $exactMatches = MovieModel::selectRaw("*, 
-            MATCH(title, genre) AGAINST (? IN BOOLEAN MODE) AS relevance", [$cleanQuery])
+        // Step 1: Fulltext Search
+        $exactMatches = MovieModel::selectRaw("*, MATCH(title, genre) AGAINST (? IN BOOLEAN MODE) AS relevance", [$cleanQuery])
             ->whereRaw("MATCH(title, genre) AGAINST (? IN BOOLEAN MODE)", [$cleanQuery])
-            ->when($isKidsMode, fn($q) => $q->where('is_kids', true))
-            ->when(!empty($hiddenCategories), fn($q) => $q->whereNotIn('category', $hiddenCategories))
             ->orderByDesc('relevance')
             ->paginate($perPage);
 
-        if ($exactMatches->total() > 0) {
+        $filtered = $exactMatches->getCollection()->reject($shouldSkip)->values();
+        if ($filtered->count() > 0) {
+            $exactMatches->setCollection($filtered);
             return response()->json([
                 'type' => 'exact',
                 'query' => $rawQuery,
@@ -59,17 +78,16 @@ class SearchController extends Controller
             ]);
         }
 
-        // ✅ Step 2: LIKE fallback
+        // Step 2: LIKE Fallback
         $fallbackMatches = MovieModel::where(function ($q) use ($rawQuery) {
-                $q->where('title', 'LIKE', "%{$rawQuery}%")
-                    ->orWhere('genre', 'LIKE', "%{$rawQuery}%")
-                    ->orWhereRaw("SOUNDEX(title) = SOUNDEX(?)", [$rawQuery]);
-            })
-            ->when($isKidsMode, fn($q) => $q->where('is_kids', true))
-            ->when(!empty($hiddenCategories), fn($q) => $q->whereNotIn('category', $hiddenCategories))
-            ->paginate($perPage);
+            $q->where('title', 'LIKE', "%{$rawQuery}%")
+              ->orWhere('genre', 'LIKE', "%{$rawQuery}%")
+              ->orWhereRaw("SOUNDEX(title) = SOUNDEX(?)", [$rawQuery]);
+        })->paginate($perPage);
 
-        if ($fallbackMatches->total() > 0) {
+        $filteredFallback = $fallbackMatches->getCollection()->reject($shouldSkip)->values();
+        if ($filteredFallback->count() > 0) {
+            $fallbackMatches->setCollection($filteredFallback);
             return response()->json([
                 'type' => 'fallback_like',
                 'query' => $rawQuery,
@@ -77,12 +95,10 @@ class SearchController extends Controller
             ]);
         }
 
-        // ✅ Step 3: Related fallback (safe for kids/platform)
-        $related = MovieModel::when($isKidsMode, fn($q) => $q->where('is_kids', true))
-            ->when(!empty($hiddenCategories), fn($q) => $q->whereNotIn('category', $hiddenCategories))
-            ->inRandomOrder()
-            ->limit(10)
-            ->get();
+        // Step 3: Related
+        $related = MovieModel::inRandomOrder()->limit(10)->get()
+            ->reject($shouldSkip)
+            ->values();
 
         return response()->json([
             'type' => 'related',
@@ -92,7 +108,6 @@ class SearchController extends Controller
         ]);
     }
 
-    // Clean query for BOOLEAN MODE to prevent syntax errors
     private function cleanFullTextInput($query)
     {
         return preg_replace('/[+\-><\(\)~*\"@]+/', ' ', $query);
