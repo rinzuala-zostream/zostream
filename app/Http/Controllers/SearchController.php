@@ -98,11 +98,8 @@ class SearchController extends Controller
         if ($filtered->count() > 0) {
             $finalResults = $this->prioritizeSequels($filtered->toArray(), $rawQuery);
             $exactMatches->setCollection(collect($finalResults));
-            return response()->json([
-                'type' => 'exact',
-                'query' => $rawQuery,
-                'results' => $exactMatches,
-            ]);
+            return response()->json($filtered->values());
+
         }
 
         // ✅ Step 2: LIKE fallback
@@ -120,11 +117,8 @@ class SearchController extends Controller
         if ($filteredFallback->count() > 0) {
             $finalResults = $this->prioritizeSequels($filteredFallback->toArray(), $rawQuery);
             $fallbackMatches->setCollection(collect($finalResults));
-            return response()->json([
-                'type' => 'fallback_like',
-                'query' => $rawQuery,
-                'results' => $fallbackMatches,
-            ]);
+            return response()->json($filteredFallback->values());
+
         }
 
         return response()->json(['message' => 'No movies found for the given query.'], 404);
