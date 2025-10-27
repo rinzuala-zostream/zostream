@@ -33,7 +33,12 @@ class SearchController extends Controller
             '_default' => ['18+'],
         ];
 
-        $hiddenCategories = $hiddenByPlatform[$platform] ?? $hiddenByPlatform['_default'];
+        $hiddenCategories = [];
+        if ($platform !== '') {
+            $hiddenCategories = $hiddenByPlatform[$platform] ?? $hiddenByPlatform['_default'];
+        } elseif ($isKidsMode) {
+            $hiddenCategories = $hiddenByPlatform['_default'];
+        }
 
         // ✅ Skip check definitions
         $skipChecks = [
@@ -47,10 +52,11 @@ class SearchController extends Controller
             'Animation' => fn($m) => stripos((string) ($m->genre ?? ''), 'animation') !== false,
         ];
 
-        $shouldSkip = function ($movie) use ($isKidsMode, $hiddenCategories, $skipChecks) {
+        $shouldSkip = function ($movie) use ($platform, $isKidsMode, $hiddenCategories, $skipChecks) {
             if ($isKidsMode && (int) ($movie->isChildMode ?? 0) !== 1) {
                 return true;
             }
+
             foreach ($hiddenCategories as $name) {
                 if (isset($skipChecks[$name]) && $skipChecks[$name]($movie)) {
                     return true;
@@ -81,8 +87,8 @@ class SearchController extends Controller
         // Step 2: LIKE Fallback
         $fallbackMatches = MovieModel::where(function ($q) use ($rawQuery) {
             $q->where('title', 'LIKE', "%{$rawQuery}%")
-              ->orWhere('genre', 'LIKE', "%{$rawQuery}%")
-              ->orWhereRaw("SOUNDEX(title) = SOUNDEX(?)", [$rawQuery]);
+                ->orWhere('genre', 'LIKE', "%{$rawQuery}%")
+                ->orWhereRaw("SOUNDEX(title) = SOUNDEX(?)", [$rawQuery]);
         })->paginate($perPage);
 
         $filteredFallback = $fallbackMatches->getCollection()->reject($shouldSkip)->values();
