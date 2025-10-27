@@ -14,7 +14,7 @@ class MovieSearchController extends Controller
         $this->validApiKey = config('app.api_key'); // Set in .env or config/app.php
     }
 
-    public function searchMovies(Request $request)
+    public function search(Request $request)
     {
         // ✅ API Key check
         $apiKey = $request->header('X-Api-Key');
