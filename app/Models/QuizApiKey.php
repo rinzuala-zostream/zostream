@@ -8,6 +8,8 @@ class QuizApiKey extends Model
 {
     protected $table = 'quiz_api_keys';
 
+    public $timestamps = false;
+
     protected $fillable = [
         'api_key',
         'owner_name',
