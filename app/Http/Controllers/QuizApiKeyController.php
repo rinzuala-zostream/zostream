@@ -48,8 +48,12 @@ class QuizApiKeyController extends Controller
         }
 
         $key = QuizApiKey::where('api_key', $keyValue)->first();
+
         if (!$key || !$key->isValid()) {
-            return response()->json(['status' => 'error', 'message' => 'Invalid or expired API key'], 403);
+            return response()->json([
+                'status' => 'error',
+                'message' => "Invalid or expired API key: {$keyValue}"
+            ], 403);
         }
 
         $key->increment('usage_count');
