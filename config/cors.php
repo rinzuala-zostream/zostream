@@ -10,6 +10,7 @@ return [
         'https://play.zostream.in',
         'https://admin.zostream.in',
         'https://preview.zostream.in',
+        'https://quiz.buannelstudio.in/',
         'http://locahost:8000',
         'http://192.168.137.160:8000'
     ],
