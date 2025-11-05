@@ -80,8 +80,32 @@ class FCMNotificationController extends Controller
                 "notification" => [
                     "title" => $title,
                     "body" => $body,
-                    "image" => $image
-                ]
+                    "image" => $image,
+                ],
+                // 👇 Add Android and iOS sections for full compatibility
+                "android" => [
+                    "priority" => "high",
+                    "notification" => [
+                        "sound" => "default",
+                        "color" => "#f45342",
+                    ],
+                ],
+                "apns" => [
+                    "headers" => [
+                        "apns-priority" => "10",
+                    ],
+                    "payload" => [
+                        "aps" => [
+                            "alert" => [
+                                "title" => $title,
+                                "body" => $body,
+                            ],
+                            "sound" => "default",
+                            "badge" => 1,
+                            "content-available" => 1
+                        ],
+                    ],
+                ],
             ]
         ];
 
