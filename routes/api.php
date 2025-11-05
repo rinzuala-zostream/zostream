@@ -19,6 +19,7 @@ use App\Http\Controllers\PhonePeSdkV2Controller;
 use App\Http\Controllers\PlanListController;
 use App\Http\Controllers\PlanPriceController;
 use App\Http\Controllers\PPVPriceCalculate;
+use App\Http\Controllers\QuizApiKeyController;
 use App\Http\Controllers\RazorpayController;
 use App\Http\Controllers\RegisterController;
 use App\Http\Controllers\RequestOTPController;
@@ -173,4 +174,10 @@ Route::get('/hls/check-folder', [HlsFolderController::class, 'check']);
 Route::get('/payments/razorpay/orders/{orderId}/status', [RazorpayController::class, 'checkPaymentStatus']);
 Route::post('/payments/razorpay/orders', [RazorpayController::class, 'createOrder']);
 
+Route::prefix('quiz')->group(function () {
+    Route::post('/create', [QuizApiKeyController::class, 'create']);
+    Route::get('/verify', [QuizApiKeyController::class, 'verify']);
+    Route::get('/list', [QuizApiKeyController::class, 'index']);
+    Route::put('/deactivate/{id}', [QuizApiKeyController::class, 'deactivate']);
+});
 
