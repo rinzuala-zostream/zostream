@@ -51,8 +51,8 @@ class MovieController extends Controller
 
         // ✅ Configure which categories to hide per platform (section names)
         $hiddenByPlatform = [
-            'ios' => ['Hollywood', 'Bollywood', '18+', 'Asian', 'Series', 'Documentary', 'Animation'],
-            //'ios' => [],
+            //'ios' => ['Hollywood', 'Bollywood', '18+', 'Asian', 'Series', 'Documentary', 'Animation'],
+            'ios' => [],
             'tvos' => ['18+'],
             'macos' => [],
             'android' => [],
