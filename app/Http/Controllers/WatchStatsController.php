@@ -15,8 +15,8 @@ class WatchStatsController extends Controller
     {
         $validated = $request->validate([
             'user_id'      => 'required|string',
-            'movie_id'     => 'required|integer',
-            'episode_id'   => 'nullable|integer',
+            'movie_id'     => 'required|string',
+            'episode_id'   => 'nullable|string',
             'seconds'      => 'required|integer|min:1',
             'device_type'  => 'nullable|string|max:20',
         ]);
@@ -39,8 +39,8 @@ class WatchStatsController extends Controller
     {
         $validated = $request->validate([
             'user_id'     => 'required|string',
-            'movie_id'    => 'required|integer',
-            'episode_id'  => 'nullable|integer',
+            'movie_id'    => 'required|string',
+            'episode_id'  => 'nullable|string',
             'mb_used'     => 'required|numeric|min:0.01',
             'device_type' => 'nullable|string|max:20',
         ]);
