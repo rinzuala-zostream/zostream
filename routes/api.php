@@ -31,6 +31,7 @@ use App\Http\Controllers\UpdateUserDevice;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\VerifyOTPController;
 use App\Http\Controllers\WatchPositionController;
+use App\Http\Controllers\WatchStatsController;
 use App\Http\Controllers\ZonetController;
 use App\Http\Controllers\ZonetOperatorController;
 use Illuminate\Http\Request;
@@ -180,4 +181,16 @@ Route::prefix('quiz')->group(function () {
     Route::get('/list', [QuizApiKeyController::class, 'index']);
     Route::put('/deactivate/{id}', [QuizApiKeyController::class, 'deactivate']);
 });
+
+// Logging
+Route::post('/watch/log-duration', [WatchStatsController::class, 'logDuration']);
+Route::post('/watch/log-bandwidth', [WatchStatsController::class, 'logBandwidth']);
+
+// Summary stats
+Route::get('/watch/stats/month', [WatchStatsController::class, 'statsMonth']);
+Route::get('/watch/stats/year', [WatchStatsController::class, 'statsYear']);
+
+// Per-movie stats
+Route::get('/watch/stats/month-movies', [WatchStatsController::class, 'monthMovies']);
+Route::get('/watch/stats/year-movies', [WatchStatsController::class, 'yearMovies']);
 
