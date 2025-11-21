@@ -79,85 +79,87 @@ class WatchStatsController extends Controller
      */
     public function stats(Request $request, $user_id)
     {
-        $type = $request->query('type', 'month');
+        $type = $request->query('type');      // month / year / null
         $year = $request->query('year', now()->year);
         $month = $request->query('month', now()->month);
+
+        // ========== DEFAULT CASE (null or empty) ==========
+        // If no type provided → return ALL DATA + ALL MOVIES
+        if (!$type || $type === '') {
+            $type = 'all';
+        }
 
         // Base queries
         $watchQuery = WatchSession::where('user_id', $user_id);
         $bandQuery = BandwidthLog::where('user_id', $user_id);
 
-        // Apply year filter
-        if (in_array($type, ['month', 'month_movies', 'year', 'year_movies'])) {
+        // ========== APPLY FILTERS ==========
+        if ($type === 'month') {
+            $watchQuery->whereYear('created_at', $year)
+                ->whereMonth('created_at', $month);
+
+            $bandQuery->whereYear('created_at', $year)
+                ->whereMonth('created_at', $month);
+        } else if ($type === 'year') {
             $watchQuery->whereYear('created_at', $year);
             $bandQuery->whereYear('created_at', $year);
-        }
-
-        // Apply month filter (monthly only)
-        if (in_array($type, ['month', 'month_movies'])) {
-            $watchQuery->whereMonth('created_at', $month);
-            $bandQuery->whereMonth('created_at', $month);
-        }
-
-        // ============ TOTAL STATS (month + year) ============
-        if ($type === 'month' || $type === 'year') {
-
-            $seconds = $watchQuery->sum('seconds_watched');
-            $mb = $bandQuery->sum('mb_used');
-
+        } else if ($type === 'all') {
+            // No date filter → all-time usage
+        } else {
             return response()->json([
-                'type' => $type,
-                'year' => $year,
-                'month' => $type === 'month' ? $month : null,
-                'total_seconds' => $seconds,
-                'total_minutes' => round($seconds / 60, 2),
-                'total_hours' => round($seconds / 3600, 2),
-                'total_mb' => round($mb, 2),
-                'total_gb' => round($mb / 1024, 2),
-            ]);
+                "error" => "Invalid type. Allowed: month, year, all"
+            ], 400);
         }
 
-        // ============ PER-MOVIE STATS (month_movies + year_movies) ============
-        if ($type === 'month_movies' || $type === 'year_movies') {
+        // ========== TOTAL USAGE ==========
+        $seconds = $watchQuery->sum('seconds_watched');
+        $mb = $bandQuery->sum('mb_used');
 
-            $sessions = $watchQuery
-                ->selectRaw('movie_id, SUM(seconds_watched) as total_seconds')
-                ->groupBy('movie_id')
-                ->get();
+        // ========== PER-MOVIE USAGE ==========
+        $sessionGroups = $watchQuery
+            ->selectRaw('movie_id, SUM(seconds_watched) AS total_seconds')
+            ->groupBy('movie_id')
+            ->get();
 
-            $movies = $sessions->map(function ($item) use ($user_id, $year, $month, $type) {
+        $movies = $sessionGroups->map(function ($item) use ($user_id, $type, $year, $month) {
 
-                $bandQuery = BandwidthLog::where('user_id', $user_id)
-                    ->where('movie_id', $item->movie_id)
-                    ->whereYear('created_at', $year);
+            $band = BandwidthLog::where('user_id', $user_id)
+                ->where('movie_id', $item->movie_id);
 
-                if ($type === 'month_movies') {
-                    $bandQuery->whereMonth('created_at', $month);
-                }
+            if ($type === 'month') {
+                $band->whereYear('created_at', $year)
+                    ->whereMonth('created_at', $month);
 
-                $mb = $bandQuery->sum('mb_used');
+            } elseif ($type === 'year') {
+                $band->whereYear('created_at', $year);
+            }
 
-                return [
-                    'movie_id' => $item->movie_id,
-                    'total_seconds' => (int) $item->total_seconds,
-                    'minutes' => round($item->total_seconds / 60, 2),
-                    'hours' => round($item->total_seconds / 3600, 2),
-                    'bandwidth_mb' => round($mb, 2),
-                    'bandwidth_gb' => round($mb / 1024, 2),
-                ];
-            });
+            $movieMb = $band->sum('mb_used');
 
-            return response()->json([
-                'type' => $type,
-                'year' => $year,
-                'month' => $type === 'month_movies' ? $month : null,
-                'movies' => $movies,
-            ]);
-        }
+            return [
+                "movie_id" => $item->movie_id,
+                "total_seconds" => (int) $item->total_seconds,
+                "minutes" => round($item->total_seconds / 60, 2),
+                "hours" => round($item->total_seconds / 3600, 2),
+                "bandwidth_mb" => round($movieMb, 2),
+                "bandwidth_gb" => round($movieMb / 1024, 2),
+            ];
+        });
 
-        // ============ INVALID TYPE ============
+        // ========== FINAL RESPONSE ==========
         return response()->json([
-            'error' => 'Invalid type. Use month, year, month_movies, year_movies.'
-        ], 400);
+            "type" => $type, // month / year / all
+            "year" => $type !== "all" ? $year : null,
+            "month" => $type === "month" ? $month : null,
+
+            "total_seconds" => $seconds,
+            "total_minutes" => round($seconds / 60, 2),
+            "total_hours" => round($seconds / 3600, 2),
+
+            "total_mb" => round($mb, 2),
+            "total_gb" => round($mb / 1024, 2),
+
+            "movies" => $movies
+        ]);
     }
 }
