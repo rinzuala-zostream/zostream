@@ -187,10 +187,10 @@ Route::post('/watch/log-duration', [WatchStatsController::class, 'logDuration'])
 Route::post('/watch/log-bandwidth', [WatchStatsController::class, 'logBandwidth']);
 
 // Summary stats
-Route::get('/watch/stats/month', [WatchStatsController::class, 'statsMonth']);
-Route::get('/watch/stats/year', [WatchStatsController::class, 'statsYear']);
+Route::get('/watch/{user_id}/stats/month', [WatchStatsController::class, 'statsMonth']);
+Route::get('/watch/{user_id}/stats/year', [WatchStatsController::class, 'statsYear']);
 
 // Per-movie stats
-Route::get('/watch/stats/month-movies', [WatchStatsController::class, 'monthMovies']);
-Route::get('/watch/stats/year-movies', [WatchStatsController::class, 'yearMovies']);
+Route::get('/watch/{user_id}/stats/month/movies', [WatchStatsController::class, 'monthMovies']);
+Route::get('/watch/{user_id}/stats/year/movies', [WatchStatsController::class, 'yearMovies']);
 

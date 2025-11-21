@@ -77,24 +77,17 @@ class WatchStatsController extends Controller
     /**
      * Total stats for a month (duration + bandwidth).
      */
-    public function statsMonth(Request $request)
+    public function statsMonth(Request $request, $user_id)
     {
-        $validated = $request->validate([
-            'user_id' => 'required|string',
-            'year' => 'nullable|integer',
-            'month' => 'nullable|integer'
-        ]);
+        $year = $request->year ?? now()->year;
+        $month = $request->month ?? now()->month;
 
-        $userId = $validated['user_id'];
-        $year = $validated['year'] ?? now()->year;
-        $month = $validated['month'] ?? now()->month;
-
-        $seconds = WatchSession::where('user_id', $userId)
+        $seconds = WatchSession::where('user_id', $user_id)
             ->whereYear('created_at', $year)
             ->whereMonth('created_at', $month)
             ->sum('seconds_watched');
 
-        $mb = BandwidthLog::where('user_id', $userId)
+        $mb = BandwidthLog::where('user_id', $user_id)
             ->whereYear('created_at', $year)
             ->whereMonth('created_at', $month)
             ->sum('mb_used');
@@ -113,21 +106,15 @@ class WatchStatsController extends Controller
     /**
      * Total stats for a year.
      */
-    public function statsYear(Request $request)
+    public function statsYear(Request $request, $user_id)
     {
-        $validated = $request->validate([
-            'user_id' => 'required|string',
-            'year' => 'nullable|integer'
-        ]);
+        $year = $request->year ?? now()->year;
 
-        $userId = $validated['user_id'];
-        $year = $validated['year'] ?? now()->year;
-
-        $seconds = WatchSession::where('user_id', $userId)
+        $seconds = WatchSession::where('user_id', $user_id)
             ->whereYear('created_at', $year)
             ->sum('seconds_watched');
 
-        $mb = BandwidthLog::where('user_id', $userId)
+        $mb = BandwidthLog::where('user_id', $user_id)
             ->whereYear('created_at', $year)
             ->sum('mb_used');
 
@@ -144,28 +131,21 @@ class WatchStatsController extends Controller
     /**
      * Per-movie breakdown for a month (with duration + bandwidth).
      */
-    public function monthMovies(Request $request)
+    public function monthMovies(Request $request, $user_id)
     {
-        $validated = $request->validate([
-            'user_id' => 'required|string',
-            'year' => 'nullable|integer',
-            'month' => 'nullable|integer'
-        ]);
-
-        $userId = $validated['user_id'];
-        $year = $validated['year'] ?? now()->year;
-        $month = $validated['month'] ?? now()->month;
+        $year = $request->year ?? now()->year;
+        $month = $request->month ?? now()->month;
 
         $sessions = WatchSession::selectRaw('movie_id, SUM(seconds_watched) as total_seconds')
-            ->where('user_id', $userId)
+            ->where('user_id', $user_id)
             ->whereYear('created_at', $year)
             ->whereMonth('created_at', $month)
             ->groupBy('movie_id')
             ->get();
 
-        $data = $sessions->map(function ($item) use ($userId, $year, $month) {
+        $data = $sessions->map(function ($item) use ($user_id, $year, $month) {
 
-            $mb = BandwidthLog::where('user_id', $userId)
+            $mb = BandwidthLog::where('user_id', $user_id)
                 ->where('movie_id', $item->movie_id)
                 ->whereYear('created_at', $year)
                 ->whereMonth('created_at', $month)
@@ -191,25 +171,19 @@ class WatchStatsController extends Controller
     /**
      * Per-movie breakdown for a year.
      */
-    public function yearMovies(Request $request)
+    public function yearMovies(Request $request, $user_id)
     {
-        $validated = $request->validate([
-            'user_id' => 'required|string',
-            'year' => 'nullable|integer'
-        ]);
-
-        $userId = $validated['user_id'];
-        $year = $validated['year'] ?? now()->year;
+        $year = $request->year ?? now()->year;
 
         $sessions = WatchSession::selectRaw('movie_id, SUM(seconds_watched) as total_seconds')
-            ->where('user_id', $userId)
+            ->where('user_id', $user_id)
             ->whereYear('created_at', $year)
             ->groupBy('movie_id')
             ->get();
 
-        $data = $sessions->map(function ($item) use ($userId, $year) {
+        $data = $sessions->map(function ($item) use ($user_id, $year) {
 
-            $mb = BandwidthLog::where('user_id', $userId)
+            $mb = BandwidthLog::where('user_id', $user_id)
                 ->where('movie_id', $item->movie_id)
                 ->whereYear('created_at', $year)
                 ->sum('mb_used');
