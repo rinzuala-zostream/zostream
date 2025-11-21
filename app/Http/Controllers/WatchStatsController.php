@@ -148,4 +148,45 @@ class WatchStatsController extends Controller
             "movies" => $movies
         ]);
     }
+
+    public function topStats()
+    {
+        // 1) TOP 10 MOST WATCHED MOVIES (BY TOTAL SECONDS)
+        $topWatch = WatchSession::selectRaw(
+            'movie_id, SUM(seconds_watched) AS total_seconds'
+        )
+            ->groupBy('movie_id')
+            ->orderByDesc('total_seconds')
+            ->limit(10)
+            ->get()
+            ->map(function ($item) {
+                return [
+                    'movie_id' => $item->movie_id,
+                    'total_seconds' => (int) $item->total_seconds,
+                    'total_minutes' => round($item->total_seconds / 60, 2),
+                    'total_hours' => round($item->total_seconds / 3600, 2),
+                ];
+            });
+
+        // 2) TOP 10 HIGHEST BANDWIDTH USAGE (BY MB)
+        $topBandwidth = BandwidthLog::selectRaw(
+            'movie_id, SUM(mb_used) AS total_mb'
+        )
+            ->groupBy('movie_id')
+            ->orderByDesc('total_mb')
+            ->limit(10)
+            ->get()
+            ->map(function ($item) {
+                return [
+                    'movie_id' => $item->movie_id,
+                    'total_mb' => round($item->total_mb, 2),
+                    'total_gb' => round($item->total_mb / 1024, 2),
+                ];
+            });
+
+        return response()->json([
+            "top_watch_hours" => $topWatch,
+            "top_bandwidth" => $topBandwidth,
+        ]);
+    }
 }

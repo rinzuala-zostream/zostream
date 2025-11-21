@@ -189,3 +189,6 @@ Route::post('/watch/log-bandwidth', [WatchStatsController::class, 'logBandwidth'
 // Summary stats
 Route::get('/watch/{user_id}/stats', [WatchStatsController::class, 'stats']);
 
+Route::get('/stats/top', [WatchStatsController::class, 'topStats']);
+
+
