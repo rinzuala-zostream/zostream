@@ -77,129 +77,87 @@ class WatchStatsController extends Controller
     /**
      * Total stats for a month (duration + bandwidth).
      */
-    public function statsMonth(Request $request, $user_id)
+    public function stats(Request $request, $user_id)
     {
-        $year = $request->year ?? now()->year;
-        $month = $request->month ?? now()->month;
+        $type = $request->query('type', 'month');
+        $year = $request->query('year', now()->year);
+        $month = $request->query('month', now()->month);
 
-        $seconds = WatchSession::where('user_id', $user_id)
-            ->whereYear('created_at', $year)
-            ->whereMonth('created_at', $month)
-            ->sum('seconds_watched');
+        // Base queries
+        $watchQuery = WatchSession::where('user_id', $user_id);
+        $bandQuery = BandwidthLog::where('user_id', $user_id);
 
-        $mb = BandwidthLog::where('user_id', $user_id)
-            ->whereYear('created_at', $year)
-            ->whereMonth('created_at', $month)
-            ->sum('mb_used');
+        // Apply year filter
+        if (in_array($type, ['month', 'month_movies', 'year', 'year_movies'])) {
+            $watchQuery->whereYear('created_at', $year);
+            $bandQuery->whereYear('created_at', $year);
+        }
 
+        // Apply month filter (monthly only)
+        if (in_array($type, ['month', 'month_movies'])) {
+            $watchQuery->whereMonth('created_at', $month);
+            $bandQuery->whereMonth('created_at', $month);
+        }
+
+        // ============ TOTAL STATS (month + year) ============
+        if ($type === 'month' || $type === 'year') {
+
+            $seconds = $watchQuery->sum('seconds_watched');
+            $mb = $bandQuery->sum('mb_used');
+
+            return response()->json([
+                'type' => $type,
+                'year' => $year,
+                'month' => $type === 'month' ? $month : null,
+                'total_seconds' => $seconds,
+                'total_minutes' => round($seconds / 60, 2),
+                'total_hours' => round($seconds / 3600, 2),
+                'total_mb' => round($mb, 2),
+                'total_gb' => round($mb / 1024, 2),
+            ]);
+        }
+
+        // ============ PER-MOVIE STATS (month_movies + year_movies) ============
+        if ($type === 'month_movies' || $type === 'year_movies') {
+
+            $sessions = $watchQuery
+                ->selectRaw('movie_id, SUM(seconds_watched) as total_seconds')
+                ->groupBy('movie_id')
+                ->get();
+
+            $movies = $sessions->map(function ($item) use ($user_id, $year, $month, $type) {
+
+                $bandQuery = BandwidthLog::where('user_id', $user_id)
+                    ->where('movie_id', $item->movie_id)
+                    ->whereYear('created_at', $year);
+
+                if ($type === 'month_movies') {
+                    $bandQuery->whereMonth('created_at', $month);
+                }
+
+                $mb = $bandQuery->sum('mb_used');
+
+                return [
+                    'movie_id' => $item->movie_id,
+                    'total_seconds' => (int) $item->total_seconds,
+                    'minutes' => round($item->total_seconds / 60, 2),
+                    'hours' => round($item->total_seconds / 3600, 2),
+                    'bandwidth_mb' => round($mb, 2),
+                    'bandwidth_gb' => round($mb / 1024, 2),
+                ];
+            });
+
+            return response()->json([
+                'type' => $type,
+                'year' => $year,
+                'month' => $type === 'month_movies' ? $month : null,
+                'movies' => $movies,
+            ]);
+        }
+
+        // ============ INVALID TYPE ============
         return response()->json([
-            'year' => $year,
-            'month' => $month,
-            'total_seconds' => $seconds,
-            'total_minutes' => round($seconds / 60, 2),
-            'total_hours' => round($seconds / 3600, 2),
-            'total_mb' => round($mb, 2),
-            'total_gb' => round($mb / 1024, 2),
-        ]);
-    }
-
-    /**
-     * Total stats for a year.
-     */
-    public function statsYear(Request $request, $user_id)
-    {
-        $year = $request->year ?? now()->year;
-
-        $seconds = WatchSession::where('user_id', $user_id)
-            ->whereYear('created_at', $year)
-            ->sum('seconds_watched');
-
-        $mb = BandwidthLog::where('user_id', $user_id)
-            ->whereYear('created_at', $year)
-            ->sum('mb_used');
-
-        return response()->json([
-            'year' => $year,
-            'total_seconds' => $seconds,
-            'total_minutes' => round($seconds / 60, 2),
-            'total_hours' => round($seconds / 3600, 2),
-            'total_mb' => round($mb, 2),
-            'total_gb' => round($mb / 1024, 2),
-        ]);
-    }
-
-    /**
-     * Per-movie breakdown for a month (with duration + bandwidth).
-     */
-    public function monthMovies(Request $request, $user_id)
-    {
-        $year = $request->year ?? now()->year;
-        $month = $request->month ?? now()->month;
-
-        $sessions = WatchSession::selectRaw('movie_id, SUM(seconds_watched) as total_seconds')
-            ->where('user_id', $user_id)
-            ->whereYear('created_at', $year)
-            ->whereMonth('created_at', $month)
-            ->groupBy('movie_id')
-            ->get();
-
-        $data = $sessions->map(function ($item) use ($user_id, $year, $month) {
-
-            $mb = BandwidthLog::where('user_id', $user_id)
-                ->where('movie_id', $item->movie_id)
-                ->whereYear('created_at', $year)
-                ->whereMonth('created_at', $month)
-                ->sum('mb_used');
-
-            return [
-                'movie_id' => $item->movie_id,
-                'total_seconds' => (int) $item->total_seconds,
-                'minutes' => round($item->total_seconds / 60, 2),
-                'hours' => round($item->total_seconds / 3600, 2),
-                'bandwidth_mb' => round($mb, 2),
-                'bandwidth_gb' => round($mb / 1024, 2),
-            ];
-        });
-
-        return response()->json([
-            'year' => $year,
-            'month' => $month,
-            'movies' => $data,
-        ]);
-    }
-
-    /**
-     * Per-movie breakdown for a year.
-     */
-    public function yearMovies(Request $request, $user_id)
-    {
-        $year = $request->year ?? now()->year;
-
-        $sessions = WatchSession::selectRaw('movie_id, SUM(seconds_watched) as total_seconds')
-            ->where('user_id', $user_id)
-            ->whereYear('created_at', $year)
-            ->groupBy('movie_id')
-            ->get();
-
-        $data = $sessions->map(function ($item) use ($user_id, $year) {
-
-            $mb = BandwidthLog::where('user_id', $user_id)
-                ->where('movie_id', $item->movie_id)
-                ->whereYear('created_at', $year)
-                ->sum('mb_used');
-
-            return [
-                'movie_id' => $item->movie_id,
-                'total_seconds' => (int) $item->total_seconds,
-                'hours' => round($item->total_seconds / 3600, 2),
-                'bandwidth_mb' => round($mb, 2),
-                'bandwidth_gb' => round($mb / 1024, 2),
-            ];
-        });
-
-        return response()->json([
-            'year' => $year,
-            'movies' => $data,
-        ]);
+            'error' => 'Invalid type. Use month, year, month_movies, year_movies.'
+        ], 400);
     }
 }
