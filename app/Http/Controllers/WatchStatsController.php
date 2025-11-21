@@ -21,22 +21,15 @@ class WatchStatsController extends Controller
             'device_type' => 'nullable|string|max:20',
         ]);
 
-        $session = WatchSession::where('user_id', $validated['user_id'])
-            ->where('movie_id', $validated['movie_id'])
-            ->where('episode_id', $validated['episode_id'] ?? null)
-            ->first();
-
-        if ($session) {
-            $session->increment('seconds_watched', $validated['seconds']);
-        } else {
-            WatchSession::create([
-                'user_id' => $validated['user_id'],
-                'movie_id' => $validated['movie_id'],
-                'episode_id' => $validated['episode_id'] ?? null,
-                'seconds_watched' => $validated['seconds'],
-                'device_type' => $validated['device_type'] ?? null,
-            ]);
-        }
+        WatchSession::create([
+            'user_id' => $validated['user_id'],
+            'movie_id' => $validated['movie_id'],
+            'episode_id' => $validated['episode_id'] ?? null,
+            'seconds_watched' => $validated['seconds'],
+            'device_type' => $validated['device_type'] ?? null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
 
         return response()->json(['success' => true]);
     }
@@ -54,22 +47,15 @@ class WatchStatsController extends Controller
             'device_type' => 'nullable|string|max:20',
         ]);
 
-        $log = BandwidthLog::where('user_id', $validated['user_id'])
-            ->where('movie_id', $validated['movie_id'])
-            ->where('episode_id', $validated['episode_id'] ?? null)
-            ->first();
-
-        if ($log) {
-            $log->increment('mb_used', $validated['mb_used']);
-        } else {
-            BandwidthLog::create([
-                'user_id' => $validated['user_id'],
-                'movie_id' => $validated['movie_id'],
-                'episode_id' => $validated['episode_id'] ?? null,
-                'mb_used' => $validated['mb_used'],
-                'device_type' => $validated['device_type'] ?? null,
-            ]);
-        }
+        BandwidthLog::create([
+            'user_id' => $validated['user_id'],
+            'movie_id' => $validated['movie_id'],
+            'episode_id' => $validated['episode_id'] ?? null,
+            'mb_used' => $validated['mb_used'],
+            'device_type' => $validated['device_type'] ?? null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
 
         return response()->json(['success' => true]);
     }
