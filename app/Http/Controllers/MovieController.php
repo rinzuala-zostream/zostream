@@ -181,7 +181,7 @@ class MovieController extends Controller
             if ($column === 'newrelease') {
                 $query->whereNotNull('release_on')
                     ->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', $ageRestriction))
-                    ->orderByRaw("STR_TO_DATE(release_on, '%d %b, %Y') DESC");
+                    ->orderByRaw("STR_TO_DATE(release_on, '%M %d, %Y') DESC");
             } elseif ($column === 'mostwatch') {
                 $query->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', $ageRestriction))
                     ->orderByDesc('views');
@@ -232,7 +232,7 @@ class MovieController extends Controller
         } else {
             // Full sections response
             $categories = [
-                "New Release" => ["where" => "release_on IS NOT NULL", "order" => "STR_TO_DATE(release_on, '%d %b, %Y') DESC"],
+                "New Release" => ["where" => "release_on IS NOT NULL", "order" => "STR_TO_DATE(release_on, '%M %d, %Y') DESC"],
                 "Most Watched" => ["where" => "1", "order" => "views DESC"],
                 "Pay Per View" => ["where" => "isPayPerView = 1", "order" => "num DESC"],
                 "Latest Update" => ["where" => "1", "order" => "num DESC"],
