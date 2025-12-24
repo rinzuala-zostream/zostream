@@ -180,8 +180,32 @@ class SubscriptionController extends Controller
                     ];
 
                     if ($device) {
+                        // Check if expired and within free week
+                        $startFree = new DateTime('2025-12-25 00:00:00');
+                        $endFree = new DateTime('2025-12-31 23:59:59');
+                        $currentDate = new DateTime();
+
+                        if ($subscriptionResult['sub'] === false && $currentDate >= $startFree && $currentDate <= $endFree) {
+                            $freeSub = [
+                                'status' => 'success',
+                                'device_type' => $device,
+                                'id' => $uid,
+                                'create_date' => $startFree->format('F j, Y'),
+                                'current_date' => $currentDate->format('F j, Y'),
+                                'period' => 7,
+                                'sub_plan' => 'Zo Stream Christmas Free',
+                                'sub' => true,
+                                'expiry_date' => $endFree->format('F j, Y'),
+                                'device_support' => 2,
+                                'isAdsFree' => false,
+                            ];
+                            return response()->json($freeSub);
+                        }
+
+                        // Otherwise return normal subscription
                         return response()->json($subscriptionResult);
                     }
+
 
                     $results[] = $subscriptionResult;
                 }
