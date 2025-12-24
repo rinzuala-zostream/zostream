@@ -67,7 +67,6 @@ class SubscriptionController extends Controller
             }
 
             if ($ip && $device) {
-                // Check if IP is from ISP
                 $ispRequest = new Request(['ip' => $ip]);
                 $ispResponse = $this->streamController->stream($ispRequest);
                 $responseData = $ispResponse->getData(true);
@@ -90,7 +89,6 @@ class SubscriptionController extends Controller
                             'is_from_isp' => true,
                         ];
                     } else {
-                        // fallback to default subscription
                         $model = match ($device) {
                             'TV' => TVSubscriptionModel::class,
                             'Mobile' => SubscriptionModel::class,
@@ -104,7 +102,6 @@ class SubscriptionController extends Controller
                         ];
                     }
                 } else {
-                    // Non-ISP IP, get default model
                     $model = match ($device) {
                         'TV' => TVSubscriptionModel::class,
                         'Mobile' => SubscriptionModel::class,
@@ -118,7 +115,6 @@ class SubscriptionController extends Controller
                     ];
                 }
             } elseif ($device) {
-                // If IP is null and device is provided
                 $model = match ($device) {
                     'TV' => TVSubscriptionModel::class,
                     'Mobile' => SubscriptionModel::class,
@@ -191,8 +187,58 @@ class SubscriptionController extends Controller
                 }
             }
 
+            // 🎁 Free week logic
+            $currentDate = new DateTime();
+            $startFree = new DateTime('2025-12-25 00:00:00');
+            $endFree = new DateTime('2025-12-31 23:59:59');
+
             if (empty($results)) {
+                // No active subscription found
+                if ($currentDate >= $startFree && $currentDate <= $endFree) {
+                    $freeSub = [
+                        'status' => 'success',
+                        'device_type' => $device ?? 'Mobile',
+                        'id' => $uid,
+                        'create_date' => $startFree->format('F j, Y'),
+                        'current_date' => $currentDate->format('F j, Y'),
+                        'period' => 7,
+                        'sub_plan' => 'Zo Stream Christmas Free',
+                        'sub' => true,
+                        'expiry_date' => $endFree->format('F j, Y'),
+                        'device_support' => 2,
+                        'isAdsFree' => false,
+                    ];
+                    return response()->json($freeSub);
+                }
+
                 return response()->json(['status' => 'error', 'message' => 'No data found for the given id']);
+            }
+
+            // Check if user has any active subscription
+            $hasActive = false;
+            foreach ($results as $r) {
+                if ($r['sub'] === true) {
+                    $hasActive = true;
+                    break;
+                }
+            }
+
+            // If all subscriptions expired but within free week, grant free access
+            if (!$hasActive && $currentDate >= $startFree && $currentDate <= $endFree) {
+                $freeSub = [
+                    'status' => 'success',
+                    'device_type' => $device ?? 'Mobile',
+                    'id' => $uid,
+                    'create_date' => $startFree->format('F j, Y'),
+                    'current_date' => $currentDate->format('F j, Y'),
+                    'period' => 7,
+                    'sub_plan' => 'Zo Stream Christmas Free',
+                    'sub' => true,
+                    'expiry_date' => $endFree->format('F j, Y'),
+                    'device_support' => 2,
+                    'isAdsFree' => false,
+                ];
+                $results[] = $freeSub;
             }
 
             return response()->json($results);
@@ -310,25 +356,16 @@ class SubscriptionController extends Controller
 
     private function calculateMonthsFromInterval($createDate, $daysToAdd)
     {
-        // If $createDate is a DateTime object, use it directly, otherwise convert it to a DateTime object from string
         if (!$createDate instanceof DateTime) {
-            $createDate = new DateTime($createDate);  // Convert string to DateTime
+            $createDate = new DateTime($createDate);
         }
 
-        // Add the given number of days as a DateInterval to the start date
         $interval = new DateInterval('P' . $daysToAdd . 'D');
         $createDate->add($interval);
 
-        // Get the current date for comparison
-        $currentDate = new DateTime(); // Or use any other reference date here
-
-        // Calculate the difference in years, months, and days
+        $currentDate = new DateTime();
         $diff = $createDate->diff($currentDate);
-
-        // Calculate total months: years converted to months + the months difference
         $totalMonths = ($diff->y * 12) + $diff->m;
-
-        // Return the total number of months
         return $totalMonths;
     }
 
@@ -339,10 +376,8 @@ class SubscriptionController extends Controller
             ->get();
     }
 
-    // GET request: /subscription-history?uid=123
     public function getHistory(Request $request)
     {
-
         $apiKey = $request->header('X-Api-Key');
         if ($apiKey !== $this->validApiKey) {
             return response()->json(["status" => "error", "message" => "Invalid API key"], 401);
@@ -361,12 +396,9 @@ class SubscriptionController extends Controller
             ], 404);
         }
 
-        return response()->json(
-            $history
-        );
+        return response()->json($history);
     }
 
-    // POST request: JSON body { all fields except `num` }
     public function addHistory(Request $request)
     {
         $validated = $request->validate([
@@ -417,7 +449,6 @@ class SubscriptionController extends Controller
         ];
 
         $pdf = Pdf::loadView('pdf.invoice', ['data' => (object) $data]);
-
         return $pdf->download("invoice_{$data['uid']}_{$data['pid']}.pdf");
     }
 }
