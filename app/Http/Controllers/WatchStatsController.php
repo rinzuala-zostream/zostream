@@ -115,7 +115,7 @@ class WatchStatsController extends Controller
             ->keyBy('id');
 
         $episodesData = EpisodeModel::whereIn('id', $episodeIds)
-            ->select('id', 'title', 'poster', 'movie_id')
+            ->select('id', 'title', 'movie_id')
             ->get()
             ->keyBy('id');
 
@@ -211,7 +211,7 @@ class WatchStatsController extends Controller
             ->keyBy('id');
 
         $episodes = EpisodeModel::whereIn('id', $episodeIds)
-            ->select('id', 'title', 'poster', 'movie_id')
+            ->select('id', 'title', 'movie_id')
             ->get()
             ->keyBy('id');
 
