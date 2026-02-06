@@ -14,6 +14,7 @@ class WatchSession extends Model
         'device_type',
     ];
 
+    // Relationships
     public function user()
     {
         return $this->belongsTo(User::class);
@@ -21,6 +22,21 @@ class WatchSession extends Model
 
     public function movie()
     {
-        return $this->belongsTo(MovieModel::class);
+        return $this->belongsTo(MovieModel::class, 'movie_id');
+    }
+
+    public function episode()
+    {
+        return $this->belongsTo(EpisodeModel::class, 'episode_id');
+    }
+
+    /**
+     * ✅ Dynamic relationship — returns either movie or episode
+     */
+    public function getContentAttribute()
+    {
+        return $this->episode_id
+            ? $this->episode // if episode exists
+            : $this->movie;  // else movie
     }
 }

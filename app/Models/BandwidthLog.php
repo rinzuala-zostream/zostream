@@ -21,6 +21,21 @@ class BandwidthLog extends Model
 
     public function movie()
     {
-        return $this->belongsTo(MovieModel::class);
+        return $this->belongsTo(MovieModel::class, 'movie_id');
+    }
+
+    public function episode()
+    {
+        return $this->belongsTo(EpisodeModel::class, 'episode_id');
+    }
+
+    /**
+     * ✅ Dynamic relationship — returns either movie or episode
+     */
+    public function getContentAttribute()
+    {
+        return $this->episode_id
+            ? $this->episode
+            : $this->movie;
     }
 }

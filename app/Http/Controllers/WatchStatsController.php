@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\EpisodeModel;
+use App\Models\MovieModel;
 use App\Models\WatchSession;
 use App\Models\BandwidthLog;
 use Illuminate\Http\Request;
@@ -65,76 +67,98 @@ class WatchStatsController extends Controller
      */
     public function stats(Request $request, $user_id)
     {
-        $type = $request->query('type');      // month / year / null
+        $type = $request->query('type', 'all'); // all / month / year
         $year = $request->query('year', now()->year);
         $month = $request->query('month', now()->month);
-
-        // ========== DEFAULT CASE (null or empty) ==========
-        // If no type provided → return ALL DATA + ALL MOVIES
-        if (!$type || $type === '') {
-            $type = 'all';
-        }
 
         // Base queries
         $watchQuery = WatchSession::where('user_id', $user_id);
         $bandQuery = BandwidthLog::where('user_id', $user_id);
 
-        // ========== APPLY FILTERS ==========
+        // Apply filters
         if ($type === 'month') {
-            $watchQuery->whereYear('created_at', $year)
-                ->whereMonth('created_at', $month);
-
-            $bandQuery->whereYear('created_at', $year)
-                ->whereMonth('created_at', $month);
-        } else if ($type === 'year') {
+            $watchQuery->whereYear('created_at', $year)->whereMonth('created_at', $month);
+            $bandQuery->whereYear('created_at', $year)->whereMonth('created_at', $month);
+        } elseif ($type === 'year') {
             $watchQuery->whereYear('created_at', $year);
             $bandQuery->whereYear('created_at', $year);
-        } else if ($type === 'all') {
-            // No date filter → all-time usage
-        } else {
-            return response()->json([
-                "error" => "Invalid type. Allowed: month, year, all"
-            ], 400);
+        } elseif ($type !== 'all') {
+            return response()->json(["error" => "Invalid type. Allowed: month, year, all"], 400);
         }
 
-        // ========== TOTAL USAGE ==========
+        // Total usage
         $seconds = $watchQuery->sum('seconds_watched');
         $mb = $bandQuery->sum('mb_used');
 
-        // ========== PER-MOVIE USAGE ==========
+        // Grouped per content (movie or episode)
         $sessionGroups = $watchQuery
-            ->selectRaw('movie_id, SUM(seconds_watched) AS total_seconds')
-            ->groupBy('movie_id')
+            ->selectRaw('movie_id, episode_id, SUM(seconds_watched) AS total_seconds')
+            ->groupBy('movie_id', 'episode_id')
             ->get();
 
-        $movies = $sessionGroups->map(function ($item) use ($user_id, $type, $year, $month) {
+        $bandGroups = $bandQuery
+            ->selectRaw('movie_id, episode_id, SUM(mb_used) AS total_mb')
+            ->groupBy('movie_id', 'episode_id')
+            ->get()
+            ->keyBy(function ($item) {
+                return ($item->movie_id ?? 'null') . '-' . ($item->episode_id ?? 'null');
+            });
 
-            $band = BandwidthLog::where('user_id', $user_id)
-                ->where('movie_id', $item->movie_id);
+        // Collect IDs for fetching related data
+        $movieIds = $sessionGroups->pluck('movie_id')->filter()->unique();
+        $episodeIds = $sessionGroups->pluck('episode_id')->filter()->unique();
 
-            if ($type === 'month') {
-                $band->whereYear('created_at', $year)
-                    ->whereMonth('created_at', $month);
+        // Fetch movies and episodes in bulk
+        $moviesData = MovieModel::whereIn('id', $movieIds)
+            ->select('id', 'title', 'poster')
+            ->get()
+            ->keyBy('id');
 
-            } elseif ($type === 'year') {
-                $band->whereYear('created_at', $year);
+        $episodesData = EpisodeModel::whereIn('id', $episodeIds)
+            ->select('id', 'title', 'poster', 'movie_id')
+            ->get()
+            ->keyBy('id');
+
+        // Combine all into unified response
+        $contents = $sessionGroups->map(function ($item) use ($bandGroups, $moviesData, $episodesData) {
+            $key = ($item->movie_id ?? 'null') . '-' . ($item->episode_id ?? 'null');
+            $bandwidth = $bandGroups[$key]->total_mb ?? 0;
+
+            // If this is an episode
+            if (!empty($item->episode_id)) {
+                $ep = $episodesData[$item->episode_id] ?? null;
+                return [
+                    "type" => "episode",
+                    "episode_id" => $item->episode_id,
+                    "title" => $ep->title ?? "Unknown Episode",
+                    "poster" => $ep->poster ?? null,
+                    "movie_id" => $ep->movie_id ?? $item->movie_id,
+                    "total_seconds" => (int) $item->total_seconds,
+                    "minutes" => round($item->total_seconds / 60, 2),
+                    "hours" => round($item->total_seconds / 3600, 2),
+                    "bandwidth_mb" => round($bandwidth, 2),
+                    "bandwidth_gb" => round($bandwidth / 1024, 2),
+                ];
             }
 
-            $movieMb = $band->sum('mb_used');
-
+            // Else, this is a movie
+            $movie = $moviesData[$item->movie_id] ?? null;
             return [
+                "type" => "movie",
                 "movie_id" => $item->movie_id,
+                "title" => $movie->title ?? "Unknown Movie",
+                "poster" => $movie->poster ?? null,
                 "total_seconds" => (int) $item->total_seconds,
                 "minutes" => round($item->total_seconds / 60, 2),
                 "hours" => round($item->total_seconds / 3600, 2),
-                "bandwidth_mb" => round($movieMb, 2),
-                "bandwidth_gb" => round($movieMb / 1024, 2),
+                "bandwidth_mb" => round($bandwidth, 2),
+                "bandwidth_gb" => round($bandwidth / 1024, 2),
             ];
-        });
+        })->values();
 
-        // ========== FINAL RESPONSE ==========
+        // Final response
         return response()->json([
-            "type" => $type, // month / year / all
+            "type" => $type,
             "year" => $type !== "all" ? $year : null,
             "month" => $type === "month" ? $month : null,
 
@@ -145,44 +169,104 @@ class WatchStatsController extends Controller
             "total_mb" => round($mb, 2),
             "total_gb" => round($mb / 1024, 2),
 
-            "movies" => $movies
+            "total_items_watched" => $sessionGroups->count(),
+            "items" => $contents
         ]);
     }
 
+    /**
+     * Get top 10 movies/episodes by watch time and bandwidth.
+     */
     public function topStats()
     {
-        // 1) TOP 10 MOST WATCHED MOVIES (BY TOTAL SECONDS)
-        $topWatch = WatchSession::selectRaw(
-            'movie_id, SUM(seconds_watched) AS total_seconds'
-        )
-            ->groupBy('movie_id')
+        // Top watched (by seconds)
+        $topWatch = WatchSession::selectRaw('movie_id, episode_id, SUM(seconds_watched) AS total_seconds')
+            ->groupBy('movie_id', 'episode_id')
             ->orderByDesc('total_seconds')
             ->limit(10)
+            ->get();
+
+        // Top by bandwidth (by MB)
+        $topBandwidth = BandwidthLog::selectRaw('movie_id, episode_id, SUM(mb_used) AS total_mb')
+            ->groupBy('movie_id', 'episode_id')
+            ->orderByDesc('total_mb')
+            ->limit(10)
+            ->get();
+
+        // Merge all content IDs
+        $movieIds = $topWatch->pluck('movie_id')
+            ->merge($topBandwidth->pluck('movie_id'))
+            ->filter()
+            ->unique();
+
+        $episodeIds = $topWatch->pluck('episode_id')
+            ->merge($topBandwidth->pluck('episode_id'))
+            ->filter()
+            ->unique();
+
+        // Fetch content info
+        $movies = MovieModel::whereIn('id', $movieIds)
+            ->select('id', 'title', 'poster')
             ->get()
-            ->map(function ($item) {
+            ->keyBy('id');
+
+        $episodes = EpisodeModel::whereIn('id', $episodeIds)
+            ->select('id', 'title', 'poster', 'movie_id')
+            ->get()
+            ->keyBy('id');
+
+        // Attach info
+        $topWatch = $topWatch->map(function ($item) use ($movies, $episodes) {
+            if (!empty($item->episode_id)) {
+                $ep = $episodes[$item->episode_id] ?? null;
                 return [
-                    'movie_id' => $item->movie_id,
+                    'type' => 'episode',
+                    'episode_id' => $item->episode_id,
+                    'title' => $ep->title ?? 'Unknown Episode',
+                    'poster' => $ep->poster ?? null,
+                    'movie_id' => $ep->movie_id ?? $item->movie_id,
                     'total_seconds' => (int) $item->total_seconds,
                     'total_minutes' => round($item->total_seconds / 60, 2),
                     'total_hours' => round($item->total_seconds / 3600, 2),
                 ];
-            });
+            }
 
-        // 2) TOP 10 HIGHEST BANDWIDTH USAGE (BY MB)
-        $topBandwidth = BandwidthLog::selectRaw(
-            'movie_id, SUM(mb_used) AS total_mb'
-        )
-            ->groupBy('movie_id')
-            ->orderByDesc('total_mb')
-            ->limit(10)
-            ->get()
-            ->map(function ($item) {
+            $movie = $movies[$item->movie_id] ?? null;
+            return [
+                'type' => 'movie',
+                'movie_id' => $item->movie_id,
+                'title' => $movie->title ?? 'Unknown Movie',
+                'poster' => $movie->poster ?? null,
+                'total_seconds' => (int) $item->total_seconds,
+                'total_minutes' => round($item->total_seconds / 60, 2),
+                'total_hours' => round($item->total_seconds / 3600, 2),
+            ];
+        });
+
+        $topBandwidth = $topBandwidth->map(function ($item) use ($movies, $episodes) {
+            if (!empty($item->episode_id)) {
+                $ep = $episodes[$item->episode_id] ?? null;
                 return [
-                    'movie_id' => $item->movie_id,
+                    'type' => 'episode',
+                    'episode_id' => $item->episode_id,
+                    'title' => $ep->title ?? 'Unknown Episode',
+                    'poster' => $ep->poster ?? null,
+                    'movie_id' => $ep->movie_id ?? $item->movie_id,
                     'total_mb' => round($item->total_mb, 2),
                     'total_gb' => round($item->total_mb / 1024, 2),
                 ];
-            });
+            }
+
+            $movie = $movies[$item->movie_id] ?? null;
+            return [
+                'type' => 'movie',
+                'movie_id' => $item->movie_id,
+                'title' => $movie->title ?? 'Unknown Movie',
+                'poster' => $movie->poster ?? null,
+                'total_mb' => round($item->total_mb, 2),
+                'total_gb' => round($item->total_mb / 1024, 2),
+            ];
+        });
 
         return response()->json([
             "top_watch_hours" => $topWatch,
