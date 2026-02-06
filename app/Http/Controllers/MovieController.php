@@ -235,7 +235,7 @@ class MovieController extends Controller
                 "New Release" => ["where" => "release_on IS NOT NULL", "order" => "STR_TO_DATE(release_on, '%M %d, %Y') DESC"],
                 "Most Watched" => ["where" => "1", "order" => "views DESC"],
                 "Pay Per View" => ["where" => "isPayPerView = 1", "order" => "num DESC"],
-                "Latest Update" => ["where" => "1", "order" => "num DESC"],
+                "Latest Update" => ["where" => "1", "order" => "STR_TO_DATE(create_date, '%M %d, %Y') DESC"],
                 "Asian" => ["where" => "isKorean = 1", "order" => "num DESC"],
                 "Series" => ["where" => "isSeason = 1", "order" => "num DESC"],
                 "Hollywood" => ["where" => "isHollywood = 1", "order" => "num DESC"],
