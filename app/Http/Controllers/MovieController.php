@@ -510,6 +510,17 @@ class MovieController extends Controller
 
             $movie->update($validated);
 
+            $shouldNotify = $request->boolean('notification', true);
+            if ($shouldNotify && $movie->status === 'Published') {
+                $fakeRequest = new Request([
+                    'title' => $movie->title,
+                    'body' => 'Streaming on Zo Stream',
+                    'image' => $movie->cover_img ?? '',
+                    'key' => $movie->id ?? '',
+                ]);
+                $this->fCMNotificationController->send($fakeRequest);
+            }
+
             return response()->json([
                 'status' => 'success',
                 'message' => 'Movie updated successfully',
