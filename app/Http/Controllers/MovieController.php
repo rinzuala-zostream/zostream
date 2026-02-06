@@ -53,7 +53,7 @@ class MovieController extends Controller
         $userId = $request->header('X-User-Id') ?? $request->query('user_id', '');
 
         // ✅ Special rule: this user sees ONLY Mizo content
-        $onlyMizoUser = ($userId === '12345user');
+        $onlyMizoUser = ($userId === 'AW7ovVnTdgWuvE1Uke7QTQ5OEQt1');
 
         // ✅ Categories to hide per platform
         $hiddenByPlatform = [
