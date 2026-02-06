@@ -42,6 +42,11 @@ class MovieSearchController extends Controller
 
         $platform = strtolower($request->header('X-Platform') ?? $request->query('platform', ''));
 
+        // ✅ Read user ID
+        $userId = $request->header('X-User-Id') ?? $request->query('user_id', '');
+        $onlyMizoUser = ($userId === 'AW7ovVnTdgWuvE1Uke7QTQ5OEQt1');
+
+        // ✅ Platform filter setup
         $hiddenByPlatform = [
             'ios' => ['Hollywood', 'Bollywood', '18+', 'Asian', 'Series', 'Documentary', 'Animation'],
             'tvos' => ['18+'],
@@ -52,26 +57,28 @@ class MovieSearchController extends Controller
         ];
 
         $hiddenCategories = [];
-        if ($platform !== '') {
-            $hiddenCategories = $hiddenByPlatform[$platform] ?? $hiddenByPlatform['_default'];
-        } elseif ($isKidsMode) {
-            $hiddenCategories = $hiddenByPlatform['_default'];
+        if (!$onlyMizoUser) {
+            if ($platform !== '') {
+                $hiddenCategories = $hiddenByPlatform[$platform] ?? $hiddenByPlatform['_default'];
+            } elseif ($isKidsMode) {
+                $hiddenCategories = $hiddenByPlatform['_default'];
+            }
         }
 
         // ✅ Skip check definitions
         $skipChecks = [
-            'Hollywood' => fn($m) => (int) ($m->isHollywood ?? 0) === 1,
-            'Bollywood' => fn($m) => (int) ($m->isBollywood ?? 0) === 1,
-            'Mizo' => fn($m) => (int) ($m->isMizo ?? 0) === 1,
-            'Asian' => fn($m) => (int) ($m->isKorean ?? 0) === 1,
-            'Series' => fn($m) => (int) ($m->isSeason ?? 0) === 1,
-            'Documentary' => fn($m) => (int) ($m->isDocumentary ?? 0) === 1,
-            '18+' => fn($m) => (int) ($m->isAgeRestricted ?? 0) === 1,
-            'Animation' => fn($m) => stripos((string) ($m->genre ?? ''), 'animation') !== false,
+            'Hollywood' => fn($m) => (int)($m->isHollywood ?? 0) === 1,
+            'Bollywood' => fn($m) => (int)($m->isBollywood ?? 0) === 1,
+            'Mizo' => fn($m) => (int)($m->isMizo ?? 0) === 1,
+            'Asian' => fn($m) => (int)($m->isKorean ?? 0) === 1,
+            'Series' => fn($m) => (int)($m->isSeason ?? 0) === 1,
+            'Documentary' => fn($m) => (int)($m->isDocumentary ?? 0) === 1,
+            '18+' => fn($m) => (int)($m->isAgeRestricted ?? 0) === 1,
+            'Animation' => fn($m) => stripos((string)($m->genre ?? ''), 'animation') !== false,
         ];
 
         $shouldSkip = function ($movie) use ($isKidsMode, $hiddenCategories, $skipChecks) {
-            if ($isKidsMode && (int) ($movie->isChildMode ?? 0) !== 1) {
+            if ($isKidsMode && (int)($movie->isChildMode ?? 0) !== 1) {
                 return true;
             }
             foreach ($hiddenCategories as $name) {
@@ -82,6 +89,7 @@ class MovieSearchController extends Controller
             return false;
         };
 
+        // ✅ Clean query and setup
         $cleanQuery = $this->cleanFullTextInput($rawQuery) . '*';
         $perPage = 20;
 
@@ -90,16 +98,18 @@ class MovieSearchController extends Controller
             ->whereRaw("MATCH(title, genre) AGAINST (? IN BOOLEAN MODE)", [$cleanQuery])
             ->when($isEnableRequest, fn($q) => $q->where('status', 'Published')->where('isEnable', 1))
             ->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', 0))
+            ->when($onlyMizoUser, fn($q) => $q->where('isMizo', 1)) // ✅ Mizo-only user filter
             ->orderByDesc('relevance')
             ->paginate($perPage);
 
-        $filtered = $exactMatches->getCollection()->reject($shouldSkip)->values();
+        $filtered = $exactMatches->getCollection()
+            ->when(!$onlyMizoUser, fn($col) => $col->reject($shouldSkip))
+            ->values();
 
         if ($filtered->count() > 0) {
             $finalResults = $this->prioritizeSequels($filtered->toArray(), $rawQuery);
             $exactMatches->setCollection(collect($finalResults));
             return response()->json($filtered->values());
-
         }
 
         // ✅ Step 2: LIKE fallback
@@ -110,15 +120,17 @@ class MovieSearchController extends Controller
             })
             ->when($isEnableRequest, fn($q) => $q->where('status', 'Published')->where('isEnable', 1))
             ->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', 0))
+            ->when($onlyMizoUser, fn($q) => $q->where('isMizo', 1)) // ✅ Mizo-only user filter
             ->paginate($perPage);
 
-        $filteredFallback = $fallbackMatches->getCollection()->reject($shouldSkip)->values();
+        $filteredFallback = $fallbackMatches->getCollection()
+            ->when(!$onlyMizoUser, fn($col) => $col->reject($shouldSkip))
+            ->values();
 
         if ($filteredFallback->count() > 0) {
             $finalResults = $this->prioritizeSequels($filteredFallback->toArray(), $rawQuery);
             $fallbackMatches->setCollection(collect($finalResults));
             return response()->json($filteredFallback->values());
-
         }
 
         return response()->json(['message' => 'No movies found for the given query.'], 404);
@@ -130,7 +142,7 @@ class MovieSearchController extends Controller
         return preg_replace('/[^\p{L}\p{N}\s]/u', '', $text);
     }
 
-    // ✅ Prioritize sequels (keep this function)
+    // ✅ Prioritize sequels (unchanged)
     private function prioritizeSequels(array $movies, string $query): array
     {
         $query = strtolower($query);
