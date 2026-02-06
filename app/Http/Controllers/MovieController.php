@@ -271,19 +271,20 @@ class MovieController extends Controller
                 $where = $clause['where'];
                 $order = $clause['order'];
 
-                $list = MovieModel::whereRaw("isEnable = 1 AND $where")
+                $builder = MovieModel::whereRaw("isEnable = 1 AND $where")
                     ->where('status', 'Published');
 
-                // ✅ Kids filter
-                $list = $applyKidsFilter($list);
+                // ✅ Kids filter (apply to builder before get())
+                $builder = $applyKidsFilter($builder instanceof \Illuminate\Database\Eloquent\Builder ? $builder : $builder->newQuery());
 
                 // Filter out 18+ items if not allowed
-                $list = $list->when(!$ageRestriction && strpos($where, 'isAgeRestricted') === false, function ($q) use ($ageRestriction) {
+                $builder = $builder->when(!$ageRestriction && strpos($where, 'isAgeRestricted') === false, function ($q) use ($ageRestriction) {
                     return $q->where('isAgeRestricted', $ageRestriction);
                 })
                     ->orderByRaw($order)
-                    ->limit($fetchSize)
-                    ->get();
+                    ->limit($fetchSize);
+
+                $list = $builder->get();
 
                 if ($platform !== '' || $isKidsMode) {
                     $list = $list->reject($shouldSkip)->values();
