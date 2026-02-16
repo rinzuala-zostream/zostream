@@ -24,19 +24,18 @@ class AlsoLikeController extends Controller
         $movieTitle = $request->query('movie_title');
         $ageRestriction = $request->boolean('age_restriction', false);
 
-        // ✅ Detect platform (header first, fallback to query)
-        $platform = strtolower($request->header('X-Platform') ?? $request->query('platform', ''));
-
-        // ✅ Platforms that should only return Mizo movies
-        $mizoPlatforms = ['android', 'ios', 'tvos', 'tv', 'smarttv', 'firetv', 'roku', 'webos'];
-
         if (!$movieTitle) {
             return response()->json(['error' => 'Missing movie_title parameter'], 400);
         }
 
-        // ✅ Fetch movies based on platform + restriction
-        $isMizoOnly = in_array($platform, $mizoPlatforms, true);
-        $movies = $this->fetchMovies($ageRestriction, $isMizoOnly);
+        // ✅ Read user ID
+        $userId = $request->header('X-User-Id') ?? $request->query('user_id', '');
+
+        // ✅ Mizo-only logic (applies to special user OR when userId is null/empty)
+        $onlyMizoUser = empty($userId) || $userId === 'AW7ovVnTdgWuvE1Uke7QTQ5OEQt1';
+
+        // ✅ Fetch movies based on Mizo-only + restriction
+        $movies = $this->fetchMovies($ageRestriction, $onlyMizoUser);
 
         // ✅ Generate recommendations
         $recommended = $this->getRecommendations($movieTitle, $movies);
@@ -44,16 +43,17 @@ class AlsoLikeController extends Controller
         return response()->json($recommended);
     }
 
-    private function fetchMovies(bool $ageRestriction, bool $isMizoOnly = false)
+    private function fetchMovies(bool $ageRestriction, bool $onlyMizoUser = false)
     {
-        $query = MovieModel::where('isEnable', 1);
+        $query = MovieModel::where('isEnable', 1)
+            ->where('status', 'Published');
 
         if (!$ageRestriction) {
             $query->where('isAgeRestricted', 0);
         }
 
-        // ✅ Return only Mizo movies if platform is in the list
-        if ($isMizoOnly) {
+        // ✅ Return only Mizo movies for special user or empty user ID
+        if ($onlyMizoUser) {
             $query->where('isMizo', 1);
         }
 
@@ -68,7 +68,7 @@ class AlsoLikeController extends Controller
         foreach ($movies as &$movie) {
             foreach ($booleanFields as $field) {
                 if (isset($movie[$field])) {
-                    $movie[$field] = (bool) $movie[$field];
+                    $movie[$field] = (bool)$movie[$field];
                 }
             }
         }

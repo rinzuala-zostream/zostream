@@ -34,35 +34,30 @@ class MovieSearchController extends Controller
         $isEnableRequest = $isEnableRequest === null ? true : $isEnableRequest;
         $ageRestriction = $ageRestriction === null ? false : $ageRestriction;
 
-        // ✅ Kids mode + platform detection
+        // ✅ Kids mode detection
         $modeHeader = strtolower($request->header('X-Mode', ''));
         $isKidsByHeader = $modeHeader === 'kids';
         $isKidsByQuery = ($request->query('isChildMode') ?? 'false') === 'true';
         $isKidsMode = $isKidsByHeader || $isKidsByQuery;
 
-        $platform = strtolower($request->header('X-Platform') ?? $request->query('platform', ''));
+        // ✅ Platform removed
+        $platform = '';
 
         // ✅ Read user ID
         $userId = $request->header('X-User-Id') ?? $request->query('user_id', '');
-        $onlyMizoUser = ($userId === 'AW7ovVnTdgWuvE1Uke7QTQ5OEQt1');
 
-        // ✅ Platform filter setup
+        // ✅ Treat empty user ID same as Mizo-only user
+        $onlyMizoUser = empty($userId) || $userId === 'AW7ovVnTdgWuvE1Uke7QTQ5OEQt1';
+
+        // ✅ Categories to hide (same default)
         $hiddenByPlatform = [
-            'ios' => ['Hollywood', 'Bollywood', '18+', 'Asian', 'Series', 'Documentary', 'Animation'],
-            'tvos' => ['18+'],
-            'macos' => [],
-            'android' => [],
-            'web' => [],
             '_default' => ['18+'],
         ];
 
+        // ✅ Determine hidden categories
         $hiddenCategories = [];
-        if (!$onlyMizoUser) {
-            if ($platform !== '') {
-                $hiddenCategories = $hiddenByPlatform[$platform] ?? $hiddenByPlatform['_default'];
-            } elseif ($isKidsMode) {
-                $hiddenCategories = $hiddenByPlatform['_default'];
-            }
+        if (!$onlyMizoUser && $isKidsMode) {
+            $hiddenCategories = $hiddenByPlatform['_default'];
         }
 
         // ✅ Skip check definitions
@@ -77,15 +72,24 @@ class MovieSearchController extends Controller
             'Animation' => fn($m) => stripos((string)($m->genre ?? ''), 'animation') !== false,
         ];
 
-        $shouldSkip = function ($movie) use ($isKidsMode, $hiddenCategories, $skipChecks) {
+        $shouldSkip = function ($movie) use ($isKidsMode, $hiddenCategories, $skipChecks, $onlyMizoUser) {
+            // ✅ Restrict non-Mizo content for Mizo-only user or empty user
+            if ($onlyMizoUser && (int)($movie->isMizo ?? 0) !== 1) {
+                return true;
+            }
+
+            // ✅ Restrict non-child content for Kids Mode
             if ($isKidsMode && (int)($movie->isChildMode ?? 0) !== 1) {
                 return true;
             }
+
+            // ✅ Apply hidden categories
             foreach ($hiddenCategories as $name) {
                 if (isset($skipChecks[$name]) && $skipChecks[$name]($movie)) {
                     return true;
                 }
             }
+
             return false;
         };
 
@@ -98,12 +102,12 @@ class MovieSearchController extends Controller
             ->whereRaw("MATCH(title, genre) AGAINST (? IN BOOLEAN MODE)", [$cleanQuery])
             ->when($isEnableRequest, fn($q) => $q->where('status', 'Published')->where('isEnable', 1))
             ->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', 0))
-            ->when($onlyMizoUser, fn($q) => $q->where('isMizo', 1)) // ✅ Mizo-only user filter
+            ->when($onlyMizoUser, fn($q) => $q->where('isMizo', 1)) // ✅ Mizo-only filter in query
             ->orderByDesc('relevance')
             ->paginate($perPage);
 
         $filtered = $exactMatches->getCollection()
-            ->when(!$onlyMizoUser, fn($col) => $col->reject($shouldSkip))
+            ->reject($shouldSkip)
             ->values();
 
         if ($filtered->count() > 0) {
@@ -120,11 +124,11 @@ class MovieSearchController extends Controller
             })
             ->when($isEnableRequest, fn($q) => $q->where('status', 'Published')->where('isEnable', 1))
             ->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', 0))
-            ->when($onlyMizoUser, fn($q) => $q->where('isMizo', 1)) // ✅ Mizo-only user filter
+            ->when($onlyMizoUser, fn($q) => $q->where('isMizo', 1)) // ✅ Mizo-only filter in query
             ->paginate($perPage);
 
         $filteredFallback = $fallbackMatches->getCollection()
-            ->when(!$onlyMizoUser, fn($col) => $col->reject($shouldSkip))
+            ->reject($shouldSkip)
             ->values();
 
         if ($filteredFallback->count() > 0) {
