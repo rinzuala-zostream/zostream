@@ -45,7 +45,9 @@ class MovieSearchController extends Controller
 
         // ✅ Read user ID
         $userId = $request->header('X-User-Id') ?? $request->query('user_id', '');
-        $onlyMizoUser = ($userId === 'AW7ovVnTdgWuvE1Uke7QTQ5OEQt1');
+
+        // ✅ Treat empty user ID same as Mizo-only user
+        $onlyMizoUser = empty($userId) || $userId === 'AW7ovVnTdgWuvE1Uke7QTQ5OEQt1';
 
         // ✅ Categories to hide (same default)
         $hiddenByPlatform = [
@@ -71,7 +73,7 @@ class MovieSearchController extends Controller
         ];
 
         $shouldSkip = function ($movie) use ($isKidsMode, $hiddenCategories, $skipChecks, $onlyMizoUser) {
-            // ✅ Restrict non-Mizo content for Mizo-only user
+            // ✅ Restrict non-Mizo content for Mizo-only user or empty user
             if ($onlyMizoUser && (int)($movie->isMizo ?? 0) !== 1) {
                 return true;
             }

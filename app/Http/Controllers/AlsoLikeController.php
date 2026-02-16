@@ -30,7 +30,9 @@ class AlsoLikeController extends Controller
 
         // ✅ Read user ID
         $userId = $request->header('X-User-Id') ?? $request->query('user_id', '');
-        $onlyMizoUser = ($userId === 'AW7ovVnTdgWuvE1Uke7QTQ5OEQt1');
+
+        // ✅ Mizo-only logic (applies to special user OR when userId is null/empty)
+        $onlyMizoUser = empty($userId) || $userId === 'AW7ovVnTdgWuvE1Uke7QTQ5OEQt1';
 
         // ✅ Fetch movies based on Mizo-only + restriction
         $movies = $this->fetchMovies($ageRestriction, $onlyMizoUser);
@@ -43,13 +45,14 @@ class AlsoLikeController extends Controller
 
     private function fetchMovies(bool $ageRestriction, bool $onlyMizoUser = false)
     {
-        $query = MovieModel::where('isEnable', 1);
+        $query = MovieModel::where('isEnable', 1)
+            ->where('status', 'Published');
 
         if (!$ageRestriction) {
             $query->where('isAgeRestricted', 0);
         }
 
-        // ✅ Return only Mizo movies for special user
+        // ✅ Return only Mizo movies for special user or empty user ID
         if ($onlyMizoUser) {
             $query->where('isMizo', 1);
         }
@@ -65,7 +68,7 @@ class AlsoLikeController extends Controller
         foreach ($movies as &$movie) {
             foreach ($booleanFields as $field) {
                 if (isset($movie[$field])) {
-                    $movie[$field] = (bool) $movie[$field];
+                    $movie[$field] = (bool)$movie[$field];
                 }
             }
         }
