@@ -156,11 +156,14 @@ class DetailsController extends Controller
                 $movie['adDisplayTimes'] = ['second' => $ms / 2 + rand(1, $ms / 2)];
             }
 
+            // Determine age restriction as string ('true' or 'false')
+            $isAgeRestricted = !empty($movie['is_age_restricted']) && $movie['is_age_restricted'] ? 'true' : 'false';
+
             // Get user's watch position
             $watchRequest = new Request([
                 'userId' => $userId,
                 'movieId' => $movieId,
-                'isAgeRestricted' => $movie['isAgeRestricted'] ?? 'false',
+                'isAgeRestricted' => $isAgeRestricted,
             ]);
             $watchRequest->headers->set('X-Api-Key', $apiKey);
 
