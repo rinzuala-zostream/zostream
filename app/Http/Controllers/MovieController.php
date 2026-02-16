@@ -46,8 +46,8 @@ class MovieController extends Controller
         $isKidsByQuery = ($request->query('isChildMode') ?? 'false') === 'true';
         $isKidsMode = $isKidsByHeader || $isKidsByQuery;
 
-        // ✅ Read platform (header first, then query)
-        $platform = strtolower($request->header('X-Platform') ?? $request->query('platform', ''));
+        // ✅ Platform removed (always default)
+        $platform = '';
 
         // ✅ Read user ID
         $userId = $request->header('X-User-Id') ?? $request->query('user_id', '');
@@ -68,9 +68,7 @@ class MovieController extends Controller
         // ✅ Determine hidden categories
         $hiddenCategories = [];
         if (!$onlyMizoUser) {
-            if ($platform !== '') {
-                $hiddenCategories = $hiddenByPlatform[$platform] ?? $hiddenByPlatform['_default'];
-            } elseif ($isKidsMode) {
+            if ($isKidsMode) {
                 $hiddenCategories = $hiddenByPlatform['_default'];
             }
         }
@@ -89,20 +87,23 @@ class MovieController extends Controller
             'Animation' => fn($m) => stripos((string) ($m->genre ?? ''), 'animation') !== false,
         ];
 
-        $shouldSkip = function ($movie) use ($platform, $isKidsMode, $hiddenCategories, $skipChecks, $onlyMizoUser) {
-            // Mizo-only user restriction
+        $shouldSkip = function ($movie) use ($isKidsMode, $hiddenCategories, $skipChecks, $onlyMizoUser) {
+            // ✅ Mizo-only user restriction
             if ($onlyMizoUser && (int) ($movie->isMizo ?? 0) !== 1) {
                 return true;
             }
 
+            // ✅ Kids mode restriction
             if ($isKidsMode && (int) ($movie->isChildMode ?? 0) !== 1) {
                 return true;
             }
+
             foreach ($hiddenCategories as $name) {
                 if (isset($skipChecks[$name]) && $skipChecks[$name]($movie)) {
                     return true;
                 }
             }
+
             return false;
         };
 
@@ -164,15 +165,6 @@ class MovieController extends Controller
                 "free" => "free",
             ];
 
-            if (!$onlyMizoUser && $platform !== '') {
-                foreach ($hiddenCategories as $hiddenName) {
-                    if (strtolower($hiddenName) === $categoryKey) {
-                        return response()->json(['status' => 'success', 'data' => []])
-                            ->header('Content-Type', 'application/json');
-                    }
-                }
-            }
-
             $rangeParts = explode('-', $range ?? '1-10');
             $start = max(((int) $rangeParts[0] - 1), 0);
             $count = max(((int) $rangeParts[1] - $start), 10);
@@ -191,7 +183,6 @@ class MovieController extends Controller
                 $query->where('isMizo', 1);
             }
 
-            // Same query building logic as before...
             if ($column === 'newrelease') {
                 $query->whereNotNull('release_on')
                     ->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', $ageRestriction))
@@ -234,7 +225,7 @@ class MovieController extends Controller
 
             $movies = $query->offset($start)->limit($count)->get();
 
-            if (($platform !== '' || $isKidsMode) && !$onlyMizoUser) {
+            if ($isKidsMode && !$onlyMizoUser) {
                 $movies = $movies->reject($shouldSkip)->values();
             }
 
@@ -261,7 +252,7 @@ class MovieController extends Controller
                 "Free" => ["where" => "isPremium = 0", "order" => "num DESC"],
             ];
 
-            if (!$onlyMizoUser && ($platform !== '' || $isKidsMode)) {
+            if (!$onlyMizoUser && $isKidsMode) {
                 foreach ($hiddenCategories as $hiddenName) {
                     unset($categories[$hiddenName]);
                 }
@@ -272,7 +263,7 @@ class MovieController extends Controller
             }
 
             $data = [];
-            $fetchSize = ($platform !== '' || $isKidsMode) ? 50 : 10;
+            $fetchSize = $isKidsMode ? 50 : 10;
 
             foreach ($categories as $name => $clause) {
                 if ($name === "18+" && !$ageRestriction)
@@ -300,7 +291,7 @@ class MovieController extends Controller
 
                 $list = $builder->get();
 
-                if (($platform !== '' || $isKidsMode) && !$onlyMizoUser) {
+                if ($isKidsMode && !$onlyMizoUser) {
                     $list = $list->reject($shouldSkip)->values();
                 }
 
