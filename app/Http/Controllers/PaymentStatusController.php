@@ -18,7 +18,7 @@ class PaymentStatusController extends Controller
     protected $cashfreeController;
     protected $PhonepePaymentController;
     protected $razorpayController;
-    
+
     public function __construct(
         SubscriptionController $subscriptionController,
         CashFreeController $cashFreeController,
@@ -54,8 +54,8 @@ class PaymentStatusController extends Controller
 
                 // Step 1: Get payment status
                 if (strtolower($tempData->pg) === 'phonepe') {
-                     $h = strtolower(trim((string) $request->header('X-PP-Env', 'production')));
-                     $phonepeReq = new Request(['X-PP-Env' => $h]);
+                    $h = strtolower(trim((string) $request->header('X-PP-Env', 'production')));
+                    $phonepeReq = new Request(['X-PP-Env' => $h]);
                     $paymentResponse = $this->checkPaymentStatus($phonepeReq, $merchantOrderId);
                 } else if (strtolower($tempData->pg) === 'razorpay') {
                     $orderId = $tempData->transaction_id;
@@ -120,7 +120,7 @@ class PaymentStatusController extends Controller
                             $platform = $tempData->device_type;
                             $plan = $tempData->plan;
 
-                            Http::asForm()->post('https://zostream.in/mail/success_payment.php', [
+                            Http::asForm()->post(url('/api/send-payment-mail'), [
                                 'recipient' => $tempData->user_mail,
                                 'subject' => 'Payment Confirmation from Zo Stream',
                                 'amount' => $amount,

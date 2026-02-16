@@ -14,6 +14,7 @@ use App\Http\Controllers\HlsFolderController;
 use App\Http\Controllers\LinkController;
 use App\Http\Controllers\MovieController;
 use App\Http\Controllers\MovieSearchController;
+use App\Http\Controllers\PaymentMailController;
 use App\Http\Controllers\PaymentStatusController;
 use App\Http\Controllers\PhonePeSdkV2Controller;
 use App\Http\Controllers\PlanListController;
@@ -190,5 +191,7 @@ Route::post('/watch/log-bandwidth', [WatchStatsController::class, 'logBandwidth'
 Route::get('/watch/{user_id}/stats', [WatchStatsController::class, 'stats']);
 
 Route::get('/stats/top', [WatchStatsController::class, 'topStats']);
+
+Route::post('/send-payment-mail', [PaymentMailController::class, 'sendPaymentSuccess']);
 
 
