@@ -22,6 +22,7 @@ class DetailsController extends Controller
     protected $adsController;
     protected $calculatePlan;
     protected $linkController;
+    protected $watchPositionController;
 
     public function __construct(
         PaymentStatusController $paymentStatusController,
@@ -29,7 +30,8 @@ class DetailsController extends Controller
         SubscriptionController $subscriptionController,
         AdsController $adsController,
         CalculatePlan $calculatePlan,
-        LinkController $linkController
+        LinkController $linkController,
+        WatchPositionController $watchPositionController
     ) {
         $this->validApiKey = config('app.api_key');
         $this->paymentStatusController = $paymentStatusController;
@@ -38,6 +40,7 @@ class DetailsController extends Controller
         $this->adsController = $adsController;
         $this->calculatePlan = $calculatePlan;
         $this->linkController = $linkController;
+        $this->watchPositionController = $watchPositionController;
     }
 
     public function getDetails(Request $request)
@@ -152,6 +155,19 @@ class DetailsController extends Controller
                 $ms = $this->convertToMilliseconds($movie['duration']);
                 $movie['adDisplayTimes'] = ['second' => $ms / 2 + rand(1, $ms / 2)];
             }
+
+            // Get user's watch position
+            $watchRequest = new Request([
+                'userId' => $userId,
+                'movieId' => $movieId,
+                'isAgeRestricted' => $movie['isAgeRestricted'] ?? 'false',
+            ]);
+            $watchRequest->headers->set('X-Api-Key', $apiKey);
+
+            $watchResponse = $this->watchPositionController->getWatchPosition($watchRequest);
+            $watchData = json_decode($watchResponse->getContent(), true);
+
+            $movie['watch_position'] = $watchData['watchPosition'] ?? 0;
 
             return response()->json([
                 'subscription' => $subscriptionData,
