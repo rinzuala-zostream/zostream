@@ -89,7 +89,12 @@ class MovieController extends Controller
             'Animation' => fn($m) => stripos((string) ($m->genre ?? ''), 'animation') !== false,
         ];
 
-        $shouldSkip = function ($movie) use ($platform, $isKidsMode, $hiddenCategories, $skipChecks) {
+        $shouldSkip = function ($movie) use ($platform, $isKidsMode, $hiddenCategories, $skipChecks, $onlyMizoUser) {
+            // Mizo-only user restriction
+            if ($onlyMizoUser && (int) ($movie->isMizo ?? 0) !== 1) {
+                return true;
+            }
+
             if ($isKidsMode && (int) ($movie->isChildMode ?? 0) !== 1) {
                 return true;
             }
