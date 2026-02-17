@@ -25,9 +25,22 @@ class SendBirthdayWishes extends Command
 
     public function handle()
     {
+        $today = now();
+
         $users = BirthdayQueue::where('processed', false)
-            ->whereDate('birthday', today())
-            ->get();
+            ->get() // first get all
+            ->filter(function ($user) use ($today) {
+                if (empty($user->birthday)) {
+                    return false; // skip if null or empty
+                }
+
+                try {
+                    $dob = Carbon::parse($user->birthday);
+                    return $dob->month === $today->month && $dob->day === $today->day;
+                } catch (\Exception $e) {
+                    return false; // skip invalid formats
+                }
+            });
 
         $sent = 0;
         $failed = 0;
@@ -50,12 +63,16 @@ class SendBirthdayWishes extends Command
 
             try {
                 // ✅ Send FCM notification
-                $fcmRequest = new Request([
-                    'title' => 'Happy Birthday from Zo Stream!',
-                    'body' => $body,
-                    'image' => '',
-                    'token' => $user->token, // specific device token
-                ]);
+                if (!empty($user->token)) {
+                    $fcmRequest = new Request([
+                        'title' => 'Happy Birthday from Zo Stream!',
+                        'body' => $body,
+                        'image' => '',
+                        'token' => $user->token,
+                    ]);
+
+                    $this->fcmNotificationController->send($fcmRequest);
+                }
 
                 $this->fcmNotificationController->send($fcmRequest);
 
@@ -68,7 +85,6 @@ class SendBirthdayWishes extends Command
 
                 if (
                     $mailResponse->successful()
-                    || $mailResponse->status() === 200
                     || $fcmRequest->status() === 200
                 ) {
 
