@@ -4,6 +4,7 @@ use App\Http\Controllers\AdminDashboardController;
 use App\Http\Controllers\AdsController;
 use App\Http\Controllers\AlsoLikeController;
 use App\Http\Controllers\AxinomLicense;
+use App\Http\Controllers\BirthdayMailController;
 use App\Http\Controllers\CashFreeController;
 use App\Http\Controllers\EpisodeController;
 use App\Http\Controllers\CalculatePlan;
@@ -193,5 +194,7 @@ Route::get('/watch/{user_id}/stats', [WatchStatsController::class, 'stats']);
 Route::get('/stats/top', [WatchStatsController::class, 'topStats']);
 
 Route::post('/send-payment-mail', [PaymentMailController::class, 'sendPaymentSuccess']);
+
+Route::post('/send-birthday-mail', [BirthdayMailController::class, 'send']);
 
 

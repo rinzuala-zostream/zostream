@@ -2,10 +2,12 @@
 
 namespace App\Console\Commands;
 
+use App\Http\Controllers\FCMNotificationController;
 use App\Models\BirthdayQueue;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Http\Request;
 use Carbon\Carbon;
 
 class SendBirthdayWishes extends Command
@@ -13,10 +15,18 @@ class SendBirthdayWishes extends Command
     protected $signature = 'birthday:send';
     protected $description = 'Send birthday wishes to users whose birthday is today';
 
+    protected $fcmNotificationController;
+
+    public function __construct(FCMNotificationController $fcmNotificationController)
+    {
+        parent::__construct(); // ✅ Important
+        $this->fcmNotificationController = $fcmNotificationController;
+    }
+
     public function handle()
     {
         $users = BirthdayQueue::where('processed', false)
-            ->whereDate('created_at', today())
+            ->whereDate('birthday', today())
             ->get();
 
         $sent = 0;
@@ -33,48 +43,55 @@ class SendBirthdayWishes extends Command
                 "🎊 Happy Birthday, {$user->name}! Keep shining and making the world a better place!",
                 "🍰 It’s cake time, {$user->name}! Hope your birthday is just the beginning of a year full of happiness!",
                 "🎉 Let’s celebrate YOU today, {$user->name}! Wishing you endless happiness and blessings!",
-                "🎈 Sending you all the smiles, hugs, and cheer on your birthday, {$user->name}!",
-                "🎂 Another year older, wiser, and more fabulous, {$user->name}! Have a great one!",
-                "🎊 Birthdays are nature’s way of telling us to eat more cake. Enjoy it, {$user->name}!",
-                "🎁 On your special day, {$user->name}, may you receive all the love you give — and more!",
-                "🌈 Happy Birthday, {$user->name}! May your dreams take flight this year!",
-                "🍭 Sweet wishes to the sweetest person – Happy Birthday, {$user->name}!",
-                "☀️ Here's to sunshine, laughter, and unforgettable memories – Happy Birthday, {$user->name}!",
-                "💫 Keep glowing, {$user->name}! Today is your day to sparkle!",
-                "🦄 A magical birthday to you, {$user->name}! Hope it's full of wonder and delight!",
-                "🎉 Wishing you love, laughter, and cake today and always, {$user->name}!",
                 "📺 From all of us at Zo Stream – enjoy your day, {$user->name}! You deserve the best!",
             ];
 
             $body = $messages[array_rand($messages)];
 
             try {
-                $response = Http::asForm()->post('https://zostream.in/mail/send_mail.php', [
+                // ✅ Send FCM notification
+                $fcmRequest = new Request([
+                    'title' => 'Happy Birthday from Zo Stream!',
+                    'body' => $body,
+                    'image' => '',
+                    'token' => $user->token, // specific device token
+                ]);
+
+                $this->fcmNotificationController->send($fcmRequest);
+
+                // ✅ Send email (SMTP API)
+                $mailResponse = Http::asForm()->post(url('/api/send-birthday-mail'), [
                     'recipient' => $user->email,
                     'subject' => 'Happy Birthday from Zo Stream!',
                     'body' => $body,
                 ]);
 
-                if ($response->successful()) {
+                if (
+                    $mailResponse->successful()
+                    || $mailResponse->status() === 200
+                    || $fcmRequest->status() === 200
+                ) {
+
                     $sent++;
-                    $user->update(['processed' => true, 'updated_at' => now()]);
+                    $user->update(['processed' => true]);
+
                 } else {
                     $failed++;
-                    Log::error("Mail sending failed", [
+                    Log::error('Mail sending failed', [
                         'email' => $user->email,
-                        'status' => $response->status(),
-                        'body' => $response->body(),
+                        'status' => $mailResponse->status(),
+                        'body' => $mailResponse->body(),
                     ]);
                 }
-            } catch (\Exception $e) {
+            } catch (\Throwable $e) {
                 $failed++;
-                Log::error("Mail send exception", [
+                Log::error('Birthday send exception', [
                     'email' => $user->email,
                     'error' => $e->getMessage(),
                 ]);
             }
         }
 
-        $this->info("Done. Sent: $sent | Failed: $failed");
+        $this->info("✅ Birthday send completed: Sent {$sent}, Failed {$failed}");
     }
 }

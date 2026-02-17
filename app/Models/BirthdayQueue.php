@@ -14,6 +14,7 @@ class BirthdayQueue extends Model
         'email',
         'birthday',
         'processed',
+        'token',
     ];
 
     protected $casts = [

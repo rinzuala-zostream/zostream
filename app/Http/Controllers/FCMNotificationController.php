@@ -9,6 +9,7 @@ class FCMNotificationController extends Controller
 {
     public function send(Request $request)
     {
+        // 🔐 Load Firebase service account credentials
         $serviceAccountData = [
             "type" => "service_account",
             "project_id" => "zo-stream-f04ea",
@@ -22,13 +23,19 @@ class FCMNotificationController extends Controller
             "client_x509_cert_url" => "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-vuhvt%40zo-stream-f04ea.iam.gserviceaccount.com"
         ];
 
+        // 📨 Inputs
         $title = $request->input('title', '');
-        $body = $request->input('body', '');
+        $body  = $request->input('body', '');
         $image = $request->input('image', '');
-        $key = $request->input('key');
+        $token = $request->input('token');   // 🔹 Device token
+        $topic = $request->input('topic', 'all'); // 🔹 Fallback to topic “all”
+        $key   = $request->input('key');     // 🔹 Optional custom key/data
 
+        // 🔑 Access Token
         $accessToken = $this->getAccessToken($serviceAccountData);
-        $response = $this->sendNotification($accessToken, $title, $body, $image, $key);
+
+        // 🚀 Send Notification
+        $response = $this->sendNotification($accessToken, $title, $body, $image, $token, $topic, $key);
 
         return response()->json($response);
     }
@@ -40,17 +47,14 @@ class FCMNotificationController extends Controller
 
         $now = time();
         $expires = $now + 3600;
-        $header = [
-            'alg' => 'RS256',
-            'typ' => 'JWT'
-        ];
+        $header = ['alg' => 'RS256', 'typ' => 'JWT'];
 
         $claimSet = [
             'iss' => $serviceAccountData['client_email'],
             'scope' => 'https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/firebase.messaging',
             'aud' => $serviceAccountData['token_uri'],
             'iat' => $now,
-            'exp' => $expires
+            'exp' => $expires,
         ];
 
         $jwt = $this->base64UrlEncode(json_encode($header)) . '.' . $this->base64UrlEncode(json_encode($claimSet));
@@ -61,28 +65,27 @@ class FCMNotificationController extends Controller
         $response = $client->post($url, [
             'form_params' => [
                 'grant_type' => 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-                'assertion' => $jwt
-            ]
+                'assertion' => $jwt,
+            ],
         ]);
 
         $data = json_decode($response->getBody()->getContents(), true);
         return $data['access_token'];
     }
 
-    private function sendNotification($accessToken, $title, $body, $image, $key = null)
+    private function sendNotification($accessToken, $title, $body, $image, $token = null, $topic = 'all', $key = null)
     {
         $client = new Client();
         $url = 'https://fcm.googleapis.com/v1/projects/zo-stream-f04ea/messages:send';
 
+        // 🔹 Base Notification Payload
         $message = [
             "message" => [
-                "topic" => "all",
                 "notification" => [
                     "title" => $title,
-                    "body" => $body,
+                    "body"  => $body,
                     "image" => $image,
                 ],
-                // 👇 Add Android and iOS sections for full compatibility
                 "android" => [
                     "priority" => "high",
                     "notification" => [
@@ -91,34 +94,40 @@ class FCMNotificationController extends Controller
                     ],
                 ],
                 "apns" => [
-                    "headers" => [
-                        "apns-priority" => "10",
-                    ],
+                    "headers" => ["apns-priority" => "10"],
                     "payload" => [
                         "aps" => [
-                            "alert" => [
-                                "title" => $title,
-                                "body" => $body,
-                            ],
+                            "alert" => ["title" => $title, "body" => $body],
                             "sound" => "default",
                             "badge" => 1,
-                            "content-available" => 1
+                            "content-available" => 1,
                         ],
                     ],
                 ],
-            ]
+            ],
         ];
 
-        if ($key !== null) {
-            $message['message']['data'] = ["key" => $key];
+        // ✅ Target logic
+        if (!empty($token)) {
+            $message["message"]["token"] = $token;
+        } else {
+            $message["message"]["topic"] = $topic;
         }
 
+        // ✅ Add custom key (data payload)
+        if (!empty($key)) {
+            $message["message"]["data"] = [
+                "key" => $key,
+            ];
+        }
+
+        // 📨 Send Request
         $response = $client->post($url, [
             'headers' => [
                 'Authorization' => 'Bearer ' . $accessToken,
                 'Content-Type' => 'application/json',
             ],
-            'body' => json_encode($message)
+            'body' => json_encode($message),
         ]);
 
         return json_decode($response->getBody()->getContents(), true);
