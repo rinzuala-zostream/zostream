@@ -37,7 +37,7 @@ class QueueTodayBirthdays extends Command
             if ($existing) {
                 $existing->update([
                     'name' => $user->name,
-                    'email' => $user->email,
+                    'email' => $user->mail,
                     'birthday' => $user->dob,
                     'processed' => false,
                     'updated_at' => now(),
@@ -48,7 +48,7 @@ class QueueTodayBirthdays extends Command
                 BirthdayQueue::create([
                     'user_id' => $user->uid,
                     'name' => $user->name,
-                    'email' => $user->email,
+                    'email' => $user->mail,
                     'birthday' => $user->dob,
                     'processed' => false,
                     'token' => $user->token,
