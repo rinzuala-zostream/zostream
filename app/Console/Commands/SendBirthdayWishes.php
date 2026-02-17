@@ -29,7 +29,8 @@ class SendBirthdayWishes extends Command
         $users = BirthdayQueue::where('processed', false)
             ->get()
             ->filter(function ($user) use ($today) {
-                if (empty($user->birthday)) return false;
+                if (empty($user->birthday))
+                    return false;
                 try {
                     $dob = Carbon::parse($user->birthday);
                     return $dob->month === $today->month && $dob->day === $today->day;
@@ -65,20 +66,21 @@ class SendBirthdayWishes extends Command
                 if (!empty($user->token)) {
                     $fcmRequest = new Request([
                         'title' => 'Happy Birthday from Zo Stream!',
-                        'body'  => $body,
+                        'body' => $body,
                         'image' => '',
                         'token' => $user->token,
                     ]);
 
-                    $this->fcmNotificationController->send($fcmRequest);
-                    $fcmSent = true;
+                    $fcmResponse = $this->fcmNotificationController->send($fcmRequest);
+                    $fcmSent = $fcmResponse['success'] ?? false;
+
                 }
 
                 // ✅ Send email (SMTP API)
                 $mailResponse = Http::asForm()->post(url('/api/send-birthday-mail'), [
                     'recipient' => $user->email,
-                    'subject'   => 'Happy Birthday from Zo Stream!',
-                    'body'      => $body,
+                    'subject' => 'Happy Birthday from Zo Stream!',
+                    'body' => $body,
                 ]);
 
                 if ($mailResponse->successful()) {
@@ -94,7 +96,7 @@ class SendBirthdayWishes extends Command
                     Log::error('Birthday delivery failed', [
                         'email' => $user->email,
                         'status' => $mailResponse->status(),
-                        'body'   => $mailResponse->body(),
+                        'body' => $mailResponse->body(),
                     ]);
                 }
             } catch (\Throwable $e) {

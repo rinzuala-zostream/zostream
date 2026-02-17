@@ -25,11 +25,11 @@ class FCMNotificationController extends Controller
 
         // 📨 Inputs
         $title = $request->input('title', '');
-        $body  = $request->input('body', '');
+        $body = $request->input('body', '');
         $image = $request->input('image', '');
         $token = $request->input('token');   // 🔹 Device token
         $topic = $request->input('topic', 'all'); // 🔹 Fallback to topic “all”
-        $key   = $request->input('key');     // 🔹 Optional custom key/data
+        $key = $request->input('key');     // 🔹 Optional custom key/data
 
         // 🔑 Access Token
         $accessToken = $this->getAccessToken($serviceAccountData);
@@ -83,7 +83,7 @@ class FCMNotificationController extends Controller
             "message" => [
                 "notification" => [
                     "title" => $title,
-                    "body"  => $body,
+                    "body" => $body,
                     "image" => $image,
                 ],
                 "android" => [
@@ -128,7 +128,11 @@ class FCMNotificationController extends Controller
             'body' => json_encode($message),
         ]);
 
-        return json_decode($response->getBody()->getContents(), true);
+        return [
+            'status' => $response->getStatusCode(),
+            'body' => json_decode($response->getBody()->getContents(), true),
+            'success' => $response->getStatusCode() === 200,
+        ];
     }
 
     private function base64UrlEncode($data)
