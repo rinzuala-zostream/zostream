@@ -47,7 +47,8 @@ class MovieSearchController extends Controller
         $userId = $request->header('X-User-Id') ?? $request->query('user_id', '');
 
         // ✅ Treat empty user ID same as Mizo-only user
-        $onlyMizoUser = empty($userId) || $userId === 'AW7ovVnTdgWuvE1Uke7QTQ5OEQt1';
+        $onlyMizoUser = $userId === 'AW7ovVnTdgWuvE1Uke7QTQ5OEQt1';
+        //$onlyMizoUser = empty($userId) || $userId === 'AW7ovVnTdgWuvE1Uke7QTQ5OEQt1';
 
         // ✅ Categories to hide (same default)
         $hiddenByPlatform = [

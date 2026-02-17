@@ -32,7 +32,8 @@ class AlsoLikeController extends Controller
         $userId = $request->header('X-User-Id') ?? $request->query('user_id', '');
 
         // ✅ Mizo-only logic (applies to special user OR when userId is null/empty)
-        $onlyMizoUser = empty($userId) || $userId === 'AW7ovVnTdgWuvE1Uke7QTQ5OEQt1';
+        $onlyMizoUser = $userId === 'AW7ovVnTdgWuvE1Uke7QTQ5OEQt1';
+        //$onlyMizoUser = empty($userId) || $userId === 'AW7ovVnTdgWuvE1Uke7QTQ5OEQt1';
 
         // ✅ Fetch movies based on Mizo-only + restriction
         $movies = $this->fetchMovies($ageRestriction, $onlyMizoUser);
