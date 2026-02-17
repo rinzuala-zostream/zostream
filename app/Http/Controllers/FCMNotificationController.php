@@ -115,10 +115,8 @@ class FCMNotificationController extends Controller
         }
 
         // ✅ Add custom key (data payload)
-        if (!empty($key)) {
-            $message["message"]["data"] = [
-                "key" => $key,
-            ];
+        if ($key !== null) {
+            $message['message']['data'] = ["key" => $key];
         }
 
         // 📨 Send Request
