@@ -31,7 +31,7 @@ class QueueTodayBirthdays extends Command
         $updated = 0;
 
         foreach ($users as $user) {
-            $existing = BirthdayQueue::where('user_id', $user->id)
+            $existing = BirthdayQueue::where('user_id', $user->uid)
                 ->first();
 
             if ($existing) {
@@ -46,7 +46,7 @@ class QueueTodayBirthdays extends Command
                 $updated++;
             } else {
                 BirthdayQueue::create([
-                    'user_id' => $user->id,
+                    'user_id' => $user->uid,
                     'name' => $user->name,
                     'email' => $user->email,
                     'birthday' => $user->dob,
