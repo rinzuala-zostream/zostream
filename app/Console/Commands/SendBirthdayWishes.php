@@ -26,6 +26,7 @@ class SendBirthdayWishes extends Command
     {
         $today = now();
 
+        // Get all users with birthdays today (string-based check)
         $users = BirthdayQueue::where('processed', false)
             ->get()
             ->filter(function ($user) use ($today) {
@@ -57,11 +58,12 @@ class SendBirthdayWishes extends Command
 
             $body = $messages[array_rand($messages)];
 
-            try {
-                $fcmSent = false;
-                $mailSent = false;
+            // --- Initialize flags ---
+            $fcmSent = false;
+            $mailSent = false;
 
-                // ✅ Send FCM notification
+            // ✅ Try sending FCM
+            try {
                 if (!empty($user->token)) {
                     $fcmRequest = new Request([
                         'title' => 'Happy Birthday from Zo Stream!',
@@ -73,7 +75,6 @@ class SendBirthdayWishes extends Command
                     $fcmResponse = $this->fcmNotificationController->send($fcmRequest);
                     $fcmSent = $fcmResponse['success'] ?? false;
 
-                    // 🔍 Log FCM result
                     Log::info('🎯 FCM Send Result', [
                         'user' => $user->name,
                         'status' => $fcmResponse['status'] ?? null,
@@ -81,32 +82,47 @@ class SendBirthdayWishes extends Command
                         'error' => $fcmResponse['error'] ?? null,
                     ]);
                 }
-
-                // ✅ Send email
-                $mailResponse = Http::asForm()->post(url('/api/send-birthday-mail'), [
-                    'recipient' => $user->email,
-                    'subject' => 'Happy Birthday from Zo Stream!',
-                    'body' => $body,
+            } catch (\Throwable $e) {
+                Log::error('🔥 FCM send failed', [
+                    'user' => $user->name,
+                    'error' => $e->getMessage(),
                 ]);
+            }
+
+            // ✅ Try sending email separately
+            try {
+                $mailResponse = Http::withOptions(['verify' => false]) // disable SSL for localhost
+                    ->asForm()
+                    ->post(url('/api/send-birthday-mail'), [
+                        'recipient' => $user->email,
+                        'subject'   => 'Happy Birthday from Zo Stream!',
+                        'body'      => $body,
+                    ]);
 
                 $mailSent = $mailResponse->successful();
 
-                // ✅ Success or failure
-                if ($fcmSent || $mailSent) {
-                    $sent++;
-                    $user->update(['processed' => true]);
-                    $this->info("✅ Sent to {$user->name} ({$user->email}) — FCM: " . ($fcmSent ? '✅' : '❌') . ", Mail: " . ($mailSent ? '✅' : '❌'));
-                } else {
-                    $failed++;
-                    $this->error("❌ Failed for {$user->name} ({$user->email}) — FCM Status: " . ($fcmResponse['status'] ?? 'N/A'));
+                if (!$mailSent) {
+                    Log::warning('⚠️ Mail sending returned non-success', [
+                        'user' => $user->name,
+                        'status' => $mailResponse->status(),
+                        'body' => $mailResponse->body(),
+                    ]);
                 }
             } catch (\Throwable $e) {
-                $failed++;
-                Log::error('Birthday send exception', [
-                    'email' => $user->email,
+                Log::error('🔥 Mail send failed', [
+                    'user' => $user->name,
                     'error' => $e->getMessage(),
                 ]);
-                $this->error("💥 Exception for {$user->name}: {$e->getMessage()}");
+            }
+
+            // ✅ Now safely mark sent
+            if ($fcmSent || $mailSent) {
+                $sent++;
+                $user->update(['processed' => true]);
+                $this->info("✅ Sent to {$user->name} — FCM: " . ($fcmSent ? '✅' : '❌') . ", Mail: " . ($mailSent ? '✅' : '❌'));
+            } else {
+                $failed++;
+                $this->error("❌ Failed for {$user->name}");
             }
         }
 
