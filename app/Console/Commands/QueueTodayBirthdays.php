@@ -34,16 +34,20 @@ class QueueTodayBirthdays extends Command
             $existing = BirthdayQueue::where('user_id', $user->uid)
                 ->first();
 
-            if ($existing && $existing->processed) {
-                $existing->update([
-                    'name' => $user->name,
-                    'email' => $user->mail,
-                    'birthday' => $user->dob,
-                    'processed' => false,
-                    'updated_at' => now(),
-                    'token' => $user->token,
-                ]);
-                $updated++;
+            if ($existing) {
+
+                if ($existing->processed) {
+                    $existing->update([
+                        'name' => $user->name,
+                        'email' => $user->mail,
+                        'birthday' => $user->dob,
+                        'processed' => false,
+                        'updated_at' => now(),
+                        'token' => $user->token,
+                    ]);
+                    $updated++;
+                }
+
             } else {
                 BirthdayQueue::create([
                     'user_id' => $user->uid,
