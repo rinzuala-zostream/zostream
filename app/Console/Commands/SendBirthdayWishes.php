@@ -29,8 +29,7 @@ class SendBirthdayWishes extends Command
         $users = BirthdayQueue::where('processed', false)
             ->get()
             ->filter(function ($user) use ($today) {
-                if (empty($user->birthday))
-                    return false;
+                if (empty($user->birthday)) return false;
                 try {
                     $dob = Carbon::parse($user->birthday);
                     return $dob->month === $today->month && $dob->day === $today->day;
@@ -66,7 +65,7 @@ class SendBirthdayWishes extends Command
                 if (!empty($user->token)) {
                     $fcmRequest = new Request([
                         'title' => 'Happy Birthday from Zo Stream!',
-                        'body' => $body,
+                        'body'  => $body,
                         'image' => '',
                         'token' => $user->token,
                     ]);
@@ -74,30 +73,32 @@ class SendBirthdayWishes extends Command
                     $fcmResponse = $this->fcmNotificationController->send($fcmRequest);
                     $fcmSent = $fcmResponse['success'] ?? false;
 
+                    // 🔍 Log FCM result
+                    Log::info('🎯 FCM Send Result', [
+                        'user' => $user->name,
+                        'status' => $fcmResponse['status'] ?? null,
+                        'body' => $fcmResponse['body'] ?? null,
+                        'error' => $fcmResponse['error'] ?? null,
+                    ]);
                 }
 
-                // ✅ Send email (SMTP API)
+                // ✅ Send email
                 $mailResponse = Http::asForm()->post(url('/api/send-birthday-mail'), [
                     'recipient' => $user->email,
                     'subject' => 'Happy Birthday from Zo Stream!',
                     'body' => $body,
                 ]);
 
-                if ($mailResponse->successful()) {
-                    $mailSent = true;
-                }
+                $mailSent = $mailResponse->successful();
 
-                // ✅ Mark as sent if either succeeds
+                // ✅ Success or failure
                 if ($fcmSent || $mailSent) {
                     $sent++;
                     $user->update(['processed' => true]);
+                    $this->info("✅ Sent to {$user->name} ({$user->email}) — FCM: " . ($fcmSent ? '✅' : '❌') . ", Mail: " . ($mailSent ? '✅' : '❌'));
                 } else {
                     $failed++;
-                    Log::error('Birthday delivery failed', [
-                        'email' => $user->email,
-                        'status' => $mailResponse->status(),
-                        'body' => $mailResponse->body(),
-                    ]);
+                    $this->error("❌ Failed for {$user->name} ({$user->email}) — FCM Status: " . ($fcmResponse['status'] ?? 'N/A'));
                 }
             } catch (\Throwable $e) {
                 $failed++;
@@ -105,6 +106,7 @@ class SendBirthdayWishes extends Command
                     'email' => $user->email,
                     'error' => $e->getMessage(),
                 ]);
+                $this->error("💥 Exception for {$user->name}: {$e->getMessage()}");
             }
         }
 
