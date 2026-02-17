@@ -32,6 +32,7 @@ class QueueTodayBirthdays extends Command
 
         foreach ($users as $user) {
             $existing = BirthdayQueue::where('user_id', $user->uid)
+            ->where('processed', true)
                 ->first();
 
             if ($existing) {
