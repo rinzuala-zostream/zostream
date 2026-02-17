@@ -231,6 +231,55 @@ class UserController extends Controller
         }
     }
 
+    //Delete-User
+    public function deleteUser(Request $request)
+{
+    // Validate input - either uid or mail must be present
+    $request->validate([
+        'uid'  => 'nullable|string',
+        'mail' => 'nullable|email',
+    ]);
+
+    $uid  = $request->input('uid');
+    $mail = $request->input('mail');
+
+    if (empty($uid) && empty($mail)) {
+        return response()->json([
+            'status'  => 'error',
+            'message' => 'Either uid or mail is required'
+        ], 400);
+    }
+
+    try {
+        $user = null;
+
+        if (!empty($uid)) {
+            $user = UserModel::where('uid', $uid)->first();
+        } elseif (!empty($mail)) {
+            $user = UserModel::where('mail', $mail)->first();
+        }
+
+        if (!$user) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'User not found'
+            ], 404);
+        }
+
+        $user->delete();
+
+        return response()->json([
+            'status'  => 'success',
+            'message' => 'User deleted successfully'
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'status'  => 'error',
+            'message' => $e->getMessage()
+        ], 500);
+    }
+}
+
     public function clearDeviceId(Request $request)
     {
 
@@ -253,67 +302,4 @@ class UserController extends Controller
         return response()->json(['status' => 'success', 'message' => 'Device ID cleared successfully']);
     }
 
-    public function sendWishes()
-    {
-        $now = Carbon::now();
-
-        $todayMonth = $now->month;
-        $todayDay = $now->day;
-
-        $users = UserModel::all()->filter(function ($user) use ($todayMonth, $todayDay) {
-            try {
-                $dob = Carbon::parse($user->dob);
-                return $dob->month === $todayMonth && $dob->day === $todayDay;
-            } catch (\Exception $e) {
-                return false;
-            }
-        });
-
-        $sent = 0;
-        $failed = 0;
-
-        foreach ($users as $user) {
-            $messages = [
-                "🎉 Happy Birthday, {$user->name}! Wishing you a day filled with love, laughter, and joy!",
-                "🎂 Cheers to you, {$user->name}! May your birthday be as amazing as you are!",
-                "🎈 Hey {$user->name}, it's your special day! Enjoy every moment of it – happy birthday!",
-                "🥳 Zo Stream wishes you the happiest of birthdays, {$user->name}! Stay awesome!",
-                "🎁 Warmest wishes on your birthday, {$user->name}! Hope your day is full of surprises and joy.",
-                "🌟 Happy Birthday, {$user->name}! May your year ahead be bright and full of success!",
-            ];
-
-            $body = $messages[array_rand($messages)];
-
-            try {
-                $response = Http::asForm()->post('https://zostream.in/mail/send_mail.php', [
-                    'recipient' => $user->mail,
-                    'subject' => 'Happy Birthday from Zo Stream!',
-                    'body' => $body,
-                ]);
-
-                if ($response->successful()) {
-                    $sent++;
-                } else {
-                    $failed++;
-                    return response()->json([
-                        'email' => $user->mail,
-                        'status' => $response->status(),
-                        'body' => $response->body(),
-                    ]);
-                }
-            } catch (\Exception $e) {
-                $failed++;
-                return response()->json([
-                    'email' => $user->mail,
-                    'error' => $e->getMessage(),
-                ]);
-            }
-        }
-
-        return response()->json([
-            'status' => 'done',
-            'sent' => $sent,
-            'failed' => $failed,
-        ]);
-    }
 }
