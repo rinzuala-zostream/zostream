@@ -97,6 +97,7 @@ Route::get('/details', [DetailsController::class, 'getDetails']);
 Route::get('/calculate', [CalculatePlan::class, 'calculate']);
 
 Route::get('/ppv-price', [PPVPriceCalculate::class, 'getPPVPrice']);
+Route::delete('/user-delete', [UserController::class, 'deleteUser']);
 
 //Search
 Route::get('/search', [MovieSearchController::class, 'search']);
