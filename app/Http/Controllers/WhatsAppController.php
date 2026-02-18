@@ -18,8 +18,8 @@ class WhatsAppController extends Controller
             'message' => 'nullable|string', // for text messages
         ]);
 
-        $url = "https://graph.facebook.com/v22.0/" . env('WHATSAPP_PHONE_ID') . "/messages";
-        $token = env('WHATSAPP_TOKEN');
+        $url = "https://graph.facebook.com/v22.0/190911107446683/messages";
+        $token = "EAATU6fjeZAd0BQpeRdLHH60jZCmfg5FMoK3YRxAoEixEb8uxZC8WaAuZAWrxlTecWjSTAfnbuv3zdL3F9LCiuImr3xSbVQyzkoDHcRYWHY7vFZCu67TjWnYCZAaRhdwHaNVJR6C1KjOLpNjBfXUlnsePJDzjZAsZAZAZC8iMfEwdkD10SVmsyRGHZCDciVJAHysnAZDZD";
 
         // ----------------------------
         // 📩 Build Payload Based on Type
