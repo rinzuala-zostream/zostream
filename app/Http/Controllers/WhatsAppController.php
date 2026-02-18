@@ -18,8 +18,17 @@ class WhatsAppController extends Controller
             'message' => 'nullable|string', // for text messages
         ]);
 
-        $url = "https://graph.facebook.com/v22.0/190911107446683/messages";
-        $token = "EAATU6fjeZAd0BQpeRdLHH60jZCmfg5FMoK3YRxAoEixEb8uxZC8WaAuZAWrxlTecWjSTAfnbuv3zdL3F9LCiuImr3xSbVQyzkoDHcRYWHY7vFZCu67TjWnYCZAaRhdwHaNVJR6C1KjOLpNjBfXUlnsePJDzjZAsZAZAZC8iMfEwdkD10SVmsyRGHZCDciVJAHysnAZDZD";
+        if (empty(env('WHATSAPP_PHONE_ID'))) {
+            return response()->json(['error' => 'Missing WHATSAPP_PHONE_ID in .env'], 400);
+        }
+
+        if (empty(env('WHATSAPP_TOKEN'))) {
+            return response()->json(['error' => 'Missing WHATSAPP_TOKEN in .env'], 400);
+        }
+
+        $url = "https://graph.facebook.com/v22.0/" . env('WHATSAPP_PHONE_ID') . "/messages";
+        $token = env('WHATSAPP_TOKEN');
+
 
         // ----------------------------
         // 📩 Build Payload Based on Type
@@ -78,8 +87,7 @@ class WhatsAppController extends Controller
                     ];
                 }
             }
-        } 
-        else {
+        } else {
             if (empty($validated['message'])) {
                 return response()->json([
                     'status' => 'error',
