@@ -7,6 +7,17 @@ use Illuminate\Support\Facades\Http;
 
 class WhatsAppController extends Controller
 {
+
+    private $whatsappPhoneId;
+    private $whatsappToken;
+
+    public function __construct()
+    {
+        $this->whatsappPhoneId = config('app.whatsapp_phone_id');
+        $this->whatsappToken = config('app.whatsapp_token');
+    }
+
+
     public function send(Request $request)
     {
         $validated = $request->validate([
@@ -18,16 +29,16 @@ class WhatsAppController extends Controller
             'message' => 'nullable|string', // for text messages
         ]);
 
-        if (empty(env('WHATSAPP_PHONE_ID'))) {
+        if (empty($this->whatsappPhoneId)) {
             return response()->json(['error' => 'Missing WHATSAPP_PHONE_ID in .env'], 400);
         }
 
-        if (empty(env('WHATSAPP_TOKEN'))) {
+        if (empty($this->whatsappToken)) {
             return response()->json(['error' => 'Missing WHATSAPP_TOKEN in .env'], 400);
         }
 
-        $url = "https://graph.facebook.com/v22.0/" . env('WHATSAPP_PHONE_ID') . "/messages";
-        $token = env('WHATSAPP_TOKEN');
+        $url = "https://graph.facebook.com/v22.0/" . $this->whatsappPhoneId . "/messages";
+        $token = $this->whatsappToken;
 
 
         // ----------------------------

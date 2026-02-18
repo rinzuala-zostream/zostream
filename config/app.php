@@ -21,6 +21,9 @@ return [
     'sandbox_client_secret' => env('PHONEPE_SANDBOX_CLIENT_SECRET'),
     'timeout' => env('PHONEPE_TIMEOUT', 15),
 
+    'whatsapp_phone_id' => env('WHATSAPP_PHONE_ID'),
+    'whatsapp_token' => env('WHATSAPP_TOKEN'),
+
     /*
     |--------------------------------------------------------------------------
     | Application Name
