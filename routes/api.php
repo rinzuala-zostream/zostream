@@ -34,6 +34,7 @@ use App\Http\Controllers\UserController;
 use App\Http\Controllers\VerifyOTPController;
 use App\Http\Controllers\WatchPositionController;
 use App\Http\Controllers\WatchStatsController;
+use App\Http\Controllers\WhatsAppController;
 use App\Http\Controllers\ZonetController;
 use App\Http\Controllers\ZonetOperatorController;
 use Illuminate\Http\Request;
@@ -197,5 +198,7 @@ Route::get('/stats/top', [WatchStatsController::class, 'topStats']);
 Route::post('/send-payment-mail', [PaymentMailController::class, 'sendPaymentSuccess']);
 
 Route::post('/send-birthday-mail', [BirthdayMailController::class, 'send']);
+
+Route::post('/send-whatsapp', [WhatsAppController::class, 'sendTemplate']);
 
 
