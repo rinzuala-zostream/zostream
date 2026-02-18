@@ -18,7 +18,7 @@ class WhatsAppController extends Controller
             'message' => 'nullable|string', // for text messages
         ]);
 
-        $url = "https://graph.facebook.com/v19.0/" . env('WHATSAPP_PHONE_ID') . "/messages";
+        $url = "https://graph.facebook.com/v22.0/" . env('WHATSAPP_PHONE_ID') . "/messages";
         $token = env('WHATSAPP_TOKEN');
 
         // ----------------------------
