@@ -199,6 +199,6 @@ Route::post('/send-payment-mail', [PaymentMailController::class, 'sendPaymentSuc
 
 Route::post('/send-birthday-mail', [BirthdayMailController::class, 'send']);
 
-Route::post('/send-whatsapp', [WhatsAppController::class, 'sendTemplate']);
+Route::post('/send-whatsapp', [WhatsAppController::class, 'send']);
 
 
