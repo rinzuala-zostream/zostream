@@ -176,6 +176,9 @@ class UserController extends Controller
                 'name' => 'string',
                 'veng' => 'string',
                 'dob' => 'string',
+                'auth_phone' => 'string',
+                'is_auth_phone_active' => 'boolean',
+                
             ];
 
             foreach ($optionalFields as $field => $rule) {

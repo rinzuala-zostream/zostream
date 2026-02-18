@@ -29,14 +29,6 @@ class WhatsAppController extends Controller
             'message' => 'nullable|string', // for text messages
         ]);
 
-        if (empty($this->whatsappPhoneId)) {
-            return response()->json(['error' => 'Missing WHATSAPP_PHONE_ID in .env'], 400);
-        }
-
-        if (empty($this->whatsappToken)) {
-            return response()->json(['error' => 'Missing WHATSAPP_TOKEN in .env'], 400);
-        }
-
         $url = "https://graph.facebook.com/v22.0/197447096794083/messages";
         $token = "EAATU6fjeZAd0BQpeRdLHH60jZCmfg5FMoK3YRxAoEixEb8uxZC8WaAuZAWrxlTecWjSTAfnbuv3zdL3F9LCiuImr3xSbVQyzkoDHcRYWHY7vFZCu67TjWnYCZAaRhdwHaNVJR6C1KjOLpNjBfXUlnsePJDzjZAsZAZAZC8iMfEwdkD10SVmsyRGHZCDciVJAHysnAZDZD";
 

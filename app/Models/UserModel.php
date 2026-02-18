@@ -24,6 +24,8 @@ class UserModel extends Model
         'khua',
         'lastLogin',
         'mail',
+        'auth_phone',
+        'is_auth_phone_active',
         'name',
         'uid',
         'veng',
@@ -34,5 +36,6 @@ class UserModel extends Model
     protected $casts = [
         'isACActive' => 'boolean',
         'isAccountComplete' => 'boolean',
+        'is_auth_phone_active' => 'boolean',
     ];
 }
