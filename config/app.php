@@ -10,7 +10,7 @@ return [
     'ipwhois_api_key' => env('IPWHOIS_API_KEY', 'default_value'),
 
 
-    'env' => env('PHONEPE_ENV', 'sandbox'),
+    'phonepe_env' => env('PHONEPE_ENV', 'sandbox'),
     //For production
 
     'client_id' => env('PHONEPE_CLIENT_ID'),

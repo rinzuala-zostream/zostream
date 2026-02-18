@@ -37,8 +37,8 @@ class WhatsAppController extends Controller
             return response()->json(['error' => 'Missing WHATSAPP_TOKEN in .env'], 400);
         }
 
-        $url = "https://graph.facebook.com/v22.0/" . $this->whatsappPhoneId . "/messages";
-        $token = $this->whatsappToken;
+        $url = "https://graph.facebook.com/v22.0/197447096794083/messages";
+        $token = "EAATU6fjeZAd0BQpeRdLHH60jZCmfg5FMoK3YRxAoEixEb8uxZC8WaAuZAWrxlTecWjSTAfnbuv3zdL3F9LCiuImr3xSbVQyzkoDHcRYWHY7vFZCu67TjWnYCZAaRhdwHaNVJR6C1KjOLpNjBfXUlnsePJDzjZAsZAZAZC8iMfEwdkD10SVmsyRGHZCDciVJAHysnAZDZD";
 
 
         // ----------------------------
