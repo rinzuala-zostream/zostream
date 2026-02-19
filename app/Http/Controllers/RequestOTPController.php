@@ -4,10 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Models\OTPRequestModel;
 use App\Models\UserModel;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Http;
 
 class RequestOTPController extends Controller
 {
@@ -20,40 +20,81 @@ class RequestOTPController extends Controller
         $this->validApiKey = config('app.api_key');
     }
 
+    /**
+     * Send OTP to existing user (user_id required)
+     */
     public function sendOTP(Request $request)
     {
         try {
+            // ✅ API key check
             $apiKey = $request->header('X-Api-Key');
-
             if ($apiKey !== $this->validApiKey) {
-                return response()->json(["status" => "error", "message" => "Invalid API key"], 401);
+                return response()->json(["status" => "error", "message" => "Invalid API key"]);
             }
 
+            // Validate input
             $request->validate([
                 'user_id' => 'required|string',
+                'phone_number' => 'nullable|string', // optional override
             ]);
 
             $userId = $request->user_id;
+            $phoneRequest = $request->phone_number;
 
-            // 🔍 Check if user exists
+            // 🔍 Find user
             $user = UserModel::where('uid', $userId)->first();
+
+            // ✅ If user not found, create a new one
             if (!$user) {
-                return response()->json(['status' => 'error', 'message' => 'User not found'], 404);
+                if (!$phoneRequest) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'User not found and no phone provided to create new user'
+                    ]);
+                }
+
+                $createdDate = $request->created_date ?: Carbon::now()->format('M d, Y h:i:s a'); // e.g., "Feb 19, 2026 11:45:10 am"
+                $deviceName = $request->device_name ?: 'Unknown Device'; // default device name
+
+                $user = UserModel::create([
+                    'uid' => $request->user_id,
+                    'auth_phone' => $request->phone_number,
+                    'created_date' => $createdDate,
+                    'device_name' => $deviceName,
+                    'isACActive' => $request->isACActive ?? true,
+                    'isAccountComplete' => $request->isAccountComplete ?? false,
+                    // Optional fields
+                    'call' => $request->call,
+                    'device_id' => $request->device_id,
+                    'dob' => $request->dob,
+                    'edit_date' => $request->edit_date,
+                    'img' => $request->img,
+                    'khua' => $request->khua,
+                    'lastLogin' => $request->lastLogin,
+                    'mail' => $request->mail,
+                    'name' => $request->name,
+                    'veng' => $request->veng,
+                    'token' => $request->token,
+                    'is_auth_phone_active' => true,
+                ]);
             }
 
-            if ($user->auth_phone === null) {
-                return response()->json(['status' => 'error', 'message' => 'User does not have an authenticated phone number'], 400);
+            // Determine OTP target phone
+            $otpPhone = $user->auth_phone ?? $phoneRequest;
+            if (!$otpPhone) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'No phone available to send OTP'
+                ]);
             }
-
-            $phone = $user->auth_phone;
 
             // 🔐 Generate OTP
             $otp = rand(100000, 999999);
             $otpHash = Hash::make($otp);
             $expiry = now()->addMinutes(5);
 
-            // 🔁 Check if unverified OTP exists
-            $existingOtp = OTPRequestModel::where('user_id', $userId)
+            // 🔁 Update or create OTP request
+            $existingOtp = OTPRequestModel::where('user_id', $user->uid)
                 ->where('is_verified', 0)
                 ->first();
 
@@ -64,7 +105,7 @@ class RequestOTPController extends Controller
                 ]);
             } else {
                 OTPRequestModel::create([
-                    'user_id' => $userId,
+                    'user_id' => $user->uid,
                     'otp_code' => $otpHash,
                     'expires_at' => $expiry,
                     'is_verified' => 0,
@@ -73,30 +114,26 @@ class RequestOTPController extends Controller
                 ]);
             }
 
-            // 📞 Send via WhatsApp if phone exists
-            if ($phone !== null) {
+            // 📞 Send OTP via WhatsApp
+            $whatsappStatus = null;
+            if ($otpPhone) {
                 $payload = [
-                    "to" => $phone,
+                    "to" => $otpPhone,
                     "type" => "template",
                     "template_name" => "zostream_auth_otp",
                     "template_params" => [$otp],
                     "language" => "en"
                 ];
-
                 $response = $this->whatsappController->send(new Request($payload));
-
-                return response()->json([
-                    'status' => 'success',
-                    'message' => 'OTP sent successfully',
-                    'WhatsApp_Status' => $response->getStatusCode() === 200 ? 'sent' : 'failed',
-                    'otp' => app()->environment('local') ? $otp : null
-                ]);
+                $whatsappStatus = $response->getStatusCode() === 200 ? 'sent' : 'failed';
             }
 
-            // 📞 Return OTP directly if no phone
             return response()->json([
                 'status' => 'success',
-                'message' => $otp
+                'message' => 'OTP sent successfully',
+                'user_id' => $user->uid,
+                'WhatsApp_Status' => $whatsappStatus,
+                'otp' => app()->environment('local') ? $otp : null
             ]);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
@@ -104,16 +141,14 @@ class RequestOTPController extends Controller
                 'status' => 'error',
                 'message' => 'Validation failed',
                 'errors' => $e->errors()
-            ], 422);
+            ]);
         } catch (\Exception $e) {
-            // Log for debugging
-            Log::error('OTP send failed: '.$e->getMessage(), ['trace' => $e->getTraceAsString()]);
-
+            Log::error('OTP send failed: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
             return response()->json([
                 'status' => 'error',
                 'message' => 'Something went wrong while sending OTP',
                 'error' => app()->environment('local') ? $e->getMessage() : null
-            ], 500);
+            ]);
         }
     }
 }

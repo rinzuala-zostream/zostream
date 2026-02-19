@@ -44,7 +44,7 @@ class RegisterController extends Controller
             'name' => 'nullable|string',
             'uid' => 'required|string',
             'veng' => 'nullable|string',
-            'device_name' => 'required|string',
+            'device_name' => 'nullable|string',
             'token' => 'nullable|string',
             'auth_phone' => 'string',
             'is_auth_phone_active' => 'boolean',
