@@ -163,125 +163,119 @@ class UserController extends Controller
     public function updateProfile(Request $request)
     {
         try {
-            // Always require UID
-            $rules = [
-                'uid' => 'required|string',
-            ];
+            // Prefer uid from root or inside body
+            $uid = $request->input('uid') ?? ($request->body['uid'] ?? null);
 
-            // Add rules only for inputs that are present and not empty
-            $optionalFields = [
-                'call' => 'string',
-                'isAccountComplete' => 'boolean',
-                'khua' => 'string',
-                'name' => 'string',
-                'veng' => 'string',
-                'dob' => 'string',
-                'auth_phone' => 'nullable|string|unique:user,auth_phone',
-                'is_auth_phone_active' => 'boolean',
-                
-            ];
-
-            foreach ($optionalFields as $field => $rule) {
-                if ($request->filled($field)) { // only if not null and not ""
-                    $rules[$field] = $rule;
-                }
+            if (!$uid) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'UID is required'
+                ], 400);
             }
 
-            $request->validate($rules);
+            // Determine data source: body{} or root fields
+            $data = $request->has('body') && is_array($request->body)
+                ? $request->body
+                : $request->all();
 
-            $user = UserModel::where('uid', $request->input('uid'))->first();
+            // Remove uid from data (not updatable)
+            unset($data['uid']);
 
+            // Stop if body is empty or no fields to update
+            if (empty($data)) {
+                return response()->json([
+                    'status' => 'no_change',
+                    'message' => 'No fields provided to update'
+                ]);
+            }
+
+            $user = UserModel::where('uid', $uid)->first();
             if (!$user) {
-                return response()->json(['status' => 'error', 'message' => 'Record not found'], 404);
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Record not found'
+                ], 404);
             }
 
             $editDate = now('Asia/Kolkata')->format('M d Y, h:i:s A');
+            $data['edit_date'] = $editDate;
 
-            $payload = [];
-            foreach ($optionalFields as $field => $rule) {
-                if ($request->filled($field)) {
-                    // boolean normalization
-                    $payload[$field] = $field === 'isAccountComplete'
-                        ? $request->boolean($field)
-                        : $request->input($field);
-                }
-            }
+            // Fill and save if there are any changes
+            $user->fill($data);
 
-            if (!empty($payload)) {
-                $payload['edit_date'] = $editDate;
-                $user->fill($payload);
-
-                if ($user->isDirty()) {
-                    $user->save();
-                    return response()->json([
-                        'status' => 'success',
-                        'message' => 'Profile updated successfully',
-                        'edit_date' => $editDate,
-                        'changed' => array_keys($user->getChanges()),
-                        'data' => $user->only(['uid', 'name', 'khua', 'veng', 'call', 'dob', 'isAccountComplete', 'edit_date']),
-                    ]);
-                }
+            if ($user->isDirty()) {
+                $user->save();
+                return response()->json([
+                    'status' => 'success',
+                    'message' => 'Profile updated successfully',
+                    'edit_date' => $editDate,
+                    'changed' => array_keys($user->getChanges()),
+                    'data' => $user
+                ]);
             }
 
             return response()->json([
                 'status' => 'no_change',
-                'message' => 'No valid fields provided or nothing changed',
-                'edit_date' => $editDate,
+                'message' => 'Nothing changed',
+                'edit_date' => $editDate
             ]);
 
         } catch (\Throwable $e) {
-            return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
+            return response()->json([
+                'status' => 'error',
+                'message' => $e->getMessage()
+            ], 500);
         }
     }
 
     //Delete-User
     public function deleteUser(Request $request)
-{
-    // Validate input - either uid or mail must be present
-    $request->validate([
-        'uid'  => 'nullable|string',
-        'mail' => 'nullable|email',
-    ]);
-
-    $uid  = $request->input('uid');
-    $mail = $request->input('mail');
-
-    if (empty($uid) && empty($mail)) {
-        return response()->json([
-            'status'  => 'error',
-            'message' => 'Either uid or mail is required'
-        ], 400);
-    }
-
-    try {
-        $user = null;
-
-        if (!empty($uid)) {
-            $user = UserModel::where('uid', $uid)->first();
-        } elseif (!empty($mail)) {
-            $user = UserModel::where('mail', $mail)->first();
-        }
-
-        if (!$user) {
-            return response()->json([
-                'status'  => 'error',
-                'message' => 'User not found'
-            ], 404);
-        }
-
-        $user->delete();
-
-        return response()->json([
-            'status'  => 'success',
-            'message' => 'User deleted successfully'
+    {
+        // Validate input - either uid or mail must be present
+        $request->validate([
+            'uid' => 'nullable|string',
+            'mail' => 'nullable|email',
         ]);
-    } catch (\Exception $e) {
-        return response()->json([
-            'status'  => 'error',
-            'message' => $e->getMessage()
-        ], 500);
+
+        $uid = $request->input('uid');
+        $mail = $request->input('mail');
+
+        if (empty($uid) && empty($mail)) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Either uid or mail is required'
+            ], 400);
+        }
+
+        try {
+            $user = null;
+
+            if (!empty($uid)) {
+                $user = UserModel::where('uid', $uid)->first();
+            } elseif (!empty($mail)) {
+                $user = UserModel::where('mail', $mail)->first();
+            }
+
+            if (!$user) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'User not found'
+                ], 404);
+            }
+
+            $user->delete();
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'User deleted successfully'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => $e->getMessage()
+            ], 500);
+        }
     }
-}
 
     public function clearDeviceId(Request $request)
     {
