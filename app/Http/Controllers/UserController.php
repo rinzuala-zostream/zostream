@@ -176,7 +176,7 @@ class UserController extends Controller
                 'name' => 'string',
                 'veng' => 'string',
                 'dob' => 'string',
-                'auth_phone' => 'string',
+                'auth_phone' => 'nullable|string|unique:user,auth_phone',
                 'is_auth_phone_active' => 'boolean',
                 
             ];
