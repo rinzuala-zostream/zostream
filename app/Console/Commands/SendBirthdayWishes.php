@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Http\Controllers\FCMNotificationController;
+use App\Http\Controllers\WhatsAppController;
 use App\Models\BirthdayQueue;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
@@ -13,24 +14,30 @@ use Carbon\Carbon;
 class SendBirthdayWishes extends Command
 {
     protected $signature = 'birthday:send';
-    protected $description = 'Send birthday wishes to users whose birthday is today';
-    protected $fcmNotificationController;
+    protected $description = 'Send birthday wishes via FCM, Email, and WhatsApp to users whose birthday is today';
 
-    public function __construct(FCMNotificationController $fcmNotificationController)
-    {
+    protected $fcmNotificationController;
+    protected $whatsAppController;
+
+    public function __construct(
+        FCMNotificationController $fcmNotificationController,
+        WhatsAppController $whatsAppController
+    ) {
         parent::__construct();
         $this->fcmNotificationController = $fcmNotificationController;
+        $this->whatsAppController = $whatsAppController;
     }
 
     public function handle()
     {
         $today = now();
 
-        // Get all users with birthdays today (string-based check)
+        // 🎯 Get users whose birthday is today
         $users = BirthdayQueue::where('processed', false)
             ->get()
             ->filter(function ($user) use ($today) {
-                if (empty($user->birthday)) return false;
+                if (empty($user->birthday))
+                    return false;
                 try {
                     $dob = Carbon::parse($user->birthday);
                     return $dob->month === $today->month && $dob->day === $today->day;
@@ -58,16 +65,17 @@ class SendBirthdayWishes extends Command
 
             $body = $messages[array_rand($messages)];
 
-            // --- Initialize flags ---
+            // --- Initialize send status flags ---
             $fcmSent = false;
             $mailSent = false;
+            $whatsAppSent = false;
 
-            // ✅ Try sending FCM
+            // ✅ 1. Try sending FCM
             try {
                 if (!empty($user->token)) {
                     $fcmRequest = new Request([
                         'title' => 'Happy Birthday from Zo Stream!',
-                        'body'  => $body,
+                        'body' => $body,
                         'image' => '',
                         'token' => $user->token,
                     ]);
@@ -89,14 +97,14 @@ class SendBirthdayWishes extends Command
                 ]);
             }
 
-            // ✅ Try sending email separately
+            // ✅ 2. Try sending Email
             try {
-                $mailResponse = Http::withOptions(['verify' => false]) // disable SSL for localhost
+                $mailResponse = Http::withOptions(['verify' => false])
                     ->asForm()
                     ->post(url('/api/send-birthday-mail'), [
                         'recipient' => $user->email,
-                        'subject'   => 'Happy Birthday from Zo Stream!',
-                        'body'      => $body,
+                        'subject' => 'Happy Birthday from Zo Stream!',
+                        'body' => $body,
                     ]);
 
                 $mailSent = $mailResponse->successful();
@@ -115,17 +123,47 @@ class SendBirthdayWishes extends Command
                 ]);
             }
 
-            // ✅ Now safely mark sent
-            if ($fcmSent || $mailSent) {
+            // ✅ 3. Try sending WhatsApp Message
+            try {
+                if (!empty($user->auth_phone)) {
+                    $whatsAppRequest = new Request([
+                        "to" => $user->auth_phone,
+                        "type" => "template",
+                        "template_name" => "zostream_birthday_wish",
+                        "template_params" => [$user->name, $body],
+                        "language" => "en"
+                    ]);
+
+                    $whatsAppResponse = $this->whatsAppController->send($whatsAppRequest);
+                    $json = $whatsAppResponse->getData(true);
+                    $whatsAppSent = isset($json['status']) && $json['status'] === 'success';
+
+                    Log::info('💬 WhatsApp Send Result', [
+                        'user' => $user->name,
+                        'phone' => $user->phone,
+                        'status' => $json['status'] ?? null,
+                        'response' => $json['response'] ?? null,
+                        'error' => $json['error'] ?? null,
+                    ]);
+                }
+            } catch (\Throwable $e) {
+                Log::error('🔥 WhatsApp send failed', [
+                    'user' => $user->name,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
+            // ✅ Mark as processed if any success
+            if ($fcmSent || $mailSent || $whatsAppSent) {
                 $sent++;
                 $user->update(['processed' => true]);
-                $this->info("✅ Sent to {$user->name} — FCM: " . ($fcmSent ? '✅' : '❌') . ", Mail: " . ($mailSent ? '✅' : '❌'));
+                $this->info("✅ Sent to {$user->name} — FCM: " . ($fcmSent ? '✅' : '❌') . ", Mail: " . ($mailSent ? '✅' : '❌') . ", WhatsApp: " . ($whatsAppSent ? '✅' : '❌'));
             } else {
                 $failed++;
                 $this->error("❌ Failed for {$user->name}");
             }
         }
 
-        $this->info("✅ Birthday send completed: Sent {$sent}, Failed {$failed}");
+        $this->info("🎉 Birthday send completed — Sent: {$sent}, Failed: {$failed}");
     }
 }
