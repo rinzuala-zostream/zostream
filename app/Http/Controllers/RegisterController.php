@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\RegisterModel;
 use App\Models\UserDeviceModel;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Log;
 
 class RegisterController extends Controller
@@ -22,19 +21,20 @@ class RegisterController extends Controller
 
     public function store(Request $request)
     {
-
         $apiKey = $request->header('X-Api-Key');
         if ($apiKey !== $this->validApiKey) {
-            return response()->json(["status" => "error", "message" => "Invalid API key"]);
+            return response()->json([
+                "status" => "error",
+                "message" => "Invalid API key"
+            ], 403);
         }
 
-        // Validate registration data
         $validatedData = $request->validate([
             'call' => 'nullable|string',
             'created_date' => 'required|string',
             'device_id' => 'nullable|string',
             'dob' => 'nullable|string',
-            'edit_date' => 'nullable|date',
+            'edit_date' => 'nullable|string',
             'img' => 'nullable|string',
             'isACActive' => 'boolean',
             'isAccountComplete' => 'boolean',
@@ -46,38 +46,57 @@ class RegisterController extends Controller
             'veng' => 'nullable|string',
             'device_name' => 'nullable|string',
             'token' => 'nullable|string',
-            'auth_phone' => 'string',
+            'auth_phone' => 'nullable|string',
             'is_auth_phone_active' => 'boolean',
-            
         ]);
 
         try {
-            // Register the user
-            $response = RegisterModel::create($validatedData);
+            // Register user
+            $user = RegisterModel::create($validatedData);
 
-            // Check if user registration was successful
-            if ($response) {
+            if ($user) {
                 try {
-                
-                    $role =  'owner';
-                    UserDeviceModel::create([ 
+                    $role = 'owner';
+                    UserDeviceModel::create([
                         'user_id' => $validatedData['uid'],
                         'device_id' => $validatedData['device_id'],
                         'device_name' => $validatedData['device_name'],
                         'role' => $role
                     ]);
-        
-                    return response()->json(['status' => 'success', 'message' => 'Device registered successfully']);
+
+                    return response()->json([
+                        'status' => 'success',
+                        'message' => 'User and device registered successfully',
+                        'data' => [
+                            'user' => $user,
+                            'device' => [
+                                'device_id' => $validatedData['device_id'],
+                                'device_name' => $validatedData['device_name'],
+                                'role' => $role
+                            ]
+                        ]
+                    ]);
                 } catch (\Exception $e) {
-                    Log::error('Database Error: ' . $e->getMessage());
-                    return response()->json(['status' => 'error', 'message' => 'Database error']);
+                    Log::error('Device registration error: ' . $e->getMessage());
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'Device registration failed',
+                        'error' => $e->getMessage()
+                    ], 500);
                 }
             } else {
-                return response()->json(['status' => 'error', 'message' => 'User registration failed']);
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'User registration failed'
+                ], 400);
             }
         } catch (\Exception $e) {
             Log::error('Database Error: ' . $e->getMessage());
-            return response()->json(['status' => 'error', 'message' => $e->getMessage()]);
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Database error',
+                'error' => $e->getMessage()
+            ], 500);
         }
     }
 }
