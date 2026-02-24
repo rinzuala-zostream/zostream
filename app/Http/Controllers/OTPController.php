@@ -12,13 +12,11 @@ use Exception;
 
 class OTPController extends Controller
 {
-    private $validApiKey;
     private $whatsappController;
     private $tokenController;
 
     public function __construct(WhatsAppController $whatsappController, TokenController $tokenController)
     {
-        $this->validApiKey = config('app.api_key');
         $this->whatsappController = $whatsappController;
         $this->tokenController = $tokenController;
     }
@@ -29,11 +27,6 @@ class OTPController extends Controller
     public function send(Request $request)
     {
         try {
-            // 🔐 Validate API key
-            $apiKey = $request->header('X-Api-Key');
-            if ($apiKey !== $this->validApiKey) {
-                return response()->json(['status' => 'error', 'message' => 'Invalid API key'], 401);
-            }
 
             // 🧾 Validate input
             $request->validate([
@@ -42,26 +35,30 @@ class OTPController extends Controller
             ]);
 
             $userId = $request->user_id;
-            $phoneRequest = $request->phone_number;
+            $phoneRequest = trim($request->phone_number);
 
-            // 🔍 Find user
-            $user = UserModel::where('auth_phone', $phoneRequest)->first();
+            // 🌍 Normalize phone number for comparison
+            $normalizedPhone = preg_replace('/[^0-9]/', '', $phoneRequest); // Remove +, spaces, etc.
+            if (strlen($normalizedPhone) > 10) {
+                // Assume last 10 digits are the real phone number (common in India)
+                $shortPhone = substr($normalizedPhone, -10);
+            } else {
+                $shortPhone = $normalizedPhone;
+            }
+
+            // 🔍 Find user by either full or short version
+            $user = UserModel::where('auth_phone', $normalizedPhone)
+                ->orWhere('auth_phone', 'like', "%{$shortPhone}")
+                ->first();
 
             // ✅ Create user if not found
             if (!$user) {
-                if (!$phoneRequest) {
-                    return response()->json([
-                        'status' => 'error',
-                        'message' => 'User not found and no phone provided'
-                    ]);
-                }
-
                 $createdDate = $request->created_date ?: Carbon::now()->format('M d, Y h:i:s a');
                 $deviceName = $request->device_name ?: 'Unknown Device';
 
                 $user = UserModel::create([
                     'uid' => $userId,
-                    'auth_phone' => $phoneRequest,
+                    'auth_phone' => $normalizedPhone,
                     'created_date' => $createdDate,
                     'device_name' => $deviceName,
                     'isACActive' => $request->isACActive ?? true,
@@ -141,11 +138,6 @@ class OTPController extends Controller
     public function verify(Request $request)
     {
         try {
-            // 🔐 API key check
-            $apiKey = $request->header('X-Api-Key');
-            if ($apiKey !== $this->validApiKey) {
-                return response()->json(['status' => 'error', 'message' => 'Invalid API key'], 401);
-            }
 
             // 🧾 Validate request
             $request->validate([
