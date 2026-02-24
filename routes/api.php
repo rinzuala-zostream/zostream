@@ -209,6 +209,11 @@ Route::prefix('v3.0')->group(function () {
 
     Route::post('/request-otp', [OTPController::class, 'send']);
     Route::post('/verify-otp', [OTPController::class, 'verify']);
-    Route::post('/token/refresh', [TokenController::class, 'refresh']);
-    Route::post('/token/revoke', [TokenController::class, 'revoke']);
+
+    // ✅ Protected routes
+    Route::middleware('auth.token')->group(function () {
+        Route::post('/token/refresh', [TokenController::class, 'refresh']);
+        Route::post('/token/revoke', [TokenController::class, 'revoke']);
+
+    });
 });
