@@ -15,6 +15,7 @@ use App\Http\Controllers\HlsFolderController;
 use App\Http\Controllers\LinkController;
 use App\Http\Controllers\MovieController;
 use App\Http\Controllers\MovieSearchController;
+use App\Http\Controllers\OTPController;
 use App\Http\Controllers\PaymentMailController;
 use App\Http\Controllers\PaymentStatusController;
 use App\Http\Controllers\PhonePeSdkV2Controller;
@@ -206,7 +207,8 @@ Route::post('/send-whatsapp', [WhatsAppController::class, 'send']);
 
 Route::prefix('v3.0')->group(function () {
 
-    Route::post('/verify-otp', [VerifyOTPController::class, 'verify']);
+    Route::post('/request-otp', [OTPController::class, 'send']);
+    Route::post('/verify-otp', [OTPController::class, 'verify']);
     Route::post('/token/refresh', [TokenController::class, 'refresh']);
     Route::post('/token/revoke', [TokenController::class, 'revoke']);
 });

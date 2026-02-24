@@ -34,7 +34,7 @@ class RequestOTPController extends Controller
 
             // Validate input
             $request->validate([
-                'user_id' => 'required|string',
+                'user_id' => 'nullable|string',
                 'phone_number' => 'nullable|string', // optional override
             ]);
 
