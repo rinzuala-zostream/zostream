@@ -1,5 +1,7 @@
 <?php
 
+namespace Database\Seeders;
+
 use Illuminate\Database\Seeder;
 use App\Models\New\{Plan, Subscription, Devices, ActiveStream, StreamEvent};
 use Carbon\Carbon;
