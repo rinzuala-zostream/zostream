@@ -29,6 +29,7 @@ use App\Http\Controllers\SearchController;
 use App\Http\Controllers\StreamController;
 use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\TempPayment;
+use App\Http\Controllers\TokenController;
 use App\Http\Controllers\UpdateUserDevice;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\VerifyOTPController;
@@ -202,3 +203,10 @@ Route::post('/send-birthday-mail', [BirthdayMailController::class, 'send']);
 Route::post('/send-whatsapp', [WhatsAppController::class, 'send']);
 
 
+
+Route::prefix('v3.0')->group(function () {
+
+    Route::post('/verify-otp', [VerifyOTPController::class, 'verify']);
+    Route::post('/token/refresh', [TokenController::class, 'refresh']);
+    Route::post('/token/revoke', [TokenController::class, 'revoke']);
+});
