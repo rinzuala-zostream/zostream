@@ -11,6 +11,8 @@ class StreamEvent extends Model
 
     protected $table = 'n_stream_events';
 
+    public $timestamps = false;
+
     protected $fillable = [
         'subscription_id',
         'device_id',
