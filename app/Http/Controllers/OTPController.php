@@ -35,30 +35,26 @@ class OTPController extends Controller
             ]);
 
             $userId = $request->user_id;
-            $phoneRequest = trim($request->phone_number);
+            $phoneRequest = $request->phone_number;
 
-            // 🌍 Normalize phone number for comparison
-            $normalizedPhone = preg_replace('/[^0-9]/', '', $phoneRequest); // Remove +, spaces, etc.
-            if (strlen($normalizedPhone) > 10) {
-                // Assume last 10 digits are the real phone number (common in India)
-                $shortPhone = substr($normalizedPhone, -10);
-            } else {
-                $shortPhone = $normalizedPhone;
-            }
-
-            // 🔍 Find user by either full or short version
-            $user = UserModel::where('auth_phone', $normalizedPhone)
-                ->orWhere('auth_phone', 'like', "%{$shortPhone}")
-                ->first();
+            // 🔍 Find user
+            $user = UserModel::where('auth_phone', $phoneRequest)->first();
 
             // ✅ Create user if not found
             if (!$user) {
+                if (!$phoneRequest) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'User not found and no phone provided'
+                    ]);
+                }
+
                 $createdDate = $request->created_date ?: Carbon::now()->format('M d, Y h:i:s a');
                 $deviceName = $request->device_name ?: 'Unknown Device';
 
                 $user = UserModel::create([
                     'uid' => $userId,
-                    'auth_phone' => $normalizedPhone,
+                    'auth_phone' => $phoneRequest,
                     'created_date' => $createdDate,
                     'device_name' => $deviceName,
                     'isACActive' => $request->isACActive ?? true,
