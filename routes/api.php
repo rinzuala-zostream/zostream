@@ -15,6 +15,7 @@ use App\Http\Controllers\HlsFolderController;
 use App\Http\Controllers\LinkController;
 use App\Http\Controllers\MovieController;
 use App\Http\Controllers\MovieSearchController;
+use App\Http\Controllers\NewStreamController;
 use App\Http\Controllers\OTPController;
 use App\Http\Controllers\PaymentMailController;
 use App\Http\Controllers\PaymentStatusController;
@@ -216,4 +217,14 @@ Route::prefix('v3.0')->group(function () {
         Route::post('/token/revoke', [TokenController::class, 'revoke']);
 
     });
+
+    Route::prefix('stream')->group(function () {
+        Route::post('start', [NewStreamController::class, 'start']); // Start streaming
+        Route::post('ping', [NewStreamController::class, 'ping']);   // Heartbeat ping
+        Route::post('stop', [NewStreamController::class, 'stop']);   // Stop stream
+    });
+
+    // 🔁 Subscription Renewal
+    Route::post('subscription/renew', [NewStreamController::class, 'renew']); // Renew subscription
+
 });
