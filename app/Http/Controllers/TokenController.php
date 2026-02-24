@@ -49,21 +49,9 @@ class TokenController extends Controller
      */
     public function refresh(Request $request)
     {
-        // Get Authorization header value
-        $authHeader = $request->header('Authorization');
+        $request->validate(['refresh_token' => 'required|string']);
+        $refreshToken = $request->refresh_token;
 
-        if (!$authHeader || !str_starts_with($authHeader, 'Bearer ')) {
-            return response()->json(['status' => 'error', 'message' => 'Missing or invalid Authorization header'], 401);
-        }
-
-        // Extract token string after "Bearer "
-        $refreshToken = trim(substr($authHeader, 7));
-
-        if (empty($refreshToken)) {
-            return response()->json(['status' => 'error', 'message' => 'Empty refresh token'], 401);
-        }
-
-        // Find record
         $record = SessionTokenModel::where('refresh_token', $refreshToken)->first();
 
         if (!$record) {
@@ -72,7 +60,9 @@ class TokenController extends Controller
 
         // If refresh token expired
         if ($record->refresh_expires_at->isPast()) {
+            // ✅ Delete the expired token from DB
             $record->delete();
+
             return response()->json(['status' => 'error', 'message' => 'Refresh token expired'], 401);
         }
 
@@ -90,7 +80,7 @@ class TokenController extends Controller
             'message' => 'Access token refreshed successfully',
             'access_token' => $newAccessToken,
             'access_expires_at' => $newAccessExp->toDateTimeString(),
-            'token_type' => 'bearer',
+            'token_type' => 'bearer'
         ]);
     }
 
