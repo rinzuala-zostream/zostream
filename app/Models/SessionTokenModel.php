@@ -13,6 +13,8 @@ class SessionTokenModel extends Model
         'refresh_token',
         'access_expires_at',
         'refresh_expires_at',
+        'device_name',
+        'device_id',
     ];
 
     protected $casts = [

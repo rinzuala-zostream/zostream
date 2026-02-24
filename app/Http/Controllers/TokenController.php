@@ -34,11 +34,13 @@ class TokenController extends Controller
         ]);
 
         return [
-            'access_token'  => $accessToken,
+            'access_token' => $accessToken,
             'access_expires_at' => $accessExp->toDateTimeString(),
             'refresh_token' => $refreshToken,
             'refresh_expires_at' => $refreshExp->toDateTimeString(),
-            'token_type'    => 'bearer'
+            'token_type' => 'bearer',
+            'device_name' => $deviceName,
+            'device_id' => $deviceId,
         ];
     }
 
@@ -47,16 +49,30 @@ class TokenController extends Controller
      */
     public function refresh(Request $request)
     {
-        $request->validate(['refresh_token' => 'required|string']);
-        $refreshToken = $request->refresh_token;
+        // Get Authorization header value
+        $authHeader = $request->header('Authorization');
 
+        if (!$authHeader || !str_starts_with($authHeader, 'Bearer ')) {
+            return response()->json(['status' => 'error', 'message' => 'Missing or invalid Authorization header'], 401);
+        }
+
+        // Extract token string after "Bearer "
+        $refreshToken = trim(substr($authHeader, 7));
+
+        if (empty($refreshToken)) {
+            return response()->json(['status' => 'error', 'message' => 'Empty refresh token'], 401);
+        }
+
+        // Find record
         $record = SessionTokenModel::where('refresh_token', $refreshToken)->first();
 
         if (!$record) {
             return response()->json(['status' => 'error', 'message' => 'Invalid refresh token'], 401);
         }
 
+        // If refresh token expired
         if ($record->refresh_expires_at->isPast()) {
+            $record->delete();
             return response()->json(['status' => 'error', 'message' => 'Refresh token expired'], 401);
         }
 
@@ -74,7 +90,7 @@ class TokenController extends Controller
             'message' => 'Access token refreshed successfully',
             'access_token' => $newAccessToken,
             'access_expires_at' => $newAccessExp->toDateTimeString(),
-            'token_type' => 'bearer'
+            'token_type' => 'bearer',
         ]);
     }
 
@@ -85,8 +101,10 @@ class TokenController extends Controller
     {
         $record = SessionTokenModel::where('access_token', $token)->first();
 
-        if (!$record) return null;
-        if ($record->access_expires_at->isPast()) return null;
+        if (!$record)
+            return null;
+        if ($record->access_expires_at->isPast())
+            return null;
 
         return $record->user_id;
     }
