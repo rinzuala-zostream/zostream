@@ -11,7 +11,7 @@ class ActiveStream extends Model
 
     protected $table = 'n_active_streams';
 
-    protected $timestamps = false;
+    public $timestamps = false;
 
     protected $fillable = [
         'subscription_id',
