@@ -247,7 +247,11 @@ class OTPController extends Controller
 
         } catch (\Exception $e) {
             Log::error('OTP verification failed', ['error' => $e->getMessage()]);
-            return response()->json(['status' => 'error', 'message' => 'Unexpected error']);
+            return response()->json([
+                'status' => 'error',
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
         }
     }
 }
