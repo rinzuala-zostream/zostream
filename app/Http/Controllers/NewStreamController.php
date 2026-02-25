@@ -414,12 +414,13 @@ class NewStreamController extends Controller
             try {
                 $zsetKey = $this->zsetKey($subId, $type);
 
-                // All devices for this user and type
+                // All devices for this subscription and type
                 $devices = Devices::where('subscription_id', $subId)
                     ->where('device_type', $type)
                     ->where('user_id', $userId)
                     ->get();
 
+                // Owner device
                 $owner = $devices->where('is_owner_device', true)->first();
 
                 foreach ($devices as $device) {
@@ -427,24 +428,27 @@ class NewStreamController extends Controller
                     $hashKey = $this->hashKey($subId, $type, $deviceId);
 
                     if ($owner && $deviceId === $owner->id) {
-                        // Only owner remains active
+                        // Owner remains active
                         Redis::hset($hashKey, 'status', 'active');
                         ActiveStream::updateOrCreate(
                             ['subscription_id' => $subId, 'device_id' => $deviceId],
                             [
                                 'device_type' => $type,
-                                'status' => 'active',
+                                'status' => 'active', // n_active_streams
                                 'last_ping' => now()
                             ]
                         );
+                        // Device status
+                        Devices::where('id', $deviceId)->update(['status' => 'active']); // n_devices
                         $kept[] = $deviceId;
                     } else {
-                        // Block all other devices
+                        // Other devices blocked
                         Redis::hset($hashKey, 'status', 'blocked');
                         Redis::zrem($zsetKey, $deviceId);
                         ActiveStream::where('subscription_id', $subId)
                             ->where('device_id', $deviceId)
-                            ->update(['status' => 'blocked']);
+                            ->update(['status' => 'stopped']); // n_active_streams
+                        Devices::where('id', $deviceId)->update(['status' => 'blocked']); // n_devices
                         $kicked[] = $deviceId;
                     }
                 }
