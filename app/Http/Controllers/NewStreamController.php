@@ -452,6 +452,7 @@ class NewStreamController extends Controller
                             ['subscription_id' => $subId, 'device_id' => $deviceId],
                             [
                                 'device_type' => $type,
+                                'stream_token' => Str::uuid()->toString(),
                                 'status' => 'active', // n_active_streams
                                 'last_ping' => now()
                             ]
