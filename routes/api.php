@@ -225,16 +225,33 @@ Route::prefix('v3.0')->group(function () {
         Route::post('stop', [NewStreamController::class, 'stop']);   // Stop stream
     });
 
-    // 🔁 Subscription Renewal
-    Route::post('subscription/renew', [NewStreamController::class, 'renew']); // Renew subscription
 
-    Route::prefix('devices')->name('devices.')->group(function () {
+    Route::prefix('devices')->group(function () {
         Route::get('/list', [DeviceController::class, 'index'])->name('index');             // List all devices
         Route::get('/{id}', [DeviceController::class, 'show'])->name('show');           // Get device by ID
         Route::get('/user/{userId}', [DeviceController::class, 'getByUser'])->name('byUser'); // Get by user (owner + shared)
         Route::post('/store', [DeviceController::class, 'store'])->name('store');            // Create device
         Route::put('/{id}', [DeviceController::class, 'update'])->name('update');       // Update device
         Route::delete('/{id}', [DeviceController::class, 'destroy'])->name('destroy');  // Delete device
+    });
+
+    Route::prefix('subscriptions')->group(function () {
+        Route::get('/', [\App\Http\Controllers\New\SubscriptionController::class, 'index'])->name('subscriptions.index');
+        Route::get('/{id}', [\App\Http\Controllers\New\SubscriptionController::class, 'show'])->name('subscriptions.show');
+        Route::get('/user/{userId}', [\App\Http\Controllers\New\SubscriptionController::class, 'getByUser'])->name('subscriptions.by_user');
+        Route::post('/', [\App\Http\Controllers\New\SubscriptionController::class, 'store'])->name('subscriptions.store');
+        Route::put('/{id}', [\App\Http\Controllers\New\SubscriptionController::class, 'update'])->name('subscriptions.update');
+        Route::delete('/{id}', [\App\Http\Controllers\New\SubscriptionController::class, 'destroy'])->name('subscriptions.destroy');
+
+        // 🔁 Subscription Renewal
+        Route::post('/renew', [NewStreamController::class, 'renew']); // Renew subscription
+
+    });
+
+    Route::prefix('movies')->group(function () {
+        Route::get('/', [\App\Http\Controllers\New\MovieController::class, 'index'])->name('movies.index');
+        Route::get('/{id}', [\App\Http\Controllers\New\MovieController::class, 'getById'])->name('movies.show');
+        Route::get('/{id}/links', [\App\Http\Controllers\New\MovieController::class, 'getLink'])->name('movies.links');
     });
 
 });

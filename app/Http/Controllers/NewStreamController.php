@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\New\MovieController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Str;
@@ -16,6 +17,13 @@ class NewStreamController extends Controller
 {
     protected $streamTimeout = 60; // 5 minutes
     protected $lockTTL = 5000; // milliseconds
+
+    public $movieController;
+
+    public function __construct(MovieController $movieController)
+    {
+        $this->movieController = $movieController;
+    }
 
     // 🔧 Redis Key Helpers
     private function zsetKey($subId, $type)
@@ -59,6 +67,7 @@ class NewStreamController extends Controller
     {
         $subscriptionId = $request->input('subscription_id');
         $deviceToken = $request->header('Device-Token');
+        $movieId = $request->input('movie_id'); // 🎬 optional movie ID
 
         if (!$subscriptionId || !$deviceToken) {
             return response()->json([
@@ -135,8 +144,6 @@ class NewStreamController extends Controller
                 if ($now - (int) $score > $this->streamTimeout) {
                     Redis::zrem($zsetKey, $memberId);
                     Redis::del($this->hashKey($subscriptionId, $type, $memberId));
-
-                    // Update ActiveStream
                     ActiveStream::where('subscription_id', $subscriptionId)
                         ->where('device_id', $memberId)
                         ->update(['status' => 'stopped']);
@@ -181,7 +188,6 @@ class NewStreamController extends Controller
                     ], 409);
                 }
 
-                // ✅ Update device to active in DB and Redis
                 $device->update(['status' => 'active']);
                 Redis::hmset($hashKey, [
                     'status' => 'active',
@@ -212,7 +218,18 @@ class NewStreamController extends Controller
                 ]
             );
 
-            // 9️⃣ Return current status
+            // ✅ If movie_id is provided → fetch links
+            $movieLinks = null;
+            if ($movieId) {
+                $movieResponse = $this->movieController->getLink($movieId);
+                $movieData = $movieResponse->getData(true);
+
+                if ($movieData['status'] === 'success') {
+                    $movieLinks = $movieData['links'];
+                }
+            }
+
+            // 9️⃣ Return full response
             $activeMembers = array_keys(Redis::zrange($zsetKey, 0, -1, true) ?: []);
             $nonOwnerActiveCount = 0;
             foreach ($activeMembers as $memberId) {
@@ -232,7 +249,8 @@ class NewStreamController extends Controller
                 'max_quality' => $plan->quality,
                 'current_active' => $totalActive,
                 'device_limit' => $limit,
-                'remaining_slots' => $remainingSlots
+                'remaining_slots' => $remainingSlots,
+                'movie_links' => $movieLinks // 🎬 Add links only if requested
             ]);
 
         } finally {
