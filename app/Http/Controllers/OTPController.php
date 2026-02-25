@@ -200,14 +200,14 @@ class OTPController extends Controller
                 ->first();
 
             if ($subscription && $deviceId) {
-                $device = Devices::where('user_id', $userId)
+                $device = Devices::where('user_id', $user->num)
                     ->where('device_id', $deviceId)
                     ->first();
 
                 if (!$device) {
                     // Create device if missing
                     $device = Devices::create([
-                        'user_id' => $userId,
+                        'user_id' => $user->num,
                         'subscription_id' => $subscription->id,
                         'device_id' => $deviceId,
                         'device_name' => $deviceName,
