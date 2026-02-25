@@ -202,7 +202,7 @@ class OTPController extends Controller
             if ($subscription && $deviceId) {
                 $device = Devices::where('user_id', $user->num)
                     ->where('subscription_id', $subscription->id)
-                    ->where('device_id', $deviceId)
+                    ->where('device_token', $deviceId)
                     ->first();
 
                 if (!$device) {
