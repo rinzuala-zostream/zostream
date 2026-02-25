@@ -13,11 +13,12 @@ class Devices extends Model
 
     protected $fillable = [
         'subscription_id',
-        'user_id',
+        'user_id',           // now VARCHAR(225)
         'device_name',
         'device_type',
         'device_token',
         'is_owner_device',
+        'shared_to_user_id',
         'last_activity',
         'status',
     ];
