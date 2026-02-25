@@ -43,7 +43,8 @@ class NewStreamController extends Controller
     // 🔓 Release Redis lock
     private function releaseLock($key, $token)
     {
-        if (!$token) return;
+        if (!$token)
+            return;
         try {
             if (Redis::get($key) === $token) {
                 Redis::del($key);
@@ -127,7 +128,7 @@ class NewStreamController extends Controller
             // 1️⃣ Remove stale sessions
             $members = Redis::zrange($zsetKey, 0, -1, true) ?: [];
             foreach ($members as $member => $score) {
-                if ($now - (int)$score > $this->streamTimeout) {
+                if ($now - (int) $score > $this->streamTimeout) {
                     Redis::zrem($zsetKey, $member);
                     Redis::del($this->hashKey($subscriptionId, $type, $member));
                 }
@@ -140,12 +141,13 @@ class NewStreamController extends Controller
                 ->where('is_owner_device', true)
                 ->value('id');
 
-            $isOwner = (bool)$device->is_owner_device;
+            $isOwner = (bool) $device->is_owner_device;
             $nonOwnerActiveCount = 0;
             foreach ($activeMembers as $memberId) {
                 if ($memberId != $ownerId) {
                     $status = Redis::hget($this->hashKey($subscriptionId, $type, $memberId), 'status');
-                    if ($status === 'active') $nonOwnerActiveCount++;
+                    if ($status === 'active')
+                        $nonOwnerActiveCount++;
                 }
             }
 
@@ -187,7 +189,8 @@ class NewStreamController extends Controller
             foreach ($activeMembers as $memberId) {
                 if ($memberId != $ownerId) {
                     $status = Redis::hget($this->hashKey($subscriptionId, $type, $memberId), 'status');
-                    if ($status === 'active') $nonOwnerActiveCount++;
+                    if ($status === 'active')
+                        $nonOwnerActiveCount++;
                 }
             }
 
@@ -268,7 +271,7 @@ class NewStreamController extends Controller
         // Cleanup stale sessions
         $members = Redis::zrange($zsetKey, 0, -1, true) ?: [];
         foreach ($members as $member => $score) {
-            if ($now - (int)$score > $this->streamTimeout) {
+            if ($now - (int) $score > $this->streamTimeout) {
                 Redis::zrem($zsetKey, $member);
                 Redis::del($this->hashKey($subscription->id, $type, $member));
             }
@@ -381,7 +384,8 @@ class NewStreamController extends Controller
         foreach (['mobile', 'browser', 'tv'] as $type) {
             $lockKey = $this->lockKey($subId, $type);
             $token = $this->acquireLock($lockKey, $this->lockTTL);
-            if (!$token) continue;
+            if (!$token)
+                continue;
 
             try {
                 $zsetKey = $this->zsetKey($subId, $type);
@@ -400,7 +404,8 @@ class NewStreamController extends Controller
                     ->first();
 
                 $keepList = [];
-                if ($owner) $keepList[] = $owner->id;
+                if ($owner)
+                    $keepList[] = $owner->id;
 
                 foreach ($activeDevices as $d) {
                     if (!in_array($d, $keepList) && count($keepList) < $limit) {
@@ -410,10 +415,23 @@ class NewStreamController extends Controller
 
                 foreach ($activeDevices as $d) {
                     if (!in_array($d, $keepList)) {
+                        // mark blocked
                         Redis::hset($this->hashKey($subId, $type, $d), 'status', 'blocked');
+                        ActiveStream::where('subscription_id', $subId)
+                            ->where('device_id', $d)
+                            ->update(['status' => 'blocked']);
                         $kicked[] = $d;
                     } else {
+                        // mark active
                         Redis::hset($this->hashKey($subId, $type, $d), 'status', 'active');
+                        ActiveStream::updateOrCreate(
+                            ['subscription_id' => $subId, 'device_id' => $d],
+                            [
+                                'device_type' => $type,
+                                'status' => 'active',
+                                'last_ping' => now()
+                            ]
+                        );
                         $kept[] = $d;
                     }
                 }
