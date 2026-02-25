@@ -14,7 +14,7 @@ use App\Models\New\StreamEvent;
 
 class NewStreamController extends Controller
 {
-    protected $streamTimeout = 300; // 5 minutes
+    protected $streamTimeout = 60; // 5 minutes
     protected $lockTTL = 5000; // milliseconds
 
     // 🔧 Redis Key Helpers
