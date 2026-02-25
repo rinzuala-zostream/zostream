@@ -127,25 +127,29 @@ class NewStreamController extends Controller
             // 1️⃣ Remove stale sessions
             $members = Redis::zrange($zsetKey, 0, -1, true) ?: [];
             foreach ($members as $member => $score) {
-                if ($now - (int) $score > $this->streamTimeout) {
+                if ($now - (int)$score > $this->streamTimeout) {
                     Redis::zrem($zsetKey, $member);
                     Redis::del($this->hashKey($subscriptionId, $type, $member));
                 }
             }
 
-            // 2️⃣ Reload active members
+            // 2️⃣ Reload active members and count active shared devices
             $activeMembers = array_keys(Redis::zrange($zsetKey, 0, -1, true) ?: []);
-
-            // 3️⃣ Get owner ID
             $ownerId = Devices::where('user_id', $subscription->user_id)
                 ->where('device_type', $type)
                 ->where('is_owner_device', true)
                 ->value('id');
 
-            $isOwner = (bool) $device->is_owner_device;
-            $nonOwnerActiveCount = count(array_filter($activeMembers, fn($id) => $id != $ownerId));
+            $isOwner = (bool)$device->is_owner_device;
+            $nonOwnerActiveCount = 0;
+            foreach ($activeMembers as $memberId) {
+                if ($memberId != $ownerId) {
+                    $status = Redis::hget($this->hashKey($subscriptionId, $type, $memberId), 'status');
+                    if ($status === 'active') $nonOwnerActiveCount++;
+                }
+            }
 
-            // 4️⃣ Enforce device limit
+            // 3️⃣ Enforce device limit for shared devices
             if (!$isOwner && $nonOwnerActiveCount >= $limit) {
                 return response()->json([
                     'status' => 'error',
@@ -154,7 +158,7 @@ class NewStreamController extends Controller
                 ], 409);
             }
 
-            // 5️⃣ Start stream
+            // 4️⃣ Start or reactivate stream
             $streamToken = Str::uuid()->toString();
             $hashKey = $this->hashKey($subscriptionId, $type, $device->id);
 
@@ -177,9 +181,16 @@ class NewStreamController extends Controller
                 ]
             );
 
-            // 6️⃣ Compute accurate active count & remaining slots
+            // 5️⃣ Compute accurate active count & remaining slots
             $activeMembers = array_keys(Redis::zrange($zsetKey, 0, -1, true) ?: []);
-            $nonOwnerActiveCount = count(array_filter($activeMembers, fn($id) => $id != $ownerId));
+            $nonOwnerActiveCount = 0;
+            foreach ($activeMembers as $memberId) {
+                if ($memberId != $ownerId) {
+                    $status = Redis::hget($this->hashKey($subscriptionId, $type, $memberId), 'status');
+                    if ($status === 'active') $nonOwnerActiveCount++;
+                }
+            }
+
             $totalActive = count($activeMembers);
             $remainingSlots = max(0, $limit - $nonOwnerActiveCount - ($isOwner ? 0 : 1));
 
@@ -243,38 +254,24 @@ class NewStreamController extends Controller
             ], 401);
         }
 
+        $status = Redis::hget($hashKey, 'status');
+        if ($status !== 'active') {
+            return response()->json([
+                'status' => 'error',
+                'title' => 'Device Not Active',
+                'message' => 'Your device is currently inactive and cannot ping the stream.'
+            ], 403);
+        }
+
         $now = Carbon::now()->timestamp;
 
         // Cleanup stale sessions
         $members = Redis::zrange($zsetKey, 0, -1, true) ?: [];
         foreach ($members as $member => $score) {
-            if ($now - (int) $score > $this->streamTimeout) {
+            if ($now - (int)$score > $this->streamTimeout) {
                 Redis::zrem($zsetKey, $member);
                 Redis::del($this->hashKey($subscription->id, $type, $member));
             }
-        }
-
-        $activeMembers = array_keys(Redis::zrange($zsetKey, 0, -1, true) ?: []);
-        $ownerId = Devices::where('user_id', $subscription->user_id)
-            ->where('device_type', $type)
-            ->where('is_owner_device', true)
-            ->value('id');
-
-        $nonOwnerActiveCount = count(array_filter($activeMembers, fn($id) => $id != $ownerId));
-        $isOwner = (bool) $device->is_owner_device;
-        $limit = match ($type) {
-            'mobile' => $plan->device_limit_mobile ?? 1,
-            'browser' => $plan->device_limit_browser ?? 1,
-            'tv' => $plan->device_limit_tv ?? 1,
-            default => 1,
-        };
-
-        if (!$isOwner && $nonOwnerActiveCount >= $limit) {
-            return response()->json([
-                'status' => 'error',
-                'title' => 'Device Limit Reached',
-                'message' => "Cannot ping stream. Maximum {$type} devices ({$limit}) are already active."
-            ], 409);
         }
 
         // Update ping
@@ -328,12 +325,12 @@ class NewStreamController extends Controller
             ], 401);
         }
 
+        Redis::hset($hashKey, 'status', 'inactive');
         Redis::zrem($zsetKey, $device->id);
-        Redis::del($hashKey);
 
         ActiveStream::where('device_id', $device->id)
             ->where('subscription_id', $subscription->id)
-            ->update(['status' => 'stopped', 'last_ping' => now()]);
+            ->update(['status' => 'inactive', 'last_ping' => now()]);
 
         StreamEvent::create([
             'subscription_id' => $subscription->id,
@@ -413,13 +410,13 @@ class NewStreamController extends Controller
 
                 foreach ($activeDevices as $d) {
                     if (!in_array($d, $keepList)) {
-                        Redis::zrem($zsetKey, $d);
-                        Redis::del($this->hashKey($subId, $type, $d));
+                        Redis::hset($this->hashKey($subId, $type, $d), 'status', 'blocked');
                         $kicked[] = $d;
+                    } else {
+                        Redis::hset($this->hashKey($subId, $type, $d), 'status', 'active');
+                        $kept[] = $d;
                     }
                 }
-
-                $kept = array_merge($kept, $keepList);
 
             } finally {
                 $this->releaseLock($lockKey, $token);
