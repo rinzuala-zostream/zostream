@@ -68,6 +68,7 @@ class NewStreamController extends Controller
             ], 400);
         }
 
+        // 1️⃣ Fetch device
         $device = Devices::where('device_token', $deviceToken)->first();
         if (!$device) {
             return response()->json([
@@ -77,6 +78,7 @@ class NewStreamController extends Controller
             ], 404);
         }
 
+        // 2️⃣ Fetch subscription
         $subscription = Subscription::find($subscriptionId);
         if (!$subscription) {
             return response()->json([
@@ -94,6 +96,7 @@ class NewStreamController extends Controller
             ], 403);
         }
 
+        // 3️⃣ Fetch plan
         $plan = Plan::find($subscription->plan_id);
         if (!$plan) {
             return response()->json([
@@ -111,6 +114,7 @@ class NewStreamController extends Controller
             default => 1,
         };
 
+        // 4️⃣ Acquire Redis lock
         $lockKey = $this->lockKey($subscriptionId, $type);
         $token = $this->acquireLock($lockKey, $this->lockTTL);
         if (!$token) {
@@ -125,20 +129,21 @@ class NewStreamController extends Controller
             $now = Carbon::now()->timestamp;
             $zsetKey = $this->zsetKey($subscriptionId, $type);
 
-            // 1️⃣ Remove stale sessions
+            // 5️⃣ Remove stale sessions
             $members = Redis::zrange($zsetKey, 0, -1, true) ?: [];
-            foreach ($members as $member => $score) {
+            foreach ($members as $memberId => $score) {
                 if ($now - (int) $score > $this->streamTimeout) {
-                    Redis::zrem($zsetKey, $member);
-                    Redis::del($this->hashKey($subscriptionId, $type, $member));
-                    // also update device table if exists
+                    Redis::zrem($zsetKey, $memberId);
+                    Redis::del($this->hashKey($subscriptionId, $type, $memberId));
+
+                    // Update ActiveStream
                     ActiveStream::where('subscription_id', $subscriptionId)
-                        ->where('device_id', $member)
+                        ->where('device_id', $memberId)
                         ->update(['status' => 'stopped']);
                 }
             }
 
-            // 2️⃣ Reload active members and count non-owner active devices
+            // 6️⃣ Reload active members & owner
             $activeMembers = array_keys(Redis::zrange($zsetKey, 0, -1, true) ?: []);
             $ownerId = Devices::where('user_id', $subscription->user_id)
                 ->where('device_type', $type)
@@ -155,7 +160,7 @@ class NewStreamController extends Controller
                 }
             }
 
-            // 3️⃣ Check device status and enforce plan limit
+            // 7️⃣ Check device status and enforce limits
             $hashKey = $this->hashKey($subscriptionId, $type, $device->id);
             $redisStatus = Redis::hget($hashKey, 'status') ?? $device->status;
 
@@ -163,7 +168,7 @@ class NewStreamController extends Controller
                 return response()->json([
                     'status' => 'error',
                     'title' => 'Device Blocked',
-                    'message' => 'This device has been blocked due to subscription rules. Please verify your OTP.'
+                    'message' => 'This device has been blocked. Please verify your OTP.'
                 ], 403);
             }
 
@@ -176,12 +181,17 @@ class NewStreamController extends Controller
                     ], 409);
                 }
 
-                // Update device to active
+                // ✅ Update device to active in DB and Redis
                 $device->update(['status' => 'active']);
-                Redis::hmset($hashKey, ['status' => 'active']);
+                Redis::hmset($hashKey, [
+                    'status' => 'active',
+                    'device_name' => $device->device_name,
+                    'last_ping' => $now
+                ]);
+                $redisStatus = 'active';
             }
 
-            // 4️⃣ Start or reactivate stream
+            // 8️⃣ Start or reactivate stream
             $streamToken = Str::uuid()->toString();
             Redis::zadd($zsetKey, [$device->id => $now]);
             Redis::hmset($hashKey, [
@@ -202,7 +212,7 @@ class NewStreamController extends Controller
                 ]
             );
 
-            // 5️⃣ Return response
+            // 9️⃣ Return current status
             $activeMembers = array_keys(Redis::zrange($zsetKey, 0, -1, true) ?: []);
             $nonOwnerActiveCount = 0;
             foreach ($activeMembers as $memberId) {
