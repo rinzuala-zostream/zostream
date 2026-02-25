@@ -207,7 +207,7 @@ class OTPController extends Controller
                 if (!$device) {
                     // Create device if missing
                     $device = Devices::create([
-                        'user_id' => $user->num,
+                        'user_id' => $$user->num,
                         'subscription_id' => $subscription->id,
                         'device_id' => $deviceId,
                         'device_name' => $deviceName,
