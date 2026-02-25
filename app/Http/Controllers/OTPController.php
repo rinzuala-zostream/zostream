@@ -210,7 +210,7 @@ class OTPController extends Controller
                     $device = Devices::create([
                         'user_id' => $user->num,
                         'subscription_id' => $subscription->id,
-                        'device_id' => $deviceId,
+                        'device_token' => $deviceId,
                         'device_name' => $deviceName,
                         'device_type' => $request->device_type ?? 'mobile',
                         'status' => 'inactive',
