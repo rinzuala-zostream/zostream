@@ -22,10 +22,12 @@ class NewStreamController extends Controller
     {
         return "z:active_streams:{$subId}:{$type}";
     }
+
     private function hashKey($subId, $type, $devId)
     {
         return "h:stream:{$subId}:{$type}:{$devId}";
     }
+
     private function lockKey($subId, $type)
     {
         return "lock:subscription:{$subId}:{$type}";
@@ -63,9 +65,8 @@ class NewStreamController extends Controller
         }
 
         $device = Devices::where('device_token', $deviceToken)->first();
-        if (!$device) {
+        if (!$device)
             return response()->json(['error' => 'Invalid device'], 404);
-        }
 
         $subscription = Subscription::find($subscriptionId);
         if (!$subscription || Carbon::parse($subscription->end_at)->isPast()) {
@@ -73,13 +74,11 @@ class NewStreamController extends Controller
         }
 
         $plan = Plan::find($subscription->plan_id);
-        if (!$plan) {
+        if (!$plan)
             return response()->json(['error' => 'Plan not found'], 500);
-        }
 
         $type = strtolower(trim($device->device_type));
 
-        // Device limit per type
         $limit = match ($type) {
             'mobile' => $plan->device_limit_mobile ?? 1,
             'browser' => $plan->device_limit_browser ?? 1,
@@ -87,18 +86,16 @@ class NewStreamController extends Controller
             default => 1,
         };
 
-        // Acquire lock for concurrency safety
         $lockKey = $this->lockKey($subscriptionId, $type);
         $token = $this->acquireLock($lockKey, $this->lockTTL);
-        if (!$token) {
+        if (!$token)
             return response()->json(['error' => 'Try again'], 429);
-        }
 
         try {
             $now = Carbon::now()->timestamp;
             $zsetKey = $this->zsetKey($subscriptionId, $type);
 
-            // 1️⃣ Remove stale sessions first
+            // 1️⃣ Remove stale sessions
             $members = Redis::zrange($zsetKey, 0, -1, true) ?: [];
             foreach ($members as $member => $score) {
                 if ($now - (int) $score > $this->streamTimeout) {
@@ -107,8 +104,8 @@ class NewStreamController extends Controller
                 }
             }
 
-            // 2️⃣ Reload active members after cleanup
-            $activeMembers = Redis::zrange($zsetKey, 0, -1) ?: [];
+            // 2️⃣ Reload active members
+            $activeMembers = array_keys(Redis::zrange($zsetKey, 0, -1, true) ?: []);
 
             // 3️⃣ Get owner ID
             $ownerId = Devices::where('user_id', $subscription->user_id)
@@ -116,8 +113,8 @@ class NewStreamController extends Controller
                 ->where('is_owner_device', true)
                 ->value('id');
 
-            $nonOwnerActiveCount = count(array_filter($activeMembers, fn($id) => $id != $ownerId));
             $isOwner = (bool) $device->is_owner_device;
+            $nonOwnerActiveCount = count(array_filter($activeMembers, fn($id) => $id != $ownerId));
 
             // 4️⃣ Enforce device limit
             if (!$isOwner && $nonOwnerActiveCount >= $limit) {
@@ -129,21 +126,13 @@ class NewStreamController extends Controller
             $hashKey = $this->hashKey($subscriptionId, $type, $device->id);
 
             Redis::zadd($zsetKey, [$device->id => $now]);
-            try {
-                Redis::hmset($hashKey, [
-                    'stream_token' => $streamToken,
-                    'started_at' => $now,
-                    'last_ping' => $now,
-                    'status' => 'active'
-                ]);
-            } catch (\Throwable $e) {
-                Redis::hset($hashKey, 'stream_token', $streamToken);
-                Redis::hset($hashKey, 'started_at', $now);
-                Redis::hset($hashKey, 'last_ping', $now);
-                Redis::hset($hashKey, 'status', 'active');
-            }
+            Redis::hmset($hashKey, [
+                'stream_token' => $streamToken,
+                'started_at' => $now,
+                'last_ping' => $now,
+                'status' => 'active'
+            ]);
 
-            // 6️⃣ Persist / update DB
             ActiveStream::updateOrCreate(
                 ['subscription_id' => $subscriptionId, 'device_id' => $device->id],
                 [
@@ -155,10 +144,11 @@ class NewStreamController extends Controller
                 ]
             );
 
-            // 7️⃣ Compute active count and remaining slots for response
-            $totalActive = count($activeMembers) + 1; // include current
-            $remainingSlots = $limit - $nonOwnerActiveCount - ($isOwner ? 0 : 1);
-            $remainingSlots = max(0, $remainingSlots);
+            // 6️⃣ Compute accurate active count & remaining slots
+            $activeMembers = array_keys(Redis::zrange($zsetKey, 0, -1, true) ?: []);
+            $nonOwnerActiveCount = count(array_filter($activeMembers, fn($id) => $id != $ownerId));
+            $totalActive = count($activeMembers);
+            $remainingSlots = max(0, $limit - $nonOwnerActiveCount - ($isOwner ? 0 : 1));
 
             return response()->json([
                 'status' => 'success',
@@ -174,7 +164,7 @@ class NewStreamController extends Controller
         }
     }
 
-    // 🧭 Ping stream
+    // 🔁 Ping stream
     public function ping(Request $request)
     {
         $deviceToken = $request->header('Device-Token');
@@ -188,15 +178,29 @@ class NewStreamController extends Controller
         if (!$subscription)
             return response()->json(['error' => 'Subscription not found'], 404);
 
+        $plan = Plan::find($subscription->plan_id);
+        if (!$plan)
+            return response()->json(['error' => 'Plan not found'], 500);
+
         $type = strtolower(trim($device->device_type));
-        $hashKey = $this->hashKey($subscription->id, $type, $device->id);
         $zsetKey = $this->zsetKey($subscription->id, $type);
+        $hashKey = $this->hashKey($subscription->id, $type, $device->id);
 
         $storedToken = Redis::hget($hashKey, 'stream_token');
         if ($storedToken !== $streamToken)
             return response()->json(['error' => 'Invalid token'], 401);
 
         $now = Carbon::now()->timestamp;
+
+        // Cleanup stale sessions
+        $members = Redis::zrange($zsetKey, 0, -1, true) ?: [];
+        foreach ($members as $member => $score) {
+            if ($now - (int) $score > $this->streamTimeout) {
+                Redis::zrem($zsetKey, $member);
+                Redis::del($this->hashKey($subscription->id, $type, $member));
+            }
+        }
+
         Redis::hset($hashKey, 'last_ping', $now);
         Redis::zadd($zsetKey, [$device->id => $now]);
 
@@ -204,7 +208,7 @@ class NewStreamController extends Controller
             'subscription_id' => $subscription->id,
             'device_id' => $device->id,
             'event_type' => 'ping',
-            'event_data' => ['ts' => $now]
+            'event_data' => ['ts' => $now],
         ]);
 
         return response()->json(['status' => 'success']);
@@ -228,6 +232,10 @@ class NewStreamController extends Controller
         $hashKey = $this->hashKey($subscription->id, $type, $device->id);
         $zsetKey = $this->zsetKey($subscription->id, $type);
 
+        $storedToken = Redis::hget($hashKey, 'stream_token');
+        if ($storedToken !== $streamToken)
+            return response()->json(['error' => 'Invalid token'], 401);
+
         Redis::zrem($zsetKey, $device->id);
         Redis::del($hashKey);
 
@@ -238,7 +246,7 @@ class NewStreamController extends Controller
         StreamEvent::create([
             'subscription_id' => $subscription->id,
             'device_id' => $device->id,
-            'event_type' => 'stop'
+            'event_type' => 'stop',
         ]);
 
         return response()->json(['status' => 'success']);
