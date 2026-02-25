@@ -36,11 +36,28 @@ class MovieController extends Controller
     {
         try {
             $movie = MovieModel::select([
-                'num', 'title', 'description', 'director', 'duration',
-                'genre', 'poster', 'cover_img', 'title_img', 'release_on',
-                'views', 'status', 'isPremium', 'isPayPerView', 'isChildMode',
-                'isAgeRestricted', 'isCompleted', 'isSeason', 'create_date', 'trailer'
-            ])->find($id);
+                'num',
+                'title',
+                'description',
+                'director',
+                'duration',
+                'genre',
+                'poster',
+                'cover_img',
+                'title_img',
+                'release_on',
+                'views',
+                'status',
+                'isPremium',
+                'isPayPerView',
+                'isChildMode',
+                'isAgeRestricted',
+                'isCompleted',
+                'isSeason',
+                'create_date',
+                'trailer'
+            ])->where('id', $id)
+                ->first();
 
             if (!$movie) {
                 return response()->json([
@@ -66,7 +83,8 @@ class MovieController extends Controller
     {
         try {
             $movie = MovieModel::select(['num', 'title', 'url', 'dash_url', 'hls_url'])
-                ->find($id);
+                ->where('id', $id)
+                ->first();
 
             if (!$movie) {
                 return response()->json([
