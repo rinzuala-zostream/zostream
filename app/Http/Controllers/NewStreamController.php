@@ -368,12 +368,12 @@ class NewStreamController extends Controller
             ], 401);
         }
 
-        Redis::hset($hashKey, 'status', 'inactive');
+        Redis::hset($hashKey, 'status', 'stop');
         Redis::zrem($zsetKey, $device->id);
 
         ActiveStream::where('device_id', $device->id)
             ->where('subscription_id', $subscription->id)
-            ->update(['status' => 'inactive', 'last_ping' => now()]);
+            ->update(['status' => 'stop', 'last_ping' => now()]);
 
         StreamEvent::create([
             'subscription_id' => $subscription->id,

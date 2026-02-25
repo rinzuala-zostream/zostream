@@ -15,6 +15,7 @@ use App\Http\Controllers\HlsFolderController;
 use App\Http\Controllers\LinkController;
 use App\Http\Controllers\MovieController;
 use App\Http\Controllers\MovieSearchController;
+use App\Http\Controllers\New\DeviceController;
 use App\Http\Controllers\NewStreamController;
 use App\Http\Controllers\OTPController;
 use App\Http\Controllers\PaymentMailController;
@@ -226,5 +227,14 @@ Route::prefix('v3.0')->group(function () {
 
     // 🔁 Subscription Renewal
     Route::post('subscription/renew', [NewStreamController::class, 'renew']); // Renew subscription
+
+    Route::prefix('devices')->name('devices.')->group(function () {
+        Route::get('/list', [DeviceController::class, 'index'])->name('index');             // List all devices
+        Route::get('/{id}', [DeviceController::class, 'show'])->name('show');           // Get device by ID
+        Route::get('/user/{userId}', [DeviceController::class, 'getByUser'])->name('byUser'); // Get by user (owner + shared)
+        Route::post('/', [DeviceController::class, 'store'])->name('store');            // Create device
+        Route::put('/{id}', [DeviceController::class, 'update'])->name('update');       // Update device
+        Route::delete('/{id}', [DeviceController::class, 'destroy'])->name('destroy');  // Delete device
+    });
 
 });
