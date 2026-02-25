@@ -195,7 +195,7 @@ class OTPController extends Controller
             }
 
             // 🔄 Check subscription and n_devices
-            $subscription = Subscription::where('user_id', $userId)
+            $subscription = Subscription::where('user_id', $user->num)
                 ->where('end_at', '>', now())
                 ->first();
 
