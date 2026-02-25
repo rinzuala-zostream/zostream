@@ -207,19 +207,15 @@ class OTPController extends Controller
 
                 if (!$device) {
                     // Create device if missing
-                    $device = Devices::firstOrCreate(
-                        [
-                            'device_token' => $deviceId,
-                        ],
-                        [
-                            'user_id' => $user->num,
-                            'subscription_id' => $subscription->id,
-                            'device_name' => $deviceName,
-                            'device_type' => $request->device_type ?? 'mobile',
-                            'status' => 'inactive',
-                            'is_owner_device' => false,
-                        ]
-                    );
+                    $device = Devices::create([
+                        'user_id' => $user->num,
+                        'subscription_id' => $subscription->id,
+                        'device_token' => $deviceId,
+                        'device_name' => $deviceName,
+                        'device_type' => $request->device_type ?? 'mobile',
+                        'status' => 'inactive',
+                        'is_owner_device' => false,
+                    ]);
 
                     $message = 'Device created and set as inactive';
                 } elseif ($device->status === 'blocked' && !$device->is_owner_device) {
