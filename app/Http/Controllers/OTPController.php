@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\New\Devices;
+use App\Models\New\Subscription;
 use App\Models\OTPRequestModel;
 use App\Models\UserModel;
 use Carbon\Carbon;
@@ -9,6 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Exception;
+use Illuminate\Support\Facades\Redis;
 
 class OTPController extends Controller
 {
@@ -134,17 +137,19 @@ class OTPController extends Controller
     public function verify(Request $request)
     {
         try {
-
             // 🧾 Validate request
             $request->validate([
                 'user_id' => 'required|string',
                 'otp' => 'required|string',
                 'device_name' => 'nullable|string',
-                'device_id' => 'nullable|string'
+                'device_id' => 'nullable|string',
+                'device_type' => 'nullable|string'
             ]);
 
             $userId = $request->user_id;
             $otp = $request->otp;
+            $deviceName = $request->device_name ?? 'Unknown Device';
+            $deviceId = $request->device_id;
 
             // 🔍 Get OTP record
             $otpRequest = OTPRequestModel::where('user_id', $userId)
@@ -178,15 +183,48 @@ class OTPController extends Controller
             try {
                 $tokens = $this->tokenController->generateTokens(
                     $userId,
-                    $request->device_name,
-                    $request->device_id
+                    $deviceName,
+                    $deviceId
                 );
                 if (!$tokens || !isset($tokens['access_token'])) {
-                    throw new Exception('Token generation failed');
+                    throw new \Exception('Token generation failed');
                 }
-            } catch (Exception $e) {
+            } catch (\Exception $e) {
                 Log::error('Token generation failed', ['user_id' => $userId, 'error' => $e->getMessage()]);
                 return response()->json(['status' => 'error', 'message' => 'Failed to generate tokens'], 500);
+            }
+
+            // 🔄 Check subscription and n_devices
+            $subscription = Subscription::where('user_id', $userId)
+                ->where('end_at', '>', now())
+                ->first();
+
+            if ($subscription && $deviceId) {
+                $device = Devices::where('user_id', $userId)
+                    ->where('device_id', $deviceId)
+                    ->first();
+
+                if (!$device) {
+                    // Create device if missing
+                    $device = Devices::create([
+                        'user_id' => $userId,
+                        'subscription_id' => $subscription->id,
+                        'device_id' => $deviceId,
+                        'device_name' => $deviceName,
+                        'device_type' => $request->device_type ?? 'mobile', // or detect from request if available
+                        'status' => 'inactive',
+                        'is_owner_device' => false,
+                    ]);
+                } elseif ($device->status === 'blocked' && !$device->is_owner_device) {
+                    // Reset blocked device to inactive
+                    $device->update(['status' => 'inactive']);
+
+                    // Also update Redis hash if exists
+                    $redisKey = "h:stream:{$subscription->id}:{$device->device_type}:{$device->id}";
+                    if (Redis::exists($redisKey)) {
+                        Redis::hset($redisKey, 'status', 'inactive');
+                    }
+                }
             }
 
             return response()->json([
@@ -195,7 +233,7 @@ class OTPController extends Controller
                 'data' => array_merge(['uid' => $userId], $tokens)
             ]);
 
-        } catch (Exception $e) {
+        } catch (\Exception $e) {
             Log::error('OTP verification failed', ['error' => $e->getMessage()]);
             return response()->json(['status' => 'error', 'message' => 'Unexpected error']);
         }

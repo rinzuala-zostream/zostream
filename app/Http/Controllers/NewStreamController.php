@@ -77,17 +77,6 @@ class NewStreamController extends Controller
             ], 404);
         }
 
-        $hashKey = $this->hashKey($subscriptionId, strtolower($device->device_type), $device->id);
-        $status = Redis::hget($hashKey, 'status');
-
-        if ($status === 'blocked') {
-            return response()->json([
-                'status' => 'error',
-                'title' => 'Device Blocked',
-                'message' => 'This device has been blocked due to subscription renewal.'
-            ], 403);
-        }
-
         $subscription = Subscription::find($subscriptionId);
         if (!$subscription) {
             return response()->json([
@@ -142,10 +131,14 @@ class NewStreamController extends Controller
                 if ($now - (int) $score > $this->streamTimeout) {
                     Redis::zrem($zsetKey, $member);
                     Redis::del($this->hashKey($subscriptionId, $type, $member));
+                    // also update device table if exists
+                    ActiveStream::where('subscription_id', $subscriptionId)
+                        ->where('device_id', $member)
+                        ->update(['status' => 'stopped']);
                 }
             }
 
-            // 2️⃣ Reload active members and count active shared devices
+            // 2️⃣ Reload active members and count non-owner active devices
             $activeMembers = array_keys(Redis::zrange($zsetKey, 0, -1, true) ?: []);
             $ownerId = Devices::where('user_id', $subscription->user_id)
                 ->where('device_type', $type)
@@ -162,19 +155,34 @@ class NewStreamController extends Controller
                 }
             }
 
-            // 3️⃣ Enforce device limit for shared devices
-            if (!$isOwner && $nonOwnerActiveCount >= $limit) {
+            // 3️⃣ Check device status and enforce plan limit
+            $hashKey = $this->hashKey($subscriptionId, $type, $device->id);
+            $redisStatus = Redis::hget($hashKey, 'status') ?? $device->status;
+
+            if ($redisStatus === 'blocked') {
                 return response()->json([
                     'status' => 'error',
-                    'title' => 'Device Limit Reached',
-                    'message' => "You have reached the maximum number of allowed {$type} devices ({$limit}). Stop a stream on another device or upgrade your plan.",
-                ], 409);
+                    'title' => 'Device Blocked',
+                    'message' => 'This device has been blocked due to subscription rules. Please verify your OTP.'
+                ], 403);
+            }
+
+            if ($redisStatus === 'inactive') {
+                if (!$isOwner && $nonOwnerActiveCount >= $limit) {
+                    return response()->json([
+                        'status' => 'error',
+                        'title' => 'Device Limit Reached',
+                        'message' => "Cannot start streaming. {$type} device limit ({$limit}) reached."
+                    ], 409);
+                }
+
+                // Update device to active
+                $device->update(['status' => 'active']);
+                Redis::hmset($hashKey, ['status' => 'active']);
             }
 
             // 4️⃣ Start or reactivate stream
             $streamToken = Str::uuid()->toString();
-            $hashKey = $this->hashKey($subscriptionId, $type, $device->id);
-
             Redis::zadd($zsetKey, [$device->id => $now]);
             Redis::hmset($hashKey, [
                 'stream_token' => $streamToken,
@@ -194,7 +202,7 @@ class NewStreamController extends Controller
                 ]
             );
 
-            // 5️⃣ Compute accurate active count & remaining slots
+            // 5️⃣ Return response
             $activeMembers = array_keys(Redis::zrange($zsetKey, 0, -1, true) ?: []);
             $nonOwnerActiveCount = 0;
             foreach ($activeMembers as $memberId) {
