@@ -201,6 +201,7 @@ class OTPController extends Controller
 
             if ($subscription && $deviceId) {
                 $device = Devices::where('user_id', $user->num)
+                    ->where('subscription_id', $subscription->id)
                     ->where('device_id', $deviceId)
                     ->first();
 
@@ -211,25 +212,36 @@ class OTPController extends Controller
                         'subscription_id' => $subscription->id,
                         'device_id' => $deviceId,
                         'device_name' => $deviceName,
-                        'device_type' => $request->device_type ?? 'mobile', // or detect from request if available
+                        'device_type' => $request->device_type ?? 'mobile',
                         'status' => 'inactive',
                         'is_owner_device' => false,
                     ]);
+
+                    $message = 'Device created and set as inactive';
                 } elseif ($device->status === 'blocked' && !$device->is_owner_device) {
                     // Reset blocked device to inactive
                     $device->update(['status' => 'inactive']);
-
-                    // Also update Redis hash if exists
-                    $redisKey = "h:stream:{$subscription->id}:{$device->device_type}:{$device->id}";
-                    if (Redis::exists($redisKey)) {
-                        Redis::hset($redisKey, 'status', 'inactive');
-                    }
+                    $message = 'Blocked device reset to inactive';
+                } else {
+                    // Device exists and is not blocked
+                    $message = 'Device already exists with status: ' . $device->status;
                 }
+
+                // Sync Redis hash
+                $redisKey = "h:stream:{$subscription->id}:{$device->device_type}:{$device->id}";
+                Redis::hmset($redisKey, [
+                    'status' => $device->status,
+                    'device_name' => $device->device_name,
+                    'last_ping' => now()->timestamp
+                ]);
+            } else {
+                $message = 'No active subscription found for this user or device ID missing';
             }
 
+            // Return response
             return response()->json([
                 'status' => 'success',
-                'message' => 'OTP verified successfully',
+                'message' => $message,
                 'data' => array_merge(['uid' => $userId], $tokens)
             ]);
 
