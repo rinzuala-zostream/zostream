@@ -466,7 +466,7 @@ class NewStreamController extends Controller
         }
 
         // 🔐 Ensure subscription belongs to the user
-        if ((int) $subscription->user_id !== (int) $userId) {
+        if ($subscription->user_id !== $userId) {
             return response()->json([
                 'status' => 'error',
                 'title' => 'Unauthorized',
