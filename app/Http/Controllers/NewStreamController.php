@@ -374,7 +374,7 @@ class NewStreamController extends Controller
 
         ActiveStream::where('device_id', $device->id)
             ->where('subscription_id', $subscription->id)
-            ->update(['status' => 'stop', 'last_ping' => now()]);
+            ->update(['status' => 'stopped', 'last_ping' => now()]);
 
         StreamEvent::create([
             'subscription_id' => $subscription->id,
