@@ -399,9 +399,10 @@ class NewStreamController extends Controller
     {
         $subId = $request->input('subscription_id');
         $userId = $request->input('user_id');
+        $userDeviceId = $request->input('device_id');
         $deviceType = strtolower(trim($request->input('device_type'))); // mobile | browser | tv
 
-        if (!$subId || !$userId || !$deviceType) {
+        if (!$subId || !$userId || !$deviceType || !$userDeviceId) {
             return response()->json([
                 'status' => 'error',
                 'title' => 'Missing Information',
@@ -424,15 +425,6 @@ class NewStreamController extends Controller
                 'title' => 'Subscription Not Found',
                 'message' => 'We could not find the subscription you’re trying to renew. Please check your details and try again.'
             ], 404);
-        }
-
-        // 🔐 Ensure the subscription belongs to the user
-        if ((int) $subscription->user_id !== (int) $userId) {
-            return response()->json([
-                'status' => 'error',
-                'title' => 'Unauthorized',
-                'message' => 'You are not authorized to renew this subscription.'
-            ], 403);
         }
 
         $plan = Plan::find($subscription->plan_id);
@@ -468,6 +460,16 @@ class NewStreamController extends Controller
             $devices = Devices::where('device_type', $deviceType)
                 ->where('user_id', $userId)
                 ->get();
+
+            // 🔐 Ensure the subscription belongs to the user
+            if ($userDeviceId && $devices->device_token !== $userDeviceId) {
+                return response()->json([
+                    'status' => 'error',
+                    'title' => 'Unauthorized',
+                    'message' => 'You are not authorized to renew this subscription.'
+                ], 403);
+
+            }
 
             // Owner device for this device type
             $owner = $devices->where('is_owner_device', true)->first();
