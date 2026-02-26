@@ -73,8 +73,8 @@ class NewStreamController extends Controller
         if (!$subscriptionId || !$deviceToken) {
             return response()->json([
                 'status' => 'error',
-                'title' => 'Missing Parameters',
-                'message' => 'Please provide both subscription_id and Device-Token header.'
+                'title' => 'Missing Information',
+                'message' => 'Some required details are missing. Please try again or restart the app.'
             ], 400);
         }
 
@@ -83,8 +83,8 @@ class NewStreamController extends Controller
         if (!$device) {
             return response()->json([
                 'status' => 'error',
-                'title' => 'Device Not Registered',
-                'message' => 'Your device is not recognized.'
+                'title' => 'Device Not Recognized',
+                'message' => 'We couldn’t verify this device. Please sign in again or contact support if the issue continues.'
             ], 404);
         }
 
@@ -94,6 +94,7 @@ class NewStreamController extends Controller
             return response()->json([
                 'status' => 'error',
                 'title' => 'Subscription Not Found',
+                'message' => 'We could not find an active subscription for your account. Please check your subscription status.'
             ], 404);
         }
 
@@ -101,6 +102,7 @@ class NewStreamController extends Controller
             return response()->json([
                 'status' => 'error',
                 'title' => 'Subscription Expired',
+                'message' => 'Your subscription has expired. Please renew your plan to continue watching.'
             ], 403);
         }
 
@@ -109,7 +111,8 @@ class NewStreamController extends Controller
         if (!$plan) {
             return response()->json([
                 'status' => 'error',
-                'title' => 'Plan Not Found',
+                'title' => 'Plan Information Unavailable',
+                'message' => 'We’re unable to retrieve your subscription plan right now. Please try again later.'
             ], 500);
         }
 
@@ -128,8 +131,8 @@ class NewStreamController extends Controller
         if (!$token) {
             return response()->json([
                 'status' => 'error',
-                'title' => 'Server Busy',
-                'message' => 'Please try again shortly.'
+                'title' => 'Please Try Again',
+                'message' => 'We’re processing another request right now. Please try again in a moment.'
             ], 429);
         }
 
@@ -164,8 +167,8 @@ class NewStreamController extends Controller
             if ($dbStatus === 'blocked') {
                 return response()->json([
                     'status' => 'error',
-                    'title' => 'Device Blocked',
-                    'message' => 'This device has been blocked. Please verify your OTP.'
+                    'title' => 'Access Restricted',
+                    'message' => 'This device is currently restricted. Please verify your account or contact support for assistance.'
                 ], 403);
             }
 
@@ -175,7 +178,7 @@ class NewStreamController extends Controller
                 return response()->json([
                     'status' => 'error',
                     'title' => 'Device Limit Reached',
-                    'message' => "Cannot start streaming. {$type} device limit ({$limit}) reached."
+                    'message' => 'You have reached the maximum number of devices allowed for your plan.'
                 ], 409);
             }
 
@@ -251,8 +254,8 @@ class NewStreamController extends Controller
         if (!$device) {
             return response()->json([
                 'status' => 'error',
-                'title' => 'Device Not Found',
-                'message' => 'Your device is not registered or has been removed.'
+                'title' => 'Device Not Recognized',
+                'message' => 'We couldn’t verify this device. Please sign in again or contact support if the issue continues.'
             ], 404);
         }
 
@@ -263,7 +266,7 @@ class NewStreamController extends Controller
             return response()->json([
                 'status' => 'error',
                 'title' => 'Device Blocked',
-                'message' => 'This device has been blocked due to subscription renewal.'
+                'message' => 'This device has been blocked due to subscription renewal. Please verify your account or contact support for assistance.'
             ], 403);
         }
 
@@ -271,8 +274,8 @@ class NewStreamController extends Controller
         if (!$subscription) {
             return response()->json([
                 'status' => 'error',
-                'title' => 'Subscription Not Found',
-                'message' => 'No active subscription found for this device.'
+                'title' => 'Subscription Unavailable',
+                'message' => 'We could not find an active subscription for your account. Please check your subscription status.'
             ], 404);
         }
 
@@ -280,8 +283,8 @@ class NewStreamController extends Controller
         if (!$plan) {
             return response()->json([
                 'status' => 'error',
-                'title' => 'Plan Not Found',
-                'message' => 'There was an issue retrieving your plan. Contact support.'
+                'title' => 'Plan Information Unavailable',
+                'message' => 'We’re unable to retrieve your subscription plan right now. Please try again later.'
             ], 500);
         }
 
@@ -293,8 +296,8 @@ class NewStreamController extends Controller
         if ($storedToken !== $streamToken) {
             return response()->json([
                 'status' => 'error',
-                'title' => 'Invalid Stream Token',
-                'message' => 'Your session token is invalid. Please restart the stream on your device.'
+                'title' => 'Session Expired',
+                'message' => 'Your streaming session has expired. Please restart playback to continue watching.'
             ], 401);
         }
 
@@ -302,8 +305,8 @@ class NewStreamController extends Controller
         if ($status !== 'active') {
             return response()->json([
                 'status' => 'error',
-                'title' => 'Device Not Active',
-                'message' => 'Your device is currently inactive and cannot ping the stream.'
+                'title' => 'Streaming Paused',
+                'message' => 'Your device is no longer active for streaming. Please restart playback to continue.'
             ], 403);
         }
 
@@ -329,7 +332,10 @@ class NewStreamController extends Controller
             'event_data' => ['ts' => $now],
         ]);
 
-        return response()->json(['status' => 'success']);
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Streaming session is active.'
+        ]);
     }
 
     // 🧹 Stop stream
@@ -342,8 +348,8 @@ class NewStreamController extends Controller
         if (!$device) {
             return response()->json([
                 'status' => 'error',
-                'title' => 'Device Not Found',
-                'message' => 'Your device is not registered or has been removed.'
+                'title' => 'Device Not Recognized',
+                'message' => 'We couldn’t verify this device. Please sign in again or contact support if the issue continues.'
             ], 404);
         }
 
@@ -351,8 +357,8 @@ class NewStreamController extends Controller
         if (!$subscription) {
             return response()->json([
                 'status' => 'error',
-                'title' => 'Subscription Not Found',
-                'message' => 'No active subscription found for this device.'
+                'title' => 'Device Not Recognized',
+                'message' => 'We couldn’t verify this device. Please sign in again or contact support if the issue continues.'
             ], 404);
         }
 
@@ -364,8 +370,8 @@ class NewStreamController extends Controller
         if ($storedToken !== $streamToken) {
             return response()->json([
                 'status' => 'error',
-                'title' => 'Invalid Stream Token',
-                'message' => 'Cannot stop the stream because the token is invalid or already expired.'
+                'title' => 'Session Not Found',
+                'message' => 'This streaming session could not be found or has already ended. Please restart playback if needed.'
             ], 401);
         }
 
@@ -382,7 +388,10 @@ class NewStreamController extends Controller
             'event_type' => 'stop',
         ]);
 
-        return response()->json(['status' => 'success']);
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Streaming has been stopped successfully.'
+        ]);
     }
 
     // 🔁 Renew subscription
@@ -394,8 +403,8 @@ class NewStreamController extends Controller
         if (!$subId || !$userId) {
             return response()->json([
                 'status' => 'error',
-                'title' => 'Missing Parameters',
-                'message' => 'Please provide subscription_id and user_id.'
+                'title' => 'Missing Information',
+                'message' => 'Some required details are missing. Please try again.'
             ], 400);
         }
 
@@ -403,8 +412,8 @@ class NewStreamController extends Controller
         if (!$subscription) {
             return response()->json([
                 'status' => 'error',
-                'title' => 'Invalid Subscription',
-                'message' => 'The subscription does not exist.'
+                'title' => 'Subscription Not Found',
+                'message' => 'We could not find the subscription you’re trying to renew. Please check your details and try again.'
             ], 404);
         }
 
@@ -412,8 +421,8 @@ class NewStreamController extends Controller
         if (!$plan) {
             return response()->json([
                 'status' => 'error',
-                'title' => 'Plan Not Found',
-                'message' => 'There was an issue retrieving your plan. Contact support.'
+                'title' => 'Plan Information Unavailable',
+                'message' => 'We’re unable to retrieve your subscription plan right now. Please try again later.'
             ], 500);
         }
 
@@ -487,6 +496,7 @@ class NewStreamController extends Controller
 
         return response()->json([
             'status' => 'success',
+            'message' => 'Your subscription has been renewed successfully.',
             'owner_device' => $kept,
             'blocked_devices' => $kicked
         ]);
