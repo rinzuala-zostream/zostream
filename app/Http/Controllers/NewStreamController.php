@@ -399,13 +399,22 @@ class NewStreamController extends Controller
     {
         $subId = $request->input('subscription_id');
         $userId = $request->input('user_id');
+        $deviceType = strtolower(trim($request->input('device_type'))); // mobile | browser | tv
 
-        if (!$subId || !$userId) {
+        if (!$subId || !$userId || !$deviceType) {
             return response()->json([
                 'status' => 'error',
                 'title' => 'Missing Information',
                 'message' => 'Some required details are missing. Please try again.'
             ], 400);
+        }
+
+        if (!in_array($deviceType, ['mobile', 'browser', 'tv'], true)) {
+            return response()->json([
+                'status' => 'error',
+                'title' => 'Invalid Device Type',
+                'message' => 'Please provide a valid device type (mobile, browser, or tv).'
+            ], 422);
         }
 
         $subscription = Subscription::find($subId);
@@ -415,6 +424,15 @@ class NewStreamController extends Controller
                 'title' => 'Subscription Not Found',
                 'message' => 'We could not find the subscription you’re trying to renew. Please check your details and try again.'
             ], 404);
+        }
+
+        // 🔐 Ensure the subscription belongs to the user
+        if ((int) $subscription->user_id !== (int) $userId) {
+            return response()->json([
+                'status' => 'error',
+                'title' => 'Unauthorized',
+                'message' => 'You are not authorized to renew this subscription.'
+            ], 403);
         }
 
         $plan = Plan::find($subscription->plan_id);
@@ -430,75 +448,92 @@ class NewStreamController extends Controller
         $newEnd = Carbon::parse($subscription->end_at)->addDays($plan->duration_days);
         $subscription->update(['end_at' => $newEnd]);
 
-        $kept = [];
-        $kicked = [];
-
-        foreach (['mobile', 'browser', 'tv'] as $type) {
-            $lockKey = $this->lockKey($subId, $type);
-            $token = $this->acquireLock($lockKey, $this->lockTTL);
-            if (!$token)
-                continue;
-
-            try {
-                $zsetKey = $this->zsetKey($subId, $type);
-
-                // All devices for this subscription and type
-                $devices = Devices::where('subscription_id', $subId)
-                    ->where('device_type', $type)
-                    ->where('user_id', $userId)
-                    ->get();
-
-                // Owner device
-                $owner = $devices->where('is_owner_device', true)->first();
-
-                foreach ($devices as $device) {
-                    $deviceId = $device->id;
-                    $hashKey = $this->hashKey($subId, $type, $deviceId);
-
-                    if ($owner && $deviceId === $owner->id) {
-                        // Owner remains active
-                        Redis::hset($hashKey, 'status', 'active');
-                        ActiveStream::updateOrCreate(
-                            ['subscription_id' => $subId, 'device_id' => $deviceId],
-                            [
-                                'device_type' => $type,
-                                'stream_token' => Str::uuid()->toString(),
-                                'status' => 'active', // n_active_streams
-                                'last_ping' => now()
-                            ]
-                        );
-                        // Device status
-                        Devices::where('id', $deviceId)->update(['status' => 'active']); // n_devices
-                        $kept[] = $deviceId;
-                    } else {
-                        // Other devices blocked
-                        Redis::hset($hashKey, 'status', 'blocked');
-                        Redis::zrem($zsetKey, $deviceId);
-                        ActiveStream::where('subscription_id', $subId)
-                            ->where('device_id', $deviceId)
-                            ->update(['status' => 'stopped']); // n_active_streams
-                        Devices::where('id', $deviceId)->update(['status' => 'blocked']); // n_devices
-                        $kicked[] = $deviceId;
-                    }
-                }
-
-            } finally {
-                $this->releaseLock($lockKey, $token);
-            }
+        $lockKey = $this->lockKey($subId, $deviceType);
+        $token = $this->acquireLock($lockKey, $this->lockTTL);
+        if (!$token) {
+            return response()->json([
+                'status' => 'error',
+                'title' => 'Please Try Again',
+                'message' => 'We’re processing another request. Please try again shortly.'
+            ], 429);
         }
 
-        // Stream event only for owner
+        $kept = [];
+        $blocked = [];
+
+        try {
+            $zsetKey = $this->zsetKey($subId, $deviceType);
+
+            // 🔎 Only devices for this USER + DEVICE TYPE (subscription set/updated below)
+            $devices = Devices::where('device_type', $deviceType)
+                ->where('user_id', $userId)
+                ->get();
+
+            // Owner device for this device type
+            $owner = $devices->where('is_owner_device', true)->first();
+
+            foreach ($devices as $device) {
+                $deviceId = $device->id;
+                $hashKey = $this->hashKey($subId, $deviceType, $deviceId);
+
+                // 🔗 Ensure device is linked to this subscription
+                if ($device->subscription_id !== $subId) {
+                    $device->update(['subscription_id' => $subId]);
+                }
+
+                if ($owner && $deviceId === $owner->id) {
+                    // ✅ Keep owner active
+                    Redis::hset($hashKey, 'status', 'active');
+
+                    $existingToken = Redis::hget($hashKey, 'stream_token');
+
+                    ActiveStream::updateOrCreate(
+                        ['subscription_id' => $subId, 'device_id' => $deviceId],
+                        [
+                            'device_type' => $deviceType,
+                            'stream_token' => $existingToken ?: Str::uuid()->toString(),
+                            'status' => 'active',
+                            'last_ping' => now(),
+                        ]
+                    );
+
+                    Devices::where('id', $deviceId)->update(['status' => 'active']);
+                    $kept[] = $deviceId;
+
+                } else {
+                    // 🚫 Block other devices of this type for this user
+                    Redis::hset($hashKey, 'status', 'blocked');
+                    Redis::zrem($zsetKey, $deviceId);
+
+                    ActiveStream::where('subscription_id', $subId)
+                        ->where('device_id', $deviceId)
+                        ->update(['status' => 'stopped']);
+
+                    Devices::where('id', $deviceId)->update(['status' => 'blocked']);
+                    $blocked[] = $deviceId;
+                }
+            }
+
+        } finally {
+            $this->releaseLock($lockKey, $token);
+        }
+
         StreamEvent::create([
             'subscription_id' => $subId,
             'event_type' => 'renew',
-            'event_data' => ['owner' => $kept]
+            'event_data' => [
+                'device_type' => $deviceType,
+                'owner' => $kept,
+                'blocked' => $blocked
+            ],
         ]);
 
         return response()->json([
             'status' => 'success',
             'message' => 'Your subscription has been renewed successfully.',
+            'device_type' => $deviceType,
             'owner_device' => $kept,
-            'blocked_devices' => $kicked
+            'blocked_devices' => $blocked
         ]);
     }
 }
