@@ -225,7 +225,10 @@ class NewStreamController extends Controller
                 $movieData = $movieResponse->getData(true);
 
                 if ($movieData['status'] === 'success') {
-                    $movieLinks = $movieData;
+                    $movieLinks = [
+                        'title' => $movieData['title'],
+                        'links' => $movieData['links']
+                    ];
                 }
             }
 
