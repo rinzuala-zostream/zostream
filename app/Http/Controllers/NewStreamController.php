@@ -150,27 +150,18 @@ class NewStreamController extends Controller
                 }
             }
 
-            // 6️⃣ Identify owner
-            $ownerId = Devices::where('user_id', $subscription->user_id)
-                ->where('device_type', $type)
-                ->where('is_owner_device', true)
-                ->value('id');
-
-            $isOwner = (bool) $device->is_owner_device;
-
-            // 🧮 Count non-owner active devices
+            // 6️⃣ Count ALL active devices (owner included)
             $activeMembers = array_keys(Redis::zrange($zsetKey, 0, -1, true) ?: []);
-            $nonOwnerActiveCount = 0;
+
+            $totalActive = 0;
             foreach ($activeMembers as $memberId) {
-                if ($memberId != $ownerId) {
-                    $status = Redis::hget($this->hashKey($subscriptionId, $type, $memberId), 'status');
-                    if ($status === 'active') {
-                        $nonOwnerActiveCount++;
-                    }
+                $status = Redis::hget($this->hashKey($subscriptionId, $type, $memberId), 'status');
+                if ($status === 'active') {
+                    $totalActive++;
                 }
             }
 
-            // 7️⃣ Device status + limit enforcement
+            // 7️⃣ Device status + limit enforcement (applies to everyone)
             $hashKey = $this->hashKey($subscriptionId, $type, $device->id);
             $redisStatus = Redis::hget($hashKey, 'status') ?? $device->status;
 
@@ -182,16 +173,15 @@ class NewStreamController extends Controller
                 ], 403);
             }
 
-            if ($redisStatus === 'inactive') {
-                // Recheck non-owner count before activating
-                if (!$isOwner && $nonOwnerActiveCount >= $limit) {
-                    return response()->json([
-                        'status' => 'error',
-                        'title' => 'Device Limit Reached',
-                        'message' => "Cannot start streaming. {$type} device limit ({$limit}) reached."
-                    ], 409);
-                }
+            if ($redisStatus === 'inactive' && $totalActive >= $limit) {
+                return response()->json([
+                    'status' => 'error',
+                    'title' => 'Device Limit Reached',
+                    'message' => "Cannot start streaming. {$type} device limit ({$limit}) reached."
+                ], 409);
+            }
 
+            if ($redisStatus === 'inactive') {
                 // ✅ Activate
                 $device->update(['status' => 'active']);
                 Redis::hmset($hashKey, [
@@ -199,12 +189,15 @@ class NewStreamController extends Controller
                     'device_name' => $device->device_name,
                     'last_ping' => $now
                 ]);
-                $redisStatus = 'active';
             }
 
             // 8️⃣ Start stream session
             $streamToken = Str::uuid()->toString();
-            Redis::zadd($zsetKey, [$device->id => $now]);
+
+            if (Redis::zscore($zsetKey, $device->id) === null) {
+                Redis::zadd($zsetKey, [$device->id => $now]);
+            }
+
             Redis::hmset($hashKey, [
                 'stream_token' => $streamToken,
                 'started_at' => $now,
@@ -238,8 +231,16 @@ class NewStreamController extends Controller
 
             // 🔟 Final counts
             $activeMembers = array_keys(Redis::zrange($zsetKey, 0, -1, true) ?: []);
-            $totalActive = count($activeMembers);
-            $remainingSlots = max(0, $limit - $nonOwnerActiveCount);
+            $totalActive = 0;
+
+            foreach ($activeMembers as $memberId) {
+                $status = Redis::hget($this->hashKey($subscriptionId, $type, $memberId), 'status');
+                if ($status === 'active') {
+                    $totalActive++;
+                }
+            }
+
+            $remainingSlots = max(0, $limit - $totalActive);
 
             return response()->json([
                 'status' => 'success',
@@ -255,7 +256,7 @@ class NewStreamController extends Controller
             $this->releaseLock($lockKey, $token);
         }
     }
-
+    
     // 🔁 Ping stream
     public function ping(Request $request)
     {
