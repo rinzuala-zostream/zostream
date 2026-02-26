@@ -67,7 +67,7 @@ class NewStreamController extends Controller
     {
         $subscriptionId = $request->input('subscription_id');
         $deviceToken = $request->header('Device-Token');
-        $movieId = $request->input('movie_id'); // 🎬 optional movie ID
+        $movieId = $request->input('movie_id'); // 🎬 optional
 
         if (!$subscriptionId || !$deviceToken) {
             return response()->json([
@@ -77,7 +77,7 @@ class NewStreamController extends Controller
             ], 400);
         }
 
-        // 1️⃣ Fetch device
+        // 1️⃣ Device check
         $device = Devices::where('device_token', $deviceToken)->first();
         if (!$device) {
             return response()->json([
@@ -87,7 +87,7 @@ class NewStreamController extends Controller
             ], 404);
         }
 
-        // 2️⃣ Fetch subscription
+        // 2️⃣ Subscription check
         $subscription = Subscription::find($subscriptionId);
         if (!$subscription) {
             return response()->json([
@@ -105,7 +105,7 @@ class NewStreamController extends Controller
             ], 403);
         }
 
-        // 3️⃣ Fetch plan
+        // 3️⃣ Plan check
         $plan = Plan::find($subscription->plan_id);
         if (!$plan) {
             return response()->json([
@@ -130,7 +130,7 @@ class NewStreamController extends Controller
             return response()->json([
                 'status' => 'error',
                 'title' => 'Server Busy',
-                'message' => 'Unable to start streaming. Please try again in a few seconds.'
+                'message' => 'Unable to start streaming. Please try again shortly.'
             ], 429);
         }
 
@@ -138,7 +138,7 @@ class NewStreamController extends Controller
             $now = Carbon::now()->timestamp;
             $zsetKey = $this->zsetKey($subscriptionId, $type);
 
-            // 5️⃣ Remove stale sessions
+            // 5️⃣ Clean old sessions
             $members = Redis::zrange($zsetKey, 0, -1, true) ?: [];
             foreach ($members as $memberId => $score) {
                 if ($now - (int) $score > $this->streamTimeout) {
@@ -150,24 +150,27 @@ class NewStreamController extends Controller
                 }
             }
 
-            // 6️⃣ Reload active members & owner
-            $activeMembers = array_keys(Redis::zrange($zsetKey, 0, -1, true) ?: []);
+            // 6️⃣ Identify owner
             $ownerId = Devices::where('user_id', $subscription->user_id)
                 ->where('device_type', $type)
                 ->where('is_owner_device', true)
                 ->value('id');
 
             $isOwner = (bool) $device->is_owner_device;
+
+            // 🧮 Count non-owner active devices
+            $activeMembers = array_keys(Redis::zrange($zsetKey, 0, -1, true) ?: []);
             $nonOwnerActiveCount = 0;
             foreach ($activeMembers as $memberId) {
                 if ($memberId != $ownerId) {
                     $status = Redis::hget($this->hashKey($subscriptionId, $type, $memberId), 'status');
-                    if ($status === 'active')
+                    if ($status === 'active') {
                         $nonOwnerActiveCount++;
+                    }
                 }
             }
 
-            // 7️⃣ Check device status and enforce limits
+            // 7️⃣ Device status + limit enforcement
             $hashKey = $this->hashKey($subscriptionId, $type, $device->id);
             $redisStatus = Redis::hget($hashKey, 'status') ?? $device->status;
 
@@ -180,6 +183,7 @@ class NewStreamController extends Controller
             }
 
             if ($redisStatus === 'inactive') {
+                // Recheck non-owner count before activating
                 if (!$isOwner && $nonOwnerActiveCount >= $limit) {
                     return response()->json([
                         'status' => 'error',
@@ -188,6 +192,7 @@ class NewStreamController extends Controller
                     ], 409);
                 }
 
+                // ✅ Activate
                 $device->update(['status' => 'active']);
                 Redis::hmset($hashKey, [
                     'status' => 'active',
@@ -197,7 +202,7 @@ class NewStreamController extends Controller
                 $redisStatus = 'active';
             }
 
-            // 8️⃣ Start or reactivate stream
+            // 8️⃣ Start stream session
             $streamToken = Str::uuid()->toString();
             Redis::zadd($zsetKey, [$device->id => $now]);
             Redis::hmset($hashKey, [
@@ -218,33 +223,23 @@ class NewStreamController extends Controller
                 ]
             );
 
-            // ✅ If movie_id is provided → fetch links
+            // 9️⃣ Optional movie links
             $movieLinks = null;
             if ($movieId) {
                 $movieResponse = $this->movieController->getLink($movieId);
                 $movieData = $movieResponse->getData(true);
-
                 if ($movieData['status'] === 'success') {
                     $movieLinks = [
                         'title' => $movieData['title'],
-                        'links' => $movieData['links']
+                        'links' => $movieData['url']
                     ];
                 }
             }
 
-            // 9️⃣ Return full response
+            // 🔟 Final counts
             $activeMembers = array_keys(Redis::zrange($zsetKey, 0, -1, true) ?: []);
-            $nonOwnerActiveCount = 0;
-            foreach ($activeMembers as $memberId) {
-                if ($memberId != $ownerId) {
-                    $status = Redis::hget($this->hashKey($subscriptionId, $type, $memberId), 'status');
-                    if ($status === 'active')
-                        $nonOwnerActiveCount++;
-                }
-            }
-
             $totalActive = count($activeMembers);
-            $remainingSlots = max(0, $limit - $nonOwnerActiveCount - ($isOwner ? 0 : 1));
+            $remainingSlots = max(0, $limit - $nonOwnerActiveCount);
 
             return response()->json([
                 'status' => 'success',
@@ -253,7 +248,7 @@ class NewStreamController extends Controller
                 'current_active' => $totalActive,
                 'device_limit' => $limit,
                 'remaining_slots' => $remainingSlots,
-                'movie_links' => $movieLinks // 🎬 Add links only if requested
+                'movie_links' => $movieLinks
             ]);
 
         } finally {
