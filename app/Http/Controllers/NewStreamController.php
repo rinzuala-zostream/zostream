@@ -465,15 +465,6 @@ class NewStreamController extends Controller
             ], 403);
         }
 
-        // 🔐 Ensure subscription belongs to the user
-        if ($subscription->user_id !== $userId) {
-            return response()->json([
-                'status' => 'error',
-                'title' => 'Unauthorized',
-                'message' => 'You are not allowed to renew this subscription.'
-            ], 403);
-        }
-
         // Extend subscription
         $newEnd = Carbon::parse($subscription->end_at)->addDays($plan->duration_days);
         $subscription->update(['end_at' => $newEnd]);
