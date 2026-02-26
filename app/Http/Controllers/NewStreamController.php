@@ -436,6 +436,44 @@ class NewStreamController extends Controller
             ], 500);
         }
 
+        // 🔐 Verify the requesting device belongs to this user and device type
+        $currentDevice = Devices::where('device_token', $userDeviceId)
+            ->where('user_id', $userId)
+            ->first();
+
+        if (!$currentDevice) {
+            return response()->json([
+                'status' => 'error',
+                'title' => 'Unauthorized Device',
+                'message' => 'This device is not authorized to renew the subscription.'
+            ], 403);
+        }
+
+        if (strtolower($currentDevice->device_type) !== $deviceType) {
+            return response()->json([
+                'status' => 'error',
+                'title' => 'Invalid Device Type',
+                'message' => 'This device cannot renew the selected device type.'
+            ], 403);
+        }
+
+        if (!$currentDevice->is_owner_device) {
+            return response()->json([
+                'status' => 'error',
+                'title' => 'Permission Denied',
+                'message' => 'Only the owner device can renew the subscription.'
+            ], 403);
+        }
+
+        // 🔐 Ensure subscription belongs to the user
+        if ((int) $subscription->user_id !== (int) $userId) {
+            return response()->json([
+                'status' => 'error',
+                'title' => 'Unauthorized',
+                'message' => 'You are not allowed to renew this subscription.'
+            ], 403);
+        }
+
         // Extend subscription
         $newEnd = Carbon::parse($subscription->end_at)->addDays($plan->duration_days);
         $subscription->update(['end_at' => $newEnd]);
@@ -461,13 +499,6 @@ class NewStreamController extends Controller
                 ->where('user_id', $userId)
                 ->get();
 
-            if (!$devices->is_owner_device !== true) {
-                return response()->json([
-                    'status' => 'error',
-                    'title' => 'Unauthorized Device',
-                    'message' => 'This device is not authorized to renew the subscription.'
-                ], 403);
-            }
 
             // Owner device for this device type
             $owner = $devices->where('is_owner_device', true)->first();
