@@ -461,14 +461,25 @@ class NewStreamController extends Controller
                 ->where('user_id', $userId)
                 ->get();
 
-            // 🔐 Ensure the subscription belongs to the user
-            if ($userDeviceId && $devices->device_token !== $userDeviceId) {
+            // 🔐 Verify the requesting device belongs to this user and device type
+            $currentDevice = Devices::where('device_token', $userDeviceId)
+                ->where('user_id', $userId)
+                ->first();
+
+            if (!$currentDevice) {
                 return response()->json([
                     'status' => 'error',
-                    'title' => 'Unauthorized',
-                    'message' => 'You are not authorized to renew this subscription.'
+                    'title' => 'Unauthorized Device',
+                    'message' => 'This device is not authorized to renew the subscription.'
                 ], 403);
+            }
 
+            if (strtolower($currentDevice->device_type) !== $deviceType) {
+                return response()->json([
+                    'status' => 'error',
+                    'title' => 'Invalid Device Type',
+                    'message' => 'This device is not allowed to renew this device type.'
+                ], 403);
             }
 
             // Owner device for this device type
