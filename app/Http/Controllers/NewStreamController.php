@@ -449,14 +449,6 @@ class NewStreamController extends Controller
             ], 403);
         }
 
-        if (strtolower($currentDevice->device_type) !== $deviceType) {
-            return response()->json([
-                'status' => 'error',
-                'title' => 'Invalid Device Type',
-                'message' => 'This device cannot renew the selected device type.'
-            ], 403);
-        }
-
         if (!$currentDevice->is_owner_device) {
             return response()->json([
                 'status' => 'error',
