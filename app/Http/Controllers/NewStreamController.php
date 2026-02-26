@@ -63,157 +63,158 @@ class NewStreamController extends Controller
     }
 
     // 🧩 Start streaming
+
     public function start(Request $request)
-{
-    $subscriptionId = $request->input('subscription_id');
-    $deviceToken = $request->header('Device-Token');
-    $movieId = $request->input('movie_id'); // 🎬 optional
+    {
+        $subscriptionId = $request->input('subscription_id');
+        $deviceToken = $request->header('Device-Token');
+        $movieId = $request->input('movie_id'); // optional
 
-    if (!$subscriptionId || !$deviceToken) {
-        return response()->json([
-            'status' => 'error',
-            'title' => 'Missing Parameters',
-            'message' => 'Please provide both subscription_id and Device-Token header.'
-        ], 400);
-    }
-
-    $device = Devices::where('device_token', $deviceToken)->first();
-    if (!$device) {
-        return response()->json([
-            'status' => 'error',
-            'title' => 'Device Not Registered',
-            'message' => 'Your device is not recognized.'
-        ], 404);
-    }
-
-    $subscription = Subscription::find($subscriptionId);
-    if (!$subscription) {
-        return response()->json([
-            'status' => 'error',
-            'title' => 'Subscription Not Found'
-        ], 404);
-    }
-
-    if (Carbon::parse($subscription->end_at)->isPast()) {
-        return response()->json([
-            'status' => 'error',
-            'title' => 'Subscription Expired'
-        ], 403);
-    }
-
-    $plan = Plan::find($subscription->plan_id);
-    if (!$plan) {
-        return response()->json([
-            'status' => 'error',
-            'title' => 'Plan Not Found'
-        ], 500);
-    }
-
-    $type = strtolower(trim($device->device_type));
-    $limit = match ($type) {
-        'mobile' => $plan->device_limit_mobile ?? 1,
-        'browser' => $plan->device_limit_browser ?? 1,
-        'tv' => $plan->device_limit_tv ?? 1,
-        default => 1,
-    };
-
-    $lockKey = $this->lockKey($subscriptionId, $type);
-    $token = $this->acquireLock($lockKey, $this->lockTTL);
-    if (!$token) {
-        return response()->json([
-            'status' => 'error',
-            'title' => 'Server Busy'
-        ], 429);
-    }
-
-    try {
-        $now = Carbon::now()->timestamp;
-        $zsetKey = $this->zsetKey($subscriptionId, $type);
-
-        // 🔄 Cleanup stale sessions
-        $members = Redis::zrange($zsetKey, 0, -1, true) ?: [];
-        foreach ($members as $memberId => $score) {
-            if ($now - (int)$score > $this->streamTimeout) {
-                Redis::zrem($zsetKey, $memberId);
-                Redis::del($this->hashKey($subscriptionId, $type, $memberId));
-                ActiveStream::where('subscription_id', $subscriptionId)
-                    ->where('device_id', $memberId)
-                    ->update(['status' => 'stopped']);
-            }
-        }
-
-        // 🔢 Count active devices BEFORE start
-        $activeMembers = array_keys(Redis::zrange($zsetKey, 0, -1, true) ?: []);
-        $activeCount = 0;
-
-        foreach ($activeMembers as $memberId) {
-            if (Redis::hget($this->hashKey($subscriptionId, $type, $memberId), 'status') === 'active') {
-                $activeCount++;
-            }
-        }
-
-        $hashKey = $this->hashKey($subscriptionId, $type, $device->id);
-        $redisStatus = Redis::hget($hashKey, 'status') ?? $device->status;
-
-        if ($redisStatus === 'blocked') {
-            return response()->json(['status' => 'error', 'title' => 'Device Blocked'], 403);
-        }
-
-        // 🚫 Enforce limit BEFORE starting
-        if ($redisStatus === 'inactive' && $activeCount >= $limit) {
+        if (!$subscriptionId || !$deviceToken) {
             return response()->json([
                 'status' => 'error',
-                'title' => 'Device Limit Reached',
-                'message' => "Limit ({$limit}) reached."
-            ], 409);
+                'title' => 'Missing Parameters',
+                'message' => 'Please provide both subscription_id and Device-Token header.'
+            ], 400);
         }
 
-        // ▶ Activate device
-        $device->update(['status' => 'active']);
+        // 1) Device check
+        $device = Devices::where('device_token', $deviceToken)->first();
+        if (!$device) {
+            return response()->json([
+                'status' => 'error',
+                'title' => 'Device Not Registered',
+                'message' => 'Your device is not recognized.'
+            ], 404);
+        }
 
-        Redis::hmset($hashKey, [
-            'status' => 'active',
-            'last_ping' => $now
-        ]);
+        // 2) Subscription check
+        $subscription = Subscription::find($subscriptionId);
+        if (!$subscription) {
+            return response()->json([
+                'status' => 'error',
+                'title' => 'Subscription Not Found',
+            ], 404);
+        }
 
-        // ▶ Start stream
-        $streamToken = Str::uuid()->toString();
+        if (Carbon::parse($subscription->end_at)->isPast()) {
+            return response()->json([
+                'status' => 'error',
+                'title' => 'Subscription Expired',
+            ], 403);
+        }
 
-        Redis::zadd($zsetKey, [$device->id => $now]);
-        Redis::hmset($hashKey, [
-            'stream_token' => $streamToken,
-            'started_at' => $now,
-            'last_ping' => $now,
-            'status' => 'active'
-        ]);
+        // 3) Plan check
+        $plan = Plan::find($subscription->plan_id);
+        if (!$plan) {
+            return response()->json([
+                'status' => 'error',
+                'title' => 'Plan Not Found',
+            ], 500);
+        }
 
-        ActiveStream::updateOrCreate(
-            ['subscription_id' => $subscriptionId, 'device_id' => $device->id],
-            [
-                'device_type' => $type,
-                'stream_token' => $streamToken,
-                'started_at' => now(),
-                'last_ping' => now(),
-                'status' => 'active'
-            ]
-        );
+        $type = strtolower(trim($device->device_type));
+        $limit = match ($type) {
+            'mobile' => $plan->device_limit_mobile ?? 1,
+            'browser' => $plan->device_limit_browser ?? 1,
+            'tv' => $plan->device_limit_tv ?? 1,
+            default => 1,
+        };
 
-        // 🔢 Final count AFTER start
-        $activeMembers = array_keys(Redis::zrange($zsetKey, 0, -1, true) ?: []);
-        $totalActive = 0;
+        // 4) Acquire Redis lock
+        $lockKey = $this->lockKey($subscriptionId, $type);
+        $token = $this->acquireLock($lockKey, $this->lockTTL);
 
-        foreach ($activeMembers as $memberId) {
-            if (Redis::hget($this->hashKey($subscriptionId, $type, $memberId), 'status') === 'active') {
-                $totalActive++;
+        if (!$token) {
+            return response()->json([
+                'status' => 'error',
+                'title' => 'Server Busy',
+                'message' => 'Please try again shortly.'
+            ], 429);
+        }
+
+        try {
+            $now = Carbon::now()->timestamp;
+            $zsetKey = $this->zsetKey($subscriptionId, $type);
+
+            // 5) Cleanup stale Redis sessions (THIS DOES NOT FREE DB SLOT)
+            $members = Redis::zrange($zsetKey, 0, -1, true) ?: [];
+            foreach ($members as $memberId => $score) {
+                if ($now - (int) $score > $this->streamTimeout) {
+                    Redis::zrem($zsetKey, $memberId);
+                    Redis::del($this->hashKey($subscriptionId, $type, $memberId));
+
+                    ActiveStream::where('subscription_id', $subscriptionId)
+                        ->where('device_id', $memberId)
+                        ->update(['status' => 'stopped']);
+                }
             }
-        }
 
-        // 9️⃣ Optional movie links
+            // 6) DB SEAT COUNT (source of truth for plan limit)
+            // IMPORTANT: This must count devices that are "active" in DB (owner included)
+            $dbActiveCount = Devices::where('user_id', $subscription->user_id)
+                ->where('device_type', $type)
+                ->where('status', 'active')
+                ->count();
+
+            // 7) Device current status (DB first; Redis is session only)
+            $hashKey = $this->hashKey($subscriptionId, $type, $device->id);
+            $dbStatus = $device->status; // 'active' | 'inactive' | 'blocked'
+
+            if ($dbStatus === 'blocked') {
+                return response()->json([
+                    'status' => 'error',
+                    'title' => 'Device Blocked',
+                    'message' => 'This device has been blocked. Please verify your OTP.'
+                ], 403);
+            }
+
+            // 8) Enforce limit using DB seats
+            // If device is inactive AND seats are full -> cannot start
+            if ($dbStatus === 'inactive' && $dbActiveCount >= $limit) {
+                return response()->json([
+                    'status' => 'error',
+                    'title' => 'Device Limit Reached',
+                    'message' => "Cannot start streaming. {$type} device limit ({$limit}) reached."
+                ], 409);
+            }
+
+            // 9) If inactive and seat available -> claim seat (set DB active)
+            if ($dbStatus === 'inactive') {
+                $device->update(['status' => 'active']);
+                $dbActiveCount++; // seat claimed now
+            }
+
+            // 10) Start Redis session (live streaming)
+            $streamToken = Str::uuid()->toString();
+
+            Redis::zadd($zsetKey, [$device->id => $now]); // refresh or add
+            Redis::hmset($hashKey, [
+                'stream_token' => $streamToken,
+                'started_at' => $now,
+                'last_ping' => $now,
+                'status' => 'active',
+                'device_name' => $device->device_name,
+            ]);
+
+            ActiveStream::updateOrCreate(
+                ['subscription_id' => $subscriptionId, 'device_id' => $device->id],
+                [
+                    'device_type' => $type,
+                    'stream_token' => $streamToken,
+                    'started_at' => now(),
+                    'last_ping' => now(),
+                    'status' => 'active'
+                ]
+            );
+
+            // 11) Optional movie links
             $movieLinks = null;
             if ($movieId) {
                 $movieResponse = $this->movieController->getLink($movieId);
                 $movieData = $movieResponse->getData(true);
-                if ($movieData['status'] === 'success') {
+
+                if (($movieData['status'] ?? null) === 'success') {
                     $movieLinks = [
                         'title' => $movieData['title'],
                         'links' => $movieData['links']
@@ -221,21 +222,24 @@ class NewStreamController extends Controller
                 }
             }
 
-        $remainingSlots = max(0, $limit - $totalActive);
+            // 12) Return counts based on DB seats (not Redis)
+            $currentActiveSeats = $dbActiveCount; // DB active devices
+            $remainingSlots = max(0, $limit - $currentActiveSeats);
 
-        return response()->json([
-            'status' => 'success',
-            'stream_token' => $streamToken,
-            'max_quality' => $plan->quality,
-            'current_active' => $totalActive,
-            'device_limit' => $limit,
-            'remaining_slots' => $remainingSlots,
-            'movie_links' => $movieId ? $movieLinks : null
-        ]);
-    } finally {
-        $this->releaseLock($lockKey, $token);
+            return response()->json([
+                'status' => 'success',
+                'stream_token' => $streamToken,
+                'max_quality' => $plan->quality,
+                'current_active' => $currentActiveSeats,   // ✅ DB seats (owner included)
+                'device_limit' => $limit,
+                'remaining_slots' => $remainingSlots,
+                'movie_links' => $movieLinks
+            ]);
+
+        } finally {
+            $this->releaseLock($lockKey, $token);
+        }
     }
-}
 
     // 🔁 Ping stream
     public function ping(Request $request)
