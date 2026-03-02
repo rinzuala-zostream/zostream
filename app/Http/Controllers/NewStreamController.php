@@ -69,6 +69,7 @@ class NewStreamController extends Controller
         $subscriptionId = $request->input('subscription_id');
         $deviceToken = $request->header('Device-Token');
         $movieId = $request->input('movie_id'); // optional
+        $userId = $request->input('user_id'); // optional
 
         if (!$subscriptionId || !$deviceToken) {
             return response()->json([
@@ -79,7 +80,8 @@ class NewStreamController extends Controller
         }
 
         // 1) Device check
-        $device = Devices::where('device_token', $deviceToken)->first();
+        $device = Devices::where('device_token', $deviceToken)
+        ->with('user_id', $userId)->first();
         if (!$device) {
             return response()->json([
                 'status' => 'error',
