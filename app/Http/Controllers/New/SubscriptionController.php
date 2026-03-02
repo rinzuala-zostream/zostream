@@ -19,7 +19,13 @@ class SubscriptionController extends Controller
     {
         try {
 
-            $plans = Plan::where('is_active', true)
+            $plans = Plan::with([
+                'features' => function ($q) {
+                    $q->where('is_active', true)
+                        ->orderBy('sort_order');
+                }
+            ])
+                ->where('is_active', true)
                 ->orderBy('name')
                 ->get()
                 ->groupBy('name');
@@ -28,46 +34,25 @@ class SubscriptionController extends Controller
 
             foreach ($plans as $planName => $planGroup) {
 
-                $first = $planGroup->first();
-
-                // Build per device price
                 $perDevicePrice = [];
+                $deviceFeatures = [];
 
-                foreach ($planGroup as $row) {
-                    $perDevicePrice[ucfirst($row->device_type)] = (float) $row->price;
+                foreach ($planGroup as $plan) {
+
+                    $perDevicePrice[ucfirst($plan->device_type)] = (float) $plan->price;
+
+                    $deviceFeatures[ucfirst($plan->device_type)] =
+                        $plan->features->pluck('feature')->toArray();
                 }
 
-                // Calculate original price (sum of device prices)
-                $originalPrice = $planGroup->sum('price');
-
-                // Auto generate features
-                $features = [
-                    "Watch on {$first->device_limit} device" . ($first->device_limit > 1 ? 's' : ''),
-                ];
-
-                // Example ad logic (customize if needed)
-                if ($first->device_limit == 1) {
-                    $features[] = "Ads";
-                    $features[] = "PPV 2% discount";
-                } elseif ($first->device_limit == 2) {
-                    $features[] = "Ad 40%";
-                    $features[] = "PPV 5% discount";
-                } elseif ($first->device_limit == 3) {
-                    $features[] = "Ad free";
-                    $features[] = "PPV 7% discount";
-                } elseif ($first->device_limit >= 4) {
-                    $features[] = "Ad free";
-                    $features[] = "PPV 10% discount";
-                }
-
-                $features[] = "Unlock all premium content";
+                $first = $planGroup->first();
 
                 $response[] = [
                     "plan" => $planName,
-                    "original_price" => (float) $originalPrice,
-                    "per_device_price" => $perDevicePrice,
+                    "original_price" => (float) $planGroup->sum('price'),
                     "duration_days" => (int) $first->duration_days,
-                    "features" => $features
+                    "per_device_price" => $perDevicePrice,
+                    "per_device_features" => $deviceFeatures
                 ];
             }
 
@@ -77,13 +62,13 @@ class SubscriptionController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Plan list error', ['error' => $e->getMessage()]);
             return response()->json([
                 "status" => "error",
                 "message" => "Failed to fetch plans"
             ]);
         }
     }
+
     /**
      * 🔍 Show a single subscription with plan + devices
      */
