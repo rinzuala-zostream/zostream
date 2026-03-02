@@ -50,7 +50,7 @@ class OTPController extends Controller
                     'message' => 'Test OTP sent successfully',
                     'user_id' => $user->uid,
                     'WhatsApp_Status' => 'skipped',
-                    'otp' => '123456'
+                    'otp' => '326416'
                 ]);
             }
 
@@ -162,48 +162,30 @@ class OTPController extends Controller
             $deviceName = $request->device_name ?? 'Unknown Device';
             $deviceId = $request->device_id;
 
-            if ($otp === '326416') {
+            if ($otp !== '326416') {
 
-                $user = UserModel::where('uid', $userId)->first();
+                // 🔍 Get OTP record
+                $otpRequest = OTPRequestModel::where('user_id', $userId)
+                    ->orderBy('created_at', 'desc')
+                    ->first();
 
-                if (!$user) {
-                    return response()->json(['status' => 'error', 'message' => 'User not found'], 404);
+                if (!$otpRequest) {
+                    return response()->json(['status' => 'error', 'message' => 'No OTP found'], 404);
                 }
 
-                $tokens = $this->tokenController->generateTokens(
-                    $userId,
-                    $request->device_name ?? 'Test Device',
-                    $request->device_id
-                );
+                // ⏰ Check expiry
+                if (now()->gt($otpRequest->expires_at)) {
+                    return response()->json(['status' => 'error', 'message' => 'OTP expired'], 400);
+                }
 
-                return response()->json([
-                    'status' => 'success',
-                    'message' => 'Test OTP verified',
-                    'data' => array_merge(['uid' => $userId], $tokens)
-                ]);
+                // ❌ Check OTP hash
+                if (!Hash::check($otp, $otpRequest->otp_code)) {
+                    return response()->json(['status' => 'error', 'message' => 'Invalid OTP'], 400);
+                }
+
+                // ✅ Valid OTP — remove old record
+                $otpRequest->delete();
             }
-
-            // 🔍 Get OTP record
-            $otpRequest = OTPRequestModel::where('user_id', $userId)
-                ->orderBy('created_at', 'desc')
-                ->first();
-
-            if (!$otpRequest) {
-                return response()->json(['status' => 'error', 'message' => 'No OTP found'], 404);
-            }
-
-            // ⏰ Check expiry
-            if (now()->gt($otpRequest->expires_at)) {
-                return response()->json(['status' => 'error', 'message' => 'OTP expired'], 400);
-            }
-
-            // ❌ Check OTP hash
-            if (!Hash::check($otp, $otpRequest->otp_code)) {
-                return response()->json(['status' => 'error', 'message' => 'Invalid OTP'], 400);
-            }
-
-            // ✅ Valid OTP — remove old record
-            $otpRequest->delete();
 
             // 🔎 Find user
             $user = UserModel::where('uid', $userId)->first();
