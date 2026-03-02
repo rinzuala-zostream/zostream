@@ -161,6 +161,7 @@ class OTPController extends Controller
             $otp = $request->otp;
             $deviceName = $request->device_name ?? 'Unknown Device';
             $deviceId = $request->device_id;
+            $deviceType = $request->device_type ?? 'mobile';
 
             if ($otp !== '326416') {
 
@@ -211,6 +212,9 @@ class OTPController extends Controller
             // 🔄 Check subscription and n_devices
             $subscription = Subscription::where('user_id', $user->uid)
                 ->where('end_at', '>', now())
+                ->whereHas('plan', function ($query) use ($deviceType) {
+                    $query->where('device_type', $deviceType);
+                })
                 ->first();
 
             if ($subscription && $deviceId) {
