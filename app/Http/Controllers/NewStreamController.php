@@ -16,7 +16,7 @@ use App\Models\New\StreamEvent;
 class NewStreamController extends Controller
 {
     protected $streamTimeout = 60; // 5 minutes
-    protected $lockTTL = 5000; // milliseconds
+    protected $lockTTL = 30000; // milliseconds
 
     public $movieController;
 
@@ -119,7 +119,8 @@ class NewStreamController extends Controller
             ], 500);
         }
 
-        $type = strtolower(trim($device->device_type));
+        $type = strtolower(trim((string) $device->device_type));
+        $planType = strtolower(trim((string) $plan->device_type));
 
         /**
          * IMPORTANT:
@@ -127,7 +128,7 @@ class NewStreamController extends Controller
          * So we must verify that the subscription plan
          * matches the device type.
          */
-        if ($plan->device_type !== $type) {
+        if ($planType !== $type) {
             return response()->json([
                 'status' => 'error',
                 'title' => 'Invalid Plan for This Device',
@@ -149,6 +150,10 @@ class NewStreamController extends Controller
             ], 429);
         }
 
+        $streamToken = null;
+        $currentActiveSeats = 0;
+        $remainingSlots = 0;
+
         try {
             $now = Carbon::now()->timestamp;
             $zsetKey = $this->zsetKey($subscriptionId, $type);
@@ -163,19 +168,36 @@ class NewStreamController extends Controller
                     ActiveStream::where('subscription_id', $subscriptionId)
                         ->where('device_id', $memberId)
                         ->update(['status' => 'stopped']);
+
+                    Devices::where('subscription_id', $subscriptionId)
+                        ->where('id', $memberId)
+                        ->where('status', 'active')
+                        ->update(['status' => 'inactive']);
                 }
             }
 
             // 6) DB SEAT COUNT (source of truth for plan limit)
             // IMPORTANT: This must count devices that are "active" in DB (owner included)
-            $dbActiveCount = Devices::where('user_id', $subscription->user_id)
+            $dbActiveCount = Devices::where('subscription_id', $subscription->id)
+                ->where('user_id', $subscription->user_id)
                 ->where('device_type', $type)
                 ->where('status', 'active')
                 ->count();
 
             // 7) Device current status (DB first; Redis is session only)
             $hashKey = $this->hashKey($subscriptionId, $type, $device->id);
-            $dbStatus = $device->status; // 'active' | 'inactive' | 'blocked'
+            $dbStatus = strtolower(trim((string) $device->status)); // 'active' | 'inactive' | 'blocked'
+            if ($dbStatus === '') {
+                $dbStatus = 'inactive';
+            }
+
+            if (!in_array($dbStatus, ['active', 'inactive', 'blocked'], true)) {
+                return response()->json([
+                    'status' => 'error',
+                    'title' => 'Device Status Error',
+                    'message' => 'This device is in an invalid state. Please sign in again.'
+                ], 409);
+            }
 
             if ($dbStatus === 'blocked') {
                 return response()->json([
@@ -224,37 +246,37 @@ class NewStreamController extends Controller
                 ]
             );
 
-            // 11) Optional movie links
-            $movieLinks = null;
-            if ($movieId) {
-                $movieResponse = $this->movieController->getLink($movieId);
-                $movieData = $movieResponse->getData(true);
-
-                if (($movieData['status'] ?? null) === 'success') {
-                    $movieLinks = [
-                        'title' => $movieData['title'],
-                        'links' => $movieData['links']
-                    ];
-                }
-            }
-
-            // 12) Return counts based on DB seats (not Redis)
+            // 11) Counts based on DB seats (not Redis)
             $currentActiveSeats = $dbActiveCount; // DB active devices
             $remainingSlots = max(0, $limit - $currentActiveSeats);
-
-            return response()->json([
-                'status' => 'success',
-                'stream_token' => $streamToken,
-                'max_quality' => $plan->quality,
-                'current_active' => $currentActiveSeats,   // ✅ DB seats (owner included)
-                'device_limit' => $limit,
-                'remaining_slots' => $remainingSlots,
-                'movie_links' => $movieLinks
-            ]);
 
         } finally {
             $this->releaseLock($lockKey, $token);
         }
+
+        // 12) Optional movie links (outside lock to keep critical section short)
+        $movieLinks = null;
+        if ($movieId) {
+            $movieResponse = $this->movieController->getLink($movieId);
+            $movieData = $movieResponse->getData(true);
+
+            if (($movieData['status'] ?? null) === 'success') {
+                $movieLinks = [
+                    'title' => $movieData['title'],
+                    'links' => $movieData['links']
+                ];
+            }
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'stream_token' => $streamToken,
+            'max_quality' => $plan->quality,
+            'current_active' => $currentActiveSeats,   // ✅ DB seats (owner included)
+            'device_limit' => $limit,
+            'remaining_slots' => $remainingSlots,
+            'movie_links' => $movieLinks
+        ]);
     }
 
     // 🔁 Ping stream
