@@ -81,7 +81,7 @@ class NewStreamController extends Controller
 
         // 1) Device check
         $device = Devices::where('device_token', $deviceToken)
-        ->with('user_id', $userId)->first();
+        ->where('user_id', $userId)->first();
         if (!$device) {
             return response()->json([
                 'status' => 'error',
