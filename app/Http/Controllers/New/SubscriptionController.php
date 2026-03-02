@@ -26,7 +26,7 @@ class SubscriptionController extends Controller
                 }
             ])
                 ->where('is_active', true)
-                ->orderBy('name')
+                ->orderByRaw("FIELD(name, 'Kar 1', 'Thla 1', 'Thla 4', 'Thla 6', 'Kum 1')")
                 ->get()
                 ->groupBy('name');
 
