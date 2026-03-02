@@ -117,12 +117,22 @@ class NewStreamController extends Controller
         }
 
         $type = strtolower(trim($device->device_type));
-        $limit = match ($type) {
-            'mobile' => $plan->device_limit_mobile ?? 1,
-            'browser' => $plan->device_limit_browser ?? 1,
-            'tv' => $plan->device_limit_tv ?? 1,
-            default => 1,
-        };
+
+        /**
+         * IMPORTANT:
+         * Plan is now device-specific.
+         * So we must verify that the subscription plan
+         * matches the device type.
+         */
+        if ($plan->device_type !== $type) {
+            return response()->json([
+                'status' => 'error',
+                'title' => 'Invalid Plan for This Device',
+                'message' => 'Your current subscription does not support this device type.'
+            ], 403);
+        }
+
+        $limit = $plan->device_limit ?? 1;
 
         // 4) Acquire Redis lock
         $lockKey = $this->lockKey($subscriptionId, $type);

@@ -13,13 +13,19 @@ class Plan extends Model
 
     protected $fillable = [
         'name',
+        'device_type',      // mobile | tv | browser
+        'device_limit',     // number of streams allowed
         'price',
         'duration_days',
-        'device_limit_mobile',
-        'device_limit_browser',
-        'device_limit_tv',
         'quality',
         'is_active',
+    ];
+
+    protected $casts = [
+        'price' => 'decimal:2',
+        'duration_days' => 'integer',
+        'device_limit' => 'integer',
+        'is_active' => 'boolean',
     ];
 
     public function subscriptions()
