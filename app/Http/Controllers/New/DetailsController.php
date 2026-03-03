@@ -172,8 +172,16 @@ class DetailsController extends Controller
 
             $movie['watch_position'] = $watchData['watchPosition'] ?? 0;
 
+            // getByUser() returns different shapes:
+            // 1) with device_type: plain subscription object
+            // 2) without device_type: { status, data: { data: [...] } } paginator
+            $subscription = data_get($subscriptionData, 'data.data.0')
+                ?? data_get($subscriptionData, 'data.0')
+                ?? data_get($subscriptionData, 'data')
+                ?? (is_array($subscriptionData) && isset($subscriptionData['id']) ? $subscriptionData : null);
+
             return response()->json([
-                'subscription' => data_get($subscriptionData, 'data.data')[0] ?? null,
+                'subscription' => $subscription,
                 'movie' => $movie,
                 'ads' => $subscriptionData['isAdsFree'] ? [] : $adsData,
                 'PaymentStatus' => $paymentData,
