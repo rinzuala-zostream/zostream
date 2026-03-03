@@ -96,7 +96,7 @@ class DetailsController extends Controller
 
             $response = $this->subscriptionController->getByUser($subscriptionRequest, $userId);
             $subscriptionData = json_decode(json_encode($response->getData()), true);
-        
+
             $adsRequest = new Request();
             $adsRequest->headers->set('X-Api-Key', $apiKey);
             $adsResponse = $this->adsController->getAds($adsRequest);
@@ -110,9 +110,12 @@ class DetailsController extends Controller
             }
 
             // Get movie or episode
-            $movieRequest = new Request(['id' => $type === 'movie' ? $mainMovieId : $episodeId]);
+            $id = $type === 'movie' ? $mainMovieId : $episodeId;
+
+            $movieRequest = new Request(['type' => $type]);
             $movieRequest->headers->set('X-Api-Key', $apiKey);
-            $movieResponse = $this->movieController->getById($movieRequest, $type);
+
+            $movieResponse = $this->movieController->getById($movieRequest, $id);
             $movie = json_decode($movieResponse->getContent(), true);
 
             if (!$movie) {
@@ -170,7 +173,7 @@ class DetailsController extends Controller
             $movie['watch_position'] = $watchData['watchPosition'] ?? 0;
 
             return response()->json([
-                'subscription' => $subscriptionData->data->data ?? null,
+                'subscription' => data_get($subscriptionData, 'data.data'),
                 'movie' => $movie,
                 'ads' => $subscriptionData['isAdsFree'] ? [] : $adsData,
                 'PaymentStatus' => $paymentData,
