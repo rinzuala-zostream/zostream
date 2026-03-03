@@ -142,7 +142,7 @@ class DetailsController extends Controller
             // PPV logic
             $ppvKey = $movie['isPayPerView'] ?? $movie['isPPV'] ?? null;
             if ($ppvKey) {
-                $movie['ppv_details'] = $this->fetchPPVDetails($userId, $movieId, $apiKey, $deviceType);
+                $movie['ppv_details'] = $this->fetchPPVDetails($userId, $movieId, $deviceType);
             }
 
             // Ad display time

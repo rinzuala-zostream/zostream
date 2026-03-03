@@ -64,6 +64,7 @@ class MovieController extends Controller
             } else {
                 $movie = MovieModel::select([
                     'num',
+                    'id',
                     'title',
                     'description',
                     'director',
