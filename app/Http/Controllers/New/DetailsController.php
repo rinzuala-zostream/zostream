@@ -190,49 +190,12 @@ class DetailsController extends Controller
 
     private function fetchPPVDetails($userId, $movieId, $deviceType)
     {
-        $hasPlus = strpos($movieId, '_') !== false;
-
-        if ($hasPlus) {
-            list($mainMovieId, $episodeId) = explode('_', $movieId, 2);
-            $mainMovieId = trim($mainMovieId);
-            $episodeId = trim($episodeId);
-            if ($episodeId === '') {
-                $episodeId = null;
-            }
-        } else {
-            $mainMovieId = trim($movieId);
-            $episodeId = null;
-        }
-
-        $candidates = PaymentHistory::where('user_id', $userId)
+        $ppvData = PaymentHistory::where('user_id', $userId)
             ->where('status', 'success')
-            ->where('device_type', strtolower(trim($deviceType))) // 🔥 DB level filter
-            ->where(function ($q) {
-                $q->whereRaw('LOWER(COALESCE(app_payment_type, "")) = ?', ['ppv'])
-                    ->orWhereRaw('LOWER(COALESCE(payment_type, "")) = ?', ['ppv']);
-            })
-            ->orderBy('id', 'desc')
-            ->get();
-
-        $ppvData = $candidates->first(function ($payment) use ($mainMovieId, $episodeId, $deviceType) {
-
-            $meta = is_array($payment->meta) ? $payment->meta : [];
-
-            $paidMovieId = (string) ($meta['movie_id'] ?? $meta['content_id'] ?? '');
-
-            // 🔥 STRICT DEVICE MATCH (from DB column)
-            $paidDeviceType = strtolower(trim((string) $payment->device_type));
-            $requestedDeviceType = strtolower(trim((string) $deviceType));
-
-            $movieMatch = $paidMovieId !== '' && (
-                $paidMovieId === (string) $mainMovieId ||
-                ($episodeId !== null && $paidMovieId === (string) $episodeId)
-            );
-
-            $deviceMatch = $paidDeviceType === $requestedDeviceType;
-
-            return $movieMatch && $deviceMatch;
-        });
+            ->where('device_type', strtolower(trim($deviceType)))
+            ->where('movie_id', $movieId) // 🔥 VERY IMPORTANT
+            ->orderByDesc('id')
+            ->first();
 
         if (!$ppvData) {
             return [
@@ -243,29 +206,34 @@ class DetailsController extends Controller
             ];
         }
 
-        $meta = is_array($ppvData->meta) ? $ppvData->meta : [];
-        $purchaseAt = $ppvData->payment_date ?? $ppvData->created_at ?? now();
-        $purchaseDate = Carbon::parse($purchaseAt);
+        $purchaseDate = Carbon::parse(
+            $ppvData->payment_date ?? $ppvData->created_at
+        );
 
-        if (!empty($ppvData->expiry_date)) {
-            $expiry = Carbon::parse($ppvData->expiry_date);
-        } else {
-            $period = (int) ($meta['rental_period'] ?? $meta['period'] ?? 0);
-            if ($period <= 0) {
-                $period = 7;
-            }
-            $expiry = $purchaseDate->copy()->addDays($period);
-        }
+        $expiry = $ppvData->expiry_date
+            ? Carbon::parse($ppvData->expiry_date)
+            : $purchaseDate->copy()->addDays(7);
 
         $now = now();
-        $daysLeft = (int) $now->diffInDays($expiry, false);
-        $isRented = $now->between($purchaseDate, $expiry);
+
+        if ($now->gt($expiry)) {
+            return [
+                'isRented' => false,
+                'rentalPurchased' => null,
+                'rentalExpiry' => null,
+                'daysLeft' => 0
+            ];
+        }
+
+        $daysLeft = $now->diffInDays($expiry);
 
         return [
-            'isRented' => $isRented,
+            'isRented' => true,
             'rentalPurchased' => $purchaseDate->format('F j, Y'),
             'rentalExpiry' => $expiry->format('F j, Y'),
-            'daysLeft' => $daysLeft > 0 ? "Ni $daysLeft chhung ila en thei." : "Vawiin chiah i en thei tawh",
+            'daysLeft' => $daysLeft > 0
+                ? "Ni $daysLeft chhung ila en thei."
+                : "Vawiin chiah i en thei tawh",
         ];
     }
 
