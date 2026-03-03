@@ -96,19 +96,11 @@ class DetailsController extends Controller
 
             $response = $this->subscriptionController->getByUser($subscriptionRequest, $userId);
             $subscriptionData = json_decode(json_encode($response->getData()), true);
-
-            $deviceRequest = new Request(['user_id' => $userId, 'device_id' => $deviceId]);
-            $deviceRequest->headers->set('X-Api-Key', $apiKey);
-            $deviceResponse = $this->deviceManagementController->get($deviceRequest);
-            $deviceData = json_decode($deviceResponse->getContent(), true);
-
+        
             $adsRequest = new Request();
             $adsRequest->headers->set('X-Api-Key', $apiKey);
             $adsResponse = $this->adsController->getAds($adsRequest);
             $adsData = json_decode($adsResponse->getContent(), true);
-
-            // Set device details in subscription
-            $subscriptionData['deviceDetails'] = $deviceData;
 
             // Ads free logic
             if (isset($subscriptionData['status']) && $subscriptionData['status'] === 'error') {
