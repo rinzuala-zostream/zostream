@@ -95,7 +95,7 @@ class DetailsController extends Controller
             $subscriptionRequest->headers->set('X-Api-Key', $apiKey);
 
             $response = $this->subscriptionController->getByUser($subscriptionRequest, $userId);
-            $subscriptionData = json_decode($response->getContent());
+            $subscriptionData = json_decode(json_encode($response->getData()), true);
 
             $adsRequest = new Request();
             $adsRequest->headers->set('X-Api-Key', $apiKey);
@@ -173,7 +173,7 @@ class DetailsController extends Controller
             $movie['watch_position'] = $watchData['watchPosition'] ?? 0;
 
             return response()->json([
-                'subscription' => data_get($subscriptionData, 'data.data'),
+                'subscription' => (object) data_get($subscriptionData, 'data.data'),
                 'movie' => $movie,
                 'ads' => $subscriptionData['isAdsFree'] ? [] : $adsData,
                 'PaymentStatus' => $paymentData,
