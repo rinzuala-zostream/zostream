@@ -58,7 +58,8 @@ class MovieController extends Controller
                     'isPPV',
                     'isProtected',
                     'isEnable',
-                    'create_date'
+                    'create_date',
+                    'ppv_amount',
                 ])->where('id', $id)->first();
             } else {
                 $movie = MovieModel::select([
@@ -81,7 +82,8 @@ class MovieController extends Controller
                     'isCompleted',
                     'isSeason',
                     'create_date',
-                    'trailer'
+                    'trailer',
+                    'ppv_amount',
                 ])->where('id', $id)->first();
             }
 

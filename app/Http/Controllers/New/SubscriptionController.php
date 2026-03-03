@@ -108,14 +108,14 @@ class SubscriptionController extends Controller
         try {
 
             $perPage = $request->get('per_page', 15);
-            $deviceType = strtolower(trim($request->get('device_type'))); // optional
+            $deviceType = strtolower(trim($request->get('device_type')));
 
             $query = Subscription::with(['plan', 'devices'])
                 ->where('user_id', $userId)
                 ->where('is_active', true)
                 ->orderBy('created_at', 'desc');
 
-            // ✅ Filter by device_type if provided
+            // ✅ If device_type provided → return single object
             if (!empty($deviceType)) {
 
                 if (!in_array($deviceType, ['mobile', 'browser', 'tv'], true)) {
@@ -125,11 +125,22 @@ class SubscriptionController extends Controller
                     ], 422);
                 }
 
-                $query->whereHas('plan', function ($q) use ($deviceType) {
+                $subscription = $query->whereHas('plan', function ($q) use ($deviceType) {
                     $q->where('device_type', $deviceType);
-                });
+                })->first(); // 👈 important
+
+                if (!$subscription) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'No active subscription found for this device type'
+                    ], 404);
+                }
+
+                return response()->json($subscription // 👈 object
+                );
             }
 
+            // ✅ If no device_type → return paginated list
             $subscriptions = $query->paginate($perPage);
 
             if ($subscriptions->isEmpty()) {
@@ -145,6 +156,7 @@ class SubscriptionController extends Controller
             ]);
 
         } catch (Exception $e) {
+
             Log::error('Subscription getByUser error', [
                 'user_id' => $userId,
                 'device_type' => $request->get('device_type'),

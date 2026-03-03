@@ -11,7 +11,7 @@ use App\Http\Controllers\WatchPositionController;
 use App\Models\AdsModel;
 use App\Models\EpisodeModel;
 use App\Models\MovieModel;
-use App\Models\PPVPaymentModel;
+use App\Models\New\PaymentHistory;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Str;
@@ -188,9 +188,8 @@ class DetailsController extends Controller
         }
     }
 
-    private function fetchPPVDetails($userId, $movieId, $apiKey, $deviceType)
+    private function fetchPPVDetails($userId, $movieId, $deviceType)
     {
-        // Determine if we have the “_” scenario
         $hasPlus = strpos($movieId, '_') !== false;
 
         if ($hasPlus) {
@@ -205,21 +204,35 @@ class DetailsController extends Controller
             $episodeId = null;
         }
 
-        // Try main movie ID first
-        $ppvData = PPVPaymentModel::where('user_id', $userId)
-            ->where('movie_id', $mainMovieId)
-            ->where('platform', $deviceType)
+        $candidates = PaymentHistory::where('user_id', $userId)
+            ->where('status', 'success')
+            ->where('device_type', strtolower(trim($deviceType))) // 🔥 DB level filter
+            ->where(function ($q) {
+                $q->whereRaw('LOWER(COALESCE(app_payment_type, "")) = ?', ['ppv'])
+                    ->orWhereRaw('LOWER(COALESCE(payment_type, "")) = ?', ['ppv']);
+            })
             ->orderBy('id', 'desc')
-            ->first();
+            ->get();
 
-        // If no data and there is an episode ID, try that
-        if (!$ppvData && $episodeId) {
-            $ppvData = PPVPaymentModel::where('user_id', $userId)
-                ->where('movie_id', $episodeId)
-                ->where('platform', $deviceType)
-                ->orderBy('id', 'desc')
-                ->first();
-        }
+        $ppvData = $candidates->first(function ($payment) use ($mainMovieId, $episodeId, $deviceType) {
+
+            $meta = is_array($payment->meta) ? $payment->meta : [];
+
+            $paidMovieId = (string) ($meta['movie_id'] ?? $meta['content_id'] ?? '');
+
+            // 🔥 STRICT DEVICE MATCH (from DB column)
+            $paidDeviceType = strtolower(trim((string) $payment->device_type));
+            $requestedDeviceType = strtolower(trim((string) $deviceType));
+
+            $movieMatch = $paidMovieId !== '' && (
+                $paidMovieId === (string) $mainMovieId ||
+                ($episodeId !== null && $paidMovieId === (string) $episodeId)
+            );
+
+            $deviceMatch = $paidDeviceType === $requestedDeviceType;
+
+            return $movieMatch && $deviceMatch;
+        });
 
         if (!$ppvData) {
             return [
@@ -230,36 +243,27 @@ class DetailsController extends Controller
             ];
         }
 
-        // The rest of your logic remains (calculating expiry etc.)
-        $purchaseDate = Carbon::parse($ppvData->purchase_date)->format('Y-m-d');
-        $period = $ppvData->rental_period;
+        $meta = is_array($ppvData->meta) ? $ppvData->meta : [];
+        $purchaseAt = $ppvData->payment_date ?? $ppvData->created_at ?? now();
+        $purchaseDate = Carbon::parse($purchaseAt);
 
-        $response = new Request([
-            'period' => $period,
-            'current_date' => $purchaseDate,
-        ]);
-        $response->headers->set('X-Api-Key', $apiKey);
-
-        $calculateResponse = $this->calculatePlan->calculate($response);
-        $calculateData = json_decode($calculateResponse->getContent(), true);
-
-        if (!isset($calculateData['data']['expiry_date'])) {
-            return [
-                'isRented' => false,
-                'rentalPurchased' => null,
-                'rentalExpiry' => null,
-                'daysLeft' => 0
-            ];
+        if (!empty($ppvData->expiry_date)) {
+            $expiry = Carbon::parse($ppvData->expiry_date);
+        } else {
+            $period = (int) ($meta['rental_period'] ?? $meta['period'] ?? 0);
+            if ($period <= 0) {
+                $period = 7;
+            }
+            $expiry = $purchaseDate->copy()->addDays($period);
         }
 
-        $expiry = Carbon::parse($calculateData['data']['expiry_date']);
         $now = now();
         $daysLeft = (int) $now->diffInDays($expiry, false);
-        $isRented = $now->between(Carbon::parse($purchaseDate), $expiry);
+        $isRented = $now->between($purchaseDate, $expiry);
 
         return [
             'isRented' => $isRented,
-            'rentalPurchased' => Carbon::parse($purchaseDate)->format('F j, Y'),
+            'rentalPurchased' => $purchaseDate->format('F j, Y'),
             'rentalExpiry' => $expiry->format('F j, Y'),
             'daysLeft' => $daysLeft > 0 ? "Ni $daysLeft chhung ila en thei." : "Vawiin chiah i en thei tawh",
         ];

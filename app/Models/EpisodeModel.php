@@ -34,6 +34,7 @@ class EpisodeModel extends Model
         'status',
         'create_date',
         'movie_id',
+        'ppv_amount',
     ];
 
     protected $casts = [

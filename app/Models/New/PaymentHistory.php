@@ -14,6 +14,8 @@ class PaymentHistory extends Model
     protected $fillable = [
         'subscription_id',
         'user_id',
+        'model_id',
+        'device_type',
         'app_payment_type',
         'amount',
         'currency',
