@@ -209,7 +209,7 @@ class OTPController extends Controller
                 return response()->json(['status' => 'error', 'message' => 'Failed to generate tokens'], 500);
             }
 
-            // 🔄 Check active subscription
+            // 🔄 Check subscription and n_devices
             $subscription = Subscription::where('user_id', $user->uid)
                 ->where('end_at', '>', now())
                 ->whereHas('plan', function ($query) use ($deviceType) {
@@ -217,56 +217,52 @@ class OTPController extends Controller
                 })
                 ->first();
 
-            $message = 'Login successful';
+            $device = Devices::where('user_id', $user->uid)
+                ->first();
 
-            if ($deviceId) {
+            if (!$device) {
+                $device = Devices::create([
+                    'user_id' => $user->uid,
+                    'subscription_id' => $subscription ? $subscription->id : null,
+                    'device_token' => $deviceId,
+                    'device_name' => $deviceName,
+                    'device_type' => $request->device_type ?? 'mobile',
+                    'status' => 'active',
+                    'is_owner_device' => true,
+                ]);
 
-                // 🔍 Check device by user + device token (correct way)
+                $message = 'Device created and set as active and set to admin device';
+            } else {
+
                 $device = Devices::where('user_id', $user->uid)
+                    ->where('subscription_id', $subscription->id)
                     ->where('device_token', $deviceId)
                     ->first();
 
                 if (!$device) {
-
-                    // 🔥 Check if owner already exists
-                    $ownerExists = Devices::where('user_id', $user->uid)
-                        ->where('is_owner_device', true)
-                        ->exists();
-
+                    // Create device if missing
                     $device = Devices::create([
                         'user_id' => $user->uid,
-                        'subscription_id' => $subscription?->id,
+                        'subscription_id' => $subscription ? $subscription->id : null,
                         'device_token' => $deviceId,
                         'device_name' => $deviceName,
-                        'device_type' => $deviceType,
-                        'status' => 'active',
-                        'is_owner_device' => $ownerExists ? false : true,
+                        'device_type' => $request->device_type ?? 'mobile',
+                        'status' => 'inactive',
+                        'is_owner_device' => false,
                     ]);
 
-                    $message = $ownerExists
-                        ? 'New device added'
-                        : 'Owner device registered successfully';
-
+                    $message = 'Device created and set as inactive';
+                } elseif ($device->status === 'blocked' && !$device->is_owner_device) {
+                    // Reset blocked device to inactive
+                    $device->update(['status' => 'inactive']);
+                    $message = 'Blocked device reset to inactive';
                 } else {
-
-                    // 🔹 Attach subscription if exists but not linked
-                    if ($subscription && !$device->subscription_id) {
-                        $device->update([
-                            'subscription_id' => $subscription->id
-                        ]);
-                    }
-
-                    // 🔹 Reset blocked shared device
-                    if ($device->status === 'blocked' && !$device->is_owner_device) {
-                        $device->update(['status' => 'inactive']);
-                        $message = 'Blocked device reset to inactive';
-                    } else {
-                        $message = 'Device already registered';
-                    }
+                    // Device exists and is not blocked
+                    $message = 'Device already exists with status: ' . $device->status;
                 }
 
-                // 🔄 Sync Redis ONLY if subscription exists
-                if ($subscription) {
+                if ($subscription && $deviceId) {
+                    // Sync Redis hash
                     $redisKey = "h:stream:{$subscription->id}:{$device->device_type}:{$device->id}";
                     Redis::hmset($redisKey, [
                         'status' => $device->status,
