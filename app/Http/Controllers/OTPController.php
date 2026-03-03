@@ -218,21 +218,25 @@ class OTPController extends Controller
                 ->first();
 
             $device = Devices::where('user_id', $user->uid)
+                ->where('device_type', $deviceType)
                 ->first();
 
             if (!$device) {
                 $device = Devices::create([
                     'user_id' => $user->uid,
-                    'subscription_id' => $subscription ? $subscription->id : null,
+                    'subscription_id' => $subscription?->id ?? null,
                     'device_token' => $deviceId,
                     'device_name' => $deviceName,
-                    'device_type' => $request->device_type ?? 'mobile',
+                    'device_type' => $deviceType,
                     'status' => 'active',
                     'is_owner_device' => true,
                 ]);
 
-                $message = 'Device created and set as active and set to admin device';
-            } else {
+                $message = ucfirst($deviceType) . ' owner device created';
+
+            }
+
+            if ($subscription && $deviceId) {
 
                 $device = Devices::where('user_id', $user->uid)
                     ->where('subscription_id', $subscription->id)
@@ -243,7 +247,7 @@ class OTPController extends Controller
                     // Create device if missing
                     $device = Devices::create([
                         'user_id' => $user->uid,
-                        'subscription_id' => $subscription ? $subscription->id : null,
+                        'subscription_id' => $subscription->id,
                         'device_token' => $deviceId,
                         'device_name' => $deviceName,
                         'device_type' => $request->device_type ?? 'mobile',
@@ -261,14 +265,31 @@ class OTPController extends Controller
                     $message = 'Device already exists with status: ' . $device->status;
                 }
 
-                if ($subscription && $deviceId) {
-                    // Sync Redis hash
-                    $redisKey = "h:stream:{$subscription->id}:{$device->device_type}:{$device->id}";
-                    Redis::hmset($redisKey, [
-                        'status' => $device->status,
-                        'device_name' => $device->device_name,
-                        'last_ping' => now()->timestamp
+                // Sync Redis hash
+                $redisKey = "h:stream:{$subscription->id}:{$device->device_type}:{$device->id}";
+                Redis::hmset($redisKey, [
+                    'status' => $device->status,
+                    'device_name' => $device->device_name,
+                    'last_ping' => now()->timestamp
+                ]);
+            } else {
+                $device = Devices::where('user_id', $user->uid)
+                    ->where('device_token', $deviceId)
+                    ->first();
+
+                if (!$device) {
+                    // Create device if missing
+                    $device = Devices::create([
+                        'user_id' => $user->uid,
+                        'subscription_id' => $subscription->id ?? null,
+                        'device_token' => $deviceId,
+                        'device_name' => $deviceName,
+                        'device_type' => $request->device_type ?? 'mobile',
+                        'status' => 'inactive',
+                        'is_owner_device' => false,
                     ]);
+
+                    $message = 'Device created and set as inactive without subscription';
                 }
             }
 
