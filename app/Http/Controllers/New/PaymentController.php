@@ -132,7 +132,7 @@ class PaymentController extends Controller
                                 'end_at' => $expiryDate,
                                 'is_active' => $isActive
                             ]);
-                            
+
                             // 🔹 Update payment (single update block)
                             $payment->update([
                                 'status' => 'success',
@@ -159,8 +159,6 @@ class PaymentController extends Controller
                             'expires_date' => Carbon::now()->addDays(7) // 7-day access for PPV
                         ]);
                     }
-
-
 
                     $successCount++;
 

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\New\DeviceController;
 use App\Models\New\Devices;
 use App\Models\New\Subscription;
 use App\Models\OTPRequestModel;
@@ -17,11 +18,16 @@ class OTPController extends Controller
 {
     private $whatsappController;
     private $tokenController;
+    protected $deviceController;
 
-    public function __construct(WhatsAppController $whatsappController, TokenController $tokenController)
-    {
+    public function __construct(
+        WhatsAppController $whatsappController,
+        TokenController $tokenController,
+        DeviceController $deviceController
+    ) {
         $this->whatsappController = $whatsappController;
         $this->tokenController = $tokenController;
+        $this->deviceController = $deviceController;
     }
 
     /**
