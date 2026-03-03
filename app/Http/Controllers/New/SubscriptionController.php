@@ -136,7 +136,8 @@ class SubscriptionController extends Controller
                     ], 404);
                 }
 
-                return response()->json($subscription // 👈 object
+                return response()->json(
+                    $subscription // 👈 object
                 );
             }
 
@@ -178,13 +179,65 @@ class SubscriptionController extends Controller
 
             $request->validate([
                 'user_id' => 'required|string|max:225',
-                'plan_id' => 'required|integer|exists:n_plans,id',
+                'plan_id' => 'nullable|integer|exists:n_plans,id',
                 'app_payment_type' => 'nullable|string|max:100',
                 'payment_method' => 'nullable|string|max:100',
                 'payment_gateway' => 'nullable|string|max:100',
                 'transaction_id' => 'nullable|string|max:255',
                 'currency' => 'nullable|string|max:10',
+                'movie_id' => 'nullable|string|max:225', // 🔥 required for PPV
             ]);
+
+            $paymentType = strtolower(trim($request->app_payment_type));
+
+            /*
+            |--------------------------------------------------------------------------
+            | 🎬 PPV FLOW
+            |--------------------------------------------------------------------------
+            */
+            if ($paymentType === 'ppv') {
+
+                if (!$request->movie_id) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'movie_id is required for PPV'
+                    ], 422);
+                }
+
+                $startAt = now();
+                $endAt = $startAt->copy()->addDays(7); // default 7-day PPV
+
+                $payment = PaymentHistory::create([
+                    'subscription_id' => null,
+                    'user_id' => $request->user_id,
+                    'movie_id' => $request->movie_id, // 🔥 important
+                    'app_payment_type' => 'ppv',
+                    'amount' => $request->amount ?? 0,
+                    'currency' => $request->currency ?? 'INR',
+                    'payment_method' => $request->payment_method,
+                    'payment_gateway' => $request->payment_gateway,
+                    'transaction_id' => $request->transaction_id,
+                    'status' => 'pending',
+                    'payment_type' => 'ppv',
+                    'created_at' => now(),
+                    'expiry_date' => $endAt,
+                    'meta' => null,
+                ]);
+
+                DB::commit();
+
+                return response()->json([
+                    'status' => 'success',
+                    'message' => 'PPV payment created.',
+                    'data' => $payment
+                ], 201);
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | 📦 SUBSCRIPTION FLOW
+            |--------------------------------------------------------------------------
+            */
 
             $plan = Plan::find($request->plan_id);
 
@@ -198,16 +251,14 @@ class SubscriptionController extends Controller
             $startAt = now();
             $endAt = $startAt->copy()->addDays($plan->duration_days);
 
-            // ✅ Create Subscription
             $subscription = Subscription::create([
                 'user_id' => $request->user_id,
                 'plan_id' => $plan->id,
                 'start_at' => $startAt,
                 'end_at' => $endAt,
-                'is_active' => false, // start as false until payment success
+                'is_active' => false,
             ]);
 
-            // ✅ Create Payment History (PENDING)
             PaymentHistory::create([
                 'subscription_id' => $subscription->id,
                 'user_id' => $request->user_id,
@@ -217,7 +268,7 @@ class SubscriptionController extends Controller
                 'payment_method' => $request->payment_method,
                 'payment_gateway' => $request->payment_gateway,
                 'transaction_id' => $request->transaction_id,
-                'status' => 'pending', // 🔥 important
+                'status' => 'pending',
                 'payment_type' => 'new',
                 'payment_date' => now(),
                 'expiry_date' => $endAt,
@@ -240,7 +291,7 @@ class SubscriptionController extends Controller
                 'error' => $e->getMessage()
             ]);
 
-            return $this->errorResponse('Failed to create subscription', $e);
+            return $this->errorResponse('Failed to create subscription: ' . $e->getMessage(), $e);
         }
     }
 
