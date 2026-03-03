@@ -156,7 +156,7 @@ class PaymentController extends Controller
 
                         $payment->update([
                             'status' => 'success',
-                            'expires_date' => Carbon::now()->addDays(7) // 7-day access for PPV
+                            'expiry_date' => Carbon::now()->addDays(7) // 7-day access for PPV
                         ]);
                     }
 
