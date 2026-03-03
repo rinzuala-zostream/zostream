@@ -50,6 +50,7 @@ class SubscriptionController extends Controller
                 $first = $planGroup->first();
 
                 $response[] = [
+                    "plan_id" => (int) $first->id,
                     "plan" => $planName,
                     "original_price" => (float) $planGroup->sum('price'),
                     "duration_days" => (int) $first->duration_days,

@@ -10,11 +10,8 @@ class Plan extends Model
     use HasFactory;
 
     protected $table = 'n_plans';
-    protected $primaryKey = 'id';
-    public $incrementing = true;
 
     protected $fillable = [
-        'id',
         'name',
         'device_type',      // mobile | tv | browser
         'device_limit',     // number of streams allowed
