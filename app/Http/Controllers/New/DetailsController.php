@@ -81,7 +81,7 @@ class DetailsController extends Controller
 
         try {
             // Call sub-controllers and decode JSON responses
-            $paymentRequest = new Request(['user_id' => $userId]);
+            $paymentRequest = new Request(['user_id' => $userId, 'device_id' => $deviceId, 'device_type' => $deviceType]);
             $paymentRequest->headers->set('X-Api-Key', $apiKey);
             $paymentResponse = $this->paymentStatusController->processUserPayments($paymentRequest);
             $paymentData = json_decode($paymentResponse->getContent(), true);
@@ -95,7 +95,7 @@ class DetailsController extends Controller
             $subscriptionRequest->headers->set('X-Api-Key', $apiKey);
 
             $response = $this->subscriptionController->getByUser($subscriptionRequest, $userId);
-            $subscriptionData = json_decode(json_encode($response->getData()), true);
+            $subscriptionData = json_decode($response->getContent());
 
             $adsRequest = new Request();
             $adsRequest->headers->set('X-Api-Key', $apiKey);

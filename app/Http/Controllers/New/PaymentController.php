@@ -4,6 +4,7 @@ namespace App\Http\Controllers\New;
 
 use App\Http\Controllers\CashFreeController;
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\NewStreamController;
 use App\Http\Controllers\PhonePeSdkV2Controller;
 use App\Http\Controllers\RazorpayController;
 use App\Http\Controllers\SubscriptionController as LegacySubscriptionController;
@@ -24,27 +25,35 @@ class PaymentController extends Controller
     protected $cashfreeController;
     protected $PhonepePaymentController;
     protected $razorpayController;
+    protected $streamEventController;
 
     public function __construct(
-        LegacySubscriptionController $subscriptionController,
+        SubscriptionController $subscriptionController,
         CashFreeController $cashFreeController,
         PhonePeSdkV2Controller $phonepePaymentController,
-        RazorpayController $razorpayController
+        RazorpayController $razorpayController,
+        NewStreamController $streamEventController
     ) {
+
 
         $this->subscriptionController = $subscriptionController;
         $this->cashfreeController = $cashFreeController;
         $this->PhonepePaymentController = $phonepePaymentController;
         $this->razorpayController = $razorpayController;
+        $this->streamEventController = $streamEventController;
     }
 
     public function processUserPayments(Request $request)
     {
         $request->validate([
+            'device_id' => 'required|string',
+            'device_type' => 'required|string',
             'user_id' => 'required|string',
         ]);
 
         $uid = $request->query('user_id');
+        $deviceId = $request->query('device_id');
+        $deviceType = $request->query('device_type');
 
         $pendingPayments = PaymentHistory::where('user_id', $uid)
             ->where('status', 'pending')
@@ -112,18 +121,33 @@ class PaymentController extends Controller
                                 ? $currentExpiry->copy()->addDays($duration)
                                 : now()->addDays($duration);
 
-                            $subscription->update([
-                                'start_at' => $subscription->start_at ?? now(),
-                                'end_at' => $expiryDate,
-                                'is_active' => true
-                            ]);
+                            // Ensure start_at exists
+                            $startAt = $subscription->start_at ?? now();
 
+                            // Determine active status
+                            $isActive = now()->between($startAt, $expiryDate);
+
+                            $subscription->update([
+                                'start_at' => $startAt,
+                                'end_at' => $expiryDate,
+                                'is_active' => $isActive
+                            ]);
+                            
                             // 🔹 Update payment (single update block)
                             $payment->update([
                                 'status' => 'success',
                                 'payment_date' => now(),
                                 'expiry_date' => $expiryDate
                             ]);
+
+                            $fakeRequest = new Request([
+                                'user_id' => $uid,
+                                'device_id' => $deviceId,
+                                'subscription_id' => $subscription->id,
+                                'device_type' => $deviceType
+                            ]);
+
+                            $this->streamEventController->renew($fakeRequest);
                         }
                     }
 
@@ -135,6 +159,8 @@ class PaymentController extends Controller
                             'expires_date' => Carbon::now()->addDays(7) // 7-day access for PPV
                         ]);
                     }
+
+
 
                     $successCount++;
 

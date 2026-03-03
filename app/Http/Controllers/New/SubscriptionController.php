@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\New;
 
 use App\Http\Controllers\Controller;
+use App\Models\New\PaymentHistory;
+use DB;
 use Illuminate\Http\Request;
 use App\Models\New\Subscription;
 use App\Models\New\Plan;
@@ -110,6 +112,7 @@ class SubscriptionController extends Controller
 
             $query = Subscription::with(['plan', 'devices'])
                 ->where('user_id', $userId)
+                ->where('is_active', true)
                 ->orderBy('created_at', 'desc');
 
             // ✅ Filter by device_type if provided
@@ -157,13 +160,18 @@ class SubscriptionController extends Controller
      */
     public function store(Request $request)
     {
+        DB::beginTransaction();
+
         try {
+
             $request->validate([
                 'user_id' => 'required|string|max:225',
                 'plan_id' => 'required|integer|exists:n_plans,id',
-                'start_at' => 'nullable|date',
-                'end_at' => 'nullable|date',
-                'is_active' => 'nullable|boolean',
+                'app_payment_type' => 'nullable|string|max:100',
+                'payment_method' => 'nullable|string|max:100',
+                'payment_gateway' => 'nullable|string|max:100',
+                'transaction_id' => 'nullable|string|max:255',
+                'currency' => 'nullable|string|max:10',
             ]);
 
             $plan = Plan::find($request->plan_id);
@@ -175,24 +183,51 @@ class SubscriptionController extends Controller
                 ], 404);
             }
 
-            $startAt = $request->start_at ? Carbon::parse($request->start_at) : now();
-            $endAt = $request->end_at ? Carbon::parse($request->end_at) : $startAt->copy()->addDays($plan->duration_days ?? 30);
+            $startAt = now();
+            $endAt = $startAt->copy()->addDays($plan->duration_days);
 
+            // ✅ Create Subscription
             $subscription = Subscription::create([
                 'user_id' => $request->user_id,
                 'plan_id' => $plan->id,
                 'start_at' => $startAt,
                 'end_at' => $endAt,
-                'is_active' => $request->is_active ?? true,
+                'is_active' => false, // start as false until payment success
             ]);
+
+            // ✅ Create Payment History (PENDING)
+            PaymentHistory::create([
+                'subscription_id' => $subscription->id,
+                'user_id' => $request->user_id,
+                'app_payment_type' => $request->app_payment_type,
+                'amount' => $plan->price,
+                'currency' => $request->currency ?? 'INR',
+                'payment_method' => $request->payment_method,
+                'payment_gateway' => $request->payment_gateway,
+                'transaction_id' => $request->transaction_id,
+                'status' => 'pending', // 🔥 important
+                'payment_type' => 'new',
+                'payment_date' => now(),
+                'expiry_date' => $endAt,
+                'meta' => null,
+            ]);
+
+            DB::commit();
 
             return response()->json([
                 'status' => 'success',
-                'message' => 'Subscription created successfully',
+                'message' => 'Subscription created. Payment pending.',
                 'data' => $subscription
             ], 201);
+
         } catch (Exception $e) {
-            Log::error('Subscription store error', ['error' => $e->getMessage()]);
+
+            DB::rollBack();
+
+            Log::error('Subscription store error', [
+                'error' => $e->getMessage()
+            ]);
+
             return $this->errorResponse('Failed to create subscription', $e);
         }
     }
