@@ -170,7 +170,7 @@ class DetailsController extends Controller
             $movie['watch_position'] = $watchData['watchPosition'] ?? 0;
 
             return response()->json([
-                'subscription' => $subscriptionData['data'] ?? null,
+                'subscription' => $subscriptionData['data']['data'] ?? null,
                 'movie' => $movie,
                 'ads' => $subscriptionData['isAdsFree'] ? [] : $adsData,
                 'PaymentStatus' => $paymentData,
