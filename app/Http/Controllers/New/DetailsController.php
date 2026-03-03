@@ -216,13 +216,12 @@ class DetailsController extends Controller
 
         $now = now();
 
-        if ($now->gt($expiry)) {
-            return [
-                'isRented' => false,
-                'rentalPurchased' => null,
-                'rentalExpiry' => null,
-                'daysLeft' => 0
-            ];
+        if ($now->greaterThan($expiry)) {
+            $isRented = false;
+            $daysLeft = 0;
+        } else {
+            $isRented = true;
+            $daysLeft = (int) ceil($now->diffInSeconds($expiry, false) / 86400);
         }
 
         $daysLeft = $now->diffInDays($expiry);
