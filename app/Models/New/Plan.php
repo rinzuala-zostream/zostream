@@ -10,6 +10,8 @@ class Plan extends Model
     use HasFactory;
 
     protected $table = 'n_plans';
+    protected $primaryKey = 'id';
+    public $incrementing = true;
 
     protected $fillable = [
         'id',
