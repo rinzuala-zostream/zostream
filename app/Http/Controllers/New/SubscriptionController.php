@@ -98,15 +98,36 @@ class SubscriptionController extends Controller
     /**
      * 👤 Get all subscriptions by user ID (with plan + devices)
      */
+    /**
+     * 👤 Get all subscriptions by user ID (with optional device_type filter)
+     */
     public function getByUser(Request $request, $userId)
     {
         try {
-            $perPage = $request->get('per_page', 15);
 
-            $subscriptions = Subscription::with(['plan', 'devices'])
+            $perPage = $request->get('per_page', 15);
+            $deviceType = strtolower(trim($request->get('device_type'))); // optional
+
+            $query = Subscription::with(['plan', 'devices'])
                 ->where('user_id', $userId)
-                ->orderBy('created_at', 'desc')
-                ->paginate($perPage);
+                ->orderBy('created_at', 'desc');
+
+            // ✅ Filter by device_type if provided
+            if (!empty($deviceType)) {
+
+                if (!in_array($deviceType, ['mobile', 'browser', 'tv'], true)) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'Invalid device type. Allowed: mobile, browser, tv'
+                    ], 422);
+                }
+
+                $query->whereHas('plan', function ($q) use ($deviceType) {
+                    $q->where('device_type', $deviceType);
+                });
+            }
+
+            $subscriptions = $query->paginate($perPage);
 
             if ($subscriptions->isEmpty()) {
                 return response()->json([
@@ -119,8 +140,14 @@ class SubscriptionController extends Controller
                 'status' => 'success',
                 'data' => $subscriptions
             ]);
+
         } catch (Exception $e) {
-            Log::error('Subscription getByUser error', ['user_id' => $userId, 'error' => $e->getMessage()]);
+            Log::error('Subscription getByUser error', [
+                'user_id' => $userId,
+                'device_type' => $request->get('device_type'),
+                'error' => $e->getMessage()
+            ]);
+
             return $this->errorResponse('Failed to retrieve user subscriptions', $e);
         }
     }
