@@ -12,6 +12,7 @@ class Plan extends Model
     protected $table = 'n_plans';
 
     protected $fillable = [
+        'id',
         'name',
         'device_type',      // mobile | tv | browser
         'device_limit',     // number of streams allowed
@@ -34,7 +35,7 @@ class Plan extends Model
     }
 
     public function features()
-{
-    return $this->hasMany(PlanFeature::class, 'plan_id');
-}
+    {
+        return $this->hasMany(PlanFeature::class, 'plan_id');
+    }
 }
