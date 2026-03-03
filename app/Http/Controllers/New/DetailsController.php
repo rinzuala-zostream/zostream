@@ -227,7 +227,7 @@ class DetailsController extends Controller
         $daysLeft = $now->diffInDays($expiry);
 
         return [
-            'isRented' => true,
+            'isRented' => $isRented,
             'rentalPurchased' => $purchaseDate->format('F j, Y'),
             'rentalExpiry' => $expiry->format('F j, Y'),
             'daysLeft' => $daysLeft > 0
