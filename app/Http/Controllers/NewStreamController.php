@@ -208,9 +208,21 @@ class NewStreamController extends Controller
                 ], 403);
             }
 
-            // 8) Enforce limit using DB seats
-            // If device is inactive AND seats are full -> cannot start
+            // 8) Enforce device seat limit
+
+            // If this device is inactive and all seats are used
             if ($dbStatus === 'inactive' && $dbActiveCount >= $limit) {
+
+                // If only 1 device allowed, do NOT allow replacement
+                if ($limit == 1) {
+                    return response()->json([
+                        'status' => 'error',
+                        'title' => 'Device Already Streaming',
+                        'message' => 'Another device is currently using your subscription.'
+                    ], 409);
+                }
+
+                // For multi-device plans we may allow replacement logic
                 return response()->json([
                     'status' => 'error',
                     'title' => 'Device Limit Reached',
