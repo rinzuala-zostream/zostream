@@ -59,13 +59,13 @@ class SubscriptionController extends Controller
                 ];
             }
 
-            return response()->json([
+            return $this->respond([
                 "status" => "success",
                 "data" => $response
             ]);
 
         } catch (\Exception $e) {
-            return response()->json([
+            return $this->respond([
                 "status" => "error",
                 "message" => "Failed to fetch plans"
             ]);
@@ -82,13 +82,13 @@ class SubscriptionController extends Controller
                 ->find($id);
 
             if (!$subscription) {
-                return response()->json([
+                return $this->respond([
                     'status' => 'error',
                     'message' => 'Subscription not found'
                 ], 404);
             }
 
-            return response()->json([
+            return $this->respond([
                 'status' => 'success',
                 'data' => $subscription
             ]);
@@ -120,7 +120,7 @@ class SubscriptionController extends Controller
             if (!empty($deviceType)) {
 
                 if (!in_array($deviceType, ['mobile', 'browser', 'tv'], true)) {
-                    return response()->json([
+                    return $this->respond([
                         'status' => 'error',
                         'message' => 'Invalid device type. Allowed: mobile, browser, tv'
                     ], 422);
@@ -131,14 +131,16 @@ class SubscriptionController extends Controller
                 })->first(); // 👈 important
 
                 if (!$subscription) {
-                    return response()->json([
+                    return $this->respond([
                         'status' => 'error',
                         'message' => 'No active subscription found for this device type'
                     ], 404);
                 }
 
                 return response()->json(
-                    $subscription // 👈 object
+                    array_merge($subscription->toArray(), [
+                        'current_date' => $this->formattedCurrentDate(),
+                    ]) // 👈 object
                 );
             }
 
@@ -146,13 +148,13 @@ class SubscriptionController extends Controller
             $subscriptions = $query->paginate($perPage);
 
             if ($subscriptions->isEmpty()) {
-                return response()->json([
+                return $this->respond([
                     'status' => 'error',
                     'message' => 'No subscriptions found for this user'
                 ], 404);
             }
 
-            return response()->json([
+            return $this->respond([
                 'status' => 'success',
                 'data' => $subscriptions
             ]);
@@ -199,7 +201,7 @@ class SubscriptionController extends Controller
             if ($paymentType === 'ppv') {
 
                 if (!$request->movie_id) {
-                    return response()->json([
+                    return $this->respond([
                         'status' => 'error',
                         'message' => 'movie_id is required for PPV'
                     ], 422);
@@ -227,7 +229,7 @@ class SubscriptionController extends Controller
 
                 DB::commit();
 
-                return response()->json([
+                return $this->respond([
                     'status' => 'success',
                     'message' => 'PPV payment created.',
                     'data' => $payment
@@ -243,7 +245,7 @@ class SubscriptionController extends Controller
             $plan = Plan::find($request->plan_id);
 
             if (!$plan) {
-                return response()->json([
+                return $this->respond([
                     'status' => 'error',
                     'message' => 'Invalid plan ID'
                 ], 404);
@@ -278,7 +280,7 @@ class SubscriptionController extends Controller
 
             DB::commit();
 
-            return response()->json([
+            return $this->respond([
                 'status' => 'success',
                 'message' => 'Subscription created. Payment pending.',
                 'data' => $subscription
@@ -305,7 +307,7 @@ class SubscriptionController extends Controller
             $subscription = Subscription::find($id);
 
             if (!$subscription) {
-                return response()->json([
+                return $this->respond([
                     'status' => 'error',
                     'message' => 'Subscription not found'
                 ], 404);
@@ -321,7 +323,7 @@ class SubscriptionController extends Controller
 
             $subscription->update($validated);
 
-            return response()->json([
+            return $this->respond([
                 'status' => 'success',
                 'message' => 'Subscription updated successfully',
                 'data' => $subscription
@@ -341,7 +343,7 @@ class SubscriptionController extends Controller
             $subscription = Subscription::find($id);
 
             if (!$subscription) {
-                return response()->json([
+                return $this->respond([
                     'status' => 'error',
                     'message' => 'Subscription not found'
                 ], 404);
@@ -349,7 +351,7 @@ class SubscriptionController extends Controller
 
             $subscription->delete();
 
-            return response()->json([
+            return $this->respond([
                 'status' => 'success',
                 'message' => 'Subscription deleted successfully'
             ]);
@@ -364,10 +366,22 @@ class SubscriptionController extends Controller
      */
     private function errorResponse(string $message, Exception $e, int $code = 500)
     {
-        return response()->json([
+        return $this->respond([
             'status' => 'error',
             'message' => $message,
             'error' => $e->getMessage(),
         ], $code);
+    }
+
+    private function respond(array $payload, int $status = 200)
+    {
+        return response()->json(array_merge([
+            'current_date' => $this->formattedCurrentDate(),
+        ], $payload), $status);
+    }
+
+    private function formattedCurrentDate(): string
+    {
+        return Carbon::now()->format('F j, Y');
     }
 }

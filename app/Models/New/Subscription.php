@@ -22,8 +22,8 @@ class Subscription extends Model
     ];
 
     protected $casts = [
-        'start_at' => 'datetime',
-        'end_at'   => 'datetime',
+        'start_at' => 'datetime:F j, Y',
+        'end_at'   => 'datetime:F j, Y',
         'is_active' => 'boolean',
     ];
 
