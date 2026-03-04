@@ -272,12 +272,7 @@ class OTPController extends Controller
                 }
 
                 // Sync Redis hash
-                $redisKey = "h:stream:{$subscription->id}:{$device->device_type}:{$device->id}";
-                Redis::hmset($redisKey, [
-                    'status' => $device->status,
-                    'device_name' => $device->device_name,
-                    'last_ping' => now()->timestamp
-                ]);
+                
             } else {
                 $device = Devices::where('user_id', $user->uid)
                     ->where('device_token', $deviceId)
