@@ -69,7 +69,8 @@ class NewStreamController extends Controller
         $subscriptionId = $request->input('subscription_id');
         $deviceToken = $request->header('Device-Token');
         $movieId = $request->input('movie_id'); // optional
-        $userId = $request->input('user_id'); 
+        $movieType = $request->input('type'); // optional if movie links are desired at stream start (can be fetched later via separate endpoint if needed)
+        $userId = $request->input('user_id');
 
         if (!$subscriptionId || !$deviceToken || !$userId) {
             return response()->json([
@@ -81,8 +82,8 @@ class NewStreamController extends Controller
 
         // 1) Device check
         $device = Devices::where('device_token', $deviceToken)
-        ->where('subscription_id', $subscriptionId)
-        ->where('user_id', $userId)->first();
+            ->where('subscription_id', $subscriptionId)
+            ->where('user_id', $userId)->first();
         if (!$device) {
             return response()->json([
                 'status' => 'error',
@@ -256,8 +257,14 @@ class NewStreamController extends Controller
 
         // 12) Optional movie links (outside lock to keep critical section short)
         $movieLinks = null;
+
         if ($movieId) {
-            $movieResponse = $this->movieController->getLink($movieId);
+
+            $request = new Request(); // create empty request
+            $request->merge(['type' => $movieType]); // optional if needed
+
+            $movieResponse = $this->movieController->getLink($request, $movieId);
+
             $movieData = $movieResponse->getData(true);
 
             if (($movieData['status'] ?? null) === 'success') {
