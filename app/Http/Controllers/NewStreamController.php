@@ -44,6 +44,7 @@ class NewStreamController extends Controller
             ], 400);
         }
 
+        // 1️⃣ Device check
         $device = Devices::where('device_token', $deviceToken)
             ->where('subscription_id', $subscriptionId)
             ->where('user_id', $userId)
@@ -57,7 +58,9 @@ class NewStreamController extends Controller
             ], 404);
         }
 
+        // 2️⃣ Subscription check
         $subscription = Subscription::find($subscriptionId);
+
         if (!$subscription) {
             return response()->json([
                 'status' => 'error',
@@ -74,7 +77,9 @@ class NewStreamController extends Controller
             ], 403);
         }
 
+        // 3️⃣ Plan check
         $plan = Plan::find($subscription->plan_id);
+
         if (!$plan) {
             return response()->json([
                 'status' => 'error',
@@ -83,8 +88,8 @@ class NewStreamController extends Controller
             ], 500);
         }
 
-        $type = strtolower(trim($device->device_type));
-        $planType = strtolower(trim($plan->device_type));
+        $type = strtolower(trim((string) $device->device_type));
+        $planType = strtolower(trim((string) $plan->device_type));
 
         if ($planType !== $type) {
             return response()->json([
@@ -96,40 +101,63 @@ class NewStreamController extends Controller
 
         $limit = $plan->device_limit ?? 1;
 
+        $streamToken = null;
+        $currentActiveSeats = 0;
+        $remainingSlots = 0;
+
         DB::beginTransaction();
 
         try {
 
-            // 🔥 Cleanup stale streams
-            ActiveStream::where('subscription_id', $subscriptionId)
-                ->where('device_type', $type)
-                ->where('last_ping', '<', now()->subSeconds($this->streamTimeout))
-                ->update(['status' => 'stopped']);
+            // 4️⃣ Cleanup stale streams (DB based)
+            $timeout = now()->subSeconds($this->streamTimeout);
 
-            // free devices
-            Devices::where('subscription_id', $subscriptionId)
+            $staleStreams = ActiveStream::where('subscription_id', $subscriptionId)
                 ->where('device_type', $type)
-                ->where('status', 'active')
-                ->whereDoesntHave('activeStream', function ($q) {
-                    $q->where('status', 'active');
-                })
-                ->update(['status' => 'inactive']);
+                ->where('last_ping', '<', $timeout)
+                ->get();
 
-            $dbActiveCount = Devices::where('subscription_id', $subscriptionId)
+            foreach ($staleStreams as $stream) {
+
+                ActiveStream::where('id', $stream->id)
+                    ->update(['status' => 'stopped']);
+
+                Devices::where('id', $stream->device_id)
+                    ->where('status', 'active')
+                    ->update(['status' => 'inactive']);
+            }
+
+            // 5️⃣ DB SEAT COUNT
+            $dbActiveCount = Devices::where('subscription_id', $subscription->id)
+                ->where('user_id', $subscription->user_id)
                 ->where('device_type', $type)
                 ->where('status', 'active')
                 ->count();
 
-            $dbStatus = strtolower($device->status);
+            // 6️⃣ Device status
+            $dbStatus = strtolower(trim((string) $device->status));
+
+            if ($dbStatus === '') {
+                $dbStatus = 'inactive';
+            }
+
+            if (!in_array($dbStatus, ['active', 'inactive', 'blocked'], true)) {
+                return response()->json([
+                    'status' => 'error',
+                    'title' => 'Device Status Error',
+                    'message' => 'This device is in an invalid state. Please sign in again.'
+                ], 409);
+            }
 
             if ($dbStatus === 'blocked') {
                 return response()->json([
                     'status' => 'error',
                     'title' => 'Access Restricted',
-                    'message' => 'This device is currently restricted. Please verify your account or contact support for assistance.'
+                    'message' => 'This device is currently restricted.'
                 ], 403);
             }
 
+            // 7️⃣ Enforce device limit
             if ($dbStatus === 'inactive' && $dbActiveCount >= $limit) {
                 return response()->json([
                     'status' => 'error',
@@ -138,11 +166,13 @@ class NewStreamController extends Controller
                 ], 409);
             }
 
+            // 8️⃣ Claim seat
             if ($dbStatus === 'inactive') {
                 $device->update(['status' => 'active']);
                 $dbActiveCount++;
             }
 
+            // 9️⃣ Start stream
             $streamToken = Str::uuid()->toString();
 
             ActiveStream::updateOrCreate(
@@ -161,22 +191,36 @@ class NewStreamController extends Controller
 
             DB::commit();
 
-        } catch (\Throwable $e) {
+            $currentActiveSeats = $dbActiveCount;
+            $remainingSlots = max(0, $limit - $currentActiveSeats);
+
+        } catch (\Exception $e) {
 
             DB::rollBack();
-            throw $e;
+
+            return response()->json([
+                'status' => 'error',
+                'title' => 'Stream Error',
+                'message' => 'Unable to start stream. Please try again.'
+            ], 500);
         }
 
-        $remainingSlots = max(0, $limit - $dbActiveCount);
-
+        // 🔟 Optional movie links
         $movieLinks = null;
+
         if ($movieId) {
-            $request = new Request(); // create empty request 
-            $request->merge(['type' => $movieType]); // optional if needed 
-            $movieResponse = $this->movieController->getLink($request, $movieId);
+
+            $req = new Request();
+            $req->merge(['type' => $movieType]);
+
+            $movieResponse = $this->movieController->getLink($req, $movieId);
             $movieData = $movieResponse->getData(true);
+
             if (($movieData['status'] ?? null) === 'success') {
-                $movieLinks = ['title' => $movieData['title'], 'links' => $movieData['links']];
+                $movieLinks = [
+                    'title' => $movieData['title'],
+                    'links' => $movieData['links']
+                ];
             }
         }
 
@@ -184,7 +228,7 @@ class NewStreamController extends Controller
             'status' => 'success',
             'stream_token' => $streamToken,
             'max_quality' => $plan->quality,
-            'current_active' => $dbActiveCount,
+            'current_active' => $currentActiveSeats,
             'device_limit' => $limit,
             'remaining_slots' => $remainingSlots,
             'movie_links' => $movieLinks
