@@ -121,10 +121,6 @@ class NewStreamController extends Controller
 
                 ActiveStream::where('id', $stream->id)
                     ->update(['status' => 'stopped']);
-
-                Devices::where('id', $stream->device_id)
-                    ->where('status', 'active')
-                    ->update(['status' => 'inactive']);
             }
 
             // 5️⃣ DB SEAT COUNT
