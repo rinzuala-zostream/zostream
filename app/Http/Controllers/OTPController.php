@@ -271,8 +271,6 @@ class OTPController extends Controller
                     $message = 'Device already exists with status: ' . $device->status;
                 }
 
-                // Sync Redis hash
-                
             } else {
                 $device = Devices::where('user_id', $user->uid)
                     ->where('device_token', $deviceId)
