@@ -218,6 +218,7 @@ class OTPController extends Controller
             // 🔄 Check subscription and n_devices
             $subscription = Subscription::where('user_id', $user->uid)
                 ->where('end_at', '>', now())
+                ->where('is_active', true)
                 ->whereHas('plan', function ($query) use ($deviceType) {
                     $query->where('device_type', $deviceType);
                 })
