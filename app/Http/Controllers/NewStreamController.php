@@ -148,8 +148,8 @@ class NewStreamController extends Controller
             if ($dbStatus === 'blocked') {
                 return response()->json([
                     'status' => 'error',
-                    'title' => 'Access Restricted',
-                    'message' => 'This device is currently restricted.'
+                    'title' => 'Device Blocked',
+                    'message' => 'This device has been blocked due to subscription renewal. Please verify your account or contact support for assistance.'
                 ], 403);
             }
 
