@@ -210,33 +210,39 @@ class NewStreamController extends Controller
         if ($movieId) {
 
             $req = new Request();
-            $req->merge(['type' => $movieType]);
+            $req->query->set('type', $movieType ?: 'movie');
 
             $movieResponse = $this->movieController->getLink($req, $movieId);
             $movieData = $movieResponse->getData(true);
 
             if (($movieData['status'] ?? null) === 'success') {
+                $links = is_array($movieData['links'] ?? null) ? $movieData['links'] : [];
 
-                $links = $movieData['links'];
+                // iOS -> try resolving HLS master playlist URL and expose it as links.url
+                if (strtolower((string) $platform) === 'ios') {
+                    $sourceUrl = $links['hls_url'] ?? $links['dash_url'] ?? $links['url'] ?? null;
 
-                // iOS → return HLS master playlist
-                if ($platform === 'ios' && $links) {
+                    if (is_string($sourceUrl) && $sourceUrl !== '') {
+                        $hlsRequest = new Request();
+                        $hlsRequest->query->set('url', $sourceUrl);
+                        $hlsRequest->query->set('force', false);
 
-                    $hlsRequest = new Request();
-                    $hlsRequest->merge([
-                        'url' => $links,
-                        'force' => false
-                    ]);
+                        $hlsResponse = $this->hlsFolderController->check($hlsRequest);
+                        $hlsData = $hlsResponse->getData(true);
 
-                    $movieLinks = $this->hlsFolderController->check($hlsRequest);
-                } else {
-                    $mpdUrl = $this->resolveMpdUrl($links);
-
-                    $movieLinks = [
-                        'title' => $movieData['title'],
-                        'links' => $links
-                    ];
+                        if (
+                            ($hlsData['status'] ?? null) === 'success' &&
+                            !empty($hlsData['data']['stream_url'])
+                        ) {
+                            $links['url'] = $hlsData['data']['stream_url'];
+                        }
+                    }
                 }
+
+                $movieLinks = [
+                    'title' => $movieData['title'] ?? null,
+                    'links' => $links
+                ];
             }
         }
 
