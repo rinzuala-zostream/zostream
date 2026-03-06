@@ -20,9 +20,11 @@ class NewStreamController extends Controller
     protected $lockTTL = 30000; // milliseconds
 
     public $movieController;
+    public $hlsFolderController;
 
-    public function __construct(MovieController $movieController)
+    public function __construct(HlsFolderController $hlsFolderController, MovieController $movieController)
     {
+        $this->hlsFolderController = $hlsFolderController;
         $this->movieController = $movieController;
     }
 
@@ -35,6 +37,7 @@ class NewStreamController extends Controller
         $movieId = $request->input('movie_id');
         $movieType = $request->input('type');
         $userId = $request->input('user_id');
+        $platform = $request->input('platform');
 
         if (!$subscriptionId || !$deviceToken || !$userId) {
             return response()->json([
@@ -213,10 +216,27 @@ class NewStreamController extends Controller
             $movieData = $movieResponse->getData(true);
 
             if (($movieData['status'] ?? null) === 'success') {
-                $movieLinks = [
-                    'title' => $movieData['title'],
-                    'links' => $movieData['links']
-                ];
+
+                $links = $movieData['links'];
+
+                // iOS → return HLS master playlist
+                if ($platform === 'ios' && $links) {
+
+                    $hlsRequest = new Request();
+                    $hlsRequest->merge([
+                        'url' => $links,
+                        'force' => false
+                    ]);
+
+                    $movieLinks = $this->hlsFolderController->check($hlsRequest);
+                } else {
+                    $mpdUrl = $this->resolveMpdUrl($links)['url'];
+
+                    $movieLinks = [
+                        'title' => $movieData['title'],
+                        'links' => $mpdUrl
+                    ];
+                }
             }
         }
 
@@ -329,10 +349,6 @@ class NewStreamController extends Controller
         $stream->update([
             'status' => 'stopped',
             'last_ping' => now()
-        ]);
-
-        $device->update([
-            'status' => 'inactive'
         ]);
 
         return response()->json([
@@ -487,5 +503,74 @@ class NewStreamController extends Controller
             'owner_device' => $kept,
             'blocked_devices' => $blocked
         ]);
+    }
+
+    private function resolveMpdUrl(string $raw): array
+    {
+        // Case 1: Plain MPD URL
+        if (Str::contains($raw, 'http') && Str::contains($raw, 'mpd')) {
+            return [
+                'url' => $raw,
+                'source' => 'plaintext'
+            ];
+        }
+
+        // Try decrypt
+        $rawParam = str_replace(' ', '+', $raw);
+
+        $shaKey = 'd4c6198dabafb243b0d043a3c33a9fe171f81605158c267c7dfe5f66df29559a';
+
+        // AES-256 key
+        $decryptionKey = hash('sha256', $shaKey, true);
+
+        // ---- Flexible Base64 decode ----
+        $b64 = strtr($rawParam, '-_', '+/');
+        $pad = strlen($b64) % 4;
+
+        if ($pad) {
+            $b64 .= str_repeat('=', 4 - $pad);
+        }
+
+        $data = @base64_decode($b64, true);
+
+        if ($data === false || strlen($data) < 17) {
+            throw new \Exception('Invalid encrypted payload.');
+        }
+
+        // Extract IV + ciphertext
+        $iv = substr($data, 0, 16);
+        $cipherText = substr($data, 16);
+
+        if (strlen($iv) !== 16 || $cipherText === '') {
+            throw new \Exception('Corrupt encrypted payload.');
+        }
+
+        $decryptedMessage = openssl_decrypt(
+            $cipherText,
+            'aes-256-cbc',
+            $decryptionKey,
+            OPENSSL_RAW_DATA,
+            $iv
+        );
+
+        if ($decryptedMessage === false) {
+            throw new \Exception('Decryption failed.');
+        }
+
+        // Normalize
+        $result = trim(str_replace(["\r", "\n"], '', $decryptedMessage));
+
+        $maybeUrl = filter_var($result, FILTER_VALIDATE_URL)
+            ? $result
+            : urldecode($result);
+
+        if (stripos($maybeUrl, '.mpd') === false) {
+            throw new \Exception('Decrypted URL is not an MPD manifest.');
+        }
+
+        return [
+            'url' => $maybeUrl,
+            'source' => 'decrypted'
+        ];
     }
 }
