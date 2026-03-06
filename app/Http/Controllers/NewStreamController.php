@@ -215,7 +215,7 @@ class NewStreamController extends Controller
             $movieResponse = $this->movieController->getLink($req, $movieId);
             $movieData = $movieResponse->getData(true);
 
-            if (($movieData['status'] ?? null) === 'success') {
+            if (!empty($movieData['links'])) {
 
                 if ($platform === 'ios') {
 
