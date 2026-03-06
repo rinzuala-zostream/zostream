@@ -210,39 +210,32 @@ class NewStreamController extends Controller
         if ($movieId) {
 
             $req = new Request();
-            $req->query->set('type', $movieType ?: 'movie');
+            $req->merge(['type' => $movieType]);
 
             $movieResponse = $this->movieController->getLink($req, $movieId);
             $movieData = $movieResponse->getData(true);
 
             if (($movieData['status'] ?? null) === 'success') {
-                $links = is_array($movieData['links'] ?? null) ? $movieData['links'] : [];
 
-                // iOS -> try resolving HLS master playlist URL and expose it as links.url
-                if (strtolower((string) $platform) === 'ios') {
-                    $sourceUrl = $links['hls_url'] ?? $links['dash_url'] ?? $links['url'] ?? null;
+                if ($platform === 'ios') {
 
-                    if (is_string($sourceUrl) && $sourceUrl !== '') {
-                        $hlsRequest = new Request();
-                        $hlsRequest->query->set('url', $sourceUrl);
-                        $hlsRequest->query->set('force', false);
+                    $fakeReq = new Request();
+                    $fakeReq->merge(['url' => $movieData['links']]);
 
-                        $hlsResponse = $this->hlsFolderController->check($hlsRequest);
-                        $hlsData = $hlsResponse->getData(true);
+                    $links = $this->hlsFolderController->check($fakeReq);
 
-                        if (
-                            ($hlsData['status'] ?? null) === 'success' &&
-                            !empty($hlsData['data']['stream_url'])
-                        ) {
-                            $links['url'] = $hlsData['data']['stream_url'];
-                        }
-                    }
+                    $movieLinks = [
+                        'title' => $movieData['title'],
+                        'links' => $links
+                    ];
+
+                } else {
+                    $mpdUrl = $this->resolveMpdUrl($movieData['links'])['url'];
+                    $movieLinks = [
+                        'title' => $movieData['title'],
+                        'links' => $mpdUrl
+                    ];
                 }
-
-                $movieLinks = [
-                    'title' => $movieData['title'] ?? null,
-                    'links' => $links
-                ];
             }
         }
 
