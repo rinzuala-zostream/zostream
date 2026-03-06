@@ -234,7 +234,7 @@ class NewStreamController extends Controller
 
                     $movieLinks = [
                         'title' => $movieData['title'],
-                        'links' => $mpdUrl
+                        'links' => $links
                     ];
                 }
             }
