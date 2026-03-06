@@ -215,33 +215,42 @@ class NewStreamController extends Controller
             $movieResponse = $this->movieController->getLink($req, $movieId);
             $movieData = $movieResponse->getData(true);
 
-            if (!empty($movieData['links'])) {
+            if (($movieData['status'] ?? null) === 'success') {
+
+                $links = $movieData['links'] ?? [];
+                $title = $movieData['title'] ?? null;
 
                 if ($platform === 'ios') {
 
-                    $fakeReq = new Request();
-                    $fakeReq->merge(['url' => $movieData['links']]);
+                    $hlsUrl = $links['url'] ?? null;
 
-                    $links = $this->hlsFolderController->check($fakeReq);
+                    if ($hlsUrl) {
+                        $fakeReq = new Request();
+                        $fakeReq->merge(['url' => $hlsUrl]);
 
-                    $movieLinks = [
-                        'title' => $movieData['title'],
-                        'links' => $links
-                    ];
+                        $hls = $this->hlsFolderController->check($fakeReq);
+
+                        $movieLinks = [
+                            'title' => $title,
+                            'links' => $hls
+                        ];
+                    }
 
                 } else {
-                    $mpdUrl = $this->resolveMpdUrl($movieData['links'])['url'];
-                    $movieLinks = [
-                        'title' => $movieData['title'],
-                        'links' => $mpdUrl
-                    ];
+
+                    $dashUrl = $links['url'] ?? null;
+
+                    if ($dashUrl) {
+
+                        $mpdUrl = $this->resolveMpdUrl($dashUrl)['url'];
+
+                        $movieLinks = [
+                            'title' => $title,
+                            'links' => $mpdUrl
+                        ];
+                    }
                 }
             }
-
-            $movieLinks = [
-                'title' => $movieData['title'],
-                'links/null' => $movieData['links']
-            ];
         }
 
         return response()->json([
