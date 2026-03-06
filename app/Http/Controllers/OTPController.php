@@ -222,6 +222,7 @@ class OTPController extends Controller
                 ->whereHas('plan', function ($query) use ($deviceType) {
                     $query->where('device_type', $deviceType);
                 })
+                ->orderByDesc('id')
                 ->first();
 
             $device = Devices::where('user_id', $user->uid)
