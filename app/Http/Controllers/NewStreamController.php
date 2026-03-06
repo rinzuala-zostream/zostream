@@ -230,7 +230,7 @@ class NewStreamController extends Controller
 
                     $movieLinks = $this->hlsFolderController->check($hlsRequest);
                 } else {
-                    $mpdUrl = $this->resolveMpdUrl($links)['url'];
+                    $mpdUrl = $this->resolveMpdUrl($links);
 
                     $movieLinks = [
                         'title' => $movieData['title'],
