@@ -228,11 +228,14 @@ class NewStreamController extends Controller
                         $fakeReq = new Request();
                         $fakeReq->merge(['url' => $hlsUrl]);
 
-                        $hls = $this->hlsFolderController->check($fakeReq);
+                        $hlsResponse = $this->hlsFolderController->check($fakeReq);
+                        $hlsData = $hlsResponse->getData(true);
+
+                        $streamUrl = $hlsData['data']['stream_url'] ?? null;
 
                         $movieLinks = [
                             'title' => $title,
-                            'links' => $hls
+                            'links' => $streamUrl
                         ];
                     }
 
