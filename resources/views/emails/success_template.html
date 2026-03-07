@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{SUBJECT}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            background-color: #f4f4f7;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            color: #333;
+        }
+
+        .container {
+            max-width: 600px;
+            background-color: #ffffff;
+            margin: 40px auto;
+            border-radius: 12px;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(90deg, #0a84ff, #007aff);
+            color: #fff;
+            padding: 20px 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .content p {
+            font-size: 15px;
+            color: #555;
+            line-height: 1.6;
+        }
+
+        .details {
+            background-color: #f9f9fb;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 15px;
+        }
+
+        .details table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .details td {
+            padding: 8px 5px;
+            font-size: 14px;
+            color: #333;
+        }
+
+        .details td.label {
+            font-weight: bold;
+            color: #444;
+            width: 40%;
+        }
+
+        .footer {
+            text-align: center;
+            padding: 20px;
+            background-color: #f1f3f6;
+            font-size: 13px;
+            color: #666;
+        }
+
+        .footer a {
+            color: #007aff;
+            text-decoration: none;
+        }
+
+        .logo {
+            width: 80px;
+            margin-bottom: 10px;
+        }
+
+        @media only screen and (max-width: 600px) {
+            .content {
+                padding: 20px;
+            }
+
+            .header h1 {
+                font-size: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <img src="https://cdn.zostream.in/assets/logo-white.png" alt="Zo Stream" class="logo">
+            <h1>{SUBJECT}</h1>
+        </div>
+
+        <div class="content">
+            <p>{BODY_CONTENT}</p>
+
+            <div class="details">
+                <table>
+                    <tr>
+                        <td class="label">Amount Paid:</td>
+                        <td>₹{PAYMENT_AMOUNT}</td>
+                    </tr>
+                    <tr>
+                        <td class="label">Payment Date:</td>
+                        <td>{PAYMENT_DATE}</td>
+                    </tr>
+                    <tr>
+                        <td class="label">Payment Method:</td>
+                        <td>{PAYMENT_METHOD}</td>
+                    </tr>
+                    <tr>
+                        <td class="label">Transaction ID:</td>
+                        <td>{TRANSACTION_ID}</td>
+                    </tr>
+                    <tr>
+                        <td class="label">Type:</td>
+                        <td>{TYPE}</td>
+                    </tr>
+                    <tr>
+                        <td class="label">Platform:</td>
+                        <td>{PLATFORM}</td>
+                    </tr>
+                    <tr>
+                        <td class="label">Plan:</td>
+                        <td>{PLAN}</td>
+                    </tr>
+                </table>
+            </div>
+
+            <p style="margin-top: 20px;">If you have any issues with your payment or subscription, please contact our support team at 
+                <a href="mailto:support@zostream.in">support@zostream.in</a>.
+            </p>
+        </div>
+
+        <div class="footer">
+            <p>{FOOTER}</p>
+            <p>© 2026 Zo Stream. All rights reserved.</p>
+        </div>
+    </div>
+</body>
+</html>

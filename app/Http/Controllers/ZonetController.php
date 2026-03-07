@@ -195,7 +195,7 @@ class ZonetController extends Controller
             }
 
             // Step 3: Check wallet balance
-            $subscriptionCost = 122;
+            $subscriptionCost = 120;
             if ($operator->wallet < $subscriptionCost) {
                 return response()->json([
                     'status' => 'error',

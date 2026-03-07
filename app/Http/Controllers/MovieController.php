@@ -37,44 +37,120 @@ class MovieController extends Controller
             'category' => 'nullable|string',
             'category_type' => 'nullable|string',
             'age_restriction' => 'nullable|string|in:true,false',
+            'platform' => 'nullable|string',
         ]);
+
+        // ✅ Header/Query mode detection
+        $modeHeader = strtolower($request->header('X-Mode', ''));
+        $isKidsByHeader = $modeHeader === 'kids';
+        $isKidsByQuery = ($request->query('isChildMode') ?? 'false') === 'true';
+        $isKidsMode = $isKidsByHeader || $isKidsByQuery;
+
+        // ✅ Platform removed (always default)
+        $platform = '';
+
+        // ✅ Read user ID
+        $userId = $request->header('X-User-Id') ?? $request->query('user_id', '');
+
+        // ✅ Treat empty user ID same as Mizo-only user
+        //$onlyMizoUser = $userId === 'AW7ovVnTdgWuvE1Uke7QTQ5OEQt1';
+        $onlyMizoUser = empty($userId) || $userId === 'AW7ovVnTdgWuvE1Uke7QTQ5OEQt1';
+
+        // ✅ Categories to hide per platform
+        $hiddenByPlatform = [
+            'ios' => ['Hollywood', 'Bollywood', '18+', 'Asian', 'Series', 'Documentary', 'Animation'],
+            'tvos' => ['18+'],
+            'macos' => [],
+            'android' => [],
+            'web' => [],
+            '_default' => ['18+'],
+        ];
+
+        // ✅ Determine hidden categories
+        $hiddenCategories = [];
+        if (!$onlyMizoUser) {
+            if ($isKidsMode) {
+                $hiddenCategories = $hiddenByPlatform['_default'];
+            }
+        }
+
+        // ✅ Skip checks for hidden categories
+        $skipChecks = [
+            'Hollywood' => fn($m) => (int) ($m->isHollywood ?? 0) === 1,
+            'Bollywood' => fn($m) => (int) ($m->isBollywood ?? 0) === 1,
+            'Mizo' => fn($m) => (int) ($m->isMizo ?? 0) === 1,
+            'Asian' => fn($m) => (int) ($m->isKorean ?? 0) === 1,
+            'Series' => fn($m) => (int) ($m->isSeason ?? 0) === 1,
+            'Documentary' => fn($m) => (int) ($m->isDocumentary ?? 0) === 1,
+            'Pay Per View' => fn($m) => (int) ($m->isPayPerView ?? 0) === 1,
+            '18+' => fn($m) => (int) ($m->isAgeRestricted ?? 0) === 1,
+            'Free' => fn($m) => (int) ($m->isPremium ?? 0) === 0,
+            'Animation' => fn($m) => stripos((string) ($m->genre ?? ''), 'animation') !== false,
+        ];
+
+        $shouldSkip = function ($movie) use ($isKidsMode, $hiddenCategories, $skipChecks, $onlyMizoUser) {
+            // ✅ Restrict non-Mizo content for Mizo-only user or empty user ID
+            if ($onlyMizoUser && (int) ($movie->isMizo ?? 0) !== 1) {
+                return true;
+            }
+
+            // ✅ Kids mode restriction
+            if ($isKidsMode && (int) ($movie->isChildMode ?? 0) !== 1) {
+                return true;
+            }
+
+            foreach ($hiddenCategories as $name) {
+                if (isset($skipChecks[$name]) && $skipChecks[$name]($movie)) {
+                    return true;
+                }
+            }
+
+            return false;
+        };
 
         $id = $request->query('id') ?? null;
         $range = $request->query('range') ?? null;
         $categoryKey = strtolower($request->query('category') ?? '');
         $categoryType = strtolower($request->query('category_type') ?? '');
+
         $ageRestriction = ($request->query('age_restriction') ?? 'false') === 'true' ? 1 : 0;
+        if ($isKidsMode) {
+            $ageRestriction = 0;
+        }
 
         $isEnableRequest = filter_var($request->query('is_enable', true), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
         $isEnableRequest = $isEnableRequest === null ? true : $isEnableRequest;
 
+        $applyKidsFilter = function (\Illuminate\Database\Eloquent\Builder $q) use ($isKidsMode) {
+            if ($isKidsMode) {
+                $q->where('isChildMode', 1);
+            }
+            return $q;
+        };
 
-
+        // ✅ Single Movie by ID
         if ($id) {
+            $query = $isEnableRequest
+                ? MovieModel::where('status', 'Published')->where('isEnable', 1)
+                : MovieModel::query();
 
-            if ($isEnableRequest) {
-                $query = MovieModel::where('status', 'Published')->where('isEnable', 1);
-            } else {
-                $query = MovieModel::query();
+            $query = $applyKidsFilter($query);
+            if ($onlyMizoUser) {
+                $query->where('isMizo', 1);
             }
 
-            $movie = $query->where('id', $id)
-                ->first();
-
+            $movie = $query->where('id', $id)->first();
             if (!$movie) {
                 return response()->json(['status' => 'error', 'message' => 'Movie not found']);
             }
 
-            return response()->json(
-                $this->transformMovie($movie)
-            )->header('Content-Type', 'application/json');
-        } else if ($range || $categoryKey) {
+            return response()->json($this->transformMovie($movie))
+                ->header('Content-Type', 'application/json');
+        }
 
-            $rangeParts = explode('-', $range ?? '1-10');
-            $start = max(((int) $rangeParts[0] - 1), 0);
-            $count = max(((int) $rangeParts[1] - $start), 10);
-
-            $categoryMapping = [
+        // ✅ Category/Range Fetch
+        elseif ($range || $categoryKey) {
+            $displayToColumn = [
                 "hollywood" => "isHollywood",
                 "bollywood" => "isBollywood",
                 "mizo" => "isMizo",
@@ -90,8 +166,11 @@ class MovieController extends Controller
                 "free" => "free",
             ];
 
-            $column = $categoryType ? $categoryKey : ($categoryMapping[$categoryKey] ?? null);
+            $rangeParts = explode('-', $range ?? '1-10');
+            $start = max(((int) $rangeParts[0] - 1), 0);
+            $count = max(((int) $rangeParts[1] - $start), 10);
 
+            $column = $categoryType ? $categoryKey : ($displayToColumn[$categoryKey] ?? null);
             if (!$column) {
                 return response()->json(['status' => 'error', 'message' => 'Invalid category']);
             }
@@ -100,10 +179,15 @@ class MovieController extends Controller
                 ->where('isEnable', 1)
                 ->where('status', 'Published');
 
+            $query = $applyKidsFilter($query);
+            if ($onlyMizoUser) {
+                $query->where('isMizo', 1);
+            }
+
             if ($column === 'newrelease') {
                 $query->whereNotNull('release_on')
                     ->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', $ageRestriction))
-                    ->orderByRaw("STR_TO_DATE(release_on, '%d %b, %Y') DESC");
+                    ->orderByRaw("STR_TO_DATE(release_on, '%M %d, %Y') DESC");
             } elseif ($column === 'mostwatch') {
                 $query->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', $ageRestriction))
                     ->orderByDesc('views');
@@ -142,15 +226,22 @@ class MovieController extends Controller
 
             $movies = $query->offset($start)->limit($count)->get();
 
+            if ($isKidsMode && !$onlyMizoUser) {
+                $movies = $movies->reject($shouldSkip)->values();
+            }
+
             return response()->json(
                 data: $movies->map(fn($m) => $this->transformMovie($m))
             )->header('Content-Type', 'application/json');
-        } else {
+        }
+
+        // ✅ Full sections response
+        else {
             $categories = [
-                "New Release" => ["where" => "release_on IS NOT NULL", "order" => "STR_TO_DATE(release_on, '%d %b, %Y') DESC"],
+                "New Release" => ["where" => "release_on IS NOT NULL", "order" => "STR_TO_DATE(release_on, '%M %d, %Y') DESC"],
                 "Most Watched" => ["where" => "1", "order" => "views DESC"],
                 "Pay Per View" => ["where" => "isPayPerView = 1", "order" => "num DESC"],
-                "Latest Update" => ["where" => "1", "order" => "num DESC"],
+                "Latest Update" => ["where" => "1", "order" => "STR_TO_DATE(create_date, '%M %d, %Y') DESC"],
                 "Asian" => ["where" => "isKorean = 1", "order" => "num DESC"],
                 "Series" => ["where" => "isSeason = 1", "order" => "num DESC"],
                 "Hollywood" => ["where" => "isHollywood = 1", "order" => "num DESC"],
@@ -162,7 +253,18 @@ class MovieController extends Controller
                 "Free" => ["where" => "isPremium = 0", "order" => "num DESC"],
             ];
 
+            if (!$onlyMizoUser && $isKidsMode) {
+                foreach ($hiddenCategories as $hiddenName) {
+                    unset($categories[$hiddenName]);
+                }
+            }
+
+            if ($isKidsMode) {
+                unset($categories["18+"]);
+            }
+
             $data = [];
+            $fetchSize = $isKidsMode ? 50 : 10;
 
             foreach ($categories as $name => $clause) {
                 if ($name === "18+" && !$ageRestriction)
@@ -171,23 +273,37 @@ class MovieController extends Controller
                 $where = $clause['where'];
                 $order = $clause['order'];
 
-                $query = MovieModel::whereRaw("isEnable = 1 AND $where")
-                    ->where('status', 'Published')
-                    ->when(!$ageRestriction && strpos($where, 'isAgeRestricted') === false, function ($q) use ($ageRestriction) {
-                        return $q->where('isAgeRestricted', $ageRestriction);
-                    })
-                    ->orderByRaw($order)
-                    ->limit(10)
-                    ->get();
+                $builder = MovieModel::whereRaw("isEnable = 1 AND $where")
+                    ->where('status', 'Published');
 
-                if (!$query->isEmpty()) {
-                    $data[$name] = $query->map(fn($m) => $this->transformMovie($m));
+                if ($isKidsMode) {
+                    $builder->where('isChildMode', 1);
+                }
+                if ($onlyMizoUser) {
+                    $builder->where('isMizo', 1);
+                }
+
+                $builder = $builder->when(
+                    !$ageRestriction && strpos($where, 'isAgeRestricted') === false,
+                    fn($q) => $q->where('isAgeRestricted', $ageRestriction)
+                )
+                    ->orderByRaw($order)
+                    ->limit($fetchSize);
+
+                $list = $builder->get();
+
+                if ($isKidsMode && !$onlyMizoUser) {
+                    $list = $list->reject($shouldSkip)->values();
+                }
+
+                $list = $list->take(10);
+
+                if (!$list->isEmpty()) {
+                    $data[$name] = $list->map(fn($m) => $this->transformMovie($m));
                 }
             }
 
-            return response()->json(
-                $data
-            )->header('Content-Type', 'application/json');
+            return response()->json($data)->header('Content-Type', 'application/json');
         }
     }
 
@@ -277,6 +393,7 @@ class MovieController extends Controller
                 'isPremium' => 'boolean',
                 'isSeason' => 'boolean',
                 'isSubtitle' => 'boolean',
+                "isChildMode" => "boolean"
             ]);
 
             $validated['id'] = Str::random(10);
@@ -379,6 +496,7 @@ class MovieController extends Controller
                 'isPremium' => 'boolean',
                 'isSeason' => 'boolean',
                 'isSubtitle' => 'boolean',
+                "isChildMode" => "boolean"
             ]);
 
             if (isset($validated['release_on'])) {
@@ -398,6 +516,17 @@ class MovieController extends Controller
             }
 
             $movie->update($validated);
+
+            $shouldNotify = $request->boolean('notification', true);
+            if ($shouldNotify && $movie->status === 'Published') {
+                $fakeRequest = new Request([
+                    'title' => $movie->title,
+                    'body' => 'Streaming on Zo Stream',
+                    'image' => $movie->cover_img ?? '',
+                    'key' => $movie->id ?? '',
+                ]);
+                $this->fCMNotificationController->send($fakeRequest);
+            }
 
             return response()->json([
                 'status' => 'success',

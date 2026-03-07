@@ -28,6 +28,7 @@ class MovieModel extends Model
         'isPremium' => 'boolean',
         'isSeason' => 'boolean',
         'isSubtitle' => 'boolean',
+        'isChildMode' => 'boolean',
        
     ];
 
@@ -51,6 +52,7 @@ class MovieModel extends Model
         'isKorean',
         'isMizo',
         'isPayPerView',
+        'isChildMode',
         'isPremium',
         'isSeason',
         'isSubtitle',

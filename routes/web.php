@@ -3,6 +3,7 @@
 use App\Http\Controllers\AdsController;
 use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\UserController;
+use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\RegisterController;
 use App\Http\Controllers\DeviceManagementController;
@@ -16,4 +17,9 @@ Route::get('/check', function () {
 });
 
 Route::get('/ads/{ad}', [AdsController::class, 'show'])->name('ads.show');
+
+Route::get('/redis-test', function () {
+    Redis::set('mykey', 'Hello Redis!');
+    return Redis::get('mykey'); // Should return "Hello Redis!"
+});
 

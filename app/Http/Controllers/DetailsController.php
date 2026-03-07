@@ -7,6 +7,9 @@ use App\Models\EpisodeModel;
 use App\Models\MovieModel;
 use App\Models\PPVPaymentModel;
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
+use Str;
+use Symfony\Component\HttpFoundation\Response as BaseResponse;
 use Illuminate\Support\Facades\Http;
 use Carbon\Carbon;
 
@@ -18,13 +21,17 @@ class DetailsController extends Controller
     protected $subscriptionController;
     protected $adsController;
     protected $calculatePlan;
+    protected $linkController;
+    protected $watchPositionController;
 
     public function __construct(
         PaymentStatusController $paymentStatusController,
         DeviceManagementController $deviceManagementController,
         SubscriptionController $subscriptionController,
         AdsController $adsController,
-        CalculatePlan $calculatePlan
+        CalculatePlan $calculatePlan,
+        LinkController $linkController,
+        WatchPositionController $watchPositionController
     ) {
         $this->validApiKey = config('app.api_key');
         $this->paymentStatusController = $paymentStatusController;
@@ -32,6 +39,8 @@ class DetailsController extends Controller
         $this->subscriptionController = $subscriptionController;
         $this->adsController = $adsController;
         $this->calculatePlan = $calculatePlan;
+        $this->linkController = $linkController;
+        $this->watchPositionController = $watchPositionController;
     }
 
     public function getDetails(Request $request)
@@ -54,6 +63,17 @@ class DetailsController extends Controller
         $deviceId = $request->query('device_id');
         $deviceType = $request->query('device_type');
         $type = $request->query('type', 'movie');
+
+        $hasPlus = Str::contains($movieId, '_');
+
+        if ($hasPlus) {
+            $ids = explode('_', $movieId);
+            $mainMovieId = $ids[0];
+            $episodeId = $ids[1]; // handle if "_" is at the end accidentally
+        } else {
+            $mainMovieId = $movieId;
+            $episodeId = $movieId;
+        }
 
         try {
             // Call sub-controllers and decode JSON responses
@@ -95,13 +115,17 @@ class DetailsController extends Controller
 
             // Get movie or episode
             $movie = $type === 'movie'
-                ? MovieModel::where('id', $movieId)->first()
-                : EpisodeModel::where('id', $movieId)->first();
+                ? MovieModel::where('id', $mainMovieId)->first()
+                : EpisodeModel::where('id', $episodeId)->first();
 
             if (!$movie) {
                 return response()->json([
                     'status' => 'error',
-                    'message' => 'No movie data found'
+                    'message' => 'No movie data found',
+                    'error' => [
+                        'mainMovieId' => $ids[0] ?? null,
+                        'episodeId' => $ids[1] ?? null,
+                    ],
                 ], 404);
             }
 
@@ -124,13 +148,29 @@ class DetailsController extends Controller
             // Ad display time
             if ($type === 'episode') {
                 $url = $movie['isProtected'] ? $movie['dash_url'] : $movie['url'];
-                $duration = $this->getEpisodeDuration($url);
+                $duration = $this->getEpisodeDuration($url, $apiKey);
                 $ms = $this->convertToMilliseconds($duration);
                 $movie['adDisplayTimes'] = ['second' => $ms / 2 + rand(1, $ms / 2)];
             } elseif (!$subscriptionData['isAdsFree'] && !empty($movie['duration'])) {
                 $ms = $this->convertToMilliseconds($movie['duration']);
                 $movie['adDisplayTimes'] = ['second' => $ms / 2 + rand(1, $ms / 2)];
             }
+
+            // Determine age restriction as string ('true' or 'false')
+            $isAgeRestricted = !empty($movie['is_age_restricted']) && $movie['is_age_restricted'] ? 'true' : 'false';
+
+            // Get user's watch position
+            $watchRequest = new Request([
+                'userId' => $userId,
+                'movieId' => $movieId,
+                'isAgeRestricted' => $isAgeRestricted,
+            ]);
+            $watchRequest->headers->set('X-Api-Key', $apiKey);
+
+            $watchResponse = $this->watchPositionController->getWatchPosition($watchRequest);
+            $watchData = json_decode($watchResponse->getContent(), true);
+
+            $movie['watch_position'] = $watchData['watchPosition'] ?? 0;
 
             return response()->json([
                 'subscription' => $subscriptionData,
@@ -150,11 +190,36 @@ class DetailsController extends Controller
 
     private function fetchPPVDetails($userId, $movieId, $apiKey, $deviceType)
     {
+        // Determine if we have the “_” scenario
+        $hasPlus = strpos($movieId, '_') !== false;
+
+        if ($hasPlus) {
+            list($mainMovieId, $episodeId) = explode('_', $movieId, 2);
+            $mainMovieId = trim($mainMovieId);
+            $episodeId = trim($episodeId);
+            if ($episodeId === '') {
+                $episodeId = null;
+            }
+        } else {
+            $mainMovieId = trim($movieId);
+            $episodeId = null;
+        }
+
+        // Try main movie ID first
         $ppvData = PPVPaymentModel::where('user_id', $userId)
-            ->where('movie_id', $movieId)
+            ->where('movie_id', $mainMovieId)
             ->where('platform', $deviceType)
             ->orderBy('id', 'desc')
             ->first();
+
+        // If no data and there is an episode ID, try that
+        if (!$ppvData && $episodeId) {
+            $ppvData = PPVPaymentModel::where('user_id', $userId)
+                ->where('movie_id', $episodeId)
+                ->where('platform', $deviceType)
+                ->orderBy('id', 'desc')
+                ->first();
+        }
 
         if (!$ppvData) {
             return [
@@ -165,6 +230,7 @@ class DetailsController extends Controller
             ];
         }
 
+        // The rest of your logic remains (calculating expiry etc.)
         $purchaseDate = Carbon::parse($ppvData->purchase_date)->format('Y-m-d');
         $period = $ppvData->rental_period;
 
@@ -199,7 +265,6 @@ class DetailsController extends Controller
         ];
     }
 
-
     private function convertToMilliseconds($duration)
     {
         $milliseconds = 0;
@@ -210,25 +275,38 @@ class DetailsController extends Controller
         return $milliseconds;
     }
 
-    private function getEpisodeDuration($encryptedUrl)
+    private function getEpisodeDuration(string $encryptedUrl, string $apiKey)
     {
         $payload = [
             'msg' => $encryptedUrl,
             'packageName' => 'com.buannel.studio.pvt.ltd.zostream',
-            'sha' => 'd4c6198dabafb243b0d043a3c33a9fe171f81605158c267c7dfe5f66df29559a'
+            'sha' => 'd4c6198dabafb243b0d043a3c33a9fe171f81605158c267c7dfe5f66df29559a',
         ];
 
-        $response = Http::timeout(10)
-            ->withHeaders(['Content-Type' => 'application/json'])
-            ->post('https://api.zostream.in/link_check.php', $payload);
+        $request = new Request($payload);
+        $request->headers->set('X-Api-Key', $apiKey);
 
-        $data = $response->json();
+        $response = $this->linkController->decryptMessage($request);
 
-        if (!isset($data['response']) || $data['code'] !== '103') {
+        // Normalize response to an array
+        if ($response instanceof JsonResponse) {
+            $data = $response->getData(true); // associative array
+        } elseif ($response instanceof BaseResponse) {
+            $data = json_decode($response->getContent(), true) ?? [];
+        } elseif (is_array($response)) {
+            $data = $response;
+        } else {
+            // Unexpected return type
             return "0";
         }
 
-        return $this->parseMPD($data['response']);
+        // Be tolerant of code being string or int
+        $code = $data['code'] ?? null;
+        if (!isset($data['message']) || !in_array((string) $code, ['103'], true)) {
+            return "0";
+        }
+
+        return $this->parseMPD($data['message'] ?? '');
     }
 
     private function parseMPD($mpdUrl)

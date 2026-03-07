@@ -4,104 +4,151 @@ namespace App\Http\Controllers;
 
 use App\Models\OTPRequestModel;
 use App\Models\UserModel;
-use Hash;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
-use \Twilio\Rest\Client;
-
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 
 class RequestOTPController extends Controller
 {
     private $validApiKey;
+    private $whatsappController;
 
-    private $twilioSid;
-    private $twilioToken;
-    private $twilioFrom = "Zo Stream";
-
-    public function __construct()
+    public function __construct(WhatsAppController $whatsappController)
     {
+        $this->whatsappController = $whatsappController;
         $this->validApiKey = config('app.api_key');
-        $this->twilioSid = config('app.twilio_id');
-        $this->twilioToken = config('app.twilio_token');
     }
 
+    /**
+     * Send OTP to existing user (user_id required)
+     */
     public function sendOTP(Request $request)
     {
+        try {
+            // ✅ API key check
+            $apiKey = $request->header('X-Api-Key');
+            if ($apiKey !== $this->validApiKey) {
+                return response()->json(["status" => "error", "message" => "Invalid API key"]);
+            }
 
-       
-        $apiKey = $request->header('X-Api-Key');
+            // Validate input
+            $request->validate([
+                'user_id' => 'nullable|string',
+                'phone_number' => 'nullable|string', // optional override
+            ]);
 
-        if ($apiKey !== $this->validApiKey) {
-            return response()->json(["status" => "error", "message" => "Invalid API key"], 401);
-        }
+            $userId = $request->user_id;
+            $phoneRequest = $request->phone_number;
 
-        $request->validate([
-            'user_id' => 'required|string',
-            'phone_number' => 'nullable|string'
-        ]);
+            // 🔍 Find user
+            $user = UserModel::where('uid', $userId)->first();
 
-        $userId = $request->user_id;
-        $phone = $request->phone_number;
+            // ✅ If user not found, create a new one
+            if (!$user) {
+                if (!$phoneRequest) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'User not found and no phone provided to create new user'
+                    ]);
+                }
 
-        // Check if user exists
-        $user = UserModel::where('uid', $userId)->first();
-        if (!$user) {
-            return response()->json(['status' => 'error', 'message' => 'User not found'], 404);
-        }
+                $createdDate = $request->created_date ?: Carbon::now()->format('M d, Y h:i:s a'); // e.g., "Feb 19, 2026 11:45:10 am"
+                $deviceName = $request->device_name ?: 'Unknown Device'; // default device name
 
-        $otp = rand(100000, 999999);
-        $otpHash = Hash::make($otp);
-        $expiry = now()->addMinutes(2);
+                $user = UserModel::create([
+                    'uid' => $request->user_id,
+                    'auth_phone' => $request->phone_number,
+                    'created_date' => $createdDate,
+                    'device_name' => $deviceName,
+                    'isACActive' => $request->isACActive ?? true,
+                    'isAccountComplete' => $request->isAccountComplete ?? false,
+                    // Optional fields
+                    'call' => $request->call,
+                    'device_id' => $request->device_id,
+                    'dob' => $request->dob,
+                    'edit_date' => $request->edit_date,
+                    'img' => $request->img,
+                    'khua' => $request->khua,
+                    'lastLogin' => $request->lastLogin,
+                    'mail' => $request->mail,
+                    'name' => $request->name,
+                    'veng' => $request->veng,
+                    'token' => $request->token,
+                    'is_auth_phone_active' => true,
+                ]);
+            }
 
-        // Check if unverified OTP exists
-        $existingOtp = OTPRequestModel::where('user_id', $userId)
-            ->where('is_verified', 0)
-            ->first();
+            // Determine OTP target phone
+            $otpPhone = $user->auth_phone ?? $phoneRequest;
+            if (!$otpPhone) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'No phone available to send OTP'
+                ]);
+            }
 
-        if ($existingOtp) {
-            $otpRequest = OTPRequestModel::where('id', $existingOtp->id)
-                ->update([
+            // 🔐 Generate OTP
+            $otp = rand(100000, 999999);
+            $otpHash = Hash::make($otp);
+            $expiry = now()->addMinutes(5);
+
+            // 🔁 Update or create OTP request
+            $existingOtp = OTPRequestModel::where('user_id', $user->uid)
+                ->where('is_verified', 0)
+                ->first();
+
+            if ($existingOtp) {
+                $existingOtp->update([
                     'otp_code' => $otpHash,
                     'expires_at' => $expiry
                 ]);
-        } else {
-            $otpRequest = OTPRequestModel::create([
-                'user_id' => $userId,
-                'otp_code' => $otpHash,
-                'expires_at' => $expiry,
-                'is_verified' => 0,
-                'created_at' => now(),
-                'updated_at' => now()
-            ]);
-        }
+            } else {
+                OTPRequestModel::create([
+                    'user_id' => $user->uid,
+                    'otp_code' => $otpHash,
+                    'expires_at' => $expiry,
+                    'is_verified' => 0,
+                    'created_at' => now(),
+                    'updated_at' => now()
+                ]);
+            }
 
-        if ($phone === null) {
-            return response()->json([
-                'status' => 'success',
-                'message' => $otp,
-                
-            ]);
-        } else {
-            $smsStatus = $this->sendSMS($phone, "Zo Stream share account OTP chu: $otp");
+            // 📞 Send OTP via WhatsApp
+            $whatsappStatus = null;
+            if ($otpPhone) {
+                $payload = [
+                    "to" => $otpPhone,
+                    "type" => "template",
+                    "template_name" => "zostream_auth_otp",
+                    "template_params" => [$otp],
+                    "language" => "en"
+                ];
+                $response = $this->whatsappController->send(new Request($payload));
+                $whatsappStatus = $response->getStatusCode() === 200 ? 'sent' : 'failed';
+            }
+
             return response()->json([
                 'status' => 'success',
                 'message' => 'OTP sent successfully',
-                'SMS_Status' => $smsStatus,
-                'otp' => app()->environment('local') ? $otp : null  // Show OTP only in local/dev environment
+                'user_id' => $user->uid,
+                'WhatsApp_Status' => $whatsappStatus,
+                'otp' => app()->environment('local') ? $otp : null
             ]);
-        }
-    }
 
-    private function sendSMS($to, $message)
-    {
-        try {
-            $twilio = new Client($this->twilioSid, $this->twilioToken);
-            $twilio->messages->create($to, [
-                'from' => $this->twilioFrom,
-                'body' => $message
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Validation failed',
+                'errors' => $e->errors()
             ]);
-            return 'Sent';
         } catch (\Exception $e) {
-            return 'Error: ' . $e->getMessage();
+            Log::error('OTP send failed: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Something went wrong while sending OTP',
+                'error' => app()->environment('local') ? $e->getMessage() : null
+            ]);
         }
     }
 }

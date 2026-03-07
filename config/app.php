@@ -9,6 +9,21 @@ return [
     'cashfree_secret' => env('CASHFREE_CLIENT_SECRET', 'default_value'),
     'ipwhois_api_key' => env('IPWHOIS_API_KEY', 'default_value'),
 
+
+    'phonepe_env' => env('PHONEPE_ENV', 'sandbox'),
+    //For production
+
+    'client_id' => env('PHONEPE_CLIENT_ID'),
+    'client_secret' => env('PHONEPE_CLIENT_SECRET'),
+
+    //For sandbox
+    'sandbox_client_id' => env('PHONEPE_SANDBOX_CLIENT_ID'),
+    'sandbox_client_secret' => env('PHONEPE_SANDBOX_CLIENT_SECRET'),
+    'timeout' => env('PHONEPE_TIMEOUT', 15),
+
+    'whatsapp_phone_id' => env('WHATSAPP_PHONE_ID'),
+    'whatsapp_token' => env('WHATSAPP_TOKEN'),
+
     /*
     |--------------------------------------------------------------------------
     | Application Name

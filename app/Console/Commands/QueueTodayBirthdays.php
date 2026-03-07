@@ -9,27 +9,12 @@ use Illuminate\Console\Command;
 
 class QueueTodayBirthdays extends Command
 {
-    /**
-     * The name and signature of the console command.
-     *
-     * @var string
-     */
     protected $signature = 'app:queue-today-birthdays';
+    protected $description = 'Queue or update users whose birthdays are today';
 
-    /**
-     * The console command description.
-     *
-     * @var string
-     */
-    protected $description = 'Birthday queue';
-
-    /**
-     * Execute the console command.
-     */
     public function handle()
     {
         $now = Carbon::now();
-
         $users = UserModel::all()->filter(function ($user) use ($now) {
             if (empty($user->dob)) {
                 return false;  // skip if dob is null or empty
@@ -42,28 +27,40 @@ class QueueTodayBirthdays extends Command
             }
         });
 
-
         $queued = 0;
+        $updated = 0;
 
         foreach ($users as $user) {
-            $alreadyQueued = BirthdayQueue::where('user_id', $user->id)
-                ->whereDate('created_at', today())
-                ->exists();
+            $existing = BirthdayQueue::where('user_id', $user->uid)
+                ->first();
 
-            if (!$alreadyQueued) {
-                BirthdayQueue::insert([
+            if ($existing) {
+
+                if ($existing->processed) {
+                    $existing->update([
+                        'name' => $user->name,
+                        'email' => $user->mail,
+                        'birthday' => $user->dob,
+                        'processed' => false,
+                        'updated_at' => now(),
+                        'token' => $user->token,
+                    ]);
+                    $updated++;
+                }
+
+            } else {
+                BirthdayQueue::create([
                     'user_id' => $user->uid,
                     'name' => $user->name,
                     'email' => $user->mail,
                     'birthday' => $user->dob,
                     'processed' => false,
-                    'created_at' => now(),
-                    'updated_at' => now(),
+                    'token' => $user->token,
                 ]);
                 $queued++;
             }
         }
 
-        $this->info("Queued {$queued} new birthday(s) for today.");
+        $this->info("🎉 Queued {$queued} new | 🔁 Updated {$updated} existing birthday(s).");
     }
 }

@@ -4,6 +4,7 @@ use App\Http\Controllers\AdminDashboardController;
 use App\Http\Controllers\AdsController;
 use App\Http\Controllers\AlsoLikeController;
 use App\Http\Controllers\AxinomLicense;
+use App\Http\Controllers\BirthdayMailController;
 use App\Http\Controllers\CashFreeController;
 use App\Http\Controllers\EpisodeController;
 use App\Http\Controllers\CalculatePlan;
@@ -14,20 +15,32 @@ use App\Http\Controllers\HlsFolderController;
 use App\Http\Controllers\LinkController;
 use App\Http\Controllers\MovieController;
 use App\Http\Controllers\MovieSearchController;
+use App\Http\Controllers\New\DeviceController;
+use App\Http\Controllers\New\PaymentController;
+use App\Http\Controllers\New\PaymentHistoryController;
+use App\Http\Controllers\NewStreamController;
+use App\Http\Controllers\OTPController;
+use App\Http\Controllers\PaymentMailController;
 use App\Http\Controllers\PaymentStatusController;
+use App\Http\Controllers\PhonePeSdkV2Controller;
 use App\Http\Controllers\PlanListController;
 use App\Http\Controllers\PlanPriceController;
 use App\Http\Controllers\PPVPriceCalculate;
+use App\Http\Controllers\QuizApiKeyController;
+use App\Http\Controllers\RazorpayController;
 use App\Http\Controllers\RegisterController;
 use App\Http\Controllers\RequestOTPController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\StreamController;
 use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\TempPayment;
+use App\Http\Controllers\TokenController;
 use App\Http\Controllers\UpdateUserDevice;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\VerifyOTPController;
 use App\Http\Controllers\WatchPositionController;
+use App\Http\Controllers\WatchStatsController;
+use App\Http\Controllers\WhatsAppController;
 use App\Http\Controllers\ZonetController;
 use App\Http\Controllers\ZonetOperatorController;
 use Illuminate\Http\Request;
@@ -72,6 +85,12 @@ Route::get('/device', [UpdateUserDevice::class, 'updateDevice']);
 
 Route::get('/payment-status', [PaymentStatusController::class, 'processUserPayments']);
 
+Route::prefix('phonepe')->group(function () {
+    Route::get('token', [PhonePeSdkV2Controller::class, 'getAuthToken']);                 // GET /api/phonepe/token
+    Route::post('order', [PhonePeSdkV2Controller::class, 'createOrder']);                 // POST /api/phonepe/order
+    Route::get('order/{merchantOrderId}/status', [PhonePeSdkV2Controller::class, 'getOrderStatus']); // GET /api/phonepe/order/{merchantOrderId}/status
+});
+
 Route::post('/request-otp', [RequestOTPController::class, 'sendOTP']);
 Route::post('/verify-otp', [VerifyOTPController::class, 'verify']);
 
@@ -86,6 +105,7 @@ Route::get('/details', [DetailsController::class, 'getDetails']);
 Route::get('/calculate', [CalculatePlan::class, 'calculate']);
 
 Route::get('/ppv-price', [PPVPriceCalculate::class, 'getPPVPrice']);
+Route::delete('/user-delete', [UserController::class, 'deleteUser']);
 
 //Search
 Route::get('/search', [MovieSearchController::class, 'search']);
@@ -163,3 +183,85 @@ Route::get('/admin/subscriptions', [AdminDashboardController::class, 'getSubscri
 
 Route::get('/hls/check-folder', [HlsFolderController::class, 'check']);
 
+Route::get('/payments/razorpay/orders/{orderId}/status', [RazorpayController::class, 'checkPaymentStatus']);
+Route::post('/payments/razorpay/orders', [RazorpayController::class, 'createOrder']);
+
+Route::prefix('quiz')->group(function () {
+    Route::post('/create', [QuizApiKeyController::class, 'create']);
+    Route::get('/verify', [QuizApiKeyController::class, 'verify']);
+    Route::get('/list', [QuizApiKeyController::class, 'index']);
+    Route::put('/deactivate/{id}', [QuizApiKeyController::class, 'deactivate']);
+});
+
+// Logging
+Route::post('/watch/log-duration', [WatchStatsController::class, 'logDuration']);
+Route::post('/watch/log-bandwidth', [WatchStatsController::class, 'logBandwidth']);
+
+// Summary stats
+Route::get('/watch/{user_id}/stats', [WatchStatsController::class, 'stats']);
+
+Route::get('/stats/top', [WatchStatsController::class, 'topStats']);
+
+Route::post('/send-payment-mail', [PaymentMailController::class, 'sendPaymentSuccess']);
+
+Route::post('/send-birthday-mail', [BirthdayMailController::class, 'send']);
+
+Route::post('/send-whatsapp', [WhatsAppController::class, 'send']);
+
+
+
+Route::prefix('v3.0')->group(function () {
+
+    Route::post('/request-otp', [OTPController::class, 'send']);
+    Route::post('/verify-otp', [OTPController::class, 'verify']);
+
+    // ✅ Protected routes
+    Route::middleware('auth.token')->group(function () {
+        Route::post('/token/refresh', [TokenController::class, 'refresh']);
+        Route::post('/token/revoke', [TokenController::class, 'revoke']);
+
+    });
+
+    Route::prefix('stream')->group(function () {
+        Route::post('start', [NewStreamController::class, 'start']); // Start streaming
+        Route::post('ping', [NewStreamController::class, 'ping']);   // Heartbeat ping
+        Route::post('stop', [NewStreamController::class, 'stop']);   // Stop stream
+    });
+
+
+    Route::prefix('devices')->group(function () {
+        Route::get('/list', [DeviceController::class, 'index'])->name('index');             // List all devices
+        Route::get('/{id}', [DeviceController::class, 'show'])->name('show');           // Get device by ID
+        Route::get('/user/{userId}', [DeviceController::class, 'getByUser'])->name('byUser'); // Get by user (owner + shared)
+        Route::post('/store', [DeviceController::class, 'store'])->name('store');            // Create device
+        Route::put('/{id}', [DeviceController::class, 'update'])->name('update');       // Update device
+        Route::delete('/{id}', [DeviceController::class, 'destroy'])->name('destroy');  // Delete device
+    });
+
+    Route::prefix('subscriptions')->group(function () {
+        Route::get('/', [\App\Http\Controllers\New\SubscriptionController::class, 'index'])->name('subscriptions.index');
+        Route::get('/{id}', [\App\Http\Controllers\New\SubscriptionController::class, 'show'])->name('subscriptions.show');
+        Route::get('/user/{userId}', [\App\Http\Controllers\New\SubscriptionController::class, 'getByUser'])->name('subscriptions.by_user');
+        Route::post('/', [\App\Http\Controllers\New\SubscriptionController::class, 'store'])->name('subscriptions.store');
+        Route::put('/{id}', [\App\Http\Controllers\New\SubscriptionController::class, 'update'])->name('subscriptions.update');
+        Route::delete('/{id}', [\App\Http\Controllers\New\SubscriptionController::class, 'destroy'])->name('subscriptions.destroy');
+
+        // 🔁 Subscription Renewal
+        Route::post('/renew', [NewStreamController::class, 'renew']); // Renew subscription
+
+    });
+
+    Route::prefix('movies')->group(function () {
+        Route::get('/details', [\App\Http\Controllers\New\DetailsController::class, 'getDetails']);
+        Route::get('/', [\App\Http\Controllers\New\MovieController::class, 'index'])->name('movies.index');
+        Route::get('/{id}', [\App\Http\Controllers\New\MovieController::class, 'getById'])->name('movies.show');
+        Route::get('/{id}/links', [\App\Http\Controllers\New\MovieController::class, 'getLink'])->name('movies.links');
+    });
+
+    Route::prefix('payments')->group(function () {
+        Route::post('/', [PaymentHistoryController::class, 'store']);
+        Route::post('/process', [PaymentController::class, 'processUserPayments']);
+        Route::get('/user/{userId}', [PaymentHistoryController::class, 'getByUser']);
+    });
+
+});
