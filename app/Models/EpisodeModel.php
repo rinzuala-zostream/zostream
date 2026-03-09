@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class EpisodeModel extends Model
 {
-    protected $table = 'episode'; // adjust if table name is different
+    protected $table = 'episode';
 
     protected $primaryKey = 'num';
     public $incrementing = true;
@@ -15,7 +15,7 @@ class EpisodeModel extends Model
     public $timestamps = false;
 
     protected $fillable = [
-        'desc',
+        'description',
         'id',
         'img',
         'isProtected',
@@ -34,7 +34,6 @@ class EpisodeModel extends Model
         'status',
         'create_date',
         'movie_id',
-        'ppv_amount',
     ];
 
     protected $casts = [
@@ -45,7 +44,12 @@ class EpisodeModel extends Model
         'views' => 'integer',
     ];
 
-    // app/Models/EpisodeModel.php
+    protected $appends = ['desc']; // add this
+
+    public function getDescAttribute()
+    {
+        return $this->description;
+    }
 
     public function movie()
     {
