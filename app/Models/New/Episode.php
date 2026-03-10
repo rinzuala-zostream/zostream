@@ -33,6 +33,6 @@ class Episode extends Model
 
     public function season()
     {
-        return $this->belongsTo(Season::class, 'season_id', 'num');
+        return $this->belongsTo(Season::class, 'season_id', 'id');
     }
 }
