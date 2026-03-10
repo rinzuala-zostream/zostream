@@ -1,8 +1,6 @@
 <?php
 
 namespace App\Models\New;
-
-use App\Models\EpisodeModel;
 use App\Models\MovieModel;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -12,7 +10,6 @@ class Season extends Model
     use HasFactory;
 
     protected $table = 'seasons';
-
     protected $primaryKey = 'num';
 
     protected $fillable = [

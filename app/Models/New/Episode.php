@@ -10,7 +10,6 @@ class Episode extends Model
     use HasFactory;
 
     protected $table = 'episodes';
-
     protected $primaryKey = 'num';
 
     protected $fillable = [
@@ -34,6 +33,6 @@ class Episode extends Model
 
     public function season()
     {
-        return $this->belongsTo(Season::class, 'season_id', 'id');
+        return $this->belongsTo(Season::class, 'season_id', 'num');
     }
 }

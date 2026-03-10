@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\New;
 
 use App\Http\Controllers\Controller;
-use App\Models\MovieModel;
 use App\Models\New\Season;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -17,32 +16,27 @@ class SeasonController extends Controller
     {
         try {
 
-            $movie = MovieModel::where('id', $movieId)
-                ->with([
-                    'seasons' => function ($q) {
-                        $q->orderBy('season_number')
-                            ->with('episodes');
-                    }
-                ])
-                ->first();
-
-            if (!$movie) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Movie not found'
-                ], 404);
-            }
+            $seasons = Season::with([
+                'episodes' => function ($q) {
+                    $q->orderBy('episode_number');
+                }
+            ])
+                ->where('movie_id', $movieId)
+                ->orderBy('season_number')
+                ->get();
 
             return response()->json([
                 'status' => 'success',
-                'data' => $movie->seasons
+                'data' => $seasons
             ]);
 
         } catch (\Exception $e) {
 
+            Log::error('Season index error: ' . $e->getMessage());
+
             return response()->json([
                 'status' => 'error',
-                'message' => 'Failed to fetch seasons'
+                'message' => 'Failed to fetch seasons: ' . $e->getMessage()
             ], 500);
         }
     }
