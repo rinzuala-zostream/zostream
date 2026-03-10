@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\New;
 
 use App\Http\Controllers\Controller;
+use App\Models\MovieModel;
 use App\Models\New\Season;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -16,7 +17,16 @@ class SeasonController extends Controller
     {
         try {
 
-            $seasons = Season::where('movie_id', $movieId)
+            $movie = MovieModel::where('id', $movieId)->first();
+
+            if (!$movie) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Movie not found'
+                ], 404);
+            }
+
+            $seasons = Season::where('movie_id', $movie->num)
                 ->orderBy('season_number')
                 ->get();
 
@@ -27,11 +37,11 @@ class SeasonController extends Controller
 
         } catch (\Exception $e) {
 
-            Log::error('Season index error: '.$e->getMessage());
+            Log::error('Season index error: ' . $e->getMessage());
 
             return response()->json([
                 'status' => 'error',
-                'message' => 'Failed to fetch seasons' . $e->getMessage()
+                'message' => 'Failed to fetch seasons'
             ], 500);
         }
     }
@@ -75,7 +85,7 @@ class SeasonController extends Controller
 
         } catch (\Exception $e) {
 
-            Log::error('Season create error: '.$e->getMessage());
+            Log::error('Season create error: ' . $e->getMessage());
 
             return response()->json([
                 'status' => 'error',
@@ -107,7 +117,7 @@ class SeasonController extends Controller
 
         } catch (\Exception $e) {
 
-            Log::error('Season show error: '.$e->getMessage());
+            Log::error('Season show error: ' . $e->getMessage());
 
             return response()->json([
                 'status' => 'error',
@@ -145,7 +155,7 @@ class SeasonController extends Controller
 
         } catch (\Exception $e) {
 
-            Log::error('Season update error: '.$e->getMessage());
+            Log::error('Season update error: ' . $e->getMessage());
 
             return response()->json([
                 'status' => 'error',
@@ -177,7 +187,7 @@ class SeasonController extends Controller
 
         } catch (\Exception $e) {
 
-            Log::error('Season delete error: '.$e->getMessage());
+            Log::error('Season delete error: ' . $e->getMessage());
 
             return response()->json([
                 'status' => 'error',
