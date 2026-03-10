@@ -13,7 +13,7 @@ class SeasonController extends Controller
 {
 
     // Get all seasons of a movie
-    public function seasons($movieId)
+    public function index($movieId)
     {
         try {
 
