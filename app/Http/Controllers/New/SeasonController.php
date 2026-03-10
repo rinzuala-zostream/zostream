@@ -13,11 +13,18 @@ class SeasonController extends Controller
 {
 
     // Get all seasons of a movie
-    public function index($movieId)
+    public function seasons($movieId)
     {
         try {
 
-            $movie = MovieModel::where('id', $movieId)->first();
+            $movie = MovieModel::where('id', $movieId)
+                ->with([
+                    'seasons' => function ($q) {
+                        $q->orderBy('season_number')
+                            ->with('episodes');
+                    }
+                ])
+                ->first();
 
             if (!$movie) {
                 return response()->json([
@@ -26,18 +33,12 @@ class SeasonController extends Controller
                 ], 404);
             }
 
-            $seasons = Season::where('movie_id', $movie->num)
-                ->orderBy('season_number')
-                ->get();
-
             return response()->json([
                 'status' => 'success',
-                'data' => $seasons
+                'data' => $movie->seasons
             ]);
 
         } catch (\Exception $e) {
-
-            Log::error('Season index error: ' . $e->getMessage());
 
             return response()->json([
                 'status' => 'error',
