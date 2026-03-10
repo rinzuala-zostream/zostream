@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\New\Season;
 use Illuminate\Database\Eloquent\Model;
 
 class MovieModel extends Model
@@ -29,7 +30,7 @@ class MovieModel extends Model
         'isSeason' => 'boolean',
         'isSubtitle' => 'boolean',
         'isChildMode' => 'boolean',
-       
+
     ];
 
     protected $fillable = [
@@ -69,4 +70,10 @@ class MovieModel extends Model
         'status',
         'ppv_amount',
     ];
+
+    public function seasons()
+    {
+        return $this->hasMany(Season::class, 'movie_id', 'num');
+    }
+
 }

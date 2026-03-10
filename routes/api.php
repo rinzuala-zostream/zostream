@@ -18,6 +18,7 @@ use App\Http\Controllers\MovieSearchController;
 use App\Http\Controllers\New\DeviceController;
 use App\Http\Controllers\New\PaymentController;
 use App\Http\Controllers\New\PaymentHistoryController;
+use App\Http\Controllers\New\SeasonController;
 use App\Http\Controllers\NewStreamController;
 use App\Http\Controllers\OTPController;
 use App\Http\Controllers\PaymentMailController;
@@ -252,6 +253,7 @@ Route::prefix('v3.0')->group(function () {
     });
 
     Route::prefix('movies')->group(function () {
+        Route::get('/{movieId}/seasons', [SeasonController::class, 'index']);
         Route::get('/details', [\App\Http\Controllers\New\DetailsController::class, 'getDetails']);
         Route::get('/', [\App\Http\Controllers\New\MovieController::class, 'index'])->name('movies.index');
         Route::get('/{id}', [\App\Http\Controllers\New\MovieController::class, 'getById'])->name('movies.show');
@@ -263,5 +265,10 @@ Route::prefix('v3.0')->group(function () {
         Route::post('/process', [PaymentController::class, 'processUserPayments']);
         Route::get('/user/{userId}', [PaymentHistoryController::class, 'getByUser']);
     });
+
+    Route::post('/seasons', [SeasonController::class, 'store']);
+    Route::get('/seasons/{id}', [SeasonController::class, 'show']);
+    Route::put('/seasons/{id}', [SeasonController::class, 'update']);
+    Route::delete('/seasons/{id}', [SeasonController::class, 'destroy']);
 
 });
