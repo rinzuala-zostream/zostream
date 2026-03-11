@@ -61,7 +61,7 @@ class TokenController extends Controller
             return response()->json([
                 'status' => 'error',
                 'message' => 'Invalid refresh token'
-            ], 401);
+            ], 403);
         }
 
         // Refresh token expired
@@ -71,7 +71,7 @@ class TokenController extends Controller
             return response()->json([
                 'status' => 'error',
                 'message' => 'Refresh token expired'
-            ], 401);
+            ], 403);
         }
 
         // Generate new tokens
