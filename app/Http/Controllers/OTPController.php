@@ -297,7 +297,7 @@ class OTPController extends Controller
             // Return response
             return response()->json([
                 'status' => 'success',
-                'message' => $message,
+                'message' => $message ?? 'Login successful',
                 'data' => array_merge(['uid' => $userId], $tokens)
             ]);
 
