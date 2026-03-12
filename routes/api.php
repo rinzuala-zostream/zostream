@@ -215,19 +215,27 @@ Route::prefix('v3.0')->group(function () {
 
     Route::post('/request-otp', [OTPController::class, 'send']);
     Route::post('/verify-otp', [OTPController::class, 'verify']);
+    Route::post('/token/refresh', [TokenController::class, 'refresh']);
+    Route::post('/token/revoke', [TokenController::class, 'revoke']);
 
     // ✅ Protected routes
     Route::middleware('auth.token')->group(function () {
-        Route::post('/token/refresh', [TokenController::class, 'refresh']);
-        Route::post('/token/revoke', [TokenController::class, 'revoke']);
+
+        Route::prefix('stream')->group(function () {
+            Route::post('start', [NewStreamController::class, 'start']); // Start streaming
+            Route::post('ping', [NewStreamController::class, 'ping']);   // Heartbeat ping
+            Route::post('stop', [NewStreamController::class, 'stop']);   // Stop stream
+        });
+
+        Route::prefix('movies')->group(function () {
+           
+            Route::get('/details', [\App\Http\Controllers\New\DetailsController::class, 'getDetails']);
+            
+        });
 
     });
 
-    Route::prefix('stream')->group(function () {
-        Route::post('start', [NewStreamController::class, 'start']); // Start streaming
-        Route::post('ping', [NewStreamController::class, 'ping']);   // Heartbeat ping
-        Route::post('stop', [NewStreamController::class, 'stop']);   // Stop stream
-    });
+
 
 
     Route::prefix('devices')->group(function () {
@@ -255,7 +263,6 @@ Route::prefix('v3.0')->group(function () {
     Route::prefix('movies')->group(function () {
         Route::get('/home', [\App\Http\Controllers\New\MovieController::class, 'getMovies']);
         Route::get('/{movieId}/seasons', [SeasonController::class, 'index']);
-        Route::get('/details', [\App\Http\Controllers\New\DetailsController::class, 'getDetails']);
         Route::get('/', [\App\Http\Controllers\New\MovieController::class, 'index'])->name('movies.index');
         Route::get('/{id}', [\App\Http\Controllers\New\MovieController::class, 'getById'])->name('movies.show');
         Route::get('/{id}/links', [\App\Http\Controllers\New\MovieController::class, 'getLink'])->name('movies.links');
@@ -271,5 +278,15 @@ Route::prefix('v3.0')->group(function () {
     Route::get('/seasons/{id}', [SeasonController::class, 'show']);
     Route::put('/seasons/{id}', [SeasonController::class, 'update']);
     Route::delete('/seasons/{id}', [SeasonController::class, 'destroy']);
+
+    Route::prefix('users')->group(function () {
+        Route::get('/', [\App\Http\Controllers\New\UserController::class, 'index']);
+        Route::get('/{id}', [\App\Http\Controllers\New\UserController::class, 'show']);
+        Route::post('/', [\App\Http\Controllers\New\UserController::class, 'store']);
+        Route::put('/{id}', [\App\Http\Controllers\New\UserController::class, 'update']);
+        Route::delete('/{id}', [\App\Http\Controllers\New\UserController::class, 'destroy']);
+        Route::post('/find', [\App\Http\Controllers\New\UserController::class, 'find']);
+
+    });
 
 });

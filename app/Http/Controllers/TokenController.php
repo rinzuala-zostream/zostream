@@ -49,37 +49,52 @@ class TokenController extends Controller
      */
     public function refresh(Request $request)
     {
-        $request->validate(['refresh_token' => 'required|string']);
+        $request->validate([
+            'refresh_token' => 'required|string'
+        ]);
+
         $refreshToken = $request->refresh_token;
 
         $record = SessionTokenModel::where('refresh_token', $refreshToken)->first();
 
         if (!$record) {
-            return response()->json(['status' => 'error', 'message' => 'Invalid refresh token'], 401);
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Invalid refresh token'
+            ], 403);
         }
 
-        // If refresh token expired
+        // Refresh token expired
         if ($record->refresh_expires_at->isPast()) {
-            // ✅ Delete the expired token from DB
             $record->delete();
 
-            return response()->json(['status' => 'error', 'message' => 'Refresh token expired'], 401);
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Refresh token expired'
+            ], 403);
         }
 
-        // Generate new access token
+        // Generate new tokens
         $newAccessToken = hash('sha256', Str::random(60));
+        $newRefreshToken = hash('sha256', Str::random(60));
+
         $newAccessExp = Carbon::now()->addHours(1);
+        $newRefreshExp = Carbon::now()->addDays(30);
 
         $record->update([
             'access_token' => $newAccessToken,
+            'refresh_token' => $newRefreshToken,
             'access_expires_at' => $newAccessExp,
+            'refresh_expires_at' => $newRefreshExp,
         ]);
 
         return response()->json([
             'status' => 'success',
             'message' => 'Access token refreshed successfully',
             'access_token' => $newAccessToken,
+            'refresh_token' => $newRefreshToken,
             'access_expires_at' => $newAccessExp->toDateTimeString(),
+            'refresh_expires_at' => $newRefreshExp->toDateTimeString(),
             'token_type' => 'bearer'
         ]);
     }
