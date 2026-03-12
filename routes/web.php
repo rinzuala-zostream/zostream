@@ -23,3 +23,18 @@ Route::get('/redis-test', function () {
     return Redis::get('mykey'); // Should return "Hello Redis!"
 });
 
+Route::get('/firebase-test', function () {
+
+    $firebase = (new \Kreait\Firebase\Factory)
+        ->withServiceAccount(storage_path('app/firebase/zostream.json'))
+        ->withDatabaseUri(env('FIREBASE_DATABASE_URL'));
+
+    $database = $firebase->createDatabase();
+
+    $database->getReference('test')->set([
+        'status' => 'connected'
+    ]);
+
+    return "Firebase connected";
+});
+

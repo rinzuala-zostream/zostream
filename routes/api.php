@@ -18,6 +18,7 @@ use App\Http\Controllers\MovieSearchController;
 use App\Http\Controllers\New\DeviceController;
 use App\Http\Controllers\New\PaymentController;
 use App\Http\Controllers\New\PaymentHistoryController;
+use App\Http\Controllers\New\QRSessionController;
 use App\Http\Controllers\New\SeasonController;
 use App\Http\Controllers\NewStreamController;
 use App\Http\Controllers\OTPController;
@@ -295,6 +296,12 @@ Route::prefix('v3.0')->group(function () {
 
         Route::post('/session/{token}/complete', [QrAuthSessionController::class, 'complete']);
         Route::post('/session/{token}/cancel', [QrAuthSessionController::class, 'cancel']);
+    });
+
+    Route::prefix('qr')->group(function () {
+        Route::post('/qcreate', [QRSessionController::class, 'create']);
+        Route::get('/status/{token}', [QRSessionController::class, 'status']);
+        Route::post('/approve', [QRSessionController::class, 'approve']);
     });
 
 });
