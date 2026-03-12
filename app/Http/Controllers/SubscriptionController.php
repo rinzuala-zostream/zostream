@@ -213,8 +213,8 @@ class SubscriptionController extends Controller
 
             // 🎁 Free week logic
             $currentDate = new DateTime();
-            $startFree = new DateTime('2025-12-25 00:00:00');
-            $endFree = new DateTime('2025-12-31 23:59:59');
+            $startFree = new DateTime('2026-03-13 00:00:00');
+            $endFree = new DateTime('2026-03-13 23:59:59');
 
             if (empty($results)) {
                 // No active subscription found
