@@ -27,6 +27,7 @@ use App\Http\Controllers\PhonePeSdkV2Controller;
 use App\Http\Controllers\PlanListController;
 use App\Http\Controllers\PlanPriceController;
 use App\Http\Controllers\PPVPriceCalculate;
+use App\Http\Controllers\QrAuthSessionController;
 use App\Http\Controllers\QuizApiKeyController;
 use App\Http\Controllers\RazorpayController;
 use App\Http\Controllers\RegisterController;
@@ -228,15 +229,12 @@ Route::prefix('v3.0')->group(function () {
         });
 
         Route::prefix('movies')->group(function () {
-           
+
             Route::get('/details', [\App\Http\Controllers\New\DetailsController::class, 'getDetails']);
-            
+
         });
 
     });
-
-
-
 
     Route::prefix('devices')->group(function () {
         Route::get('/list', [DeviceController::class, 'index'])->name('index');             // List all devices
@@ -288,6 +286,14 @@ Route::prefix('v3.0')->group(function () {
         Route::delete('/{id}', [\App\Http\Controllers\New\UserController::class, 'destroy']);
         Route::post('/find', [\App\Http\Controllers\New\UserController::class, 'find']);
 
+    });
+
+    Route::prefix('qr-auth')->group(function () {
+        Route::post('/session', [QrAuthSessionController::class, 'store']);
+        Route::get('/session/{token}', [QrAuthSessionController::class, 'show']);
+        Route::post('/session/{token}/approve', [QrAuthSessionController::class, 'approve']);
+        Route::post('/session/{token}/complete', [QrAuthSessionController::class, 'complete']);
+        Route::post('/session/{token}/cancel', [QrAuthSessionController::class, 'cancel']);
     });
 
 });
