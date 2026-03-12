@@ -262,6 +262,7 @@ Route::prefix('v3.0')->group(function () {
 
     Route::prefix('movies')->group(function () {
         Route::get('/home', [\App\Http\Controllers\New\MovieController::class, 'getMovies']);
+        Route::get('/search', [\App\Http\Controllers\New\SearchController::class, 'search']);
         Route::get('/{movieId}/seasons', [SeasonController::class, 'index']);
         Route::get('/', [\App\Http\Controllers\New\MovieController::class, 'index'])->name('movies.index');
         Route::get('/{id}', [\App\Http\Controllers\New\MovieController::class, 'getById'])->name('movies.show');
