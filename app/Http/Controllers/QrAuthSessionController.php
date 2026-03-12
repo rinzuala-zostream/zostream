@@ -113,16 +113,24 @@ class QrAuthSessionController extends Controller
             $validated['user_id'],
             $validated['auth_method']
         );
+        $session->refresh();
 
         return response()->json([
             'status' => 'success',
             'message' => 'QR auth session approved successfully',
             'data' => [
+                'id' => $session->id,
                 'session_token' => $session->session_token,
-                'status' => QrAuthSession::STATUS_APPROVED,
-                'user_id' => $validated['user_id'],
-                'auth_method' => $validated['auth_method'],
-                'approved_at' => now()->toDateTimeString(),
+                'channel_code' => $session->channel_code,
+                'device_id' => $session->device_id,
+                'device_name' => $session->device_name,
+                'device_type' => $session->device_type,
+                'status' => $session->status,
+                'user_id' => $session->user_id,
+                'auth_method' => $session->auth_method,
+                'expires_at' => optional($session->expires_at)->toDateTimeString(),
+                'approved_at' => optional($session->approved_at)->toDateTimeString(),
+                'completed_at' => optional($session->completed_at)->toDateTimeString(),
             ],
         ]);
     }
