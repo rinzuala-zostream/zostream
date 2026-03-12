@@ -277,54 +277,6 @@ class UserController extends Controller
         }
     }
 
-    public function deleteUser(Request $request)
-{
-    // Validate input - either uid or mail must be present
-    $request->validate([
-        'uid'  => 'nullable|string',
-        'mail' => 'nullable|email',
-    ]);
-
-    $uid  = $request->input('uid');
-    $mail = $request->input('mail');
-
-    if (empty($uid) && empty($mail)) {
-        return response()->json([
-            'status'  => 'error',
-            'message' => 'Either uid or mail is required'
-        ], 400);
-    }
-
-    try {
-        $user = null;
-
-        if (!empty($uid)) {
-            $user = UserModel::where('uid', $uid)->first();
-        } elseif (!empty($mail)) {
-            $user = UserModel::where('mail', $mail)->first();
-        }
-
-        if (!$user) {
-            return response()->json([
-                'status'  => 'error',
-                'message' => 'User not found'
-            ], 404);
-        }
-
-        $user->delete();
-
-        return response()->json([
-            'status'  => 'success',
-            'message' => 'User deleted successfully'
-        ]);
-    } catch (\Exception $e) {
-        return response()->json([
-            'status'  => 'error',
-            'message' => $e->getMessage()
-        ], 500);
-    }
-}
-
     public function clearDeviceId(Request $request)
     {
 
