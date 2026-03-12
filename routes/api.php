@@ -289,9 +289,10 @@ Route::prefix('v3.0')->group(function () {
     });
 
     Route::prefix('qr-auth')->group(function () {
+        Route::post('/session/{token}/approve', [QrAuthSessionController::class, 'approve']);
         Route::post('/session', [QrAuthSessionController::class, 'store']);
         Route::get('/session/{token}', [QrAuthSessionController::class, 'show']);
-        Route::post('/session/{token}/approve', [QrAuthSessionController::class, 'approve']);
+
         Route::post('/session/{token}/complete', [QrAuthSessionController::class, 'complete']);
         Route::post('/session/{token}/cancel', [QrAuthSessionController::class, 'cancel']);
     });
