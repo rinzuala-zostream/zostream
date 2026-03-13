@@ -181,8 +181,8 @@ class SubscriptionController extends Controller
 
                     if ($device) {
                         // Check if expired and within free week
-                        $startFree = new DateTime('2025-12-25 00:00:00');
-                        $endFree = new DateTime('2025-12-31 23:59:59');
+                        $startFree = new DateTime('2026-03-13 00:00:00');
+                        $endFree = new DateTime('2026-03-13 23:59:59');
                         $currentDate = new DateTime();
 
                         if ($subscriptionResult['sub'] === false && $currentDate >= $startFree && $currentDate <= $endFree) {
@@ -193,7 +193,7 @@ class SubscriptionController extends Controller
                                 'create_date' => $startFree->format('F j, Y'),
                                 'current_date' => $currentDate->format('F j, Y'),
                                 'period' => 7,
-                                'sub_plan' => 'Zo Stream Christmas Free',
+                                'sub_plan' => 'Zo Stream Chapchar kut Free',
                                 'sub' => true,
                                 'expiry_date' => $endFree->format('F j, Y'),
                                 'device_support' => 2,
@@ -226,7 +226,7 @@ class SubscriptionController extends Controller
                         'create_date' => $startFree->format('F j, Y'),
                         'current_date' => $currentDate->format('F j, Y'),
                         'period' => 7,
-                        'sub_plan' => 'Zo Stream Christmas Free',
+                        'sub_plan' => 'Zo Stream Chapchar kut Free',
                         'sub' => true,
                         'expiry_date' => $endFree->format('F j, Y'),
                         'device_support' => 2,
@@ -256,7 +256,7 @@ class SubscriptionController extends Controller
                     'create_date' => $startFree->format('F j, Y'),
                     'current_date' => $currentDate->format('F j, Y'),
                     'period' => 7,
-                    'sub_plan' => 'Zo Stream Christmas Free',
+                    'sub_plan' => 'Zo Stream Chapchar kut Free',
                     'sub' => true,
                     'expiry_date' => $endFree->format('F j, Y'),
                     'device_support' => 2,
