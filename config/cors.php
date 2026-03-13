@@ -12,6 +12,8 @@ return [
         'https://preview.zostream.in',
         'https://quiz.buannelstudio.in',
         'https://zostream.in',
+        'https://tv.zostream.in',
+        'http://localhost:5173',
         'http://localhost:8000',
         'http://localhost:3000',
         'http://192.168.137.160:8000'
