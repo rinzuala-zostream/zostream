@@ -124,6 +124,7 @@ class QRSessionController extends Controller
         $deviceType = $session['device_type'] ?? 'mobile';
 
         if (!$session) {
+            $this->updateFirebaseError($ref, 'Token generation failed');
             return response()->json([
                 'status' => 'error',
                 'message' => 'Session not found',
@@ -131,16 +132,12 @@ class QRSessionController extends Controller
         }
 
         if (isset($session['expires_at']) && time() > $session['expires_at']) {
+            $this->updateFirebaseError($ref, 'Session expired');
             return response()->json([
                 'status' => 'error',
                 'message' => 'Session expired',
             ], 400);
         }
-
-        $ref->update([
-            'status' => 'pending',
-            'user_id' => (string) $request->user_id,
-        ]);
 
         $type = $session['type'] ?? 'login';
 
@@ -176,6 +173,11 @@ class QRSessionController extends Controller
                     $this->updateFirebaseError($ref, 'Token generation failed');
                     return response()->json(['status' => 'error', 'message' => 'Failed to generate tokens'], 500);
                 }
+
+                $ref->update([
+                    'status' => 'pending',
+                    'user_id' => (string) $request->user_id,
+                ]);
 
                 try {
 
@@ -314,12 +316,17 @@ class QRSessionController extends Controller
             case 'payment':
 
                 if ($request->user_id !== $session['user_id']) {
-
+                    $this->updateFirebaseError($ref, 'Only same user can approve the payment');
                     return response()->json([
                         'status' => 'error',
                         'message' => 'Only same user can approve the payment',
                     ], 403);
                 }
+
+                $ref->update([
+                    'status' => 'pending',
+                    'user_id' => (string) $request->user_id,
+                ]);
 
                 // Create Razorpay order
                 $fakeRequest = new Request([
