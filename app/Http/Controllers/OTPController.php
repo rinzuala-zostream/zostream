@@ -240,6 +240,8 @@ class OTPController extends Controller
                     'is_owner_device' => true,
                 ]);
 
+                $isOwnerDevice = true;
+
                 $message = ucfirst($deviceType) . ' owner device created';
 
             }
@@ -262,14 +264,17 @@ class OTPController extends Controller
                         'status' => 'inactive',
                         'is_owner_device' => false,
                     ]);
+                    $isOwnerDevice = false;
 
                     $message = 'Device created and set as inactive';
                 } elseif ($device->status === 'blocked' && !$device->is_owner_device) {
                     // Reset blocked device to inactive
                     $device->update(['status' => 'inactive']);
+                    $isOwnerDevice = $device->is_owner_device;
                     $message = 'Blocked device reset to inactive';
                 } else {
                     // Device exists and is not blocked
+                    $isOwnerDevice = $device->is_owner_device;
                     $message = 'Device already exists with status: ' . $device->status;
                 }
 
@@ -289,16 +294,24 @@ class OTPController extends Controller
                         'status' => 'inactive',
                         'is_owner_device' => false,
                     ]);
+                    $isOwnerDevice = false;
 
                     $message = 'Device created and set as inactive without subscription';
+                } else {
+                    $isOwnerDevice = $device->is_owner_device;
+                    $message = 'Device already exists with status: ' . $device->status . ' without subscription';
                 }
+
             }
 
             // Return response
             return response()->json([
                 'status' => 'success',
                 'message' => $message ?? 'Login successful',
-                'data' => array_merge(['uid' => $userId], $tokens)
+                'data' => array_merge([
+                    'uid' => $userId,
+                    'is_owner_device' => $isOwnerDevice ?? false,
+                ], $tokens)
             ]);
 
         } catch (\Exception $e) {
