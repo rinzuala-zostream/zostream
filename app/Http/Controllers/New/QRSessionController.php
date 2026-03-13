@@ -109,305 +109,328 @@ class QRSessionController extends Controller
 
     public function verify(Request $request)
     {
-        $request->validate([
-            'token' => 'required|string',
-            'user_id' => 'required',
-        ]);
+        try {
 
-        $userId = $request->user_id;
+            $request->validate([
+                'token' => 'required|string',
+                'user_id' => 'required',
+            ]);
 
-        $ref = $this->database->getReference('qr_sessions/' . $request->token);
-        $session = $ref->getValue();
+            $userId = $request->user_id;
 
-        $deviceName = $session['device_name'] ?? 'Unknown Device';
-        $deviceId = $session['device_id'] ?? null;
-        $deviceType = $session['device_type'] ?? 'mobile';
+            $ref = $this->database->getReference('qr_sessions/' . $request->token);
+            $session = $ref->getValue();
 
-        if (!$session) {
-            $this->updateFirebaseError($ref, 'Token generation failed');
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Session not found',
-            ], 404);
-        }
+            $deviceName = $session['device_name'] ?? 'Unknown Device';
+            $deviceId = $session['device_id'] ?? null;
+            $deviceType = $session['device_type'] ?? 'mobile';
 
-        if (isset($session['expires_at']) && time() > $session['expires_at']) {
-            $this->updateFirebaseError($ref, 'Session expired');
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Session expired',
-            ], 400);
-        }
+            if (!$session) {
+                $this->updateFirebaseError($ref, 'Token generation failed');
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Session not found',
+                ], 404);
+            }
 
-        $type = $session['type'] ?? 'login';
+            if (isset($session['expires_at']) && time() > $session['expires_at']) {
+                $this->updateFirebaseError($ref, 'Session expired');
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Session expired',
+                ], 400);
+            }
 
-        //base on $ref type(login, payment) call controller to process login or payment approval
-        switch ($type) {
+            $type = $session['type'] ?? 'login';
 
-            case 'login':
-                $user = UserModel::where('uid', $userId)->first();
-                if (!$user) {
-                    return response()->json(['status' => 'error', 'message' => 'User not found'], 404);
-                }
+            //base on $ref type(login, payment) call controller to process login or payment approval
+            switch ($type) {
 
-                // 🔑 Generate token
-                try {
-                    $tokens = $this->tokenController->generateTokens(
-                        $userId,
-                        $deviceName,
-                        $deviceId
-                    );
-                    if (!$tokens || !isset($tokens['access_token'])) {
+                case 'login':
+                    $user = UserModel::where('uid', $userId)->first();
+                    if (!$user) {
+                        return response()->json(['status' => 'error', 'message' => 'User not found'], 404);
+                    }
+
+                    // 🔑 Generate token
+                    try {
+                        $tokens = $this->tokenController->generateTokens(
+                            $userId,
+                            $deviceName,
+                            $deviceId
+                        );
+                        if (!$tokens || !isset($tokens['access_token'])) {
+                            $this->updateFirebaseError($ref, 'Token generation failed');
+
+                            return response()->json([
+                                'status' => 'error',
+                                'message' => 'Token generation failed',
+
+                            ], 400);
+                        }
+                    } catch (\Exception $e) {
+                        Log::error('Token generation failed', ['user_id' => $userId, 'error' => $e->getMessage()]);
+
+
                         $this->updateFirebaseError($ref, 'Token generation failed');
+                        return response()->json(['status' => 'error', 'message' => 'Failed to generate tokens'], 500);
+                    }
+
+                    $ref->update([
+                        'status' => 'pending',
+                        'user_id' => (string) $request->user_id,
+                    ]);
+
+                    try {
+
+                        // 🔄 Check subscription and n_devices
+                        $subscription = Subscription::where('user_id', $user->uid)
+                            ->where('end_at', '>', now())
+                            ->where('is_active', true)
+                            ->whereHas('plan', function ($query) use ($deviceType) {
+                                $query->where('device_type', $deviceType);
+                            })
+                            ->orderByDesc('id')
+                            ->first();
+
+                        $device = Devices::where('user_id', $user->uid)
+                            ->where('device_type', $deviceType)
+                            ->first();
+
+                        if (!$device) {
+
+                            $device = Devices::create([
+                                'user_id' => $user->uid,
+                                'subscription_id' => $subscription?->id ?? null,
+                                'device_token' => $deviceId,
+                                'device_name' => $deviceName,
+                                'device_type' => $deviceType,
+                                'status' => 'active',
+                                'is_owner_device' => true,
+                            ]);
+
+                            $isOwnerDevice = true;
+                            $message = ucfirst($deviceType) . ' owner device created';
+                        }
+
+                        if ($subscription && $deviceId) {
+
+                            $device = Devices::where('user_id', $user->uid)
+                                ->where('subscription_id', $subscription->id)
+                                ->where('device_token', $deviceId)
+                                ->first();
+
+                            if (!$device) {
+
+                                $device = Devices::create([
+                                    'user_id' => $user->uid,
+                                    'subscription_id' => $subscription->id,
+                                    'device_token' => $deviceId,
+                                    'device_name' => $deviceName,
+                                    'device_type' => $deviceType,
+                                    'status' => 'inactive',
+                                    'is_owner_device' => false,
+                                ]);
+
+                                $isOwnerDevice = false;
+                                $message = 'Device created and set as inactive';
+
+                            } elseif ($device->status === 'blocked' && !$device->is_owner_device) {
+
+                                $device->update(['status' => 'inactive']);
+
+                                $isOwnerDevice = $device->is_owner_device;
+                                $message = 'Blocked device reset to inactive';
+
+                            } else {
+
+                                $isOwnerDevice = $device->is_owner_device;
+                                $message = 'Device already exists with status: ' . $device->status;
+                            }
+
+                        } else {
+
+                            $device = Devices::where('user_id', $user->uid)
+                                ->where('device_token', $deviceId)
+                                ->first();
+
+                            if (!$device) {
+
+                                $device = Devices::create([
+                                    'user_id' => $user->uid,
+                                    'subscription_id' => $subscription->id ?? null,
+                                    'device_token' => $deviceId,
+                                    'device_name' => $deviceName,
+                                    'device_type' => $deviceType,
+                                    'status' => 'inactive',
+                                    'is_owner_device' => false,
+                                ]);
+
+                                $isOwnerDevice = false;
+                                $message = 'Device created and set as inactive without subscription';
+
+                            } else {
+
+                                $isOwnerDevice = $device->is_owner_device;
+                                $message = 'Device already exists with status: ' . $device->status . ' without subscription';
+                            }
+                        }
+
+
+                        $this->updateFirebaseSuccess($ref, array_merge([
+                            'uid' => $userId,
+                            'is_owner_device' => $isOwnerDevice ?? false,
+                        ], $tokens));
+
+                        return response()->json([
+                            'status' => 'success',
+                            'message' => $message ?? 'Login successful',
+                            'data' => array_merge([
+                                'uid' => $userId,
+                                'is_owner_device' => $isOwnerDevice ?? false,
+                            ], $tokens)
+                        ]);
+
+                    } catch (\Throwable $e) {
+
+                        \Log::error('QR Login Device Error', [
+                            'user_id' => $userId ?? null,
+                            'device_id' => $deviceId ?? null,
+                            'error' => $e->getMessage(),
+                            'trace' => $e->getTraceAsString()
+                        ]);
+
+                        // Update Firebase session status
+                        try {
+                            $this->updateFirebaseError($ref, 'Token generation failed');
+                        } catch (\Throwable $firebaseError) {
+                        }
 
                         return response()->json([
                             'status' => 'error',
-                            'message' => 'Token generation failed',
+                            'message' => 'Something went wrong while processing the device',
+                            'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                        ], 500);
+                    }
 
+                    break;
+
+                case 'payment':
+
+                    if ($request->user_id !== $session['user_id']) {
+                        $this->updateFirebaseError($ref, 'Only same user can approve the payment');
+                        return response()->json([
+                            'status' => 'error',
+                            'message' => 'Only same user can approve the payment',
+                        ], 403);
+                    }
+
+                    $ref->update([
+                        'status' => 'pending',
+                        'user_id' => (string) $request->user_id,
+                    ]);
+
+                    // Create Razorpay order
+                    $fakeRequest = new Request([
+                        'amount' => $session['amount'] ?? 0,
+                        'currency' => $session['currency'] ?? 'INR',
+                        'receipt' => 'qr_' . $request->token,
+                        'notes' => [
+                            'token' => $request->token
+                        ]
+                    ]);
+
+                    $razorpayResponse = $this->razorpayController->createOrder($fakeRequest);
+
+                    $razorpayData = $razorpayResponse->getData(true);
+
+                    if (!$razorpayData['ok']) {
+                        $this->updateFirebaseError($ref, 'Failed to create Razorpay order');
+
+                        return response()->json([
+                            'status' => 'error',
+                            'message' => 'Failed to create Razorpay order',
+                            'error' => $razorpayData
                         ], 400);
                     }
-                } catch (\Exception $e) {
-                    Log::error('Token generation failed', ['user_id' => $userId, 'error' => $e->getMessage()]);
+
+                    $order = $razorpayData['order'];
+
+                    // Create subscription / PPV record
+                    $fakeSubscriptionRequest = new Request([
+                        'user_id' => $request->user_id,
+                        'plan_id' => $session['plan_id'] ?? null,
+                        'movie_id' => $session['movie_id'] ?? null,
+                        'app_payment_type' => $session['app_payment_type'] ?? 'subscription',
+                        'payment_method' => $session['payment_method'] ?? 'qr',
+                        'payment_gateway' => $session['payment_gateway'] ?? 'razorpay',
+                        'transaction_id' => $order['id'],
+                        'amount' => $session['amount'] ?? 0,
+                        'currency' => $session['currency'] ?? 'INR',
+                    ]);
+
+                    $response = $this->subscriptionController->store($fakeSubscriptionRequest);
+
+                    // convert Laravel response to array
+                    $data = $response->getData(true);
+
+                    if (($data['status'] ?? '') === 'success') {
 
 
-                    $this->updateFirebaseError($ref, 'Token generation failed');
-                    return response()->json(['status' => 'error', 'message' => 'Failed to generate tokens'], 500);
-                }
-
-                $ref->update([
-                    'status' => 'pending',
-                    'user_id' => (string) $request->user_id,
-                ]);
-
-                try {
-
-                    // 🔄 Check subscription and n_devices
-                    $subscription = Subscription::where('user_id', $user->uid)
-                        ->where('end_at', '>', now())
-                        ->where('is_active', true)
-                        ->whereHas('plan', function ($query) use ($deviceType) {
-                            $query->where('device_type', $deviceType);
-                        })
-                        ->orderByDesc('id')
-                        ->first();
-
-                    $device = Devices::where('user_id', $user->uid)
-                        ->where('device_type', $deviceType)
-                        ->first();
-
-                    if (!$device) {
-
-                        $device = Devices::create([
-                            'user_id' => $user->uid,
-                            'subscription_id' => $subscription?->id ?? null,
-                            'device_token' => $deviceId,
-                            'device_name' => $deviceName,
-                            'device_type' => $deviceType,
-                            'status' => 'active',
-                            'is_owner_device' => true,
+                        //Need payment approval from mobile
+                        // update Firebase
+                        $ref->update([
+                            'status' => 'payment_started',
+                            'order_id' => $order['id']
                         ]);
-
-                        $isOwnerDevice = true;
-                        $message = ucfirst($deviceType) . ' owner device created';
-                    }
-
-                    if ($subscription && $deviceId) {
-
-                        $device = Devices::where('user_id', $user->uid)
-                            ->where('subscription_id', $subscription->id)
-                            ->where('device_token', $deviceId)
-                            ->first();
-
-                        if (!$device) {
-
-                            $device = Devices::create([
-                                'user_id' => $user->uid,
-                                'subscription_id' => $subscription->id,
-                                'device_token' => $deviceId,
-                                'device_name' => $deviceName,
-                                'device_type' => $deviceType,
-                                'status' => 'inactive',
-                                'is_owner_device' => false,
-                            ]);
-
-                            $isOwnerDevice = false;
-                            $message = 'Device created and set as inactive';
-
-                        } elseif ($device->status === 'blocked' && !$device->is_owner_device) {
-
-                            $device->update(['status' => 'inactive']);
-
-                            $isOwnerDevice = $device->is_owner_device;
-                            $message = 'Blocked device reset to inactive';
-
-                        } else {
-
-                            $isOwnerDevice = $device->is_owner_device;
-                            $message = 'Device already exists with status: ' . $device->status;
-                        }
 
                     } else {
 
-                        $device = Devices::where('user_id', $user->uid)
-                            ->where('device_token', $deviceId)
-                            ->first();
+                        $this->updateFirebaseError($ref, 'Subscription creation failed');
 
-                        if (!$device) {
-
-                            $device = Devices::create([
-                                'user_id' => $user->uid,
-                                'subscription_id' => $subscription->id ?? null,
-                                'device_token' => $deviceId,
-                                'device_name' => $deviceName,
-                                'device_type' => $deviceType,
-                                'status' => 'inactive',
-                                'is_owner_device' => false,
-                            ]);
-
-                            $isOwnerDevice = false;
-                            $message = 'Device created and set as inactive without subscription';
-
-                        } else {
-
-                            $isOwnerDevice = $device->is_owner_device;
-                            $message = 'Device already exists with status: ' . $device->status . ' without subscription';
-                        }
+                        return response()->json([
+                            'status' => 'error',
+                            'message' => 'Subscription creation failed',
+                            'error' => $data
+                        ], 400);
                     }
-
-
-                    $this->updateFirebaseSuccess($ref, array_merge([
-                        'uid' => $userId,
-                        'is_owner_device' => $isOwnerDevice ?? false,
-                    ], $tokens));
 
                     return response()->json([
                         'status' => 'success',
-                        'message' => $message ?? 'Login successful',
-                        'data' => array_merge([
-                            'uid' => $userId,
-                            'is_owner_device' => $isOwnerDevice ?? false,
-                        ], $tokens)
+                        'message' => 'payment initiated, waiting for user approval',
                     ]);
 
-                } catch (\Throwable $e) {
+                    break;
 
-                    \Log::error('QR Login Device Error', [
-                        'user_id' => $userId ?? null,
-                        'device_id' => $deviceId ?? null,
-                        'error' => $e->getMessage(),
-                        'trace' => $e->getTraceAsString()
-                    ]);
-
-                    // Update Firebase session status
-                    try {
-                        $this->updateFirebaseError($ref, 'Token generation failed');
-                    } catch (\Throwable $firebaseError) {
-                    }
+                default:
 
                     return response()->json([
                         'status' => 'error',
-                        'message' => 'Something went wrong while processing the device',
-                        'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
-                    ], 500);
-                }
-
-                break;
-
-            case 'payment':
-
-                if ($request->user_id !== $session['user_id']) {
-                    $this->updateFirebaseError($ref, 'Only same user can approve the payment');
-                    return response()->json([
-                        'status' => 'error',
-                        'message' => 'Only same user can approve the payment',
-                    ], 403);
-                }
-
-                $ref->update([
-                    'status' => 'pending',
-                    'user_id' => (string) $request->user_id,
-                ]);
-
-                // Create Razorpay order
-                $fakeRequest = new Request([
-                    'amount' => $session['amount'] ?? 0,
-                    'currency' => $session['currency'] ?? 'INR',
-                    'receipt' => 'qr_' . $request->token,
-                    'notes' => [
-                        'token' => $request->token
-                    ]
-                ]);
-
-                $razorpayResponse = $this->razorpayController->createOrder($fakeRequest);
-
-                $razorpayData = $razorpayResponse->getData(true);
-
-                if (!$razorpayData['ok']) {
-                    $this->updateFirebaseError($ref, 'Failed to create Razorpay order');
-
-                    return response()->json([
-                        'status' => 'error',
-                        'message' => 'Failed to create Razorpay order',
-                        'error' => $razorpayData
+                        'message' => 'Invalid QR type',
                     ], 400);
+            }
+
+        } catch (\Throwable $e) {
+
+            Log::error('QR Verify Fatal Error', [
+                'token' => $request->token ?? null,
+                'user_id' => $request->user_id ?? null,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            try {
+                if (isset($ref)) {
+                    $this->updateFirebaseError($ref, 'Internal server error');
                 }
+            } catch (\Throwable $firebaseError) {
+            }
 
-                $order = $razorpayData['order'];
-
-                // Create subscription / PPV record
-                $fakeSubscriptionRequest = new Request([
-                    'user_id' => $request->user_id,
-                    'plan_id' => $session['plan_id'] ?? null,
-                    'movie_id' => $session['movie_id'] ?? null,
-                    'app_payment_type' => $session['app_payment_type'] ?? 'subscription',
-                    'payment_method' => $session['payment_method'] ?? 'qr',
-                    'payment_gateway' => $session['payment_gateway'] ?? 'razorpay',
-                    'transaction_id' => $order['id'],
-                    'amount' => $session['amount'] ?? 0,
-                    'currency' => $session['currency'] ?? 'INR',
-                ]);
-
-                $response = $this->subscriptionController->store($fakeSubscriptionRequest);
-
-                // convert Laravel response to array
-                $data = $response->getData(true);
-
-                if (($data['status'] ?? '') === 'success') {
-
-
-                    //Need payment approval from mobile
-                    // update Firebase
-                    $ref->update([
-                        'status' => 'payment_started',
-                        'order_id' => $order['id']
-                    ]);
-
-                } else {
-
-                    $this->updateFirebaseError($ref, 'Subscription creation failed');
-
-                    return response()->json([
-                        'status' => 'error',
-                        'message' => 'Subscription creation failed',
-                        'error' => $data
-                    ], 400);
-                }
-
-                return response()->json([
-                    'status' => 'success',
-                    'message' => 'payment initiated, waiting for user approval',
-                ]);
-
-                break;
-
-            default:
-
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Invalid QR type',
-                ], 400);
-
-
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Internal server error',
+                'error' => config('app.debug') ? $e->getMessage() : null
+            ], 500);
         }
     }
 
