@@ -393,6 +393,11 @@ class QRSessionController extends Controller
                     ], 400);
                 }
 
+                return response()->json([
+                    'status' => 'success',
+                    'message' => 'payment initiated, waiting for user approval',
+                ]);
+
                 break;
 
             default:
@@ -401,12 +406,9 @@ class QRSessionController extends Controller
                     'status' => 'error',
                     'message' => 'Invalid QR type',
                 ], 400);
-        }
 
-        return response()->json([
-            'status' => 'success',
-            'message' => 'QR session approved successfully',
-        ]);
+
+        }
     }
 
     private function updateFirebaseSuccess($ref, $data)
