@@ -112,9 +112,6 @@ class QRSessionController extends Controller
         $request->validate([
             'token' => 'required|string',
             'user_id' => 'required',
-            'device_name' => 'nullable|string',
-            'device_id' => 'nullable|string',
-            'device_type' => 'nullable|string'
         ]);
 
         $userId = $request->user_id;
