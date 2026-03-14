@@ -221,7 +221,7 @@ Route::prefix('v3.0')->group(function () {
     Route::post('/token/revoke', [TokenController::class, 'revoke']);
 
     // ✅ Protected routes
-    Route::middleware('auth.token')->group(function () {
+   // Route::middleware('auth.token')->group(function () {
 
         Route::prefix('stream')->group(function () {
             Route::post('start', [NewStreamController::class, 'start']); // Start streaming
@@ -229,7 +229,7 @@ Route::prefix('v3.0')->group(function () {
             Route::post('stop', [NewStreamController::class, 'stop']);   // Stop stream
         });
 
-    });
+    //});
 
     Route::prefix('devices')->group(function () {
         Route::get('/list', [DeviceController::class, 'index'])->name('index');             // List all devices
