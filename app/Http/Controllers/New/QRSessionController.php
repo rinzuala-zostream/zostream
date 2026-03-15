@@ -75,7 +75,7 @@ class QRSessionController extends Controller
         return response()->json([
             'status' => 'success',
             'token' => $token,
-            'qr_url' => url('/qr/' . $token),
+            'qr_url' => url('/api/v3.0/qr/status/' . $token),
             'expires_in' => 120,
         ]);
     }
