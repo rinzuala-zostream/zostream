@@ -49,7 +49,7 @@ class ReelController extends Controller
             }
 
             $hasVideoFile = $request->hasFile('video') && $request->file('video')->isValid();
-            $hasVideoUrl = !empty($request->input('video_url'));
+            $hasVideoUrl = $request->filled('video_url');
 
             if (!$hasVideoFile && !$hasVideoUrl) {
                 return response()->json([
@@ -60,57 +60,69 @@ class ReelController extends Controller
 
             $encode = filter_var($request->input('encode', true), FILTER_VALIDATE_BOOLEAN);
 
-            $videoUrl = $request->input('video_url');
-            $thumbnailUrl = $request->input('thumbnail_url');
             $uuid = (string) Str::uuid();
 
-            // =========================
-            // 🎬 VIDEO HANDLING
-            // =========================
-            if ($request->hasFile('video')) {
+            $videoUrl = $request->input('video_url');
+            $thumbnailUrl = $request->input('thumbnail_url');
+            $durationMs = null;
 
-                if ($encode) {
-                    $result = $this->processVideo($request->file('video'), $uuid);
-                } else {
-                    $result = $this->uploadOriginalVideo($request->file('video'), $uuid);
+            // ================= VIDEO =================
+            if ($hasVideoFile) {
+
+                try {
+                    $result = $encode
+                        ? $this->processVideo($request->file('video'), $uuid)
+                        : $this->uploadOriginalVideo($request->file('video'), $uuid);
+
+                    $videoUrl = $result['video_url'];
+                    $thumbnailUrl = $result['thumbnail_url'];
+                    $durationMs = $result['duration_ms'] ?? null;
+
+                } catch (\Throwable $e) {
+                    \Log::error('Video processing failed', [
+                        'error' => $e->getMessage()
+                    ]);
+
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'Video processing failed',
+                        'code' => 'VIDEO_PROCESS_FAILED'
+                    ], 500);
                 }
-
-                $videoUrl = $result['video_url'];
-                $thumbnailUrl = $result['thumbnail_url'];
-                $durationMs = $result['duration_ms'] ?? null;
             }
 
-            // =========================
-            // 🖼 OVERRIDE THUMBNAIL
-            // =========================
+            // ================= THUMBNAIL OVERRIDE =================
             if ($request->hasFile('thumbnail')) {
 
-                $thumb = $request->file('thumbnail');
-                $thumbName = Str::uuid() . '.' . $thumb->getClientOriginalExtension();
+                try {
+                    $thumb = $request->file('thumbnail');
 
-                $thumbPath = Storage::disk('r2')->putFileAs(
-                    'reels/thumbs',
-                    $thumb,
-                    $thumbName,
-                    [
-                        'visibility' => 'public',
-                        'ContentType' => $thumb->getMimeType()
-                    ]
-                );
+                    $thumbPath = Storage::disk('r2')->putFile(
+                        'reels/thumbs',
+                        $thumb,
+                        [
+                            'visibility' => 'public',
+                            'ContentType' => $thumb->getMimeType()
+                        ]
+                    );
 
-                $thumbnailUrl = rtrim(config('filesystems.disks.r2.url'), '/') . '/' . $thumbPath;
+                    $thumbnailUrl = config('filesystems.disks.r2.url') . '/' . $thumbPath;
+
+                } catch (\Throwable $e) {
+                    \Log::error('Thumbnail upload failed', [
+                        'error' => $e->getMessage()
+                    ]);
+                }
             }
 
-            // =========================
-            // 💾 SAVE
-            // =========================
+            // ================= SAVE =================
             $reel = Reel::create([
                 'user_id' => $userId,
                 'uuid' => $uuid,
                 'video_url' => $videoUrl,
                 'thumbnail_url' => $thumbnailUrl,
                 'caption' => $request->caption,
-                'duration_ms' => $durationMs, // ✅ FIXED
+                'duration_ms' => $durationMs,
                 'category' => $request->category,
                 'language' => $request->language,
                 'status' => $request->input('status', 'active'),
@@ -122,15 +134,22 @@ class ReelController extends Controller
             ], 201);
 
         } catch (ValidationException $e) {
+
             return response()->json([
                 'status' => 'error',
-                'errors' => $e->errors(),
+                'errors' => $e->errors()
             ], 422);
 
         } catch (\Throwable $e) {
+
+            \Log::error('Upload failed', [
+                'error' => $e->getMessage()
+            ]);
+
             return response()->json([
                 'status' => 'error',
-                'message' => $e->getMessage(),
+                'message' => 'Upload failed',
+                'code' => 'UPLOAD_FAILED'
             ], 500);
         }
     }
@@ -143,10 +162,8 @@ class ReelController extends Controller
         $tempPath = storage_path("app/temp/{$uuid}.mp4");
         $outputDir = storage_path("app/hls/{$uuid}");
 
-        if (!file_exists(dirname($tempPath)))
-            mkdir(dirname($tempPath), 0777, true);
-        if (!file_exists($outputDir))
-            mkdir($outputDir, 0777, true);
+        @mkdir(dirname($tempPath), 0777, true);
+        @mkdir($outputDir, 0777, true);
 
         $videoFile->move(dirname($tempPath), basename($tempPath));
 
@@ -155,21 +172,20 @@ class ReelController extends Controller
         $thumb = "{$outputDir}/thumb.jpg";
 
         // HLS
-        exec(sprintf(
-            'ffmpeg -y -i %s -preset veryfast -g 48 -sc_threshold 0 -map 0:v:0 -map 0:a? -c:v libx264 -c:a aac -f hls -hls_time 4 -hls_segment_filename %s %s',
-            escapeshellarg($tempPath),
-            escapeshellarg($segment),
-            escapeshellarg($playlist)
-        ));
+        exec("ffmpeg -y -i {$tempPath} -preset veryfast -g 48 -sc_threshold 0 -map 0:v:0 -map 0:a? -c:v libx264 -c:a aac -f hls -hls_time 4 -hls_segment_filename {$segment} {$playlist} 2>&1");
+
+        if (!file_exists($playlist)) {
+            throw new \Exception('HLS generation failed');
+        }
 
         // Thumbnail
-        exec(sprintf(
-            'ffmpeg -y -i %s -ss 00:00:01 -vframes 1 %s',
-            escapeshellarg($tempPath),
-            escapeshellarg($thumb)
-        ));
+        $thumbResult = $this->generateThumbnail($tempPath, $thumb);
 
-        // Upload
+        if (!$thumbResult['success']) {
+            throw new \Exception('Thumbnail generation failed');
+        }
+
+        // Upload files
         foreach (scandir($outputDir) as $file) {
             if (in_array($file, ['.', '..']))
                 continue;
@@ -181,12 +197,11 @@ class ReelController extends Controller
             );
         }
 
-        $base = config('filesystems.disks.r2.url') . "/reels/{$uuid}";
+        $duration = $this->getVideoDuration($tempPath);
 
         $this->cleanup($tempPath, $outputDir);
 
-        // BEFORE moving file
-        $duration = $this->getVideoDuration($tempPath);
+        $base = config('filesystems.disks.r2.url') . "/reels/{$uuid}";
 
         return [
             'video_url' => "{$base}/master.m3u8",
@@ -201,17 +216,12 @@ class ReelController extends Controller
     private function uploadOriginalVideo($videoFile, $uuid): array
     {
         $ext = $videoFile->getClientOriginalExtension();
-
-        $videoPath = "reels/{$uuid}.{$ext}";
         $thumbLocal = storage_path("app/temp/{$uuid}.jpg");
 
-        if (!file_exists(dirname($thumbLocal)))
-            mkdir(dirname($thumbLocal), 0777, true);
+        @mkdir(dirname($thumbLocal), 0777, true);
 
-        // 🔥 GET DURATION
         $duration = $this->getVideoDuration($videoFile->getRealPath());
 
-        // Upload video
         Storage::disk('r2')->putFileAs(
             'reels',
             $videoFile,
@@ -219,12 +229,14 @@ class ReelController extends Controller
             ['visibility' => 'public']
         );
 
-        // Thumbnail
-        exec(sprintf(
-            'ffmpeg -y -i %s -ss 00:00:01 -vframes 1 %s',
-            escapeshellarg($videoFile->getRealPath()),
-            escapeshellarg($thumbLocal)
-        ));
+        $thumbResult = $this->generateThumbnail(
+            $videoFile->getRealPath(),
+            $thumbLocal
+        );
+
+        if (!$thumbResult['success']) {
+            throw new \Exception('Thumbnail failed');
+        }
 
         Storage::disk('r2')->put(
             "reels/thumbs/{$uuid}.jpg",
@@ -232,38 +244,43 @@ class ReelController extends Controller
             ['visibility' => 'public']
         );
 
-        unlink($thumbLocal);
+        if (file_exists($thumbLocal)) {
+            @unlink($thumbLocal);
+        }
 
         $base = config('filesystems.disks.r2.url');
 
         return [
-            'video_url' => "{$base}/{$videoPath}",
+            'video_url' => "{$base}/reels/{$uuid}.{$ext}",
             'thumbnail_url' => "{$base}/reels/thumbs/{$uuid}.jpg",
-            'duration_ms' => (int) ($duration * 1000), // 🔥 convert to ms
+            'duration_ms' => (int) ($duration * 1000),
         ];
+    }
+    private function generateThumbnail($videoPath, $thumbPath)
+    {
+        exec("ffmpeg -y -i {$videoPath} -ss 00:00:00.5 -vframes 1 {$thumbPath} 2>&1");
+
+        return [
+            'success' => file_exists($thumbPath)
+        ];
+    }
+
+    private function getVideoDuration($filePath)
+    {
+        $duration = shell_exec("ffprobe -v error -show_entries format=duration -of csv=p=0 {$filePath}");
+        return $duration ? (float) $duration : 0;
     }
 
     private function cleanup($temp, $dir)
     {
-        @unlink($temp);
+        if (file_exists($temp))
+            @unlink($temp);
 
         foreach (glob($dir . '/*') as $file) {
             @unlink($file);
         }
 
         @rmdir($dir);
-    }
-
-    private function getVideoDuration($filePath)
-    {
-        $command = sprintf(
-            'ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 %s',
-            escapeshellarg($filePath)
-        );
-
-        $duration = shell_exec($command);
-
-        return $duration ? (float) $duration : 0;
     }
 
     /**
