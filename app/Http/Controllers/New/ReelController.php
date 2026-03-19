@@ -62,6 +62,7 @@ class ReelController extends Controller
 
             $videoUrl = $request->input('video_url');
             $thumbnailUrl = $request->input('thumbnail_url');
+            $uuid = (string) Str::uuid();
 
             // =========================
             // 🎬 VIDEO HANDLING
@@ -69,15 +70,14 @@ class ReelController extends Controller
             if ($request->hasFile('video')) {
 
                 if ($encode) {
-                    $result = $this->processVideo($request->file('video'));
+                    $result = $this->processVideo($request->file('video'), $uuid);
                 } else {
-                    $result = $this->uploadOriginalVideo($request->file('video'));
+                    $result = $this->uploadOriginalVideo($request->file('video'), $uuid);
                 }
 
                 $videoUrl = $result['video_url'];
                 $thumbnailUrl = $result['thumbnail_url'];
                 $durationMs = $result['duration_ms'] ?? null;
-                $reelId = $result['reelsId'] ?? null;
             }
 
             // =========================
@@ -138,10 +138,8 @@ class ReelController extends Controller
     // =========================
     // 🎬 HLS ENCODING
     // =========================
-    private function processVideo($videoFile): array
+    private function processVideo($videoFile, $uuid): array
     {
-        $uuid = Str::uuid();
-
         $tempPath = storage_path("app/temp/{$uuid}.mp4");
         $outputDir = storage_path("app/hls/{$uuid}");
 
@@ -194,18 +192,16 @@ class ReelController extends Controller
             'video_url' => "{$base}/master.m3u8",
             'thumbnail_url' => "{$base}/thumb.jpg",
             'duration_ms' => (int) ($duration * 1000),
-            'reelsId' => $uuid
         ];
     }
 
     // =========================
     // ⚡ DIRECT UPLOAD
     // =========================
-    private function uploadOriginalVideo($videoFile): array
+    private function uploadOriginalVideo($videoFile, $uuid): array
     {
-        $uuid = Str::uuid();
-
         $ext = $videoFile->getClientOriginalExtension();
+
         $videoPath = "reels/{$uuid}.{$ext}";
         $thumbLocal = storage_path("app/temp/{$uuid}.jpg");
 
@@ -244,7 +240,6 @@ class ReelController extends Controller
             'video_url' => "{$base}/{$videoPath}",
             'thumbnail_url' => "{$base}/reels/thumbs/{$uuid}.jpg",
             'duration_ms' => (int) ($duration * 1000), // 🔥 convert to ms
-            'reelsId' => $uuid
         ];
     }
 
