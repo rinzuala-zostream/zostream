@@ -24,7 +24,7 @@ class ReelController extends Controller
             $request->validate([
                 'user_id' => 'nullable|string|max:255',
 
-                'video' => 'nullable|file|mimes:mp4,mov,mkv,webm|max:512000',
+                'video' => 'nullable|file|mimes:mp4,mov,mkv,webm|max:20480',
                 'video_url' => 'nullable|url|max:2048',
 
                 'thumbnail' => 'nullable|image|max:10240',
@@ -106,7 +106,7 @@ class ReelController extends Controller
             // =========================
             $reel = Reel::create([
                 'user_id' => $userId,
-                'uuid' => $reelId ?? Str::uuid(),
+                'uuid' => $uuid,
                 'video_url' => $videoUrl,
                 'thumbnail_url' => $thumbnailUrl,
                 'caption' => $request->caption,
