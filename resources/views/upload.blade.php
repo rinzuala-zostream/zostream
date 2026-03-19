@@ -58,7 +58,7 @@
             const formData = new FormData(form);
 
             try {
-                const res = await fetch('https://apis.zostream.in/api/v3.0/reels', {
+                const res = await fetch('/api/v3.0/reels', {
                     method: 'POST',
                     headers: {
                         'X-USER-ID': 'test_user_1'

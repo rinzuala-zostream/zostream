@@ -30,7 +30,7 @@ class ReelController extends Controller
                 'thumbnail' => 'nullable|image|max:10240',
                 'thumbnail_url' => 'nullable|url|max:2048',
 
-                'encode' => 'nullable|boolean',
+                'encode' => 'nullable|in:true,false,1,0',
 
                 'caption' => 'nullable|string',
                 'duration_ms' => 'nullable|integer|min:0',
@@ -69,15 +69,15 @@ class ReelController extends Controller
             if ($request->hasFile('video')) {
 
                 if ($encode) {
-                    // 🔥 HLS Encoding
                     $result = $this->processVideo($request->file('video'));
                 } else {
-                    // ⚡ Direct Upload
                     $result = $this->uploadOriginalVideo($request->file('video'));
                 }
 
                 $videoUrl = $result['video_url'];
                 $thumbnailUrl = $result['thumbnail_url'];
+                $durationMs = $result['duration_ms'] ?? null;
+                $reelId = $result['reelsId'] ?? null;
             }
 
             // =========================
@@ -106,10 +106,11 @@ class ReelController extends Controller
             // =========================
             $reel = Reel::create([
                 'user_id' => $userId,
+                'uuid' => $reelId ?? Str::uuid(),
                 'video_url' => $videoUrl,
                 'thumbnail_url' => $thumbnailUrl,
                 'caption' => $request->caption,
-                'duration_ms' => $request->duration_ms,
+                'duration_ms' => $durationMs, // ✅ FIXED
                 'category' => $request->category,
                 'language' => $request->language,
                 'status' => $request->input('status', 'active'),
@@ -186,9 +187,14 @@ class ReelController extends Controller
 
         $this->cleanup($tempPath, $outputDir);
 
+        // BEFORE moving file
+        $duration = $this->getVideoDuration($tempPath);
+
         return [
             'video_url' => "{$base}/master.m3u8",
-            'thumbnail_url' => "{$base}/thumb.jpg"
+            'thumbnail_url' => "{$base}/thumb.jpg",
+            'duration_ms' => (int) ($duration * 1000),
+            'reelsId' => $uuid
         ];
     }
 
@@ -205,6 +211,9 @@ class ReelController extends Controller
 
         if (!file_exists(dirname($thumbLocal)))
             mkdir(dirname($thumbLocal), 0777, true);
+
+        // 🔥 GET DURATION
+        $duration = $this->getVideoDuration($videoFile->getRealPath());
 
         // Upload video
         Storage::disk('r2')->putFileAs(
@@ -233,7 +242,9 @@ class ReelController extends Controller
 
         return [
             'video_url' => "{$base}/{$videoPath}",
-            'thumbnail_url' => "{$base}/reels/thumbs/{$uuid}.jpg"
+            'thumbnail_url' => "{$base}/reels/thumbs/{$uuid}.jpg",
+            'duration_ms' => (int) ($duration * 1000), // 🔥 convert to ms
+            'reelsId' => $uuid
         ];
     }
 
@@ -246,6 +257,18 @@ class ReelController extends Controller
         }
 
         @rmdir($dir);
+    }
+
+    private function getVideoDuration($filePath)
+    {
+        $command = sprintf(
+            'ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 %s',
+            escapeshellarg($filePath)
+        );
+
+        $duration = shell_exec($command);
+
+        return $duration ? (float) $duration : 0;
     }
 
     /**

@@ -42,3 +42,8 @@ Route::get('/upload-test', function () {
     return view('upload');
 });
 
+Route::get('/test-r2', function () {
+    Storage::disk('r2')->put('test.txt', 'hello world');
+    return 'OK';
+});
+
