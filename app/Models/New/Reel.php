@@ -9,6 +9,7 @@ class Reel extends Model
     protected $table = 'reels';
 
     protected $fillable = [
+        'uuid',
         'user_id',
         'video_url',
         'thumbnail_url',
