@@ -19,6 +19,7 @@ use App\Http\Controllers\New\DeviceController;
 use App\Http\Controllers\New\PaymentController;
 use App\Http\Controllers\New\PaymentHistoryController;
 use App\Http\Controllers\New\QRSessionController;
+use App\Http\Controllers\New\ReelController;
 use App\Http\Controllers\New\SeasonController;
 use App\Http\Controllers\NewStreamController;
 use App\Http\Controllers\OTPController;
@@ -221,13 +222,13 @@ Route::prefix('v3.0')->group(function () {
     Route::post('/token/revoke', [TokenController::class, 'revoke']);
 
     // ✅ Protected routes
-   // Route::middleware('auth.token')->group(function () {
+    // Route::middleware('auth.token')->group(function () {
 
-        Route::prefix('stream')->group(function () {
-            Route::post('start', [NewStreamController::class, 'start']); // Start streaming
-            Route::post('ping', [NewStreamController::class, 'ping']);   // Heartbeat ping
-            Route::post('stop', [NewStreamController::class, 'stop']);   // Stop stream
-        });
+    Route::prefix('stream')->group(function () {
+        Route::post('start', [NewStreamController::class, 'start']); // Start streaming
+        Route::post('ping', [NewStreamController::class, 'ping']);   // Heartbeat ping
+        Route::post('stop', [NewStreamController::class, 'stop']);   // Stop stream
+    });
 
     //});
 
@@ -297,6 +298,16 @@ Route::prefix('v3.0')->group(function () {
         Route::post('/qcreate', [QRSessionController::class, 'create']);
         Route::get('/status/{token}', [QRSessionController::class, 'status']);
         Route::post('/verify', [QRSessionController::class, 'verify']);
+    });
+
+    Route::prefix('reels')->group(function () {
+        Route::post('/', [ReelController::class, 'store']);
+        Route::get('/feed', [ReelController::class, 'feed']);
+        Route::get('/{id}/comments', [ReelController::class, 'comments']);
+        Route::post('/{id}/comments', [ReelController::class, 'comment']);
+        Route::post('/{id}/like', [ReelController::class, 'like']);
+        Route::post('/{id}/watch', [ReelController::class, 'watch']);
+        Route::post('/generate-feed', [ReelController::class, 'generateFeed']);
     });
 
 });

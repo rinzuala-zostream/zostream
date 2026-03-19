@@ -38,3 +38,7 @@ Route::get('/firebase-test', function () {
     return "Firebase connected";
 });
 
+Route::get('/upload-test', function () {
+    return view('upload');
+});
+
