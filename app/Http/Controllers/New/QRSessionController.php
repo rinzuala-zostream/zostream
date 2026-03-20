@@ -82,6 +82,9 @@ class QRSessionController extends Controller
 
     public function status($token)
     {
+
+        $userId = request()->query('user_id');
+
         $session = $this->database
             ->getReference('qr_sessions/' . $token)
             ->getValue();
@@ -101,8 +104,17 @@ class QRSessionController extends Controller
             ]);
         }
 
+        if ($userId && isset($session['user_id']) && $session['user_id'] !== $userId) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Session belongs to another user',
+                'session_status' => $session['status'] ?? 'unknown',
+            ]);
+        }
+
         return response()->json([
             'status' => 'success',
+            'message' => 'Session found',
             'data' => $session,
         ]);
     }
@@ -285,6 +297,7 @@ class QRSessionController extends Controller
                         return response()->json([
                             'status' => 'success',
                             'message' => $message ?? 'Login successful',
+                            'type' => 'login',
                             'data' => array_merge([
                                 'uid' => $userId,
                                 'is_owner_device' => $isOwnerDevice ?? false,
@@ -398,6 +411,7 @@ class QRSessionController extends Controller
                     return response()->json([
                         'status' => 'success',
                         'message' => 'payment initiated, waiting for user approval',
+                        'type' => 'payment',
                     ]);
 
                     break;

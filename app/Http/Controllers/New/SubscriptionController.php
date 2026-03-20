@@ -72,6 +72,62 @@ class SubscriptionController extends Controller
         }
     }
 
+    public function getByDeviceType($device_type)
+    {
+        try {
+
+            $plans = Plan::with([
+                'features' => function ($q) {
+                    $q->where('is_active', true)
+                        ->orderBy('sort_order');
+                }
+            ])
+                ->where('is_active', true)
+                ->where('device_type', $device_type) // ✅ filter here
+                ->orderByRaw("FIELD(name, 'Kar 1', 'Thla 1', 'Thla 4', 'Thla 6', 'Kum 1')")
+                ->get()
+                ->groupBy('name');
+
+            $response = [];
+
+            foreach ($plans as $planName => $planGroup) {
+
+                $perDevicePrice = [];
+                $deviceFeatures = [];
+
+                foreach ($planGroup as $plan) {
+
+                    $perDevicePrice[ucfirst($plan->device_type)] = (float) $plan->price;
+
+                    $deviceFeatures[ucfirst($plan->device_type)] =
+                        $plan->features->pluck('feature')->toArray();
+                }
+
+                $first = $planGroup->first();
+
+                $response[] = [
+                    "plan_id" => (int) $first->id,
+                    "plan" => $planName,
+                    "original_price" => (float) $planGroup->sum('price'),
+                    "duration_days" => (int) $first->duration_days,
+                    "per_device_price" => $perDevicePrice,
+                    "per_device_features" => $deviceFeatures
+                ];
+            }
+
+            return $this->respond([
+                "status" => "success",
+                "data" => $response
+            ]);
+
+        } catch (\Exception $e) {
+            return $this->respond([
+                "status" => "error",
+                "message" => "Failed to fetch plans"
+            ]);
+        }
+    }
+
     /**
      * 🔍 Show a single subscription with plan + devices
      */
