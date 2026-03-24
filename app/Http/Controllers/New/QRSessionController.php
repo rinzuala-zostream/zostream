@@ -83,12 +83,13 @@ class QRSessionController extends Controller
 
     public function status($token)
     {
-
         $userId = request()->query('user_id');
 
-        $session = $this->database
-            ->getReference('qr_sessions/' . $token)
-            ->getValue();
+        // ✅ Get reference
+        $ref = $this->database->getReference('qr_sessions/' . $token);
+
+        // ✅ Get data
+        $session = $ref->getValue();
 
         if (!$session) {
             return response()->json([
@@ -113,9 +114,13 @@ class QRSessionController extends Controller
             ]);
         }
 
-        $session->update([
+        // ✅ Update using reference
+        $ref->update([
             'status' => 'pending',
         ]);
+
+        // (optional) update local copy
+        $session['status'] = 'pending';
 
         return response()->json([
             'status' => 'success',
