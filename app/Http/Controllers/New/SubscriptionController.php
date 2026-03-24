@@ -277,7 +277,7 @@ class SubscriptionController extends Controller
                     'payment_gateway' => $request->payment_gateway,
                     'transaction_id' => $request->transaction_id,
                     'status' => 'pending',
-                    'payment_type' => 'ppv',
+                    'payment_type' => 'new',
                     'created_at' => now(),
                     'expiry_date' => $endAt,
                     'meta' => null,
