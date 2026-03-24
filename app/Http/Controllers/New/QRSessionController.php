@@ -85,10 +85,7 @@ class QRSessionController extends Controller
     {
         $userId = request()->query('user_id');
 
-        // ✅ Get reference
         $ref = $this->database->getReference('qr_sessions/' . $token);
-
-        // ✅ Get data
         $session = $ref->getValue();
 
         if (!$session) {
@@ -106,7 +103,13 @@ class QRSessionController extends Controller
             ]);
         }
 
-        if ($userId && isset($session['user_id']) && $session['user_id'] !== $userId) {
+        // ✅ SKIP check if type = login
+        if (
+            ($session['type'] ?? null) !== 'login' &&
+            $userId &&
+            isset($session['user_id']) &&
+            $session['user_id'] !== $userId
+        ) {
             return response()->json([
                 'status' => 'error',
                 'message' => 'Session belongs to another user',
@@ -114,12 +117,11 @@ class QRSessionController extends Controller
             ]);
         }
 
-        // ✅ Update using reference
+        // ✅ Update status
         $ref->update([
             'status' => 'pending',
         ]);
 
-        // (optional) update local copy
         $session['status'] = 'pending';
 
         return response()->json([
