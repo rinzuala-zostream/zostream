@@ -271,6 +271,7 @@ class SubscriptionController extends Controller
                     'subscription_id' => null,
                     'user_id' => $request->user_id,
                     'movie_id' => $request->movie_id, // 🔥 important
+                    'device_type' => $request->device_type ?? 'mobile',
                     'app_payment_type' => 'ppv',
                     'amount' => $request->amount ?? 0,
                     'currency' => $request->currency ?? 'INR',
@@ -323,6 +324,7 @@ class SubscriptionController extends Controller
                 'subscription_id' => $subscription->id,
                 'user_id' => $request->user_id,
                 'app_payment_type' => $request->app_payment_type,
+                'device_type' => $request->device_type ?? 'mobile',
                 'amount' => $plan->price,
                 'currency' => $request->currency ?? 'INR',
                 'payment_method' => $request->payment_method,
