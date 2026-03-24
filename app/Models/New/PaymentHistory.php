@@ -15,6 +15,7 @@ class PaymentHistory extends Model
         'subscription_id',
         'user_id',
         'model_id',
+        'movie_id',
         'device_type',
         'app_payment_type',
         'amount',
