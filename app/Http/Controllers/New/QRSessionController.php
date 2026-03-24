@@ -52,6 +52,7 @@ class QRSessionController extends Controller
         $data = [
             'device_id' => $request->device_id,
             'movie_id' => $request->movie_id,
+            'movie_name' => $request->movie_name,
             'device_name' => $request->device_name,
             'device_type' => $request->device_type,
             'amount' => $request->amount,
