@@ -113,6 +113,10 @@ class QRSessionController extends Controller
             ]);
         }
 
+        $session->update([
+            'status' => 'pending',
+        ]);
+
         return response()->json([
             'status' => 'success',
             'message' => 'Session found',
@@ -190,7 +194,6 @@ class QRSessionController extends Controller
                     }
 
                     $ref->update([
-                        'status' => 'pending',
                         'user_id' => (string) $request->user_id,
                     ]);
 
@@ -340,7 +343,6 @@ class QRSessionController extends Controller
                     }
 
                     $ref->update([
-                        'status' => 'pending',
                         'user_id' => (string) $request->user_id,
                     ]);
 

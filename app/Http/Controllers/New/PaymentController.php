@@ -178,10 +178,12 @@ class PaymentController extends Controller
             }
         }
 
+        $status = $successCount > 0 ? 'success' : 'error';
+
         return response()->json([
-            'status' => 'success',
+            'status' => $status,
             'message' => "Processed payments. Success: $successCount, Failures: $failureCount",
-        ]);
+        ], 200);
     }
 
     private function checkPaymentStatus($phonepeReq, $merchantOrderId)
