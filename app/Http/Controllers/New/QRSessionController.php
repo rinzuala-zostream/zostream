@@ -347,10 +347,6 @@ class QRSessionController extends Controller
                         ], 403);
                     }
 
-                    $ref->update([
-                        'user_id' => (string) $request->user_id,
-                    ]);
-
                     // Create Razorpay order
                     $fakeRequest = new Request([
                         'amount' => $session['amount'] ?? 0,
@@ -418,7 +414,7 @@ class QRSessionController extends Controller
 
                     return response()->json([
                         'status' => 'success',
-                        'message' => 'payment initiated, waiting for user approval',
+                        'message' => $order['id'],
                         'type' => 'payment',
                     ]);
 
