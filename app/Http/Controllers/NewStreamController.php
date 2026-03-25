@@ -229,7 +229,8 @@ class NewStreamController extends Controller
             return response()->json([
                 'status' => 'error',
                 'title' => 'Stream Error',
-                'message' => 'Unable to start stream. Please try again.'
+                'message' => 'Unable to start stream. Please try again.',
+                'error' => $e->getMessage(),
             ], 500);
         }
 
