@@ -21,7 +21,11 @@ class QRSessionController extends Controller
     protected $subscriptionController;
     private $tokenController;
 
-    public function __construct(RazorpayController $razorpayController, SubscriptionController $subscriptionController, TokenController $tokenController, )
+    public function __construct(
+        RazorpayController $razorpayController, 
+        SubscriptionController $subscriptionController, 
+        TokenController $tokenController, 
+        )
     {
         $this->razorpayController = $razorpayController;
         $this->subscriptionController = $subscriptionController;
@@ -317,7 +321,7 @@ class QRSessionController extends Controller
 
                     } catch (\Throwable $e) {
 
-                        \Log::error('QR Login Device Error', [
+                        Log::error('QR Login Device Error', [
                             'user_id' => $userId ?? null,
                             'device_id' => $deviceId ?? null,
                             'error' => $e->getMessage(),

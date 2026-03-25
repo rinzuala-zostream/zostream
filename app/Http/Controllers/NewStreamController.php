@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Controllers\New\MovieController;
+use App\Models\MovieModel;
 use DB;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redis;
@@ -39,7 +40,15 @@ class NewStreamController extends Controller
         $userId = $request->input('user_id');
         $platform = $request->input('platform');
 
-        if (!$subscriptionId || !$deviceToken || !$userId) {
+        // 🔥 Detect PPV
+        $isPPV = false;
+        if ($movieId) {
+            $movie = MovieModel::where('id', $movieId)->first();
+            $isPPV = $movie && $movie->isPayPerView == 1;
+        }
+
+        // ✅ Allow no subscription for PPV
+        if ((!$subscriptionId && !$isPPV) || !$deviceToken || !$userId) {
             return response()->json([
                 'status' => 'error',
                 'title' => 'Missing Information',
@@ -48,10 +57,14 @@ class NewStreamController extends Controller
         }
 
         // 1️⃣ Device check
-        $device = Devices::where('device_token', $deviceToken)
-            ->where('subscription_id', $subscriptionId)
-            ->where('user_id', $userId)
-            ->first();
+        $deviceQuery = Devices::where('device_token', $deviceToken)
+            ->where('user_id', $userId);
+
+        if (!$isPPV) {
+            $deviceQuery->where('subscription_id', $subscriptionId);
+        }
+
+        $device = $deviceQuery->first();
 
         if (!$device) {
             return response()->json([
@@ -61,48 +74,59 @@ class NewStreamController extends Controller
             ], 404);
         }
 
-        // 2️⃣ Subscription check
-        $subscription = Subscription::find($subscriptionId);
-
-        if (!$subscription) {
-            return response()->json([
-                'status' => 'error',
-                'title' => 'Subscription Not Found',
-                'message' => 'We could not find an active subscription for your account. Please check your subscription status.'
-            ], 404);
-        }
-
-        if (Carbon::parse($subscription->end_at)->isPast() || !$subscription->is_active) {
-            return response()->json([
-                'status' => 'error',
-                'title' => 'Subscription Expired',
-                'message' => 'Your subscription has expired. Please renew your plan to continue watching.'
-            ], 403);
-        }
-
-        // 3️⃣ Plan check
-        $plan = Plan::find($subscription->plan_id);
-
-        if (!$plan) {
-            return response()->json([
-                'status' => 'error',
-                'title' => 'Plan Information Unavailable',
-                'message' => 'We’re unable to retrieve your subscription plan right now. Please try again later.'
-            ], 500);
-        }
-
+        // 🔥 Default values for PPV
+        $subscription = null;
+        $plan = null;
+        $limit = 1;
         $type = strtolower(trim((string) $device->device_type));
-        $planType = strtolower(trim((string) $plan->device_type));
 
-        if ($planType !== $type) {
-            return response()->json([
-                'status' => 'error',
-                'title' => 'Invalid Plan for This Device',
-                'message' => 'Your current subscription does not support this device type.'
-            ], 403);
+        // =========================
+        // ✅ SUBSCRIPTION FLOW ONLY
+        // =========================
+        if (!$isPPV) {
+
+            // 2️⃣ Subscription check
+            $subscription = Subscription::find($subscriptionId);
+
+            if (!$subscription) {
+                return response()->json([
+                    'status' => 'error',
+                    'title' => 'Subscription Not Found',
+                    'message' => 'We could not find an active subscription for your account. Please check your subscription status.'
+                ], 404);
+            }
+
+            if (Carbon::parse($subscription->end_at)->isPast() || !$subscription->is_active) {
+                return response()->json([
+                    'status' => 'error',
+                    'title' => 'Subscription Expired',
+                    'message' => 'Your subscription has expired. Please renew your plan to continue watching.'
+                ], 403);
+            }
+
+            // 3️⃣ Plan check
+            $plan = Plan::find($subscription->plan_id);
+
+            if (!$plan) {
+                return response()->json([
+                    'status' => 'error',
+                    'title' => 'Plan Information Unavailable',
+                    'message' => 'We’re unable to retrieve your subscription plan right now. Please try again later.'
+                ], 500);
+            }
+
+            $planType = strtolower(trim((string) $plan->device_type));
+
+            if ($planType !== $type) {
+                return response()->json([
+                    'status' => 'error',
+                    'title' => 'Invalid Plan for This Device',
+                    'message' => 'Your current subscription does not support this device type.'
+                ], 403);
+            }
+
+            $limit = $plan->device_limit ?? 1;
         }
-
-        $limit = $plan->device_limit ?? 1;
 
         $streamToken = null;
         $currentActiveSeats = 0;
@@ -112,71 +136,79 @@ class NewStreamController extends Controller
 
         try {
 
-            // 4️⃣ Cleanup stale streams (DB based)
-            $timeout = now()->subSeconds($this->streamTimeout);
+            // =========================
+            // ✅ SUBSCRIPTION STREAM LOGIC ONLY
+            // =========================
+            if (!$isPPV) {
 
-            $staleStreams = ActiveStream::where('subscription_id', $subscriptionId)
-                ->where('device_type', $type)
-                ->where('last_ping', '<', $timeout)
-                ->get();
+                // 4️⃣ Cleanup stale streams
+                $timeout = now()->subSeconds($this->streamTimeout);
 
-            foreach ($staleStreams as $stream) {
+                $staleStreams = ActiveStream::where('subscription_id', $subscriptionId)
+                    ->where('device_type', $type)
+                    ->where('last_ping', '<', $timeout)
+                    ->get();
 
-                ActiveStream::where('id', $stream->id)
-                    ->update(['status' => 'stopped']);
+                foreach ($staleStreams as $stream) {
+                    ActiveStream::where('id', $stream->id)
+                        ->update(['status' => 'stopped']);
+                }
+
+                // 5️⃣ DB SEAT COUNT
+                $dbActiveCount = Devices::where('subscription_id', $subscription->id)
+                    ->where('user_id', $subscription->user_id)
+                    ->where('device_type', $type)
+                    ->where('status', 'active')
+                    ->count();
+
+                // 6️⃣ Device status
+                $dbStatus = strtolower(trim((string) $device->status));
+
+                if ($dbStatus === '') {
+                    $dbStatus = 'inactive';
+                }
+
+                if (!in_array($dbStatus, ['active', 'inactive', 'blocked'], true)) {
+                    return response()->json([
+                        'status' => 'error',
+                        'title' => 'Device Status Error',
+                        'message' => 'This device is in an invalid state. Please sign in again.'
+                    ], 409);
+                }
+
+                if ($dbStatus === 'blocked') {
+                    return response()->json([
+                        'status' => 'error',
+                        'title' => 'Device Blocked',
+                        'message' => 'This device has been blocked due to subscription renewal. Please verify your account or contact support for assistance.'
+                    ], 403);
+                }
+
+                // 7️⃣ Enforce device limit
+                if ($dbStatus === 'inactive' && $dbActiveCount >= $limit) {
+                    return response()->json([
+                        'status' => 'error',
+                        'title' => 'Device Limit Reached',
+                        'message' => 'You have reached the maximum number of devices allowed for your plan.'
+                    ], 409);
+                }
+
+                // 8️⃣ Claim seat
+                if ($dbStatus === 'inactive') {
+                    $device->update(['status' => 'active']);
+                    $dbActiveCount++;
+                }
+
+                $currentActiveSeats = $dbActiveCount;
+                $remainingSlots = max(0, $limit - $currentActiveSeats);
             }
 
-            // 5️⃣ DB SEAT COUNT
-            $dbActiveCount = Devices::where('subscription_id', $subscription->id)
-                ->where('user_id', $subscription->user_id)
-                ->where('device_type', $type)
-                ->where('status', 'active')
-                ->count();
-
-            // 6️⃣ Device status
-            $dbStatus = strtolower(trim((string) $device->status));
-
-            if ($dbStatus === '') {
-                $dbStatus = 'inactive';
-            }
-
-            if (!in_array($dbStatus, ['active', 'inactive', 'blocked'], true)) {
-                return response()->json([
-                    'status' => 'error',
-                    'title' => 'Device Status Error',
-                    'message' => 'This device is in an invalid state. Please sign in again.'
-                ], 409);
-            }
-
-            if ($dbStatus === 'blocked') {
-                return response()->json([
-                    'status' => 'error',
-                    'title' => 'Device Blocked',
-                    'message' => 'This device has been blocked due to subscription renewal. Please verify your account or contact support for assistance.'
-                ], 403);
-            }
-
-            // 7️⃣ Enforce device limit
-            if ($dbStatus === 'inactive' && $dbActiveCount >= $limit) {
-                return response()->json([
-                    'status' => 'error',
-                    'title' => 'Device Limit Reached',
-                    'message' => 'You have reached the maximum number of devices allowed for your plan.'
-                ], 409);
-            }
-
-            // 8️⃣ Claim seat
-            if ($dbStatus === 'inactive') {
-                $device->update(['status' => 'active']);
-                $dbActiveCount++;
-            }
-
-            // 9️⃣ Start stream
+            // 9️⃣ Start stream (COMMON for both)
             $streamToken = Str::uuid()->toString();
 
             ActiveStream::updateOrCreate(
                 [
-                    'subscription_id' => $subscriptionId,
+                    'subscription_id' => $isPPV ? null : $subscriptionId,
                     'device_id' => $device->id
                 ],
                 [
@@ -190,9 +222,6 @@ class NewStreamController extends Controller
 
             DB::commit();
 
-            $currentActiveSeats = $dbActiveCount;
-            $remainingSlots = max(0, $limit - $currentActiveSeats);
-
         } catch (\Exception $e) {
 
             DB::rollBack();
@@ -204,7 +233,7 @@ class NewStreamController extends Controller
             ], 500);
         }
 
-        // 🔟 Optional movie links
+        // 🔟 Movie links (UNCHANGED)
         $movieLinks = null;
 
         if ($movieId) {
@@ -259,7 +288,7 @@ class NewStreamController extends Controller
         return response()->json([
             'status' => 'success',
             'stream_token' => $streamToken,
-            'max_quality' => $plan->quality,
+            'max_quality' => $plan->quality ?? 'FULL_HD', // 🔥 safe for PPV
             'current_active' => $currentActiveSeats,
             'device_limit' => $limit,
             'remaining_slots' => $remainingSlots,
