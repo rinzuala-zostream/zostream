@@ -320,16 +320,19 @@ class NewStreamController extends Controller
             return response()->json([
                 'status' => 'error',
                 'title' => 'Device Blocked',
-                'message' => 'This device has been blocked due to subscription renewal. Please verify your account or contact support for assistance.'
+                'message' => 'This device has been blocked due to subscription renewal. Please verify your account or contact support for assistance.',
+                'device' => $device // ✅ optional (if you want)
             ], 403);
         }
 
         $subscription = Subscription::find($device->subscription_id);
+
         if (!$subscription) {
             return response()->json([
                 'status' => 'error',
                 'title' => 'Subscription Unavailable',
-                'message' => 'We could not find an active subscription for your account. Please check your subscription status.'
+                'message' => 'We could not find an active subscription for your account. Please check your subscription status.',
+                'device' => $device // ✅ optional
             ], 404);
         }
 

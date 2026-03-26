@@ -14,6 +14,14 @@ use Exception;
 
 class SubscriptionController extends Controller
 {
+    protected $razorpayController;
+
+    public function __construct(
+        SubscriptionController $subscriptionController,
+
+    ) {
+        $this->subscriptionController = $subscriptionController;
+    }
     /**
      * 📋 List all subscriptions (with filters and pagination)
      */
@@ -249,6 +257,33 @@ class SubscriptionController extends Controller
             ]);
 
             $paymentType = strtolower(trim($request->app_payment_type));
+            $transactionId = $request->transaction_id;
+
+            if (!$transactionId || trim($transactionId) === '') {
+                $transactionId = $order['id'] ?? null;
+            }
+
+            // Create Razorpay order
+            $fakeRequest = new Request([
+                'amount' => $request->amount ?? 0,
+                'currency' => $request->currency ?? 'INR',
+
+            ]);
+
+            $razorpayResponse = $this->razorpayController->createOrder($fakeRequest);
+
+            $razorpayData = $razorpayResponse->getData(true);
+
+            if (!$razorpayData['ok']) {
+
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Failed to create Razorpay order',
+                    'error' => $razorpayData
+                ], 400);
+            }
+
+            $order = $razorpayData['order'];
 
             /*
             |--------------------------------------------------------------------------
@@ -324,7 +359,7 @@ class SubscriptionController extends Controller
                 'subscription_id' => $subscription->id,
                 'user_id' => $request->user_id,
                 'app_payment_type' => $request->app_payment_type,
-                'device_type' => $request->device_type ?? 'mobile',
+                'device_type' => $request->device_type ?? $plan->device_type,
                 'amount' => $plan->price,
                 'currency' => $request->currency ?? 'INR',
                 'payment_method' => $request->payment_method,
