@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\New;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\RazorpayController;
 use App\Models\New\PaymentHistory;
 use DB;
 use Illuminate\Http\Request;
@@ -17,10 +18,10 @@ class SubscriptionController extends Controller
     protected $razorpayController;
 
     public function __construct(
-        SubscriptionController $subscriptionController,
+        RazorpayController $razorpayController,
 
     ) {
-        $this->subscriptionController = $subscriptionController;
+        $this->razorpayController = $razorpayController;
     }
     /**
      * 📋 List all subscriptions (with filters and pagination)
