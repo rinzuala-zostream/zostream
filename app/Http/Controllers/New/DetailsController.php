@@ -201,7 +201,7 @@ class DetailsController extends Controller
         $ppvData = PaymentHistory::where('user_id', $userId)
             ->where('status', 'success')
             ->where('device_type', strtolower(trim($deviceType)))
-            ->where('movie_id', $movieId) // 🔥 VERY IMPORTANT
+            ->where('movie_id', $movieId)
             ->orderByDesc('id')
             ->first();
 
@@ -214,33 +214,36 @@ class DetailsController extends Controller
             ];
         }
 
-        $purchaseDate = Carbon::parse(
-            $ppvData->payment_date ?? $ppvData->created_at
-        );
+        // ✅ Use datetime directly
+        $purchaseDate = $ppvData->payment_date
+            ? Carbon::parse($ppvData->payment_date)
+            : Carbon::parse($ppvData->created_at);
 
+        // ✅ expiry_date is already datetime → use directly
         $expiry = $ppvData->expiry_date
             ? Carbon::parse($ppvData->expiry_date)
             : $purchaseDate->copy()->addDays(7);
 
         $now = now();
 
-        if ($now->greaterThan($expiry)) {
-            $isRented = false;
-            $daysLeft = 0;
-        } else {
-            $isRented = true;
-            $daysLeft = (int) ceil($now->diffInSeconds($expiry, false) / 86400);
-        }
+        // ✅ Check valid rental
+        $isRented = $now->lessThanOrEqualTo($expiry);
 
-        $daysLeft = $now->diffInDays($expiry);
+        // ✅ Calculate remaining time properly
+        $secondsLeft = $now->diffInSeconds($expiry, false);
+
+        if ($secondsLeft <= 0) {
+            $daysLeftText = "Vawiin chiah i en thei tawh";
+        } else {
+            $days = ceil($secondsLeft / 86400); // include partial day
+            $daysLeftText = "Ni $days chhung ila en thei.";
+        }
 
         return [
             'isRented' => $isRented,
-            'rentalPurchased' => $purchaseDate->format('F j, Y'),
-            'rentalExpiry' => $expiry->format('F j, Y'),
-            'daysLeft' => $daysLeft > 0
-                ? "Ni $daysLeft chhung ila en thei."
-                : "Vawiin chiah i en thei tawh",
+            'rentalPurchased' => $purchaseDate->format('F j, Y g:i A'), // ✅ include time
+            'rentalExpiry' => $expiry->format('F j, Y g:i A'), // ✅ include time
+            'daysLeft' => $daysLeftText,
         ];
     }
 
