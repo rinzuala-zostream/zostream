@@ -359,7 +359,7 @@ class SubscriptionController extends Controller
                 'subscription_id' => $subscription->id,
                 'user_id' => $request->user_id,
                 'app_payment_type' => $request->app_payment_type,
-                'device_type' => $request->device_type ?? 'mobile',
+                'device_type' => $plan->device_type,
                 'amount' => $plan->price,
                 'currency' => $request->currency ?? 'INR',
                 'payment_method' => $request->payment_method,
