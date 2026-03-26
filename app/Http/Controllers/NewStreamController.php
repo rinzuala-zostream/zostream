@@ -302,8 +302,11 @@ class NewStreamController extends Controller
     {
         $deviceToken = $request->header('Device-Token');
         $streamToken = $request->input('stream_token');
+        $subscriptionId = $request->input('subscription_id');
 
-        $device = Devices::where('device_token', $deviceToken)->first();
+        $device = Devices::where('device_token', $deviceToken)
+            ->where('subscription_id', $subscriptionId)
+            ->first();
 
         if (!$device) {
             return response()->json([
