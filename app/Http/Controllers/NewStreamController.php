@@ -217,7 +217,7 @@ class NewStreamController extends Controller
 
             ActiveStream::updateOrCreate(
                 [
-                    'subscription_id' => $isPPV ? null : $subscriptionId,
+                    'subscription_id' => ($isPPV || $isFree) ? null : $subscriptionId,
                     'device_id' => $device->id
                 ],
                 [
