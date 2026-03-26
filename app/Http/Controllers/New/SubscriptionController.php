@@ -260,30 +260,29 @@ class SubscriptionController extends Controller
             $transactionId = $request->transaction_id;
 
             if (!$transactionId || trim($transactionId) === '') {
-                $transactionId = $order['id'] ?? null;
+
+                // Create Razorpay order
+                $fakeRequest = new Request([
+                    'amount' => $request->amount ?? 0,
+                    'currency' => $request->currency ?? 'INR',
+
+                ]);
+
+                $razorpayResponse = $this->razorpayController->createOrder($fakeRequest);
+
+                $razorpayData = $razorpayResponse->getData(true);
+
+                if (!$razorpayData['ok']) {
+
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'Failed to create Razorpay order',
+                        'error' => $razorpayData
+                    ], 400);
+                }
+
+                $transactionId = $razorpayData['order'];
             }
-
-            // Create Razorpay order
-            $fakeRequest = new Request([
-                'amount' => $request->amount ?? 0,
-                'currency' => $request->currency ?? 'INR',
-
-            ]);
-
-            $razorpayResponse = $this->razorpayController->createOrder($fakeRequest);
-
-            $razorpayData = $razorpayResponse->getData(true);
-
-            if (!$razorpayData['ok']) {
-
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Failed to create Razorpay order',
-                    'error' => $razorpayData
-                ], 400);
-            }
-
-            $order = $razorpayData['order'];
 
             /*
             |--------------------------------------------------------------------------
@@ -312,7 +311,7 @@ class SubscriptionController extends Controller
                     'currency' => $request->currency ?? 'INR',
                     'payment_method' => $request->payment_method,
                     'payment_gateway' => $request->payment_gateway,
-                    'transaction_id' => $request->transaction_id,
+                    'transaction_id' => $transactionId,
                     'status' => 'pending',
                     'payment_type' => 'new',
                     'created_at' => now(),
@@ -364,7 +363,7 @@ class SubscriptionController extends Controller
                 'currency' => $request->currency ?? 'INR',
                 'payment_method' => $request->payment_method,
                 'payment_gateway' => $request->payment_gateway,
-                'transaction_id' => $request->transaction_id,
+                'transaction_id' => $transactionId,
                 'status' => 'pending',
                 'payment_type' => 'new',
                 'payment_date' => now(),
