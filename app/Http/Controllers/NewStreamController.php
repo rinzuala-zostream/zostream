@@ -40,6 +40,15 @@ class NewStreamController extends Controller
         $userId = $request->input('user_id');
         $platform = $request->input('platform');
 
+        $isFree = false;
+
+        if ($movieId) {
+            $movie = MovieModel::where('id', $movieId)->first();
+
+            $isPPV = $movie && $movie->isPayPerView == 1;
+            $isFree = $movie && $movie->isPremium == 0; // ✅ NEW
+        }
+
         // 🔥 Detect PPV
         $isPPV = false;
         if ($movieId) {
@@ -48,7 +57,7 @@ class NewStreamController extends Controller
         }
 
         // ✅ Allow no subscription for PPV
-        if ((!$subscriptionId && !$isPPV) || !$deviceToken || !$userId) {
+        if ((!$subscriptionId && !$isPPV && !$isFree) || !$deviceToken || !$userId) {
             return response()->json([
                 'status' => 'error',
                 'title' => 'Missing Information',
@@ -60,7 +69,7 @@ class NewStreamController extends Controller
         $deviceQuery = Devices::where('device_token', $deviceToken)
             ->where('user_id', $userId);
 
-        if (!$isPPV) {
+        if (!$isPPV && !$isFree) {
             $deviceQuery->where('subscription_id', $subscriptionId);
         }
 
@@ -83,7 +92,7 @@ class NewStreamController extends Controller
         // =========================
         // ✅ SUBSCRIPTION FLOW ONLY
         // =========================
-        if (!$isPPV) {
+        if (!$isPPV && !$isFree) {
 
             // 2️⃣ Subscription check
             $subscription = Subscription::find($subscriptionId);
@@ -139,7 +148,7 @@ class NewStreamController extends Controller
             // =========================
             // ✅ SUBSCRIPTION STREAM LOGIC ONLY
             // =========================
-            if (!$isPPV) {
+            if (!$isPPV && !$isFree) {
 
                 // 4️⃣ Cleanup stale streams
                 $timeout = now()->subSeconds($this->streamTimeout);
