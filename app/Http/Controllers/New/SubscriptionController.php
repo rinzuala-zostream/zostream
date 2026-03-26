@@ -377,7 +377,10 @@ class SubscriptionController extends Controller
             return $this->respond([
                 'status' => 'success',
                 'message' => 'Subscription created. Payment pending.',
-                'data' => $subscription
+                'data' => [
+                    'subscription' => $subscription,
+                    'transaction_id' => $transactionId // ✅ add here
+                ]
             ], 201);
 
         } catch (Exception $e) {
