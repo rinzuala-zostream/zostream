@@ -345,9 +345,34 @@ class SubscriptionController extends Controller
                 ], 404);
             }
 
-            $startAt = now();
-            $endAt = $startAt->copy()->addDays($plan->duration_days);
+            $now = now();
 
+            // 🔍 Find existing active subscription (same device type)
+            $existingSubscription = Subscription::where('user_id', $request->user_id)
+                ->where('is_active', true)
+                ->where('end_at', '>', $now)
+                ->whereHas('plan', function ($q) use ($plan) {
+                    $q->where('device_type', $plan->device_type);
+                })
+                ->orderByDesc('id')
+                ->first();
+
+            // 🧠 Decide start time
+            if ($existingSubscription) {
+                // 👉 extend existing
+                $startAt = Carbon::parse($existingSubscription->end_at);
+
+                // ❌ delete or deactivate old one (important)
+                $existingSubscription->update(['is_active' => false]);
+            } else {
+                // 👉 new subscription
+                $startAt = $now;
+            }
+
+            // 📅 calculate correct end date
+            $endAt = $startAt->copy()->addDays((int) $plan->duration_days);
+
+            // 💾 create new subscription
             $subscription = Subscription::create([
                 'user_id' => $request->user_id,
                 'plan_id' => $plan->id,
@@ -356,6 +381,7 @@ class SubscriptionController extends Controller
                 'is_active' => false,
             ]);
 
+            // 💰 payment history
             PaymentHistory::create([
                 'subscription_id' => $subscription->id,
                 'user_id' => $request->user_id,
@@ -367,12 +393,11 @@ class SubscriptionController extends Controller
                 'payment_gateway' => $request->payment_gateway,
                 'transaction_id' => $transactionId,
                 'status' => 'pending',
-                'payment_type' => 'new',
+                'payment_type' => $existingSubscription ? 'renew' : 'new',
                 'payment_date' => now(),
                 'expiry_date' => $endAt,
                 'meta' => null,
             ]);
-
             DB::commit();
 
             return $this->respond([
