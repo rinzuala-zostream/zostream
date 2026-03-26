@@ -283,7 +283,7 @@ class SubscriptionController extends Controller
                     ], 400);
                 }
 
-                $transactionId = $razorpayData['order'];
+                $transactionId = $razorpayData['order']['id'];
             }
 
             /*
