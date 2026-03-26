@@ -248,6 +248,7 @@ class SubscriptionController extends Controller
             $request->validate([
                 'user_id' => 'required|string|max:225',
                 'plan_id' => 'nullable|integer|exists:n_plans,id',
+                'amount' => 'nullable|numeric|min:0',
                 'device_type' => 'nullable|string|max:50',
                 'app_payment_type' => 'nullable|string|max:100',
                 'payment_method' => 'nullable|string|max:100',
