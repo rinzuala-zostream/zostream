@@ -124,7 +124,7 @@ class PaymentController extends Controller
                             'user_id' => $uid,
                             'plan_id' => $plan->id,
                             'start_at' => $startAt,
-                            'end_at' => $payment->expiry_date,
+                            'end_at' => $startAt->copy()->addDays($plan->duration_days),
                             'is_active' => true,
                         ]);
 
