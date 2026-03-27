@@ -539,13 +539,6 @@ class NewStreamController extends Controller
 
         try {
 
-            // Extend subscription
-            $newEnd = Carbon::parse($subscription->end_at)->addDays($plan->duration_days);
-
-            $subscription->update([
-                'end_at' => $newEnd
-            ]);
-
             $kept = [];
             $blocked = [];
 
