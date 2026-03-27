@@ -8,6 +8,7 @@ use App\Http\Controllers\NewStreamController;
 use App\Http\Controllers\PhonePeSdkV2Controller;
 use App\Http\Controllers\RazorpayController;
 use App\Http\Controllers\SubscriptionController as LegacySubscriptionController;
+use App\Models\New\Plan;
 use App\Models\New\Subscription;
 use App\Models\PPVPaymentModel;
 use App\Models\New\PaymentHistory;
@@ -105,50 +106,46 @@ class PaymentController extends Controller
 
                 if ($paymentSuccess) {
 
-                    $expiryDate = null;
+                    $endAt = null;
 
                     // 🔹 If subscription → calculate expiry
-                    if ($payment->subscription_id) {
+                    if ($payment->movie_id === null) {
 
-                        $subscription = Subscription::find($payment->subscription_id);
+                        $$plan = Plan::find($payment->plan_id);
 
-                        if ($subscription && $subscription->plan) {
-
-                            $duration = $subscription->plan->duration_days;
-                            $currentExpiry = $subscription->end_at;
-
-                            $expiryDate = ($currentExpiry && $currentExpiry->isFuture())
-                                ? $currentExpiry->copy()->addDays($duration)
-                                : now()->addDays($duration);
-
-                            // Ensure start_at exists
-                            $startAt = $subscription->start_at ?? now();
-
-                            // Determine active status
-                            $isActive = now()->between($startAt, $expiryDate);
-
-                            $subscription->update([
-                                'start_at' => $startAt,
-                                'end_at' => $expiryDate,
-                                'is_active' => $isActive
-                            ]);
-
-                            // 🔹 Update payment (single update block)
-                            $payment->update([
-                                'status' => 'success',
-                                'payment_date' => now(),
-                                'expiry_date' => $expiryDate
-                            ]);
-
-                            $fakeRequest = new Request([
-                                'user_id' => $uid,
-                                'device_id' => $deviceId,
-                                'subscription_id' => $subscription->id,
-                                'device_type' => $deviceType
-                            ]);
-
-                            $this->streamEventController->renew($fakeRequest);
+                        if (!$plan) {
+                            return response()->json([
+                                'status' => 'error',
+                                'message' => 'Invalid plan ID'
+                            ], 404);
                         }
+
+                        $startAt = now();
+                        $endAt = $startAt->copy()->addDays($plan->duration_days);
+
+                        $subscription = Subscription::create([
+                            'user_id' => $request->user_id,
+                            'plan_id' => $plan->id,
+                            'start_at' => $startAt,
+                            'end_at' => $endAt,
+                            'is_active' => true,
+                        ]);
+
+                        // 🔹 Update payment (single update block)
+                        $payment->update([
+                            'subscription_id' => $subscription->id,
+                            'status' => 'success',
+                            'expiry_date' => $endAt
+                        ]);
+
+                        $fakeRequest = new Request([
+                            'user_id' => $uid,
+                            'device_id' => $deviceId,
+                            'subscription_id' => $subscription->id,
+                            'device_type' => $deviceType
+                        ]);
+
+                        $this->streamEventController->renew($fakeRequest);
                     }
 
                     // 🔹 If PPV → grant access

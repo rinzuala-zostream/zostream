@@ -28,6 +28,7 @@ class PaymentHistory extends Model
         'payment_date',
         'expiry_date',
         'meta',
+        'plan_id',
     ];
 
     protected $casts = [

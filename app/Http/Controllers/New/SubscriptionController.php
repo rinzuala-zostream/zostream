@@ -345,46 +345,13 @@ class SubscriptionController extends Controller
                 ], 404);
             }
 
-            $now = now();
+            $startAt = now();
+            $endAt = $startAt->copy()->addDays($plan->duration_days);
 
-            // 🔍 Find existing active subscription (same device type)
-            $existingSubscription = Subscription::where('user_id', $request->user_id)
-                ->where('is_active', true)
-                ->where('end_at', '>', $now)
-                ->whereHas('plan', function ($q) use ($plan) {
-                    $q->where('device_type', $plan->device_type);
-                })
-                ->orderByDesc('id')
-                ->first();
-
-            // 🧠 Decide start time
-            if ($existingSubscription) {
-                // 👉 extend existing
-                $startAt = Carbon::parse($existingSubscription->end_at);
-
-                // ❌ delete or deactivate old one (important)
-                $existingSubscription->update(['is_active' => false]);
-            } else {
-                // 👉 new subscription
-                $startAt = $now;
-            }
-
-            // 📅 calculate correct end date
-            $endAt = $startAt->copy()->addDays((int) $plan->duration_days);
-
-            // 💾 create new subscription
-            $subscription = Subscription::create([
+            PaymentHistory::create([
+            
                 'user_id' => $request->user_id,
                 'plan_id' => $plan->id,
-                'start_at' => $startAt,
-                'end_at' => $endAt,
-                'is_active' => false,
-            ]);
-
-            // 💰 payment history
-            PaymentHistory::create([
-                'subscription_id' => $subscription->id,
-                'user_id' => $request->user_id,
                 'app_payment_type' => $request->app_payment_type,
                 'device_type' => $plan->device_type,
                 'amount' => $plan->price,
@@ -393,19 +360,24 @@ class SubscriptionController extends Controller
                 'payment_gateway' => $request->payment_gateway,
                 'transaction_id' => $transactionId,
                 'status' => 'pending',
-                'payment_type' => $existingSubscription ? 'renew' : 'new',
+                'payment_type' => 'new',
                 'payment_date' => now(),
                 'expiry_date' => $endAt,
                 'meta' => null,
             ]);
+
             DB::commit();
 
             return $this->respond([
                 'status' => 'success',
                 'message' => 'Subscription created. Payment pending.',
                 'data' => array_merge(
-                    $subscription->toArray(),
-                    ['transaction_id' => $transactionId]
+                    ['user_id' => $request->user_id],
+                    ['plan_id' => $plan->id],
+                    ['start_at' => $startAt],
+                    ['end_at' => $endAt],
+                    ['is_active' => false],
+                    ['transaction_id' => $transactionId],
                 )
             ], 201);
 
