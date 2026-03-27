@@ -106,8 +106,6 @@ class PaymentController extends Controller
 
                 if ($paymentSuccess) {
 
-                    $endAt = null;
-
                     // 🔹 If subscription → calculate expiry
                     if ($payment->movie_id === null) {
 
@@ -120,55 +118,20 @@ class PaymentController extends Controller
                             ], 404);
                         }
 
-                        // ✅ Find existing active subscription (same device type)
-                        $existingSub = Subscription::where('user_id', $uid)
-                            ->where('is_active', true)
-                            ->where('end_at', '>', now())
-                            ->whereHas('plan', function ($q) use ($plan) {
-                                $q->where('device_type', $plan->device_type);
-                            })
-                            ->latest()
-                            ->first();
+                        $startAt = now();
 
-                        // ✅ Calculate correct start
-                        if ($existingSub) {
-                            // Extend from current expiry
-                            $startAt = Carbon::parse($existingSub->end_at);
-                        } else {
-                            // Fresh subscription
-                            $startAt = now();
-                        }
+                        $subscription = Subscription::create([
+                            'user_id' => $uid,
+                            'plan_id' => $plan->id,
+                            'start_at' => $startAt,
+                            'end_at' => $payment->expiry_date,
+                            'is_active' => true,
+                        ]);
 
-                        // ✅ Calculate end
-                        $endAt = Carbon::parse($startAt)->addDays($plan->duration_days);
-
-                        // ✅ Create or update
-                        if ($existingSub) {
-
-                            $existingSub->update([
-                                'end_at' => $endAt,
-                                'is_active' => true
-                            ]);
-
-                            $subscription = $existingSub;
-
-                        } else {
-
-                            $subscription = Subscription::create([
-                                'user_id' => $uid,
-                                'plan_id' => $plan->id,
-                                'start_at' => $startAt,
-                                'end_at' => $endAt,
-                                'is_active' => true,
-                            ]);
-                        }
-
-                        // ✅ Update payment
+                        // 🔹 Update payment (single update block)
                         $payment->update([
                             'subscription_id' => $subscription->id,
                             'status' => 'success',
-                            'payment_date' => now(),
-                            'expiry_date' => $endAt
                         ]);
 
                         $fakeRequest = new Request([
