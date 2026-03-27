@@ -111,7 +111,7 @@ class PaymentController extends Controller
                     // 🔹 If subscription → calculate expiry
                     if ($payment->movie_id === null) {
 
-                        $$plan = Plan::find($payment->plan_id);
+                        $plan = Plan::find($payment->plan_id);
 
                         if (!$plan) {
                             return response()->json([
@@ -124,7 +124,7 @@ class PaymentController extends Controller
                         $endAt = $startAt->copy()->addDays($plan->duration_days);
 
                         $subscription = Subscription::create([
-                            'user_id' => $request->user_id,
+                            'user_id' => $uid,
                             'plan_id' => $plan->id,
                             'start_at' => $startAt,
                             'end_at' => $endAt,
@@ -171,7 +171,14 @@ class PaymentController extends Controller
             } catch (\Exception $e) {
 
                 DB::rollBack();
-                $failureCount++;
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Payment processing failed',
+                    'error' => $e->getMessage(), // 🔥 MAIN ERROR
+                    'line' => $e->getLine(),
+                    'file' => $e->getFile()
+                ], 500);
+
             }
         }
 
