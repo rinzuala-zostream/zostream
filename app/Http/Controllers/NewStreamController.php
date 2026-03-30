@@ -400,56 +400,11 @@ class NewStreamController extends Controller
     // 🧹 Stop stream
     public function stop(Request $request)
     {
-        $deviceToken = $request->header('Device-Token');
+        
         $streamToken = $request->input('stream_token');
-        $subscriptionId = $request->input('subscription_id'); // ✅ NEW
-        $movieId = $request->input('movie_id'); // ✅ NEW
-
-        // 🔥 Detect movie type
-        $isPPV = false;
-        $isFree = false;
-
-        if ($movieId) {
-            $movie = MovieModel::where('id', $movieId)->first();
-            $isPPV = $movie && $movie->isPayPerView == 1;
-            $isFree = $movie && $movie->isPremium == 0;
-        }
-
-        $isNoSubscription = $isPPV || $isFree;
-
-        // 🔹 Device
-        $device = Devices::where('device_token', $deviceToken)->first();
-
-        if (!$device) {
-            return response()->json([
-                'status' => 'error',
-                'title' => 'Device Not Recognized',
-                'message' => 'We couldn’t verify this device. Please sign in again or contact support if the issue continues.'
-            ], 404);
-        }
-
-        // 🔹 Subscription check ONLY for premium
-        if (!$isNoSubscription) {
-            $subscription = Subscription::find($device->subscription_id);
-
-            if (!$subscription) {
-                return response()->json([
-                    'status' => 'error',
-                    'title' => 'Subscription Not Found',
-                    'message' => 'We were unable to verify the subscription associated with this device. Please sign in again or contact support if the issue persists.'
-                ], 404);
-            }
-        }
 
         // 🔹 Stream
-        $streamQuery = ActiveStream::where('device_id', $device->id)
-            ->where('stream_token', $streamToken);
-
-        if (!$isNoSubscription) {
-            $streamQuery->where('subscription_id', $device->subscription_id);
-        } else {
-            $streamQuery->whereNull('subscription_id'); // ✅ PPV/FREE
-        }
+        $streamQuery = ActiveStream::where('stream_token', $streamToken);
 
         $stream = $streamQuery->first();
 
