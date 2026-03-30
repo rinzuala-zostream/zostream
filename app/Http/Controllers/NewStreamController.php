@@ -384,7 +384,7 @@ class NewStreamController extends Controller
                 'status' => 'error',
                 'title' => 'Session Expired',
                 'message' => 'Your streaming session has expired or is invalid. Please restart playback to continue watching.'
-            ], 401);
+            ], 403);
         }
 
         $stream->update([
