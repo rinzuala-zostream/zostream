@@ -435,8 +435,8 @@ class NewStreamController extends Controller
             if (!$subscription) {
                 return response()->json([
                     'status' => 'error',
-                    'title' => 'Device Not Recognized',
-                    'message' => 'We couldn’t verify this device. Please sign in again or contact support if the issue continues.'
+                    'title' => 'Subscription Not Found',
+                    'message' => 'We were unable to verify the subscription associated with this device. Please sign in again or contact support if the issue persists.'
                 ], 404);
             }
         }
