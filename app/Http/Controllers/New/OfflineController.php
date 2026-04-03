@@ -37,7 +37,8 @@ class OfflineController extends Controller
         }
 
         $deviceQuery = Devices::where('device_token', $deviceToken)
-            ->where('user_id', $userId);
+            ->where('user_id', $userId)
+            ->where('subscription_id', $subscriptionId);;
 
         $device = $deviceQuery->first();
 
