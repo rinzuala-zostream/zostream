@@ -16,6 +16,7 @@ use App\Http\Controllers\LinkController;
 use App\Http\Controllers\MovieController;
 use App\Http\Controllers\MovieSearchController;
 use App\Http\Controllers\New\DeviceController;
+use App\Http\Controllers\New\OfflineController;
 use App\Http\Controllers\New\PaymentController;
 use App\Http\Controllers\New\PaymentHistoryController;
 use App\Http\Controllers\New\QRSessionController;
@@ -310,5 +311,7 @@ Route::prefix('v3.0')->group(function () {
         Route::post('/{id}/watch', [ReelController::class, 'watch']);
         Route::post('/generate-feed', [ReelController::class, 'generateFeed']);
     });
+
+    Route::get('/offline', [OfflineController::class, 'requestOffline']);
 
 });
