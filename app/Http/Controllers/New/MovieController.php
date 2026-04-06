@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\New;
 
 use App\Http\Controllers\Controller;
+use App\Models\New\Episode;
 use Illuminate\Http\Request;
 use App\Models\MovieModel;
 use App\Models\EpisodeModel;
@@ -119,7 +120,7 @@ class MovieController extends Controller
             }
 
             if ($type === 'episode') {
-                $movie = EpisodeModel::select(['num', 'title', 'url', 'dash_url', 'hls_url'])
+                $movie = Episode::select(['num', 'title', 'url', 'dash_url', 'hls_url'])
                     ->where('id', $id)
                     ->first();
             } else {
