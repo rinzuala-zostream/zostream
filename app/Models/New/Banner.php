@@ -17,7 +17,7 @@ class Banner extends Model
         'end_date' => 'datetime',
     ];
 
-    protected $timestamps = false;
+    public $timestamps = false;
 
     protected $fillable = [
         'title',
