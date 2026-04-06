@@ -15,6 +15,7 @@ use App\Http\Controllers\HlsFolderController;
 use App\Http\Controllers\LinkController;
 use App\Http\Controllers\MovieController;
 use App\Http\Controllers\MovieSearchController;
+use App\Http\Controllers\New\BannerController;
 use App\Http\Controllers\New\DeviceController;
 use App\Http\Controllers\New\OfflineController;
 use App\Http\Controllers\New\PaymentController;
@@ -314,4 +315,10 @@ Route::prefix('v3.0')->group(function () {
 
     Route::get('/offline', [OfflineController::class, 'requestOffline']);
 
+    Route::prefix('banners')->group(function () {
+        Route::get('/', [BannerController::class, 'index']);
+        Route::post('/', [BannerController::class, 'store']);
+        Route::put('/{id}', [BannerController::class, 'update']);
+        Route::delete('/{id}', [BannerController::class, 'destroy']);
+    });
 });
