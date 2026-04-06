@@ -54,9 +54,19 @@ class BannerController extends Controller
                 return true;
             });
 
+            $responseData = $filtered->values()->map(function ($banner) {
+                $item = $banner->toArray();
+
+                if (($item['type'] ?? null) === 'ad') {
+                    $item['batch'] = 'Sponsored';
+                }
+
+                return $item;
+            });
+
             return response()->json([
                 'status' => true,
-                'data' => $filtered->values()
+                'data' => $responseData
             ]);
 
         } catch (\Exception $e) {
