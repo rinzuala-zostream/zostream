@@ -259,13 +259,14 @@ class NewStreamController extends Controller
                 $links = $movieData['links'] ?? [];
                 $title = $movieData['title'] ?? null;
 
-                if ($platform === 'ios') {
+                $url = $links['url'] ?? null;
 
-                    $hlsUrl = $links['url'] ?? null;
+                if ($url) {
 
-                    if ($hlsUrl) {
+                    if ($platform === 'ios') {
+
                         $fakeReq = new Request();
-                        $fakeReq->merge(['url' => $hlsUrl]);
+                        $fakeReq->merge(['url' => $url]);
 
                         $hlsResponse = $this->hlsFolderController->check($fakeReq);
                         $hlsData = $hlsResponse->getData(true);
@@ -276,15 +277,10 @@ class NewStreamController extends Controller
                             'title' => $title,
                             'links' => $streamUrl
                         ];
-                    }
 
-                } else {
+                    } else {
 
-                    $dashUrl = $links['url'] ?? null;
-
-                    if ($dashUrl) {
-
-                        $mpdUrl = $this->resolveMpdUrl($dashUrl)['url'];
+                        $mpdUrl = $this->resolveMpdUrl($url)['url'] ?? null;
 
                         $movieLinks = [
                             'title' => $title,
@@ -400,7 +396,7 @@ class NewStreamController extends Controller
     // 🧹 Stop stream
     public function stop(Request $request)
     {
-        
+
         $streamToken = $request->input('stream_token');
 
         // 🔹 Stream

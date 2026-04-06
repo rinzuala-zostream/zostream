@@ -138,9 +138,6 @@ class MovieController extends Controller
             // Security: hide null or empty links
             $links = array_filter([
                 'url' => $movie->url,
-                'dash_url' => $movie->dash_url,
-                'hls_url' => $movie->hls_url,
-                'trailer' => $movie->trailer ?? null,
             ], fn($value) => $value !== null && $value !== '');
 
             return response()->json([
