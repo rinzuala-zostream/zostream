@@ -56,7 +56,7 @@ class SeasonController extends Controller
             ]);
 
             $season = Season::create([
-                'id' => Str::random(20),
+                'id' => (string) Str::uuid(),
                 'movie_id' => $validated['movie_id'],
                 'season_number' => $validated['season_number'],
                 'title' => $validated['title'] ?? null,
