@@ -274,6 +274,7 @@ Route::prefix('v3.0')->group(function () {
     });
 
     Route::post('/seasons', [SeasonController::class, 'store']);
+    Route::get('/seasons/search/by-movie-title', [SeasonController::class, 'searchByMovieTitle']);
     Route::get('/seasons/{id}', [SeasonController::class, 'show']);
     Route::put('/seasons/{id}', [SeasonController::class, 'update']);
     Route::delete('/seasons/{id}', [SeasonController::class, 'destroy']);

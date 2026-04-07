@@ -4,12 +4,65 @@ namespace App\Http\Controllers\New;
 
 use App\Http\Controllers\Controller;
 use App\Models\New\Season;
+use App\Models\MovieModel;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
 
 class SeasonController extends Controller
 {
+    // Search seasons by movie title
+    public function searchByMovieTitle(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'q' => 'required|string|min:2',
+                'limit' => 'nullable|integer|min:1|max:50',
+            ]);
+
+            $query = trim($validated['q']);
+            $limit = $validated['limit'] ?? 20;
+
+            $movies = MovieModel::query()
+                ->select(['num', 'id', 'title', 'poster', 'genre', 'status'])
+                ->where('title', 'LIKE', "%{$query}%")
+                ->whereHas('seasons')
+                ->with([
+                    'seasons' => function ($seasonQuery) {
+                        $seasonQuery
+                            ->orderBy('season_number')
+                            ->with([
+                                'episodes' => function ($episodeQuery) {
+                                    $episodeQuery->orderBy('episode_number');
+                                }
+                            ]);
+                    }
+                ])
+                ->orderBy('title')
+                ->limit($limit)
+                ->get();
+
+            return response()->json([
+                'status' => 'success',
+                'query' => $query,
+                'count' => $movies->count(),
+                'data' => $movies
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('Season search by movie title error: ' . $e->getMessage());
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to search seasons: ' . $e->getMessage()
+            ], 500);
+        }
+    }
 
     // Get all seasons of a movie
     public function index($movieId)
