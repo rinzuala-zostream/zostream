@@ -121,9 +121,7 @@ class MovieController extends Controller
             }
 
             if ($type === 'episode') {
-                $movie = Episode::select(['num', 'title', 'url', 'dash_url', 'hls_url'])
-                    ->where('id', $id)
-                    ->first();
+                $movie = $this->getUrls($id);
             } else {
                 $movie = MovieModel::select(['num', 'title', 'url', 'dash_url', 'hls_url', 'trailer'])
                     ->where('id', $id)
