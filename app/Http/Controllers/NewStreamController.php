@@ -585,22 +585,26 @@ class NewStreamController extends Controller
             throw new \Exception('Empty payload.');
         }
 
-        // Remove accidental wrapping quotes
         $raw = trim($raw, "\"'");
 
-        // Try plain URL first
-        $plainCandidate = urldecode($raw);
-        $plainCandidate = trim(str_replace(["\r", "\n"], '', $plainCandidate));
+        // restore %2B => +
+        $rawParam = urldecode($raw);
+        $rawParam = trim($rawParam);
 
-        if (filter_var($plainCandidate, FILTER_VALIDATE_URL) && stripos($plainCandidate, '.mpd') !== false) {
+        // plain url support
+        if (
+            filter_var($rawParam, FILTER_VALIDATE_URL) &&
+            str_contains(strtolower($rawParam), '.mpd')
+        ) {
             return [
-                'url' => $plainCandidate,
+                'url' => $rawParam,
                 'source' => 'plaintext'
             ];
         }
 
-        // Normalize base64 variants
-        $rawParam = str_replace(' ', '+', $raw);
+        $shaKey = 'd4c6198dabafb243b0d043a3c33a9fe171f81605158c267c7dfe5f66df29559a';
+        $decryptionKey = hash('sha256', $shaKey, true);
+
         $b64 = strtr($rawParam, '-_', '+/');
         $pad = strlen($b64) % 4;
 
@@ -610,16 +614,9 @@ class NewStreamController extends Controller
 
         $data = base64_decode($b64, true);
 
-        if ($data === false) {
-            throw new \Exception('Payload is neither a valid MPD URL nor valid base64 data.');
+        if ($data === false || strlen($data) < 17) {
+            throw new \Exception('Invalid encrypted payload.');
         }
-
-        if (strlen($data) < 17) {
-            throw new \Exception('Encrypted payload too short. Expected IV + ciphertext.');
-        }
-
-        $shaKey = 'd4c6198dabafb243b0d043a3c33a9fe171f81605158c267c7dfe5f66df29559a';
-        $decryptionKey = hash('sha256', $shaKey, true);
 
         $iv = substr($data, 0, 16);
         $cipherText = substr($data, 16);
@@ -642,15 +639,17 @@ class NewStreamController extends Controller
 
         $result = trim(str_replace(["\r", "\n"], '', $decryptedMessage));
         $result = trim($result, "\"'");
+        $result = urldecode($result);
 
-        $maybeUrl = filter_var($result, FILTER_VALIDATE_URL) ? $result : urldecode($result);
-
-        if (!filter_var($maybeUrl, FILTER_VALIDATE_URL) || stripos($maybeUrl, '.mpd') === false) {
-            throw new \Exception('Decrypted value is not a valid MPD URL.');
+        if (
+            !filter_var($result, FILTER_VALIDATE_URL) ||
+            !str_contains(strtolower($result), '.mpd')
+        ) {
+            throw new \Exception('Decrypted URL is not a valid MPD manifest.');
         }
 
         return [
-            'url' => $maybeUrl,
+            'url' => $result,
             'source' => 'decrypted'
         ];
     }
