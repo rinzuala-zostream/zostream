@@ -5,6 +5,8 @@ namespace App\Http\Controllers\New;
 use App\Http\Controllers\Controller;
 use App\Models\New\Episode;
 use App\Models\New\Season;
+use App\Models\New\VideoUrl;
+use Illuminate\Validation\ValidationException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
@@ -203,6 +205,119 @@ class EpisodeController extends Controller
             return response()->json([
                 'status' => 'error',
                 'message' => 'Failed to delete episode: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function addUrl(Request $request)
+    {
+        try {
+
+            $validated = $request->validate([
+                'movie_id' => 'required|integer|exists:movie,num',
+                'episode_id' => 'nullable|string|exists:episodes,id',
+                'quality' => 'nullable|string',
+                'type' => 'nullable|string',
+                'url' => 'required|string'
+            ]);
+
+            $video = VideoUrl::create([
+                'id' => (string) \Str::uuid(),
+                'movie_id' => $validated['movie_id'],
+                'episode_id' => $validated['episode_id'] ?? null,
+                'quality' => $validated['quality'] ?? 'HD',
+                'type' => $validated['type'] ?? 'DASH',
+                'url' => $validated['url'],
+            ]);
+
+            return response()->json([
+                'status' => 'success',
+                'data' => $video
+            ]);
+
+        } catch (ValidationException $e) {
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
+
+        } catch (\Exception $e) {
+
+            \Log::error('Add video url error: ' . $e->getMessage());
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to add video url'
+            ], 500);
+        }
+    }
+
+    public function updateUrl(Request $request, $id)
+    {
+        try {
+
+            $video = VideoUrl::where('id', $id)->first();
+
+            if (!$video) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Video not found'
+                ], 404);
+            }
+
+            $validated = $request->validate([
+                'quality' => 'nullable|string',
+                'type' => 'nullable|string',
+                'url' => 'nullable|string'
+            ]);
+
+            $video->update($validated);
+
+            return response()->json([
+                'status' => 'success',
+                'data' => $video->fresh()
+            ]);
+
+        } catch (\Exception $e) {
+
+            \Log::error('Update video url error: ' . $e->getMessage());
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to update video url'
+            ], 500);
+        }
+    }
+
+    public function deleteUrl($id)
+    {
+        try {
+
+            $video = VideoUrl::where('id', $id)->first();
+
+            if (!$video) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Video not found'
+                ], 404);
+            }
+
+            $video->delete();
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Video url deleted'
+            ]);
+
+        } catch (\Exception $e) {
+
+            \Log::error('Delete video url error: ' . $e->getMessage());
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to delete video url'
             ], 500);
         }
     }

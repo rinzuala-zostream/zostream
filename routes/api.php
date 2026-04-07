@@ -331,4 +331,13 @@ Route::prefix('v3.0')->group(function () {
         Route::delete('/{id}', [\App\Http\Controllers\New\EpisodeController::class, 'destroy']);
     });
 
+    Route::prefix('episodes')->group(function () {
+
+        Route::post('/url', [\App\Http\Controllers\New\EpisodeController::class, 'addUrl']);
+        Route::get('/url/{episodeId}', [\App\Http\Controllers\New\EpisodeController::class, 'getUrls']);
+        Route::put('/url/{id}', [\App\Http\Controllers\New\EpisodeController::class, 'updateUrl']);
+        Route::delete('/url/{id}', [\App\Http\Controllers\New\EpisodeController::class, 'deleteUrl']);
+
+    });
+
 });

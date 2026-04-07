@@ -4,6 +4,7 @@ namespace App\Http\Controllers\New;
 
 use App\Http\Controllers\Controller;
 use App\Models\New\Episode;
+use App\Models\New\VideoUrl;
 use Illuminate\Http\Request;
 use App\Models\MovieModel;
 use App\Models\EpisodeModel;
@@ -478,5 +479,27 @@ class MovieController extends Controller
             'message' => $message,
             'error' => $e->getMessage(),
         ], $code);
+    }
+
+    public function getUrls($episodeId)
+    {
+        try {
+
+            $urls = VideoUrl::where('episode_id', $episodeId)->get();
+
+            return response()->json([
+                'status' => 'success',
+                'data' => $urls
+            ]);
+
+        } catch (\Exception $e) {
+
+            \Log::error('Get video urls error: ' . $e->getMessage());
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to fetch video urls'
+            ], 500);
+        }
     }
 }
