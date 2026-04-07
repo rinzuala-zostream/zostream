@@ -321,4 +321,13 @@ Route::prefix('v3.0')->group(function () {
         Route::put('/{id}', [BannerController::class, 'update']);
         Route::delete('/{id}', [BannerController::class, 'destroy']);
     });
+
+    Route::prefix('episodes')->group(function () {
+        Route::get('/season/{seasonId}', [\App\Http\Controllers\New\EpisodeController::class, 'index']);
+        Route::post('/', [\App\Http\Controllers\New\EpisodeController::class, 'store']);
+        Route::get('/{id}', [\App\Http\Controllers\New\EpisodeController::class, 'show']);
+        Route::put('/{id}', [\App\Http\Controllers\New\EpisodeController::class, 'update']);
+        Route::delete('/{id}', [\App\Http\Controllers\New\EpisodeController::class, 'destroy']);
+    });
+
 });
