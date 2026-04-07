@@ -247,7 +247,6 @@ class NewStreamController extends Controller
         $movieLinks = null;
 
         if ($movieId) {
-
             $req = new Request();
             $req->merge(['type' => $movieType]);
 
@@ -255,16 +254,28 @@ class NewStreamController extends Controller
             $movieData = $movieResponse->getData(true);
 
             if (($movieData['status'] ?? null) === 'success') {
-
                 $links = $movieData['links'] ?? [];
                 $title = $movieData['title'] ?? null;
 
-                $url = $links['url'] ?? null;
+                $url = null;
+
+                // movie format: links => ['url' => '...']
+                if (isset($links['url']) && !empty($links['url'])) {
+                    $url = $links['url'];
+                }
+
+                // episode format: links => [ ['url' => '...'], ... ]
+                if (!$url && is_array($links) && !empty($links)) {
+                    foreach ($links as $item) {
+                        if (!empty($item['url'])) {
+                            $url = $item['url'];
+                            break;
+                        }
+                    }
+                }
 
                 if ($url) {
-
                     if ($platform === 'ios') {
-
                         $fakeReq = new Request();
                         $fakeReq->merge(['url' => $url]);
 
@@ -273,19 +284,21 @@ class NewStreamController extends Controller
 
                         $streamUrl = $hlsData['data']['stream_url'] ?? null;
 
-                        $movieLinks = [
-                            'title' => $title,
-                            'links' => $streamUrl
-                        ];
-
+                        if ($streamUrl) {
+                            $movieLinks = [
+                                'title' => $title,
+                                'links' => $streamUrl
+                            ];
+                        }
                     } else {
-
                         $mpdUrl = $this->resolveMpdUrl($url)['url'] ?? null;
 
-                        $movieLinks = [
-                            'title' => $title,
-                            'links' => $mpdUrl
-                        ];
+                        if ($mpdUrl) {
+                            $movieLinks = [
+                                'title' => $title,
+                                'links' => $mpdUrl
+                            ];
+                        }
                     }
                 }
             }
@@ -294,7 +307,7 @@ class NewStreamController extends Controller
         return response()->json([
             'status' => 'success',
             'stream_token' => $streamToken,
-            'max_quality' => $plan->quality ?? 'FULL_HD', // 🔥 safe for PPV
+            'max_quality' => $plan->quality ?? 'FULL_HD',
             'current_active' => $currentActiveSeats,
             'device_limit' => $limit,
             'remaining_slots' => $remainingSlots,
