@@ -113,6 +113,7 @@ class MovieController extends Controller
     {
         try {
             $type = strtolower($request->query('type', 'movie'));
+
             if (!in_array($type, ['movie', 'episode'], true)) {
                 return response()->json([
                     'status' => 'error',
@@ -121,38 +122,90 @@ class MovieController extends Controller
             }
 
             if ($type === 'episode') {
-                $movie = $this->getUrls($id);
-            } else {
-                $movie = MovieModel::select(['num', 'title', 'url', 'dash_url', 'hls_url', 'trailer'])
-                    ->where('id', $id)
-                    ->first();
+                $episode = Episode::select(['id', 'movie_id', 'title'])->where('id', $id)->first();
+
+                if (!$episode) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'Episode not found'
+                    ], 404);
+                }
+
+                $urls = VideoUrl::where('episode_id', $id)->get();
+
+                if ($urls->isEmpty()) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'No video URLs found for this episode'
+                    ], 404);
+                }
+
+                $links = $urls
+                    ->filter(fn($item) => !empty($item->url))
+                    ->map(function ($item) {
+                        return [
+                            'id' => $item->id,
+                            'quality' => $item->quality,
+                            'type' => $item->type,
+                            'url' => $item->url,
+                        ];
+                    })
+                    ->values();
+
+                return response()->json([
+                    'status' => 'success',
+                    'type' => 'episode',
+                    'movie_id' => $episode->movie_id,
+                    'episode_id' => $episode->id,
+                    'title' => $episode->title,
+                    'links' => $links
+                ]);
             }
+
+            $movie = MovieModel::select(['num', 'title', 'url', 'dash_url', 'hls_url', 'trailer'])
+                ->where('id', $id)
+                ->first();
 
             if (!$movie) {
                 return response()->json([
                     'status' => 'error',
-                    'message' => ucfirst($type) . ' not found'
+                    'message' => 'Movie not found'
                 ], 404);
             }
 
-            // Security: hide null or empty links
             $links = array_filter([
                 'url' => $movie->url,
             ], fn($value) => $value !== null && $value !== '');
 
+            if (empty($links)) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'No video links found for this movie'
+                ], 404);
+            }
+
             return response()->json([
                 'status' => 'success',
-                'type' => $type,
+                'type' => 'movie',
                 'movie_id' => $movie->num,
                 'title' => $movie->title,
                 'links' => $links
             ]);
-        } catch (Exception $e) {
-            Log::error('Movie getLink error', ['id' => $id, 'error' => $e->getMessage()]);
-            return $this->errorResponse('Failed to fetch movie links', $e);
+        } catch (\Exception $e) {
+            \Log::error('Movie getLink error', [
+                'id' => $id,
+                'type' => $request->query('type', 'movie'),
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to fetch movie links',
+                'error' => $e->getMessage()
+            ], 500);
         }
     }
-
+    
     public function getMovies(Request $request)
     {
 
