@@ -122,7 +122,7 @@ class MovieController extends Controller
             }
 
             if ($type === 'episode') {
-                $episode = Episode::select(['id', 'movie_id', 'title'])->where('id', $id)->first();
+                $episode = Episode::select(['id', 'title'])->where('id', $id)->first();
 
                 if (!$episode) {
                     return response()->json([
@@ -205,7 +205,7 @@ class MovieController extends Controller
             ], 500);
         }
     }
-    
+
     public function getMovies(Request $request)
     {
 
