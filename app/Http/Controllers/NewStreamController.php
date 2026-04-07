@@ -579,32 +579,24 @@ class NewStreamController extends Controller
 
     private function resolveMpdUrl(string $raw): array
     {
-        $raw = trim($raw);
-
-        if ($raw === '') {
-            throw new \Exception('Empty payload.');
-        }
-
-        $raw = trim($raw, "\"'");
-
-        // restore %2B => +
-        $rawParam = urldecode($raw);
-        $rawParam = trim($rawParam);
-
-        // plain url support
-        if (
-            filter_var($rawParam, FILTER_VALIDATE_URL) &&
-            str_contains(strtolower($rawParam), '.mpd')
-        ) {
+        // Case 1: Plain MPD URL
+        if (Str::contains($raw, 'http') && Str::contains($raw, 'mpd')) {
             return [
-                'url' => $rawParam,
+                'url' => $raw,
                 'source' => 'plaintext'
             ];
         }
 
+        // Try decrypt
+        $rawParam = str_replace('%2B', '+', $raw); // 🔥 fix
+        $rawParam = str_replace(' ', '+', $rawParam);
+
         $shaKey = 'd4c6198dabafb243b0d043a3c33a9fe171f81605158c267c7dfe5f66df29559a';
+
+        // AES-256 key
         $decryptionKey = hash('sha256', $shaKey, true);
 
+        // ---- Flexible Base64 decode ----
         $b64 = strtr($rawParam, '-_', '+/');
         $pad = strlen($b64) % 4;
 
@@ -612,12 +604,13 @@ class NewStreamController extends Controller
             $b64 .= str_repeat('=', 4 - $pad);
         }
 
-        $data = base64_decode($b64, true);
+        $data = @base64_decode($b64, true);
 
         if ($data === false || strlen($data) < 17) {
             throw new \Exception('Invalid encrypted payload.');
         }
 
+        // Extract IV + ciphertext
         $iv = substr($data, 0, 16);
         $cipherText = substr($data, 16);
 
@@ -637,19 +630,19 @@ class NewStreamController extends Controller
             throw new \Exception('Decryption failed.');
         }
 
+        // Normalize
         $result = trim(str_replace(["\r", "\n"], '', $decryptedMessage));
-        $result = trim($result, "\"'");
-        $result = urldecode($result);
 
-        if (
-            !filter_var($result, FILTER_VALIDATE_URL) ||
-            !str_contains(strtolower($result), '.mpd')
-        ) {
-            throw new \Exception('Decrypted URL is not a valid MPD manifest.');
+        $maybeUrl = filter_var($result, FILTER_VALIDATE_URL)
+            ? $result
+            : urldecode($result);
+
+        if (stripos($maybeUrl, '.mpd') === false) {
+            throw new \Exception('Decrypted URL is not an MPD manifest.');
         }
 
         return [
-            'url' => $result,
+            'url' => $maybeUrl,
             'source' => 'decrypted'
         ];
     }
