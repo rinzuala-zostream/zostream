@@ -60,8 +60,10 @@ class PaymentStatusController extends Controller
                     $paymentResponse = $this->checkPaymentStatus($phonepeReq, $merchantOrderId);
                 } else if (strtolower($tempData->pg) === 'razorpay') {
                     $orderId = $tempData->transaction_id;
-                    $h = strtolower(trim((string) $request->header('X-RZ-Env', 'production')));
-                    $razorpayReq = new Request(['X-RZ-Env' => $h]);
+                    $h = strtoupper(trim((string) $request->header('X-RZ-Env', (string) config('razorpay.env', 'PRODUCTION'))));
+                    // Forward env both as header and input so RazorpayController resolves mode reliably.
+                    $razorpayReq = new Request(['env' => $h]);
+                    $razorpayReq->headers->set('X-RZ-Env', $h);
                     $razorResponse = $this->razorpayController->checkPaymentStatus($razorpayReq, $orderId);
                     $paymentResponse = json_decode($razorResponse->getContent(), true);
                 } else {
@@ -186,6 +188,7 @@ class PaymentStatusController extends Controller
                 'success_count' => $successCount,
                 'pending_count' => $pendingCount,
                 'failure_count' => $failureCount,
+                'checked' => $tempDataList->count(),
             ]);
         } catch (\Exception $e) {
             return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
