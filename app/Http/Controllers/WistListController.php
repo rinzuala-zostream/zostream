@@ -62,21 +62,12 @@ class WistListController extends Controller
         $list = WistListModel::where('uid', $validated['uid'])
             ->orderByDesc('created_at')
             ->get();
-
-        $movieIds = $list->pluck('movie_id')->toArray();
-
-        $movies = MovieModel::whereIn('id', $movieIds)
-            ->get()
-            ->keyBy('id');
-
+        
         $result = [];
 
         foreach ($list as $item) {
-            $movie = $movies->get($item->movie_id);
-
-            if (!$movie) {
-                continue;
-            }
+            $movie = MovieModel::where('id', $item->movie_id)
+            ->get();
 
             $result[] = (array) $movie; // only actual database fields
         }
