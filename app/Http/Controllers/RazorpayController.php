@@ -139,32 +139,36 @@ class RazorpayController extends Controller
             $payBody  = json_decode((string) $payRes->getBody(), true);
             $payments = $payBody['items'] ?? [];
 
-            // Determine status: treat any "captured" payment as success
+            // Determine status for sync.
+            // UPI/QR flows may briefly return order as PAID while payment item can be AUTHORIZED
+            // before CAPTURED appears, so treat those as successful states.
             $isPaid        = false;
             $paymentStatus = null;
 
             foreach ($payments as $p) {
                 $status = strtolower($p['status'] ?? '');
-                if ($status === 'captured') {
+                if (in_array($status, ['captured', 'authorized'], true)) {
                     $isPaid = true;
-                    $paymentStatus = 'captured';
+                    $paymentStatus = $status;
                     break;
                 }
             }
 
             $orderStatus = strtoupper((string) ($order['status'] ?? 'UNKNOWN')); // CREATED | PAID | ATTEMPTED ...
+            $orderPaid = $orderStatus === 'PAID';
+            $isSuccess = $isPaid || $orderPaid;
 
             return response()->json([
-                'success' => $isPaid,
+                'success' => $isSuccess,
                 'env'     => $this->env,
-                'code'    => $isPaid ? 'PAYMENT_SUCCESS' : $orderStatus,
+                'code'    => $isSuccess ? 'PAYMENT_SUCCESS' : $orderStatus,
                 'data'    => [
-                    'state'    => $isPaid
+                    'state'    => $isSuccess
                         ? 'COMPLETED'
                         : (in_array($orderStatus, ['CREATED', 'ATTEMPTED'], true) ? 'PENDING' : $orderStatus),
                     'order'    => $order,
                     'payments' => $payments,
-                    'reason'   => $paymentStatus ?? null,
+                    'reason'   => $paymentStatus ?? ($orderPaid ? 'order_paid' : null),
                 ],
             ], 200);
 
