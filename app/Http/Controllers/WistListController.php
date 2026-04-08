@@ -67,7 +67,8 @@ class WistListController extends Controller
 
         // get all movies
         $movies = MovieModel::whereIn('id', $movieIds)
-            ->get();
+            ->get()
+            ->keyBy('id');
 
         $result = [];
 
