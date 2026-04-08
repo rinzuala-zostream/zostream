@@ -25,5 +25,10 @@ class WistListModel extends Model
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
+
+    public function movie()
+{
+    return $this->belongsTo(MovieModel::class, 'movie_id', 'id');
+}
 }
 

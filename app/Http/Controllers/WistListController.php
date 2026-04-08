@@ -8,31 +8,9 @@ use Illuminate\Http\Request;
 
 class WistListController extends Controller
 {
-    private string $validApiKey;
-
-    public function __construct()
-    {
-        $this->validApiKey = (string) config('app.api_key');
-    }
-
-    private function authorizeApiKey(Request $request)
-    {
-        $apiKey = (string) $request->header('X-Api-Key', '');
-        if ($apiKey !== $this->validApiKey) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Invalid API key',
-            ], 401);
-        }
-
-        return null;
-    }
 
     public function store(Request $request)
     {
-        if ($authError = $this->authorizeApiKey($request)) {
-            return $authError;
-        }
 
         $validated = $request->validate([
             'uid' => 'required|string|max:128',
@@ -77,17 +55,14 @@ class WistListController extends Controller
 
     public function index(Request $request)
     {
-        if ($authError = $this->authorizeApiKey($request)) {
-            return $authError;
-        }
-
         $validated = $request->validate([
             'uid' => 'required|string|max:128',
         ]);
 
-        $list = WistListModel::where('uid', $validated['uid'])
+        $list = WistListModel::with(['movie'])
+            ->where('uid', $validated['uid'])
             ->orderByDesc('created_at')
-            ->get(['movie_id', 'title', 'cover', 'poster', 'created_at']);
+            ->get();
 
         return response()->json([
             'status' => 'success',
@@ -97,9 +72,6 @@ class WistListController extends Controller
 
     public function destroy(Request $request)
     {
-        if ($authError = $this->authorizeApiKey($request)) {
-            return $authError;
-        }
 
         $validated = $request->validate([
             'uid' => 'required_without:userId|string|max:128',
