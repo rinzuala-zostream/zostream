@@ -15,7 +15,7 @@ class PlanPriceController extends Controller
 
         // 🔹 Check if Browser is in request devices
         // 🔹 Put this near the top of getPlanPrice() after you parse $devices
-        /**if (in_array('Browser', $devices, true)) {
+        if (in_array('Browser', $devices, true)) {
             return response()->json([
                 'status' => 'error',
                 'error_data' => [
@@ -33,8 +33,7 @@ class PlanPriceController extends Controller
                     'devices' => ['Browser' => 'unavailable']
                 ]
             ], 200);
-        }**/
-
+        }
 
         $planAmounts = [
             'Kar 1' => 317,
