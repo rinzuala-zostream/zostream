@@ -66,9 +66,9 @@ class WistListController extends Controller
         $movieIds = $list->pluck('movie_id')->toArray();
 
         // get all movies
-        $movies = MovieModel::whereIn('num', $movieIds)
+        $movies = MovieModel::whereIn('id', $movieIds)
             ->get()
-            ->keyBy('num');
+            ->keyBy('id');
 
         $result = [];
 
