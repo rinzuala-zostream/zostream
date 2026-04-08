@@ -10,7 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Str;
 use Symfony\Component\HttpFoundation\Response as BaseResponse;
-use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Cache;
 use Carbon\Carbon;
 
 class DetailsController extends Controller
@@ -63,6 +63,7 @@ class DetailsController extends Controller
         $deviceId = $request->query('device_id');
         $deviceType = $request->query('device_type');
         $type = $request->query('type', 'movie');
+        $shouldSyncPayment = filter_var($request->query('sync_payment', false), FILTER_VALIDATE_BOOLEAN);
 
         $hasPlus = Str::contains($movieId, '_');
 
@@ -76,11 +77,17 @@ class DetailsController extends Controller
         }
 
         try {
-            // Call sub-controllers and decode JSON responses
-            $paymentRequest = new Request(['user_id' => $userId]);
-            $paymentRequest->headers->set('X-Api-Key', $apiKey);
-            $paymentResponse = $this->paymentStatusController->processUserPayments($paymentRequest);
-            $paymentData = json_decode($paymentResponse->getContent(), true);
+            // Optional payment sync (can be slow due to gateway checks).
+            $paymentData = [
+                'status' => 'skipped',
+                'message' => 'Payment sync skipped for fast details response',
+            ];
+            if ($shouldSyncPayment) {
+                $paymentRequest = new Request(['user_id' => $userId]);
+                $paymentRequest->headers->set('X-Api-Key', $apiKey);
+                $paymentResponse = $this->paymentStatusController->processUserPayments($paymentRequest);
+                $paymentData = json_decode($paymentResponse->getContent(), true);
+            }
 
             $subscriptionRequest = new Request([
                 'id' => $userId,
@@ -93,15 +100,21 @@ class DetailsController extends Controller
             $response = $this->subscriptionController->getSubscription($subscriptionRequest);
             $subscriptionData = json_decode(json_encode($response->getData()), true);
 
-            $deviceRequest = new Request(['user_id' => $userId, 'device_id' => $deviceId]);
-            $deviceRequest->headers->set('X-Api-Key', $apiKey);
-            $deviceResponse = $this->deviceManagementController->get($deviceRequest);
-            $deviceData = json_decode($deviceResponse->getContent(), true);
+            // Avoid fetching full device list for every details call when device_id isn't supplied.
+            $deviceData = ['status' => 'skipped', 'message' => 'Device fetch skipped'];
+            if (!empty($deviceId)) {
+                $deviceRequest = new Request(['user_id' => $userId, 'device_id' => $deviceId]);
+                $deviceRequest->headers->set('X-Api-Key', $apiKey);
+                $deviceResponse = $this->deviceManagementController->get($deviceRequest);
+                $deviceData = json_decode($deviceResponse->getContent(), true);
+            }
 
-            $adsRequest = new Request();
-            $adsRequest->headers->set('X-Api-Key', $apiKey);
-            $adsResponse = $this->adsController->getAds($adsRequest);
-            $adsData = json_decode($adsResponse->getContent(), true);
+            $adsData = Cache::remember('details:ads:v1', now()->addSeconds(60), function () use ($apiKey) {
+                $adsRequest = new Request();
+                $adsRequest->headers->set('X-Api-Key', $apiKey);
+                $adsResponse = $this->adsController->getAds($adsRequest);
+                return json_decode($adsResponse->getContent(), true);
+            });
 
             // Set device details in subscription
             $subscriptionData['deviceDetails'] = $deviceData;
