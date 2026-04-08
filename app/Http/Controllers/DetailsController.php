@@ -109,12 +109,20 @@ class DetailsController extends Controller
                 $deviceData = json_decode($deviceResponse->getContent(), true);
             }
 
-            $adsData = Cache::remember('details:ads:v1', now()->addSeconds(60), function () use ($apiKey) {
+            try {
+                $adsData = Cache::remember('details:ads:v1', now()->addSeconds(60), function () use ($apiKey) {
+                    $adsRequest = new Request();
+                    $adsRequest->headers->set('X-Api-Key', $apiKey);
+                    $adsResponse = $this->adsController->getAds($adsRequest);
+                    return json_decode($adsResponse->getContent(), true);
+                });
+            } catch (\Throwable $cacheError) {
+                // Fallback when cache store is unavailable (e.g., DB cache table missing).
                 $adsRequest = new Request();
                 $adsRequest->headers->set('X-Api-Key', $apiKey);
                 $adsResponse = $this->adsController->getAds($adsRequest);
-                return json_decode($adsResponse->getContent(), true);
-            });
+                $adsData = json_decode($adsResponse->getContent(), true);
+            }
 
             // Set device details in subscription
             $subscriptionData['deviceDetails'] = $deviceData;
