@@ -59,14 +59,36 @@ class WistListController extends Controller
             'uid' => 'required|string|max:128',
         ]);
 
-        $list = WistListModel::with(['movie'])
-            ->where('uid', $validated['uid'])
+        $list = WistListModel::where('uid', $validated['uid'])
             ->orderByDesc('created_at')
             ->get();
 
+        $movieIds = $list->pluck('movie_id')->toArray();
+
+        // get all movies
+        $movies = MovieModel::whereIn('num', $movieIds)
+            ->get()
+            ->keyBy('num');
+
+        $result = [];
+
+        foreach ($list as $item) {
+
+            $movie = $movies->get($item->movie_id);
+
+            if (!$movie)
+                continue;
+
+            // convert full movie to array
+            $data = (array) $movie;
+
+
+            $result[] = $data;
+        }
+
         return response()->json([
             'status' => 'success',
-            'wist_list' => $list,
+            'wist_list' => $result,
         ]);
     }
 
