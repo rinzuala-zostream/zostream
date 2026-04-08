@@ -258,6 +258,7 @@ Route::prefix('v3.0')->group(function () {
     });
 
     Route::prefix('movies')->group(function () {
+        Route::get('/alsolike', [\App\Http\Controllers\New\AlsoLikeController::class, 'alsoLike']);
         Route::get('/home', [\App\Http\Controllers\New\MovieController::class, 'getMovies']);
         Route::get('/search', [\App\Http\Controllers\New\SearchController::class, 'search']);
         Route::get('/details', [\App\Http\Controllers\New\DetailsController::class, 'getDetails']);
@@ -265,7 +266,7 @@ Route::prefix('v3.0')->group(function () {
         Route::get('/', [\App\Http\Controllers\New\MovieController::class, 'index'])->name('movies.index');
         Route::get('/{id}', [\App\Http\Controllers\New\MovieController::class, 'getById'])->name('movies.show');
         Route::get('/{id}/links', [\App\Http\Controllers\New\MovieController::class, 'getLink'])->name('movies.links');
-        Route::get('/alsolike', [\App\Http\Controllers\New\AlsoLikeController::class, 'alsoLike']);
+        
     });
 
     Route::prefix('payments')->group(function () {
