@@ -45,7 +45,7 @@ class PlanPriceController extends Controller
         ];
 
         $planDevices = [
-            'Kar 1' => ['Mobile' => 99, 'Browser' => 109, 'TV' => 109],
+            'Kar 1' => ['Mobile' => 99, 'Browser' => 1, 'TV' => 109],
             'Thla 1' => ['Mobile' => 199, 'Browser' => 269, 'TV' => 269],
             'Thla 4' => ['Mobile' => 799, 'Browser' => 1049, 'TV' => 1049],
             'Thla 6' => ['Mobile' => 1299, 'Browser' => 1399, 'TV' => 1399],
