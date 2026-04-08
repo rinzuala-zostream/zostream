@@ -47,6 +47,7 @@ class PaymentStatusController extends Controller
 
         $successCount = 0;
         $failureCount = 0;
+        $pendingCount = 0;
 
         try {
             foreach ($tempDataList as $tempData) {
@@ -94,7 +95,7 @@ class PaymentStatusController extends Controller
 
                         if ($responseData['status'] === 'success') {
 
-                            $planEnd = $currentDate->copy()->addDays($tempData->period);
+                            $planEnd = $currentDate->copy()->addDays((int) $tempData->subscription_period);
 
                             $historyRequest = new Request([
                                 'uid' => $tempData->user_id,
@@ -161,7 +162,19 @@ class PaymentStatusController extends Controller
                         $successCount++;
                     }
                 } else {
-                    // Payment failed or status invalid
+                    $state = strtoupper((string) ($paymentResponse['data']['state'] ?? ''));
+                    $code = strtoupper((string) ($paymentResponse['code'] ?? ''));
+
+                    // Keep pending attempts for async payment methods like UPI QR.
+                    $isPending = in_array($state, ['PENDING', 'CREATED', 'ATTEMPTED'], true)
+                        || in_array($code, ['PENDING', 'CREATED', 'ATTEMPTED'], true);
+
+                    if ($isPending) {
+                        $pendingCount++;
+                        continue;
+                    }
+
+                    // Definitive failure/error: clear temp payment.
                     TempPaymentModel::where('transaction_id', $merchantOrderId)->delete();
                     $failureCount++;
                 }
@@ -169,7 +182,10 @@ class PaymentStatusController extends Controller
 
             return response()->json([
                 'status' => 'success',
-                'message' => "Processed payments. Success: $successCount, Failures: $failureCount",
+                'message' => "Processed payments. Success: $successCount, Pending: $pendingCount, Failures: $failureCount",
+                'success_count' => $successCount,
+                'pending_count' => $pendingCount,
+                'failure_count' => $failureCount,
             ]);
         } catch (\Exception $e) {
             return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
