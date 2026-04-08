@@ -65,7 +65,6 @@ class WistListController extends Controller
 
         $movieIds = $list->pluck('movie_id')->toArray();
 
-        // get all movies
         $movies = MovieModel::whereIn('id', $movieIds)
             ->get()
             ->keyBy('id');
@@ -73,17 +72,13 @@ class WistListController extends Controller
         $result = [];
 
         foreach ($list as $item) {
-
             $movie = $movies->get($item->movie_id);
 
-            if (!$movie)
+            if (!$movie) {
                 continue;
+            }
 
-            // convert full movie to array
-            $data = (array) $movie;
-
-
-            $result[] = $data;
+            $result[] = (array) $movie; // only actual database fields
         }
 
         return response()->json([
