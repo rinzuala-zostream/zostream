@@ -47,6 +47,7 @@ use App\Http\Controllers\VerifyOTPController;
 use App\Http\Controllers\WatchPositionController;
 use App\Http\Controllers\WatchStatsController;
 use App\Http\Controllers\WhatsAppController;
+use App\Http\Controllers\WistListController;
 use App\Http\Controllers\ZonetController;
 use App\Http\Controllers\ZonetOperatorController;
 use Illuminate\Http\Request;
@@ -125,6 +126,9 @@ Route::get('/alsolike', [AlsoLikeController::class, 'alsoLike']);
 Route::get('/price', [PlanPriceController::class, 'getPlanPrice']);
 
 Route::post('/temp-payment', [TempPayment::class, 'storeTempPayment']);
+Route::post('/wist-list', [WistListController::class, 'store']);
+Route::get('/wist-list', [WistListController::class, 'index']);
+Route::delete('/wish-list', [WistListController::class, 'destroy']);
 
 Route::get('/episodes', [EpisodeController::class, 'getBySeason']);
 Route::post('/episode-insert', [EpisodeController::class, 'insert']);
