@@ -257,7 +257,6 @@ Route::prefix('v3.0')->group(function () {
 
         // 🔁 Subscription Renewal
         Route::post('/renew', [NewStreamController::class, 'renew']); // Renew subscription
-
     });
 
     Route::prefix('movies')->group(function () {
