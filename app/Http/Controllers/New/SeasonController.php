@@ -71,7 +71,8 @@ class SeasonController extends Controller
 
             $seasons = Season::with([
                 'episodes' => function ($q) {
-                    $q->orderBy('episode_number');
+                    $q->where('status', 'Published') // ✅ filter here
+                        ->orderBy('episode_number');
                 }
             ])
                 ->where('movie_id', $movieId)
@@ -105,7 +106,8 @@ class SeasonController extends Controller
                 'title' => 'nullable|string',
                 'description' => 'nullable|string',
                 'poster' => 'nullable|string',
-                'release_year' => 'nullable|integer'
+                'release_date' => 'nullable|integer',
+                'status' => 'nullable|string|in:Draft,Published,Scheduled'
             ]);
 
             $season = Season::create([
@@ -115,7 +117,8 @@ class SeasonController extends Controller
                 'title' => $validated['title'] ?? null,
                 'description' => $validated['description'] ?? null,
                 'poster' => $validated['poster'] ?? null,
-                'release_year' => $validated['release_year'] ?? null,
+                'release_date' => $validated['release_date'] ?? null,
+                'status' => $validated['status'] ?? null
             ]);
 
             return response()->json([
@@ -193,7 +196,7 @@ class SeasonController extends Controller
                 'title',
                 'description',
                 'poster',
-                'release_year'
+                'release_date'
             ]));
 
             return response()->json([

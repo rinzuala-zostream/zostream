@@ -19,7 +19,8 @@ class Season extends Model
         'title',
         'description',
         'poster',
-        'release_year'
+        'release_date',
+        'status',
     ];
 
     public function movie()
