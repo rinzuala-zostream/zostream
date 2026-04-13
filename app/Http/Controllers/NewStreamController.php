@@ -305,15 +305,7 @@ class NewStreamController extends Controller
                     }
                 }
 
-                $watchRequest = new Request([
-                    'userId' => $userId,
-                    'movieId' => $movieId
-                ]);
-
-                $watchResponse = $this->watchPositionController->getWatchPosition($watchRequest);
-                $watchData = json_decode($watchResponse->getContent(), true);
-
-                $watchPosition = $watchData['watchPosition'] ?? 0;
+                
             }
         }
 
