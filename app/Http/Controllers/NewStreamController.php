@@ -22,11 +22,13 @@ class NewStreamController extends Controller
 
     public $movieController;
     public $hlsFolderController;
+    public $watchPositionController;
 
-    public function __construct(HlsFolderController $hlsFolderController, MovieController $movieController)
+    public function __construct(HlsFolderController $hlsFolderController, MovieController $movieController, WatchPositionController $watchPositionController)
     {
         $this->hlsFolderController = $hlsFolderController;
         $this->movieController = $movieController;
+        $this->watchPositionController = $watchPositionController;
     }
 
     // 🧩 Start streaming
@@ -301,6 +303,16 @@ class NewStreamController extends Controller
                         }
                     }
                 }
+
+                $watchRequest = new Request([
+                    'userId' => $userId,
+                    'movieId' => $movieId
+                ]);
+
+                $watchResponse = $this->watchPositionController->getWatchPosition($watchRequest);
+                $watchData = json_decode($watchResponse->getContent(), true);
+
+                $watchPosition = $watchData['watchPosition'] ?? 0;
             }
         }
 
@@ -310,6 +322,7 @@ class NewStreamController extends Controller
             'max_quality' => $plan->quality ?? 'FULL_HD',
             'current_active' => $currentActiveSeats,
             'device_limit' => $limit,
+            'watch_position' => $watchPosition,
             'remaining_slots' => $remainingSlots,
             'movie_links' => $movieLinks
         ]);

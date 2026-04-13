@@ -118,12 +118,7 @@ class WatchPositionController extends Controller
 
     public function getWatchPosition(Request $request)
     {
-        $apiKey = $request->header('X-Api-Key');
-
-        if ($apiKey !== $this->validApiKey) {
-            return response()->json(['status' => 'error', 'message' => 'Invalid API key']);
-        }
-
+    
         $request->validate([
             'userId' => 'required|string',
             'movieId' => 'required|string',
