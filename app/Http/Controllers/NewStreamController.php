@@ -453,12 +453,12 @@ class NewStreamController extends Controller
             'last_ping' => now()
         ]);
 
-        $fakeRequest = new Request([
+
+        $fakeRequest = Request::create('', 'POST', [
             'movie_id' => $movieId,
             'position' => $watchPosition,
             'user_id' => $userId,
             'movie_type' => $contentType,
-
         ]);
 
         $this->watchPositionController->save($fakeRequest);
