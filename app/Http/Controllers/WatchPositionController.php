@@ -18,12 +18,7 @@ class WatchPositionController extends Controller
 
     public function save(Request $request)
     {
-        $apiKey = $request->header('X-Api-Key');
-
-        if ($apiKey !== $this->validApiKey) {
-            return response()->json(['status' => 'error', 'message' => 'Invalid API key']);
-        }
-
+    
         // Validate input
         $request->validate([
             'movie_id' => 'required|string',
