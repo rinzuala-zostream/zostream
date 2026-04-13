@@ -7,7 +7,6 @@ use App\Models\New\Episode;
 use App\Models\New\VideoUrl;
 use Illuminate\Http\Request;
 use App\Models\MovieModel;
-use App\Models\EpisodeModel;
 use Illuminate\Support\Facades\Log;
 use Exception;
 
@@ -39,82 +38,42 @@ class MovieController extends Controller
     {
         try {
             $type = strtolower($request->query('type', 'movie'));
-            if (!in_array($type, ['movie', 'episode'], true)) {
+            if ($type !== 'movie') {
                 return response()->json([
                     'status' => 'error',
-                    'message' => 'Invalid type. Allowed: movie, episode'
+                    'message' => 'Invalid type. Allowed: movie'
                 ], 422);
             }
 
-            if ($type === 'episode') {
-                $episode = Episode::with('season.movie')
-                    ->where('id', $id)
-                    ->first();
-
-                if (!$episode) {
-                    $episode = EpisodeModel::where('id', $id)->first();
-                }
-
-                if ($episode instanceof Episode) {
-                    $parentMovie = $episode->season?->movie;
-
-                    $movie = [
-                        'num' => (int) ($episode->num ?? 0),
-                        'id' => $episode->id,
-                        'movie_id' => $episode->season?->movie_id,
-                        'title' => $episode->title,
-                        'desc' => $episode->description,
-                        'description' => $episode->description,
-                        'img' => $episode->thumbnail,
-                        'poster' => $episode->thumbnail ?: ($parentMovie->poster ?? null),
-                        'cover_img' => $parentMovie->cover_img ?? null,
-                        'title_img' => $parentMovie->title_img ?? null,
-                        'views' => 0,
-                        'status' => $episode->is_active ? 'Published' : 'Draft',
-                        'isPremium' => (int) ($parentMovie->isPremium ?? 1),
-                        'isPPV' => (int) ($parentMovie->isPayPerView ?? 0),
-                        'isProtected' => 0,
-                        'isEnable' => (int) ($episode->is_active ?? 1),
-                        'isSeason' => 1,
-                        'create_date' => optional($episode->created_at)->toDateTimeString(),
-                        'ppv_amount' => $parentMovie->ppv_amount ?? null,
-                        'url' => null,
-                        'dash_url' => null,
-                    ];
-                } else {
-                    $movie = $episode;
-                }
-            } else {
-                $movie = MovieModel::select([
-                    'num',
-                    'id',
-                    'title',
-                    'description',
-                    'director',
-                    'duration',
-                    'genre',
-                    'poster',
-                    'cover_img',
-                    'title_img',
-                    'release_on',
-                    'views',
-                    'status',
-                    'isPremium',
-                    'isPayPerView',
-                    'isChildMode',
-                    'isAgeRestricted',
-                    'isCompleted',
-                    'isSeason',
-                    'create_date',
-                    'trailer',
-                    'ppv_amount',
-                ])->where('id', $id)->first();
-            }
+            $movie = MovieModel::select([
+                'num',
+                'id',
+                'title',
+                'description',
+                'director',
+                'duration',
+                'genre',
+                'poster',
+                'cover_img',
+                'title_img',
+                'release_on',
+                'views',
+                'status',
+                'isPremium',
+                'isPayPerView',
+                'isChildMode',
+                'isAgeRestricted',
+                'isCompleted',
+                'isSeason',
+                'create_date',
+                'trailer',
+                'ppv_amount',
+            ])->where('id', $id)->first();
 
             if (!$movie) {
                 return response()->json([
                     'status' => 'error',
-                    'message' => ucfirst($type) . ' not found'
+                    'message' => 'Movie not found'
                 ], 404);
             }
 

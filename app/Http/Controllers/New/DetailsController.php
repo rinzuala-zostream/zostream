@@ -66,7 +66,14 @@ class DetailsController extends Controller
         $movieId = $request->query('movie_id');
         $deviceId = $request->query('device_id');
         $deviceType = $request->query('device_type');
-        $type = $request->query('type', 'movie');
+        $type = strtolower($request->query('type', 'movie'));
+
+        if ($type !== 'movie') {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Episode details are not supported. Start episode playback through the stream endpoint.'
+            ], 422);
+        }
 
         $hasPlus = Str::contains($movieId, '_');
 
