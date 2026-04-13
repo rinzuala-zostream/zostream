@@ -428,17 +428,13 @@ class NewStreamController extends Controller
     // 🧹 Stop stream
     public function stop(Request $request)
     {
-
         $streamToken = $request->input('stream_token');
-        $watchPosition = $request->input('watch_position'); // ✅ NEW
-        $contentType = $request->input('content_type'); // ✅ NEW
-        $movieId = $request->input('movie_id'); // ✅ NEW
+        $watchPosition = $request->input('watch_position');
+        $contentType = $request->input('content_type');
+        $movieId = $request->input('movie_id');
         $userId = $request->input('user_id');
 
-        // 🔹 Stream
-        $streamQuery = ActiveStream::where('stream_token', $streamToken);
-
-        $stream = $streamQuery->first();
+        $stream = ActiveStream::where('stream_token', $streamToken)->first();
 
         if (!$stream) {
             return response()->json([
@@ -453,7 +449,6 @@ class NewStreamController extends Controller
             'last_ping' => now()
         ]);
 
-
         $fakeRequest = Request::create('', 'POST', [
             'movie_id' => $movieId,
             'position' => $watchPosition,
@@ -461,11 +456,18 @@ class NewStreamController extends Controller
             'movie_type' => $contentType,
         ]);
 
-        $this->watchPositionController->save($fakeRequest);
+        $watchResponse = $this->watchPositionController->save($fakeRequest);
+
+        $watchData = [];
+        if ($watchResponse && method_exists($watchResponse, 'getContent')) {
+            $watchData = json_decode($watchResponse->getContent(), true) ?? [];
+        }
+
+        $watchMessage = $watchData['message'] ?? '';
 
         return response()->json([
             'status' => 'success',
-            'message' => 'Streaming stopped.'
+            'message' => 'Streaming stopped.' . ($watchMessage ? ' ' . $watchMessage : ''),
         ]);
     }
 
