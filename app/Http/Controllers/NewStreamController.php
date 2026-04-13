@@ -6,7 +6,6 @@ use App\Http\Controllers\New\MovieController;
 use App\Models\MovieModel;
 use DB;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
 use App\Models\New\Plan;
@@ -305,7 +304,21 @@ class NewStreamController extends Controller
                     }
                 }
 
-                
+                $watchRequest = Request::create('', 'GET', [
+                    'userId' => $userId,
+                    'movieId' => $movieId,
+                    'isAgeRestricted' => 'false',
+                ]);
+
+                $watchResponse = $this->watchPositionController->getWatchPosition($watchRequest);
+
+                if ($watchResponse && method_exists($watchResponse, 'getContent')) {
+                    $watchData = json_decode($watchResponse->getContent(), true);
+
+                    if (is_array($watchData) && ($watchData['status'] ?? null) === 'success') {
+                        $watchPosition = $watchData['watchPosition'] ?? 0;
+                    }
+                }
             }
         }
 
