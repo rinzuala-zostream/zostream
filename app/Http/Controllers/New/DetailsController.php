@@ -147,10 +147,16 @@ class DetailsController extends Controller
 
             // Ad display time
             if ($type === 'episode') {
-                $url = $movie['isProtected'] ? $movie['dash_url'] : $movie['url'];
-                $duration = $this->getEpisodeDuration($url, $apiKey);
-                $ms = $this->convertToMilliseconds($duration);
-                $movie['adDisplayTimes'] = ['second' => $ms / 2 + rand(1, $ms / 2)];
+                $url = ($movie['isProtected'] ?? false) ? ($movie['dash_url'] ?? null) : ($movie['url'] ?? null);
+
+                if (!empty($url)) {
+                    $duration = $this->getEpisodeDuration($url, $apiKey);
+                    $ms = $this->convertToMilliseconds($duration);
+
+                    if ($ms > 0) {
+                        $movie['adDisplayTimes'] = ['second' => $ms / 2 + rand(1, $ms / 2)];
+                    }
+                }
             } elseif (!$subscriptionData['isAdsFree'] && !empty($movie['duration'])) {
                 $ms = $this->convertToMilliseconds($movie['duration']);
                 $movie['adDisplayTimes'] = ['second' => $ms / 2 + rand(1, $ms / 2)];

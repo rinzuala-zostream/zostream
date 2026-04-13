@@ -47,22 +47,43 @@ class MovieController extends Controller
             }
 
             if ($type === 'episode') {
-                $movie = EpisodeModel::select([
-                    'num',
-                    'id',
-                    'movie_id',
-                    'title',
-                    'desc',
-                    'img',
-                    'views',
-                    'status',
-                    'isPremium',
-                    'isPPV',
-                    'isProtected',
-                    'isEnable',
-                    'create_date',
-                    'ppv_amount',
-                ])->where('id', $id)->first();
+                $episode = Episode::with('season.movie')
+                    ->where('id', $id)
+                    ->first();
+
+                if (!$episode) {
+                    $episode = EpisodeModel::where('id', $id)->first();
+                }
+
+                if ($episode instanceof Episode) {
+                    $parentMovie = $episode->season?->movie;
+
+                    $movie = [
+                        'num' => (int) ($episode->num ?? 0),
+                        'id' => $episode->id,
+                        'movie_id' => $episode->season?->movie_id,
+                        'title' => $episode->title,
+                        'desc' => $episode->description,
+                        'description' => $episode->description,
+                        'img' => $episode->thumbnail,
+                        'poster' => $episode->thumbnail ?: ($parentMovie->poster ?? null),
+                        'cover_img' => $parentMovie->cover_img ?? null,
+                        'title_img' => $parentMovie->title_img ?? null,
+                        'views' => 0,
+                        'status' => $episode->is_active ? 'Published' : 'Draft',
+                        'isPremium' => (int) ($parentMovie->isPremium ?? 1),
+                        'isPPV' => (int) ($parentMovie->isPayPerView ?? 0),
+                        'isProtected' => 0,
+                        'isEnable' => (int) ($episode->is_active ?? 1),
+                        'isSeason' => 1,
+                        'create_date' => optional($episode->created_at)->toDateTimeString(),
+                        'ppv_amount' => $parentMovie->ppv_amount ?? null,
+                        'url' => null,
+                        'dash_url' => null,
+                    ];
+                } else {
+                    $movie = $episode;
+                }
             } else {
                 $movie = MovieModel::select([
                     'num',
@@ -122,7 +143,9 @@ class MovieController extends Controller
             }
 
             if ($type === 'episode') {
-                $episode = Episode::select(['id', 'title'])->where('id', $id)->first();
+                $episode = Episode::with('season')
+                    ->where('id', $id)
+                    ->first();
 
                 if (!$episode) {
                     return response()->json([
@@ -155,7 +178,7 @@ class MovieController extends Controller
                 return response()->json([
                     'status' => 'success',
                     'type' => 'episode',
-                    'movie_id' => $episode->movie_id,
+                    'movie_id' => $episode->season?->movie_id,
                     'episode_id' => $episode->id,
                     'title' => $episode->title,
                     'links' => $links
