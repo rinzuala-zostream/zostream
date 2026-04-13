@@ -424,6 +424,10 @@ class NewStreamController extends Controller
     {
 
         $streamToken = $request->input('stream_token');
+        $watchPosition = $request->input('watch_position'); // ✅ NEW
+        $contentType = $request->input('content_type'); // ✅ NEW
+        $movieId = $request->input('movie_id'); // ✅ NEW
+        $userId = $request->input('user_id');
 
         // 🔹 Stream
         $streamQuery = ActiveStream::where('stream_token', $streamToken);
@@ -442,6 +446,16 @@ class NewStreamController extends Controller
             'status' => 'stopped',
             'last_ping' => now()
         ]);
+
+        $fakeRequest = new Request([
+            'movie_id' => $movieId,
+            'position' => $watchPosition,
+            'user_id' => $userId,
+            'movie_type' => $contentType,
+
+        ]);
+
+        $this->watchPositionController->save($fakeRequest);
 
         return response()->json([
             'status' => 'success',

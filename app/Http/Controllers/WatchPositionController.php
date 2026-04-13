@@ -127,29 +127,12 @@ class WatchPositionController extends Controller
 
         $userId = $request->query('userId');
         $movieId = $request->query('movieId');
-        $isAgeRestricted = ($request->query('isAgeRestricted') ?? 'false') === 'true' ? 1 : 0;
 
         if (!$userId || !$movieId) {
             return response()->json([
                 'status' => 'error',
                 'message' => 'Missing userId or movieId'
             ], 400);
-        }
-
-        // Get user age
-        $userAge = null;
-        $user = UserModel::select('dob')->where('uid', $userId)->first();
-        if ($user && $user->dob) {
-            $userAge = Carbon::parse($user->dob)->age;
-        }
-
-        // Age restriction check
-        if ($isAgeRestricted && ($userAge === null || $userAge < 18)) {
-            return response()->json([
-                'status' => '104',
-                'message' => 'Age restriction avangin i en thei lo. Khawngaihin adang en rawh',
-                'age' => $userAge
-            ]);
         }
 
         // Get watch position
@@ -162,8 +145,7 @@ class WatchPositionController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'watchPosition' => $watchPosition,
-            'age' => $userAge
+            'watchPosition' => $watchPosition
         ]);
     }
 }
