@@ -247,6 +247,7 @@ class NewStreamController extends Controller
 
         // 🔟 Movie links (UNCHANGED)
         $movieLinks = null;
+        $watchPosition = 0;
 
         if ($movieId) {
             $req = new Request();
@@ -319,7 +320,7 @@ class NewStreamController extends Controller
         return response()->json([
             'status' => 'success',
             'stream_token' => $streamToken,
-            'max_quality' => $plan->quality ?? 'FULL_HD',
+            'max_quality' => $plan->quality ?? 'SD',
             'current_active' => $currentActiveSeats,
             'device_limit' => $limit,
             'watch_position' => $watchPosition,
