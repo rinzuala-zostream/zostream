@@ -46,6 +46,12 @@ class OTPController extends Controller
             $userId = $request->user_id;
             $phoneRequest = $request->phone_number;
 
+            // ✅ Normalize phone number (keep only digits)
+            $phoneRequest = preg_replace('/\D/', '', $phoneRequest);
+
+            // ✅ Take last 10 digits only
+            $phoneRequest = substr($phoneRequest, -10);
+
             // 🔍 Find user
             $user = UserModel::where('auth_phone', $phoneRequest)->first();
 
