@@ -58,7 +58,16 @@ class WatchPositionController extends Controller
                 ]);
             }
 
-            return response()->json(['status' => 'success', 'message' => 'Record saved successfully']);
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Record saved successfully',
+                'data' => [
+                    'movie_id' => $movieId,
+                    'position' => $position,
+                    'user_id' => $userId,
+                    'movie_type' => $movieType,
+                ],
+            ]);
 
         } catch (\Exception $e) {
 

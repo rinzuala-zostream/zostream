@@ -102,7 +102,7 @@ class EpisodeController extends Controller
     {
         try {
 
-            $episode = Episode::with('season')->where('id', $id)->first();
+            $episode = Episode::with('season.movie')->where('id', $id)->first();
 
             if (!$episode) {
                 return response()->json([

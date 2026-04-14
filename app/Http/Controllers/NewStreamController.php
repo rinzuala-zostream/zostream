@@ -468,6 +468,7 @@ class NewStreamController extends Controller
         return response()->json([
             'status' => 'success',
             'message' => 'Streaming stopped.' . ($watchMessage ? ' ' . $watchMessage : ''),
+            'watch_position_response' => $watchData,
         ]);
     }
 
