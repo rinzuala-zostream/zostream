@@ -2,10 +2,10 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\UserModel;
+use App\Models\MovieModel;
 use App\Models\WatchHistoryModel;
-use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 
 class WatchPositionController extends Controller
 {
@@ -33,6 +33,9 @@ class WatchPositionController extends Controller
             $position = $request->input('position');
             $userId = $request->input('user_id');
             $movieType = $request->input('movie_type');
+            $now = now();
+            $hasCreatedAt = Schema::hasColumn('watch_position', 'created_at');
+            $hasUpdatedAt = Schema::hasColumn('watch_position', 'updated_at');
 
             // Check if the record exists
             $existing = WatchHistoryModel::where('movie_id', $movieId)
@@ -42,20 +45,36 @@ class WatchPositionController extends Controller
 
             if ($existing) {
                 // Update existing
+                $payload = [
+                    'position' => $position,
+                    'movie_type' => $movieType,
+                ];
+
+                if ($hasUpdatedAt) {
+                    $payload['updated_at'] = $now;
+                }
+
                 WatchHistoryModel::where('movie_id', $movieId)
                     ->where('user_id', $userId)
-                    ->update([
-                        'position' => $position,
-                        'movie_type' => $movieType,
-                    ]);
+                    ->update($payload);
             } else {
                 // Insert new
-                WatchHistoryModel::insert([
+                $payload = [
                     'movie_id' => $movieId,
                     'position' => $position,
                     'user_id' => $userId,
                     'movie_type' => $movieType,
-                ]);
+                ];
+
+                if ($hasCreatedAt) {
+                    $payload['created_at'] = $now;
+                }
+
+                if ($hasUpdatedAt) {
+                    $payload['updated_at'] = $now;
+                }
+
+                WatchHistoryModel::insert($payload);
             }
 
             return response()->json([
@@ -74,50 +93,69 @@ class WatchPositionController extends Controller
             return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
         }
     }
+
     public function getWatchContinue(Request $request)
     {
-        $apiKey = $request->header('X-Api-Key');
-
-        if ($apiKey !== $this->validApiKey) {
-            return response()->json(['status' => 'error', 'message' => 'Invalid API key']);
-        }
-
         $request->validate([
             'userId' => 'required|string',
-            'isAgeRestricted' => 'required|string|in:true,false',
+            'isAgeRestricted' => 'nullable|string|in:true,false',
         ]);
 
         $userId = $request->query('userId');
-        $isAgeRestricted = ($request->query('isAgeRestricted') ?? 'false') === 'true' ? 1 : 0;
+        $includeAgeRestricted = ($request->query('isAgeRestricted') ?? 'false') === 'true';
 
         if (!$userId) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Missing userId or movieId'
+                'message' => 'Missing userId'
             ], 400);
         }
 
-        // Get watch position
+        $hasUpdatedAt = Schema::hasColumn('watch_position', 'updated_at');
+        $hasCreatedAt = Schema::hasColumn('watch_position', 'created_at');
+        $orderColumn = $hasUpdatedAt ? 'updated_at' : ($hasCreatedAt ? 'created_at' : 'num');
+
         $watchData = WatchHistoryModel::where('user_id', $userId)
-            ->first();
+            ->where('position', '>', 0)
+            ->orderByDesc($orderColumn)
+            ->get();
+
+        $movieIds = $watchData->pluck('movie_id')->filter()->unique()->values();
+        $movies = MovieModel::whereIn('id', $movieIds)
+            ->get()
+            ->keyBy('id');
 
         $result = [];
 
         foreach ($watchData as $history) {
-            $movie = $movies[$history->movie_id] ?? null;
+            $movie = $movies->get($history->movie_id);
 
             // Skip if movie not found or is age restricted
-            if (!$movie || ($movie->is_age_restricted && $isAgeRestricted)) {
+            if (!$movie || (!$includeAgeRestricted && (int) ($movie->isAgeRestricted ?? 0) === 1)) {
                 continue;
             }
 
+            $watchedAt = $hasUpdatedAt
+                ? $history->updated_at
+                : ($hasCreatedAt ? $history->created_at : null);
+
             $result[] = [
+                'id' => $history->num,
                 'movie_id' => $history->movie_id,
+                'movie_type' => $history->movie_type,
                 'position' => $history->position,
-                'updated_at' => $history->updated_at,
-                'movie' => $movie
+                'watched_at' => $watchedAt,
+                'updated_at' => $hasUpdatedAt ? $history->updated_at : null,
+                'created_at' => $hasCreatedAt ? $history->created_at : null,
+                'movie' => $this->transformMovie($movie),
             ];
         }
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $result,
+            'watch_history' => $result,
+        ]);
     }
 
     public function getWatchPosition(Request $request)
@@ -151,5 +189,39 @@ class WatchPositionController extends Controller
             'status' => 'success',
             'watchPosition' => $watchPosition
         ]);
+    }
+
+    private function transformMovie(MovieModel $movie)
+    {
+        foreach ([
+            'isProtected',
+            'isBollywood',
+            'isCompleted',
+            'isDocumentary',
+            'isDubbed',
+            'isEnable',
+            'isHollywood',
+            'isKorean',
+            'isMizo',
+            'isPayPerView',
+            'isPremium',
+            'isAgeRestricted',
+            'isSeason',
+            'isSubtitle',
+            'isChildMode',
+        ] as $key) {
+            if (isset($movie->$key)) {
+                $movie->$key = (bool) $movie->$key;
+            }
+        }
+
+        unset(
+            $movie->url,
+            $movie->dash_url,
+            $movie->hls_url,
+            $movie->token
+        );
+
+        return $movie;
     }
 }

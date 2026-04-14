@@ -140,6 +140,7 @@ Route::get('/update-dob', [UserController::class, 'updateDob']);
 
 Route::post('/watch-position', [WatchPositionController::class, 'save']);
 Route::get('/get-position', [WatchPositionController::class, 'getWatchPosition']);
+Route::get('/watch-history', [WatchPositionController::class, 'getWatchContinue']);
 
 Route::get('/update-token', [UserController::class, 'updateToken']);
 
