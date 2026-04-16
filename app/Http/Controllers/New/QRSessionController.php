@@ -52,6 +52,7 @@ class QRSessionController extends Controller
     public function create(Request $request)
     {
         $token = Str::random(22);
+        $type = $request->type ?? 'login';
 
         $data = [
             'device_id' => $request->device_id,
@@ -67,11 +68,25 @@ class QRSessionController extends Controller
             'payment_gateway' => $request->payment_gateway,
             'transaction_id' => $request->transaction_id,
             'note' => $request->note,
-            'type' => $request->type ?? 'login',
+            'type' => $type,
             'status' => 'initialized',
             'user_id' => $request->user_id ?? '',
             'expires_at' => time() + 120,
         ];
+
+        if ($type === 'admin_login') {
+            $allowedUserIds = $this->getAdminQrAllowedUserIds();
+
+            if (empty($allowedUserIds)) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Admin QR login is not configured',
+                ], 500);
+            }
+
+            $data['admin_only'] = true;
+            $data['allowed_user_ids'] = $allowedUserIds;
+        }
 
         $this->database
             ->getReference('qr_sessions/' . $token)
@@ -83,6 +98,16 @@ class QRSessionController extends Controller
             'qr_url' => url('/api/v3.0/qr/status/' . $token),
             'expires_in' => 120,
         ]);
+    }
+
+    public function createAdmin(Request $request)
+    {
+        $request->merge([
+            'type' => 'admin_login',
+            'device_type' => $request->device_type ?? 'browser',
+        ]);
+
+        return $this->create($request);
     }
 
     public function status($token)
@@ -109,7 +134,7 @@ class QRSessionController extends Controller
 
         // ✅ SKIP check if type = login
         if (
-            ($session['type'] ?? null) !== 'login' &&
+            !in_array(($session['type'] ?? null), ['login', 'admin_login'], true) &&
             $userId &&
             isset($session['user_id']) &&
             $session['user_id'] !== $userId
@@ -149,10 +174,6 @@ class QRSessionController extends Controller
             $ref = $this->database->getReference('qr_sessions/' . $request->token);
             $session = $ref->getValue();
 
-            $deviceName = $session['device_name'] ?? 'Unknown Device';
-            $deviceId = $session['device_id'] ?? null;
-            $deviceType = $session['device_type'] ?? 'mobile';
-
             if (!$session) {
                 $this->updateFirebaseError($ref, 'Token generation failed');
                 return response()->json([
@@ -169,11 +190,25 @@ class QRSessionController extends Controller
                 ], 400);
             }
 
+            $deviceName = $session['device_name'] ?? 'Unknown Device';
+            $deviceId = $session['device_id'] ?? null;
+            $deviceType = $session['device_type'] ?? 'mobile';
             $type = $session['type'] ?? 'login';
 
             //base on $ref type(login, payment) call controller to process login or payment approval
             switch ($type) {
 
+                case 'admin_login':
+                    if (!$this->isAdminQrAllowed($userId)) {
+                        $this->updateFirebaseError($ref, 'Admin access denied');
+
+                        return response()->json([
+                            'status' => 'error',
+                            'message' => 'This account is not allowed to login to admin',
+                        ], 403);
+                    }
+
+                    // Admin login uses the same token/device flow after access is confirmed.
                 case 'login':
                     $user = UserModel::where('uid', $userId)->first();
                     if (!$user) {
@@ -312,7 +347,7 @@ class QRSessionController extends Controller
                         return response()->json([
                             'status' => 'success',
                             'message' => $message ?? 'Login successful',
-                            'type' => 'login',
+                            'type' => $type,
                             'data' => array_merge([
                                 'uid' => $userId,
                                 'is_owner_device' => $isOwnerDevice ?? false,
@@ -457,6 +492,16 @@ class QRSessionController extends Controller
                 'error' => config('app.debug') ? $e->getMessage() : null
             ], 500);
         }
+    }
+
+    private function getAdminQrAllowedUserIds()
+    {
+        return config('services.admin_qr.allowed_uids', []);
+    }
+
+    private function isAdminQrAllowed($userId)
+    {
+        return in_array((string) $userId, $this->getAdminQrAllowedUserIds(), true);
     }
 
     private function updateFirebaseSuccess($ref, $data)

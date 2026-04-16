@@ -296,6 +296,7 @@ Route::prefix('v3.0')->group(function () {
 
     Route::prefix('qr')->group(function () {
         Route::post('/qcreate', [QRSessionController::class, 'create']);
+        Route::post('/admin/qcreate', [QRSessionController::class, 'createAdmin']);
         Route::get('/status/{token}', [QRSessionController::class, 'status']);
         Route::post('/verify', [QRSessionController::class, 'verify']);
     });
