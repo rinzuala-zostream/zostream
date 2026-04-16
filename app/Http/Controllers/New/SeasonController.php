@@ -71,11 +71,12 @@ class SeasonController extends Controller
 
             $seasons = Season::with([
                 'episodes' => function ($q) {
-                    $q->where('status', 'Published') // ✅ filter here
+                    $q->where('status', 'Published')
                         ->orderBy('episode_number');
                 }
             ])
                 ->where('movie_id', $movieId)
+                ->where('status', 'Published') // ✅ ADD THIS
                 ->orderBy('season_number')
                 ->get();
 
