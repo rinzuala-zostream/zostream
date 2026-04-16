@@ -7,7 +7,6 @@ use Illuminate\Support\Facades\Http;
 
 class WhatsAppController extends Controller
 {
-
     private $whatsappPhoneId;
     private $whatsappToken;
 
@@ -22,20 +21,27 @@ class WhatsAppController extends Controller
     {
         $validated = $request->validate([
             'to' => 'required|string',
-            'type' => 'required|string|in:template,text', // 'template' or 'text'
+            'type' => 'required|string|in:template,text',
             'template_name' => 'nullable|string',
             'template_params' => 'nullable|array',
             'language' => 'nullable|string',
-            'message' => 'nullable|string', // for text messages
+            'message' => 'nullable|string',
         ]);
 
-        $url = "https://graph.facebook.com/v22.0/197447096794083/messages";
-        $token = "EAATU6fjeZAd0BQpeRdLHH60jZCmfg5FMoK3YRxAoEixEb8uxZC8WaAuZAWrxlTecWjSTAfnbuv3zdL3F9LCiuImr3xSbVQyzkoDHcRYWHY7vFZCu67TjWnYCZAaRhdwHaNVJR6C1KjOLpNjBfXUlnsePJDzjZAsZAZAZC8iMfEwdkD10SVmsyRGHZCDciVJAHysnAZDZD";
+        return $this->dispatchValidatedMessage($validated);
+    }
 
+    protected function dispatchValidatedMessage(array $validated)
+    {
+        if (empty($this->whatsappPhoneId) || empty($this->whatsappToken)) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'WhatsApp API is not configured.',
+            ], 500);
+        }
 
-        // ----------------------------
-        // 📩 Build Payload Based on Type
-        // ----------------------------
+        $url = "https://graph.facebook.com/v22.0/{$this->whatsappPhoneId}/messages";
+
         if ($validated['type'] === 'template') {
             if (empty($validated['template_name']) || empty($validated['template_params'])) {
                 return response()->json([
@@ -44,7 +50,6 @@ class WhatsAppController extends Controller
                 ], 400);
             }
 
-            // 🧩 Build body parameters
             $bodyParameters = [];
             foreach ($validated['template_params'] as $param) {
                 $bodyParameters[] = [
@@ -53,7 +58,6 @@ class WhatsAppController extends Controller
                 ];
             }
 
-            // 🧩 Base template payload
             $payload = [
                 "messaging_product" => "whatsapp",
                 "to" => $validated['to'],
@@ -72,9 +76,7 @@ class WhatsAppController extends Controller
                 ]
             ];
 
-            // 💡 Auto-add button if template is 'zostream_auth_otp'
             if ($validated['template_name'] === 'zostream_auth_otp') {
-                // Take first parameter (OTP) as button param
                 $otp = $validated['template_params'][0] ?? '';
                 if (!empty($otp)) {
                     $payload['template']['components'][] = [
@@ -93,9 +95,9 @@ class WhatsAppController extends Controller
         } else {
             if (empty($validated['message'])) {
                 return response()->json([
-                    'status' => 'error',
-                    'message' => 'Message field is required for text messages.'
-                ], 400);
+                'status' => 'error',
+                'message' => 'Message field is required for text messages.'
+            ], 400);
             }
 
             $payload = [
@@ -109,14 +111,8 @@ class WhatsAppController extends Controller
             ];
         }
 
-        // ----------------------------
-        // 🚀 Send Message via API
-        // ----------------------------
-        $response = Http::withToken($token)->post($url, $payload);
+        $response = Http::withToken($this->whatsappToken)->post($url, $payload);
 
-        // ----------------------------
-        // ✅ Handle Response
-        // ----------------------------
         if ($response->successful()) {
             return response()->json([
                 'status' => 'success',

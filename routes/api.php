@@ -16,6 +16,7 @@ use App\Http\Controllers\LinkController;
 use App\Http\Controllers\MovieController;
 use App\Http\Controllers\MovieSearchController;
 use App\Http\Controllers\New\BannerController;
+use App\Http\Controllers\New\AdminWhatsAppController;
 use App\Http\Controllers\New\DeviceController;
 use App\Http\Controllers\New\OfflineController;
 use App\Http\Controllers\New\PaymentController;
@@ -226,6 +227,8 @@ Route::prefix('v3.0')->group(function () {
     Route::post('/verify-otp', [OTPController::class, 'verify']);
     Route::post('/token/refresh', [TokenController::class, 'refresh']);
     Route::post('/token/revoke', [TokenController::class, 'revoke']);
+    Route::post('/admin/whatsapp/request-otp', [AdminWhatsAppController::class, 'requestOtp']);
+    Route::post('/admin/whatsapp/send', [AdminWhatsAppController::class, 'send'])->middleware('auth.token');
 
     // ✅ Protected routes
     // Route::middleware('auth.token')->group(function () {

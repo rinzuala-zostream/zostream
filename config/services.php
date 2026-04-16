@@ -42,4 +42,11 @@ return [
         ))),
     ],
 
+    'admin_whatsapp' => [
+        'allowed_numbers' => array_values(array_filter(array_map(
+            static fn ($number) => preg_replace('/\D+/', '', trim($number)),
+            explode(',', env('ADMIN_WHATSAPP_ALLOWED_NUMBERS', ''))
+        ))),
+    ],
+
 ];
