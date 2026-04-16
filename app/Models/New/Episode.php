@@ -21,14 +21,16 @@ class Episode extends Model
         'thumbnail',
         'duration',
         'release_date',
-        'is_active'
+        'is_active',
+        'status'
     ];
 
     protected $casts = [
         'episode_number' => 'integer',
         'duration' => 'integer',
         'release_date' => 'date',
-        'is_active' => 'boolean'
+        'is_active' => 'boolean',
+        'status' => 'string'
     ];
 
     public function season()

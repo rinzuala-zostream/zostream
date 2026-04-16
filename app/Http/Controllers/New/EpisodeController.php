@@ -59,7 +59,8 @@ class EpisodeController extends Controller
                 'description' => 'nullable|string',
                 'thumbnail' => 'nullable|string',
                 'release_date' => 'nullable|date',
-                'is_active' => 'nullable|boolean'
+                'is_active' => 'nullable|boolean',
+                'status' => 'nullable|in:Draft,Published,Scheduled'
             ]);
 
             $episode = Episode::create([
@@ -71,6 +72,7 @@ class EpisodeController extends Controller
                 'thumbnail' => $validated['thumbnail'] ?? null,
                 'release_date' => $validated['release_date'] ?? null,
                 'is_active' => $validated['is_active'] ?? true,
+                'status' => $validated['status'] ?? 'Draft'
             ]);
 
             return response()->json([
@@ -148,7 +150,8 @@ class EpisodeController extends Controller
                 'description' => 'nullable|string',
                 'thumbnail' => 'nullable|string',
                 'release_date' => 'nullable|date',
-                'is_active' => 'nullable|boolean'
+                'is_active' => 'nullable|boolean',
+                'status' => 'nullable|in:Draft,Published,Scheduled'
             ]);
 
             $episode->update($validated);
