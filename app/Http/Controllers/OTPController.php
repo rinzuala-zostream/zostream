@@ -44,16 +44,10 @@ class OTPController extends Controller
             ]);
 
             $userId = $request->user_id;
-            $phoneRequest = $request->phone_number;
-
-            // ✅ Normalize phone number (keep only digits)
-            $phoneRequest = preg_replace('/\D/', '', $phoneRequest);
-
-            // ✅ Take last 10 digits only
-            $phoneRequest = substr($phoneRequest, -10);
+            $phoneRequest = $this->normalizeComparablePhone($request->phone_number);
 
             // 🔍 Find user
-            $user = UserModel::where('auth_phone', $phoneRequest)->first();
+            $user = $this->findUserByPhone($phoneRequest);
 
             if ($phoneRequest === '8837076347') {
 
@@ -101,7 +95,7 @@ class OTPController extends Controller
             }
 
             // 📱 Determine OTP target phone
-            $otpPhone = $user->auth_phone ?? $phoneRequest;
+            $otpPhone = $this->normalizeWhatsappTargetPhone($user->auth_phone ?? $phoneRequest);
             if (!$otpPhone) {
                 return response()->json(['status' => 'error', 'message' => 'No phone available to send OTP']);
             }
@@ -152,6 +146,37 @@ class OTPController extends Controller
             Log::error('OTP send failed', ['error' => $e->getMessage()]);
             return response()->json(['status' => 'error', 'message' => 'Something went wrong']);
         }
+    }
+
+    private function findUserByPhone(string $phoneRequest): ?UserModel
+    {
+        if ($phoneRequest === '') {
+            return null;
+        }
+
+        return UserModel::query()
+            ->where('auth_phone', $phoneRequest)
+            ->orWhere('auth_phone', '91' . $phoneRequest)
+            ->orWhere('auth_phone', '+' . '91' . $phoneRequest)
+            ->orWhere('auth_phone', 'like', '%' . $phoneRequest)
+            ->first();
+    }
+
+    private function normalizeComparablePhone(?string $phone): string
+    {
+        $digits = preg_replace('/\D+/', '', (string) $phone);
+        if ($digits === '') {
+            return '';
+        }
+
+        return substr($digits, -10);
+    }
+
+    private function normalizeWhatsappTargetPhone(?string $phone): string
+    {
+        $comparable = $this->normalizeComparablePhone($phone);
+
+        return $comparable === '' ? '' : '91' . $comparable;
     }
 
     /**

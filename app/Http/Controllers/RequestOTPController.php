@@ -39,7 +39,7 @@ class RequestOTPController extends Controller
             ]);
 
             $userId = $request->user_id;
-            $phoneRequest = $request->phone_number;
+            $phoneRequest = $this->normalizeComparablePhone($request->phone_number);
 
             // 🔍 Find user
             $user = UserModel::where('uid', $userId)->first();
@@ -58,7 +58,7 @@ class RequestOTPController extends Controller
 
                 $user = UserModel::create([
                     'uid' => $request->user_id,
-                    'auth_phone' => $request->phone_number,
+                    'auth_phone' => $phoneRequest,
                     'created_date' => $createdDate,
                     'device_name' => $deviceName,
                     'isACActive' => $request->isACActive ?? true,
@@ -80,7 +80,7 @@ class RequestOTPController extends Controller
             }
 
             // Determine OTP target phone
-            $otpPhone = $user->auth_phone ?? $phoneRequest;
+            $otpPhone = $this->normalizeWhatsappTargetPhone($user->auth_phone ?? $phoneRequest);
             if (!$otpPhone) {
                 return response()->json([
                     'status' => 'error',
@@ -150,5 +150,22 @@ class RequestOTPController extends Controller
                 'error' => app()->environment('local') ? $e->getMessage() : null
             ]);
         }
+    }
+
+    private function normalizeComparablePhone(?string $phone): string
+    {
+        $digits = preg_replace('/\D+/', '', (string) $phone);
+        if ($digits === '') {
+            return '';
+        }
+
+        return substr($digits, -10);
+    }
+
+    private function normalizeWhatsappTargetPhone(?string $phone): string
+    {
+        $comparable = $this->normalizeComparablePhone($phone);
+
+        return $comparable === '' ? '' : '91' . $comparable;
     }
 }

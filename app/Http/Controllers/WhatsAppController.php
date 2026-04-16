@@ -28,6 +28,14 @@ class WhatsAppController extends Controller
             'message' => 'nullable|string',
         ]);
 
+        $validated['to'] = $this->normalizeWhatsAppPhone($validated['to']);
+        if ($validated['to'] === '') {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Invalid WhatsApp recipient number.',
+            ], 400);
+        }
+
         return $this->dispatchValidatedMessage($validated);
     }
 
@@ -126,5 +134,24 @@ class WhatsAppController extends Controller
             'message' => 'Failed to send WhatsApp message.',
             'error' => $response->json()
         ], $response->status());
+    }
+
+    private function normalizeWhatsAppPhone(string $phone): string
+    {
+        $digits = preg_replace('/\D+/', '', trim($phone));
+
+        if ($digits === '') {
+            return '';
+        }
+
+        if (strlen($digits) === 10) {
+            return '91' . $digits;
+        }
+
+        if (strlen($digits) === 11 && str_starts_with($digits, '0')) {
+            return '91' . substr($digits, -10);
+        }
+
+        return $digits;
     }
 }
