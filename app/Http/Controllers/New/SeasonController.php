@@ -65,18 +65,28 @@ class SeasonController extends Controller
     }
 
     // Get all seasons of a movie
-    public function index($movieId)
+    // Get all seasons of a movie
+    public function index(Request $request, $movieId)
     {
         try {
+            $isAdmin = $request->hasHeader('admin');
 
-            $seasons = Season::with([
-                'episodes' => function ($q) {
-                    $q->where('status', 'Published')
-                        ->orderBy('episode_number');
+            $seasonsQuery = Season::with([
+                'episodes' => function ($q) use ($isAdmin) {
+                    if (!$isAdmin) {
+                        $q->where('status', 'Published');
+                    }
+
+                    $q->orderBy('episode_number');
                 }
             ])
-                ->where('movie_id', $movieId)
-                ->where('status', 'Published') // ✅ ADD THIS
+                ->where('movie_id', $movieId);
+
+            if (!$isAdmin) {
+                $seasonsQuery->where('status', 'Published');
+            }
+
+            $seasons = $seasonsQuery
                 ->orderBy('season_number')
                 ->get();
 
@@ -86,7 +96,6 @@ class SeasonController extends Controller
             ]);
 
         } catch (\Exception $e) {
-
             Log::error('Season index error: ' . $e->getMessage());
 
             return response()->json([
@@ -197,7 +206,8 @@ class SeasonController extends Controller
                 'title',
                 'description',
                 'poster',
-                'release_date'
+                'release_date',
+                'status'
             ]));
 
             return response()->json([
