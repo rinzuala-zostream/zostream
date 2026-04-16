@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 class WhatsAppController extends Controller
 {
@@ -122,12 +123,27 @@ class WhatsAppController extends Controller
         $response = Http::withToken($this->whatsappToken)->post($url, $payload);
 
         if ($response->successful()) {
+            Log::info('WhatsApp message sent', [
+                'to' => $validated['to'],
+                'type' => $validated['type'],
+                'template_name' => $validated['template_name'] ?? null,
+                'response' => $response->json(),
+            ]);
+
             return response()->json([
                 'status' => 'success',
                 'message' => ucfirst($validated['type']) . ' message sent successfully.',
                 'response' => $response->json()
             ]);
         }
+
+        Log::error('WhatsApp message send failed', [
+            'to' => $validated['to'],
+            'type' => $validated['type'],
+            'template_name' => $validated['template_name'] ?? null,
+            'status_code' => $response->status(),
+            'response' => $response->json(),
+        ]);
 
         return response()->json([
             'status' => 'error',
