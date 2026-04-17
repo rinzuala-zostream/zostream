@@ -41,6 +41,7 @@ class MovieModel extends Model
         'director',
         'duration',
         'genre',
+        'age_rating',
         'id',
         'isProtected',
         'isBollywood',
