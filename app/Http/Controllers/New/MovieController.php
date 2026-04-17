@@ -37,44 +37,28 @@ class MovieController extends Controller
     public function getById(Request $request, $id)
     {
         try {
-            $type = strtolower($request->query('type', 'movie'));
-            if ($type !== 'movie') {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Invalid type. Allowed: movie'
-                ], 422);
-            }
+            $type = strtolower($request->query('type'));
 
-            $movie = MovieModel::select([
-                'num',
-                'id',
-                'title',
-                'description',
-                'director',
-                'duration',
-                'genre',
-                'poster',
-                'cover_img',
-                'title_img',
-                'release_on',
-                'views',
-                'status',
-                'isPremium',
-                'isPayPerView',
-                'isChildMode',
-                'isAgeRestricted',
-                'isCompleted',
-                'isSeason',
-                'create_date',
-                'trailer',
-                'ppv_amount',
-            ])->where('id', $id)->first();
+            if ($type === 'episode') {
+                $movie = Episode::with('season')
+                    ->where('id', $id)
+                    ->first();
 
-            if (!$movie) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Movie not found'
-                ], 404);
+                if (!$movie) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'Episode not found'
+                    ], 404);
+                }
+            } else {
+                $movie = MovieModel::where('id', $id)->first();
+
+                if (!$movie) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'Movie not found'
+                    ], 404);
+                }
             }
 
             return response()->json(
