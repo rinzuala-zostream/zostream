@@ -150,7 +150,7 @@ class NewStreamController extends Controller
 
             $isRented = false;
 
-            if ($seasonId) {
+            if ($seasonId && $movieType === 'episode') {
                 // First check if whole season is rented
                 $isRented = (clone $baseQuery)
                     ->where('movie_id', $seasonId)

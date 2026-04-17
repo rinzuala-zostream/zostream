@@ -145,13 +145,7 @@ class DetailsController extends Controller
 
             $movie['num'] = (int) ($movie['num'] ?? 0);
             $movie['views'] = (int) ($movie['views'] ?? 0);
-
-            // PPV logic
-            $ppvKey = $movie['isPayPerView'] ?? $movie['isPPV'] ?? null;
-            if ($ppvKey) {
-                $movie['ppv_details'] = $this->fetchPPVDetails($userId, $movieId, $deviceType);
-            }
-
+        
             // Ad display time
             if ($type === 'episode') {
                 $url = ($movie['isProtected'] ?? false) ? ($movie['dash_url'] ?? null) : ($movie['url'] ?? null);
@@ -207,57 +201,6 @@ class DetailsController extends Controller
                 'error' => $e->getMessage()
             ], 500);
         }
-    }
-
-    private function fetchPPVDetails($userId, $movieId, $deviceType)
-    {
-        $ppvData = PaymentHistory::where('user_id', $userId)
-            ->where('status', 'success')
-            ->where('device_type', strtolower(trim($deviceType)))
-            ->where('movie_id', $movieId)
-            ->orderByDesc('id')
-            ->first();
-
-        if (!$ppvData) {
-            return [
-                'isRented' => false,
-                'rentalPurchased' => null,
-                'rentalExpiry' => null,
-                'daysLeft' => 0
-            ];
-        }
-
-        // ✅ Use datetime directly
-        $purchaseDate = $ppvData->payment_date
-            ? Carbon::parse($ppvData->payment_date)
-            : Carbon::parse($ppvData->created_at);
-
-        // ✅ expiry_date is already datetime → use directly
-        $expiry = $ppvData->expiry_date
-            ? Carbon::parse($ppvData->expiry_date)
-            : $purchaseDate->copy()->addDays(7);
-
-        $now = now();
-
-        // ✅ Check valid rental
-        $isRented = $now->lessThanOrEqualTo($expiry);
-
-        // ✅ Calculate remaining time properly
-        $secondsLeft = $now->diffInSeconds($expiry, false);
-
-        if ($secondsLeft <= 0) {
-            $daysLeftText = "Vawiin chiah i en thei tawh";
-        } else {
-            $days = ceil($secondsLeft / 86400); // include partial day
-            $daysLeftText = "Ni $days chhung ila en thei.";
-        }
-
-        return [
-            'isRented' => $isRented,
-            'rentalPurchased' => $purchaseDate->format('F j, Y g:i A'), // ✅ include time
-            'rentalExpiry' => $expiry->format('F j, Y g:i A'), // ✅ include time
-            'daysLeft' => $daysLeftText,
-        ];
     }
 
     private function convertToMilliseconds($duration)
