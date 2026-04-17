@@ -55,6 +55,7 @@ class EpisodeController extends Controller
             $validated = $request->validate([
                 'season_id' => 'required|string|exists:seasons,id',
                 'episode_number' => 'required|integer',
+                'isPayPerView' => 'nullable|boolean',
                 'title' => 'nullable|string',
                 'description' => 'nullable|string',
                 'thumbnail' => 'nullable|string',
@@ -151,6 +152,7 @@ class EpisodeController extends Controller
                 'thumbnail' => 'nullable|string',
                 'release_date' => 'nullable|date',
                 'is_active' => 'nullable|boolean',
+                'isPayPerView' => 'nullable|boolean',
                 'status' => 'nullable|in:Draft,Published,Scheduled'
             ]);
 
