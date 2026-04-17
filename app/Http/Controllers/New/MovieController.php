@@ -188,6 +188,168 @@ class MovieController extends Controller
         }
     }
 
+    /**
+     * 🔓 Admin-only link fetch with instant backend decryption.
+     */
+    public function adminGetLink(Request $request, $id)
+    {
+        try {
+            $type = strtolower($request->query('type', 'movie'));
+
+            if (!in_array($type, ['movie', 'episode'], true)) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Invalid type. Allowed: movie, episode'
+                ], 422);
+            }
+
+            if ($type === 'episode') {
+                $episode = Episode::with('season')
+                    ->where('id', $id)
+                    ->first();
+
+                if (!$episode) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'Episode not found'
+                    ], 404);
+                }
+
+                $urls = VideoUrl::where('episode_id', $id)->get();
+
+                if ($urls->isEmpty()) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'No video URLs found for this episode'
+                    ], 404);
+                }
+
+                $links = $urls
+                    ->filter(fn($item) => !empty($item->url))
+                    ->map(function ($item) {
+                        return [
+                            'id' => $item->id,
+                            'quality' => $item->quality,
+                            'type' => $item->type,
+                            'url' => $this->decryptAdminLink($item->url),
+                        ];
+                    })
+                    ->values();
+
+                return response()->json([
+                    'status' => 'success',
+                    'type' => 'episode',
+                    'movie_id' => $episode->season?->movie_id,
+                    'episode_id' => $episode->id,
+                    'title' => $episode->title,
+                    'links' => $links
+                ]);
+            }
+
+            $movie = MovieModel::select([
+                'num',
+                'title',
+                'url',
+                'dash_url',
+                'hls_url',
+                'trailer',
+                'subtitle',
+            ])
+                ->where('id', $id)
+                ->first();
+
+            if (!$movie) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Movie not found'
+                ], 404);
+            }
+
+            $links = collect([
+                'url' => $movie->url,
+                'dash_url' => $movie->dash_url,
+                'hls_url' => $movie->hls_url,
+                'trailer' => $movie->trailer,
+                'subtitle' => $movie->subtitle,
+            ])
+                ->filter(fn($value) => $value !== null && $value !== '')
+                ->map(fn($value) => $this->decryptAdminLink($value))
+                ->all();
+
+            if (empty($links)) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'No video links found for this movie'
+                ], 404);
+            }
+
+            return response()->json([
+                'status' => 'success',
+                'type' => 'movie',
+                'movie_id' => $movie->num,
+                'title' => $movie->title,
+                'links' => $links
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Movie adminGetLink error', [
+                'id' => $id,
+                'type' => $request->query('type', 'movie'),
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to fetch admin movie links',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    private function decryptAdminLink(?string $raw): ?string
+    {
+        if ($raw === null || trim($raw) === '') {
+            return $raw;
+        }
+
+        $rawParam = str_replace('%2B', '+', $raw);
+        $rawParam = str_replace(' ', '+', $rawParam);
+        $b64 = strtr($rawParam, '-_', '+/');
+        $pad = strlen($b64) % 4;
+
+        if ($pad) {
+            $b64 .= str_repeat('=', 4 - $pad);
+        }
+
+        $data = @base64_decode($b64, true);
+
+        if ($data === false || strlen($data) < 17) {
+            return $raw;
+        }
+
+        $iv = substr($data, 0, 16);
+        $cipherText = substr($data, 16);
+
+        if (strlen($iv) !== 16 || $cipherText === '') {
+            return $raw;
+        }
+
+        $shaKey = 'd4c6198dabafb243b0d043a3c33a9fe171f81605158c267c7dfe5f66df29559a';
+        $decryptionKey = hash('sha256', $shaKey, true);
+        $decryptedMessage = openssl_decrypt(
+            $cipherText,
+            'aes-256-cbc',
+            $decryptionKey,
+            OPENSSL_RAW_DATA,
+            $iv
+        );
+
+        if ($decryptedMessage === false) {
+            return $raw;
+        }
+
+        return trim(str_replace(["\r", "\n"], '', $decryptedMessage));
+    }
+
     public function getMovies(Request $request)
     {
 
