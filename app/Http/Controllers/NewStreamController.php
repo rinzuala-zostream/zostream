@@ -145,6 +145,7 @@ class NewStreamController extends Controller
             $baseQuery = PaymentHistory::where('user_id', $userId)
                 ->where('status', 'success')
                 ->where('expiry_date', '>', now())
+                ->where('device_type', $device->device_type)
                 ->where('app_payment_type', 'ppv'); // if you store this
 
             $isRented = false;
@@ -372,7 +373,7 @@ class NewStreamController extends Controller
         return response()->json([
             'status' => 'success',
             'stream_token' => $streamToken,
-            'max_quality' => $plan->quality ?? 'SD',
+            'max_quality' => $plan->quality ?? 'FULL_HD',
             'current_active' => $currentActiveSeats,
             'device_limit' => $limit,
             'watch_position' => $watchPosition,
