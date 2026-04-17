@@ -15,12 +15,20 @@ class Season extends Model
     protected $fillable = [
         'id',
         'movie_id',
+        'isPayPerView',
         'season_number',
         'title',
         'description',
         'poster',
-        'release_date',
+        'release_year',
         'status',
+    ];
+
+    protected $casts = [
+        'season_number' => 'integer',
+        'release_year' => 'year',
+        'isPayPerView' => 'boolean',
+        'status' => 'string'
     ];
 
     public function movie()

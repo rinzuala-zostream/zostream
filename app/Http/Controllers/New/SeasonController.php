@@ -112,11 +112,12 @@ class SeasonController extends Controller
 
             $validated = $request->validate([
                 'movie_id' => 'required|integer',
+                'isPayPerView' => 'nullable|boolean',
                 'season_number' => 'required|integer',
                 'title' => 'nullable|string',
                 'description' => 'nullable|string',
                 'poster' => 'nullable|string',
-                'release_date' => 'nullable|integer',
+                'release_year' => 'nullable|integer',
                 'status' => 'nullable|string|in:Draft,Published,Scheduled'
             ]);
 
@@ -204,9 +205,10 @@ class SeasonController extends Controller
             $season->update($request->only([
                 'season_number',
                 'title',
+                'isPayPerView',
                 'description',
                 'poster',
-                'release_date',
+                'release_year',
                 'status'
             ]));
 
