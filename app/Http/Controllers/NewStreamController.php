@@ -388,16 +388,26 @@ class NewStreamController extends Controller
         $deviceToken = $request->header('Device-Token');
         $streamToken = $request->input('stream_token');
         $subscriptionId = $request->input('subscription_id');
-        $movieId = $request->input('movie_id'); // ✅ NEW
+        $movieId = $request->input('movie_id'); 
+        $movieType = $request->input('type');
 
         // 🔥 Detect movie type (same as start)
         $isPPV = false;
         $isFree = false;
 
         if ($movieId) {
-            $movie = MovieModel::where('id', $movieId)->first();
+
+            if ($movieType === 'movie') {
+                $movie = MovieModel::where('id', $movieId)->first();
+                $isFree = $movie && $movie->isPremium == 0;
+            } elseif ($movieType === 'episode') {
+                // For episodes, we need to check the parent movie
+                $movie = Episode::where('id', $movieId)->first();
+                $isFree = $movie && $movie->isPremium == 0;
+            }
+
             $isPPV = $movie && $movie->isPayPerView == 1;
-            $isFree = $movie && $movie->isPremium == 0;
+            $isFree = $movie && $movie->isPremium == 0; // ✅ NEW
         }
 
         $isNoSubscription = $isPPV || $isFree;
