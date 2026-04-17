@@ -27,8 +27,7 @@ class Season extends Model
     protected $casts = [
         'season_number' => 'integer',
         'release_year' => 'year',
-        'isPayPerView' => 'boolean',
-        'status' => 'string'
+        'isPayPerView' => 'boolean'
     ];
 
     public function movie()
