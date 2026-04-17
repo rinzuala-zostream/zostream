@@ -50,6 +50,11 @@ class MovieController extends Controller
                         'message' => 'Episode not found'
                     ], 404);
                 }
+
+                $data = $movie->toArray();
+                $data['ppv_amount'] = $data['amount'] ?? 0;
+                unset($data['amount']);
+
             } else {
                 $movie = MovieModel::where('id', $id)->first();
 
@@ -59,13 +64,17 @@ class MovieController extends Controller
                         'message' => 'Movie not found'
                     ], 404);
                 }
+
+                $data = $movie->toArray();
             }
 
-            return response()->json(
-                $movie
-            );
+            return response()->json($data);
         } catch (Exception $e) {
-            Log::error('Movie getById error', ['id' => $id, 'error' => $e->getMessage()]);
+            Log::error('Movie getById error', [
+                'id' => $id,
+                'error' => $e->getMessage()
+            ]);
+
             return $this->errorResponse('Failed to fetch movie details', $e);
         }
     }
