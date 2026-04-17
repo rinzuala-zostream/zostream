@@ -26,7 +26,7 @@ class Season extends Model
 
     protected $casts = [
         'season_number' => 'integer',
-        'release_year' => 'year',
+        'release_year' => 'integer',
         'isPayPerView' => 'boolean'
     ];
 

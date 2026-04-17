@@ -124,11 +124,12 @@ class SeasonController extends Controller
             $season = Season::create([
                 'id' => (string) Str::uuid(),
                 'movie_id' => $validated['movie_id'],
+                'isPayPerView' => $validated['isPayPerView'] ?? false,
                 'season_number' => $validated['season_number'],
                 'title' => $validated['title'] ?? null,
                 'description' => $validated['description'] ?? null,
                 'poster' => $validated['poster'] ?? null,
-                'release_date' => $validated['release_date'] ?? null,
+                'release_year' => $validated['release_year'] ?? null,
                 'status' => $validated['status'] ?? null
             ]);
 
