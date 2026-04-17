@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Http\Controllers\New\MovieController;
 use App\Models\MovieModel;
+use App\Models\New\Episode;
+use App\Models\New\PaymentHistory;
 use DB;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -37,6 +39,7 @@ class NewStreamController extends Controller
         $subscriptionId = $request->input('subscription_id');
         $deviceToken = $request->header('Device-Token');
         $movieId = $request->input('movie_id');
+        $seasonId = $request->input('season_id'); //This is optional and only used for rent whole episodes of season
         $movieType = $request->input('type');
         $userId = $request->input('user_id');
         $platform = $request->input('platform');
@@ -44,17 +47,18 @@ class NewStreamController extends Controller
         $isFree = false;
 
         if ($movieId) {
-            $movie = MovieModel::where('id', $movieId)->first();
+
+            if ($movieType === 'movie') {
+                $movie = MovieModel::where('id', $movieId)->first();
+                $isFree = $movie && $movie->isPremium == 0;
+            } elseif ($movieType === 'episode') {
+                // For episodes, we need to check the parent movie
+                $movie = Episode::where('id', $movieId)->first();
+                $isFree = $movie && $movie->isPremium == 0;
+            }
 
             $isPPV = $movie && $movie->isPayPerView == 1;
             $isFree = $movie && $movie->isPremium == 0; // ✅ NEW
-        }
-
-        // 🔥 Detect PPV
-        $isPPV = false;
-        if ($movieId) {
-            $movie = MovieModel::where('id', $movieId)->first();
-            $isPPV = $movie && $movie->isPayPerView == 1;
         }
 
         // ✅ Allow no subscription for PPV
@@ -136,6 +140,49 @@ class NewStreamController extends Controller
             }
 
             $limit = $plan->device_limit ?? 1;
+
+        } else if ($isPPV) {
+            $baseQuery = PaymentHistory::where('user_id', $userId)
+                ->where('status', 'success')
+                ->where('expiry_date', '>', now())
+                ->where('app_payment_type', 'ppv'); // if you store this
+
+            $isRented = false;
+
+            if ($seasonId) {
+                // First check if whole season is rented
+                $isRented = (clone $baseQuery)
+                    ->where('movie_id', $seasonId)
+                    ->exists();
+
+                // If not, check individual episode/movie
+                if (!$isRented) {
+                    $isRented = (clone $baseQuery)
+                        ->where('movie_id', $movieId)
+                        ->exists();
+                }
+            } else {
+                // Check direct movie/episode rental
+                $isRented = (clone $baseQuery)
+                    ->where('movie_id', $movieId)
+                    ->exists();
+            }
+
+            if (!$isRented) {
+                return response()->json([
+                    'status' => 'error',
+                    'title' => 'Access Denied',
+                    'message' => 'You do not have access to this content. Please rent it to start streaming.'
+                ], 403);
+            }
+
+            if (!$device || !$device->is_owner_device) {
+                return response()->json([
+                    'status' => 'error',
+                    'title' => 'Permission Denied',
+                    'message' => 'Only the owner device can start a PPV stream.'
+                ], 403);
+            }
         }
 
         $streamToken = null;

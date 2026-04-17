@@ -15,6 +15,7 @@ class Episode extends Model
     protected $fillable = [
         'id',
         'season_id',
+        'isPayPerView',
         'episode_number',
         'title',
         'description',
@@ -30,6 +31,7 @@ class Episode extends Model
         'duration' => 'integer',
         'release_date' => 'date',
         'is_active' => 'boolean',
+        'isPayPerView' => 'boolean',
         'status' => 'string'
     ];
 
