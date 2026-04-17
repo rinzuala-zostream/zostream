@@ -16,6 +16,7 @@ class Season extends Model
         'id',
         'movie_id',
         'isPayPerView',
+        'amount',
         'season_number',
         'title',
         'description',
@@ -25,6 +26,7 @@ class Season extends Model
     ];
 
     protected $casts = [
+        'amount' => 'decimal:2',
         'season_number' => 'integer',
         'release_year' => 'integer',
         'isPayPerView' => 'boolean'

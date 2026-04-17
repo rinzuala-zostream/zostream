@@ -56,6 +56,7 @@ class EpisodeController extends Controller
                 'season_id' => 'required|string|exists:seasons,id',
                 'episode_number' => 'required|integer',
                 'isPayPerView' => 'nullable|boolean',
+                'amount' => 'nullable|numeric|min:0',
                 'title' => 'nullable|string',
                 'description' => 'nullable|string',
                 'thumbnail' => 'nullable|string',
@@ -66,6 +67,8 @@ class EpisodeController extends Controller
 
             $episode = Episode::create([
                 'id' => (string) Str::uuid(),
+                'amount' => $validated['amount'] ?? 0,
+                'isPayPerView' => $validated['isPayPerView'] ?? false,
                 'season_id' => $validated['season_id'],
                 'episode_number' => $validated['episode_number'],
                 'title' => $validated['title'] ?? null,
@@ -146,13 +149,14 @@ class EpisodeController extends Controller
 
             $validated = $request->validate([
                 'season_id' => 'nullable|string|exists:seasons,id',
+                'isPayPerView' => 'nullable|boolean',
+                'amount' => 'nullable|numeric|min:0',
                 'episode_number' => 'nullable|integer',
                 'title' => 'nullable|string',
                 'description' => 'nullable|string',
                 'thumbnail' => 'nullable|string',
                 'release_date' => 'nullable|date',
                 'is_active' => 'nullable|boolean',
-                'isPayPerView' => 'nullable|boolean',
                 'status' => 'nullable|in:Draft,Published,Scheduled'
             ]);
 

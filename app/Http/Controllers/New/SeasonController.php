@@ -113,6 +113,7 @@ class SeasonController extends Controller
             $validated = $request->validate([
                 'movie_id' => 'required|integer',
                 'isPayPerView' => 'nullable|boolean',
+                'amount' => 'nullable|numeric|min:0',
                 'season_number' => 'required|integer',
                 'title' => 'nullable|string',
                 'description' => 'nullable|string',
@@ -125,6 +126,7 @@ class SeasonController extends Controller
                 'id' => (string) Str::uuid(),
                 'movie_id' => $validated['movie_id'],
                 'isPayPerView' => $validated['isPayPerView'] ?? false,
+                'amount' => $validated['amount'] ?? 0,
                 'season_number' => $validated['season_number'],
                 'title' => $validated['title'] ?? null,
                 'description' => $validated['description'] ?? null,
@@ -205,6 +207,7 @@ class SeasonController extends Controller
 
             $season->update($request->only([
                 'season_number',
+                'amount',
                 'title',
                 'isPayPerView',
                 'description',

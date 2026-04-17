@@ -16,6 +16,7 @@ class Episode extends Model
         'id',
         'season_id',
         'isPayPerView',
+        'amount',
         'episode_number',
         'title',
         'description',
@@ -29,6 +30,7 @@ class Episode extends Model
     protected $casts = [
         'episode_number' => 'integer',
         'duration' => 'integer',
+        'amount' => 'decimal:2',
         'release_date' => 'date',
         'is_active' => 'boolean',
         'isPayPerView' => 'boolean',
