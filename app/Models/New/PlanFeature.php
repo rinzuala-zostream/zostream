@@ -11,6 +11,7 @@ class PlanFeature extends Model
     protected $fillable = [
         'plan_name',
         'feature',
+        'ppv_discount',
         'sort_order',
         'is_active'
     ];

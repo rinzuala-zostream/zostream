@@ -4,10 +4,14 @@ namespace App\Http\Controllers\New;
 
 use App\Http\Controllers\Controller;
 use App\Models\New\Episode;
+use App\Models\New\PlanFeature;
+use App\Models\New\Subscription;
 use App\Models\New\VideoUrl;
 use Illuminate\Http\Request;
 use App\Models\MovieModel;
+use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Exception;
 
 class MovieController extends Controller
@@ -179,6 +183,207 @@ class MovieController extends Controller
                 'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Get one PPV payable content item.
+     *
+     * type=movie:
+     *   movie_id = movie.id
+     *
+     * type=episode:
+     *   movie_id = episode.id
+     *   Response includes current season so clients can rent either episode or season.
+     *
+     * subscriptionId is optional and applies the plan feature ppv_discount.
+     */
+    public function getPayPerViewContent(Request $request)
+    {
+        try {
+            $request->merge([
+                'type' => strtolower((string) $request->query('type')),
+            ]);
+
+            $validated = $request->validate([
+                'type' => 'required|string|in:movie,episode',
+                'movie_id' => 'required|string',
+                'subscriptionId' => 'nullable|string',
+            ]);
+
+            $type = strtolower($validated['type']);
+            $discountPercent = $this->getPpvDiscountPercent($validated['subscriptionId'] ?? null);
+
+            if ($type === 'movie') {
+                return $this->getPayPerViewMovieContent($validated['movie_id'], $discountPercent);
+            }
+
+            return $this->getPayPerViewEpisodeContent($validated['movie_id'], $discountPercent);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (Exception $e) {
+            Log::error('Movie getPayPerViewContent error', [
+                'query' => $request->query(),
+                'error' => $e->getMessage()
+            ]);
+
+            return $this->errorResponse('Failed to fetch pay per view content', $e);
+        }
+    }
+
+    private function getPayPerViewMovieContent(string $movieId, float $discountPercent)
+    {
+        $movie = MovieModel::where('id', $movieId)->first();
+
+        if (!$movie) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Movie not found'
+            ], 404);
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'type' => 'movie',
+                'payment_movie_id' => $movie->id,
+                'payment_options' => [
+                    'movie' => $this->makePpvPaymentOption($movie->id, $movie->ppv_amount ?? 0, $discountPercent),
+                ],
+                'movie_id' => $movie->id,
+                'movie_num' => $movie->num,
+                'title' => $movie->title,
+                'poster' => $movie->poster,
+                'isPayPerView' => (bool) $movie->isPayPerView,
+                'ppv_amount' => $movie->ppv_amount ?? 0,
+                'discount_percent' => $discountPercent,
+                'discount_amount' => $this->calculatePpvDiscountAmount($movie->ppv_amount ?? 0, $discountPercent),
+                'final_ppv_price' => $this->calculateFinalPpvPrice($movie->ppv_amount ?? 0, $discountPercent),
+                'content' => $movie,
+            ]
+        ]);
+    }
+
+    private function getPayPerViewEpisodeContent(string $episodeId, float $discountPercent)
+    {
+        $episode = Episode::with([
+            'season.movie',
+            'season.episodes' => fn($query) => $query->orderBy('episode_number')
+        ])->where('id', $episodeId)->first();
+
+        if (!$episode) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Episode not found'
+            ], 404);
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'type' => 'episode',
+                'payment_movie_id' => $episode->id,
+                'payment_options' => [
+                    'episode' => $this->makePpvPaymentOption($episode->id, $episode->amount ?? 0, $discountPercent),
+                    'season' => $episode->season
+                        ? $this->makeSeasonPpvPaymentOption($episode->season, $discountPercent)
+                        : null,
+                ],
+                'movie_id' => $episode->season?->movie_id,
+                'episode_id' => $episode->id,
+                'title' => $episode->title,
+                'poster' => $episode->thumbnail,
+                'isPayPerView' => (bool) $episode->isPayPerView,
+                'ppv_amount' => $episode->amount ?? 0,
+                'discount_percent' => $discountPercent,
+                'discount_amount' => $this->calculatePpvDiscountAmount($episode->amount ?? 0, $discountPercent),
+                'final_ppv_price' => $this->calculateFinalPpvPrice($episode->amount ?? 0, $discountPercent),
+                'season' => $episode->season,
+                'content' => $episode,
+            ]
+        ]);
+    }
+
+    private function makeSeasonPpvPaymentOption($season, float $discountPercent): array
+    {
+        $ppvEpisodes = $season->episodes
+            ->filter(fn($episode) => (bool) $episode->isPayPerView);
+
+        $episodeTotalAmount = (float) $ppvEpisodes->sum(fn($episode) => (float) ($episode->amount ?? 0));
+        $seasonAmount = (float) ($season->amount ?? 0);
+
+        $option = $this->makePpvPaymentOption($season->id, $seasonAmount, $discountPercent);
+        $episodesFinalPrice = $this->calculateFinalPpvPrice($episodeTotalAmount, $discountPercent);
+
+        return array_merge($option, [
+            'ppv_episode_count' => $ppvEpisodes->count(),
+            'ppv_episodes_total_amount' => round($episodeTotalAmount, 2),
+            'ppv_episodes_discount_amount' => $this->calculatePpvDiscountAmount($episodeTotalAmount, $discountPercent),
+            'ppv_episodes_final_price' => $episodesFinalPrice,
+            'season_benefit_amount' => round(max($episodesFinalPrice - $option['final_ppv_price'], 0), 2),
+            'season_benefit_message' => $this->makeSeasonBenefitMessage($episodesFinalPrice, $option['final_ppv_price']),
+        ]);
+    }
+
+    private function getPpvDiscountPercent(?string $subscriptionId): float
+    {
+        if (!$subscriptionId) {
+            return 0;
+        }
+
+        $subscription = Subscription::with('plan')->find($subscriptionId);
+
+        if (!$subscription || !$subscription->isActive() || !$subscription->plan) {
+            return 0;
+        }
+
+        $featuresQuery = PlanFeature::query()->where('is_active', 1);
+
+        if (Schema::hasColumn('n_plan_features', 'plan_id')) {
+            $featuresQuery->where('plan_id', $subscription->plan_id);
+        } else {
+            $featuresQuery->where('plan_name', $subscription->plan->name);
+        }
+
+        return (float) $featuresQuery
+            ->max('ppv_discount');
+    }
+
+    private function makePpvPaymentOption(string $paymentMovieId, $amount, float $discountPercent): array
+    {
+        $amount = (float) $amount;
+
+        return [
+            'payment_movie_id' => $paymentMovieId,
+            'ppv_amount' => round($amount, 2),
+            'discount_percent' => round($discountPercent, 2),
+            'discount_amount' => $this->calculatePpvDiscountAmount($amount, $discountPercent),
+            'final_ppv_price' => $this->calculateFinalPpvPrice($amount, $discountPercent),
+        ];
+    }
+
+    private function calculatePpvDiscountAmount($amount, float $discountPercent): float
+    {
+        return round(((float) $amount * $discountPercent) / 100, 2);
+    }
+
+    private function calculateFinalPpvPrice($amount, float $discountPercent): float
+    {
+        return round(max((float) $amount - $this->calculatePpvDiscountAmount($amount, $discountPercent), 0), 2);
+    }
+
+    private function makeSeasonBenefitMessage(float $episodesFinalPrice, float $seasonFinalPrice): string
+    {
+        $benefitAmount = round(max($episodesFinalPrice - $seasonFinalPrice, 0), 2);
+
+        if ($benefitAmount <= 0) {
+            return 'Rent the full season to unlock all PPV episodes in this season.';
+        }
+
+        return "Save {$benefitAmount} by renting the full season instead of renting PPV episodes one by one.";
     }
 
     /**
