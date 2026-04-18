@@ -262,7 +262,6 @@ class MovieController extends Controller
                 'discount_percent' => $discountPercent,
                 'discount_amount' => $this->calculatePpvDiscountAmount($movie->ppv_amount ?? 0, $discountPercent),
                 'final_ppv_price' => $this->calculateFinalPpvPrice($movie->ppv_amount ?? 0, $discountPercent),
-                'content' => $movie,
             ]
         ]);
     }
@@ -301,8 +300,14 @@ class MovieController extends Controller
                 'discount_percent' => $discountPercent,
                 'discount_amount' => $this->calculatePpvDiscountAmount($episode->amount ?? 0, $discountPercent),
                 'final_ppv_price' => $this->calculateFinalPpvPrice($episode->amount ?? 0, $discountPercent),
-                'season' => $episode->season,
-                'content' => $episode,
+                'season' => $episode->season ? [
+                    'id' => $episode->season->id,
+                    'movie_id' => $episode->season->movie_id,
+                    'title' => $episode->season->title,
+                    'poster' => $episode->season->poster,
+                    'isPayPerView' => (bool) $episode->season->isPayPerView,
+                    'ppv_amount' => $episode->season->amount ?? 0,
+                ] : null,
             ]
         ]);
     }
