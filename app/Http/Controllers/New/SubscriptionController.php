@@ -35,54 +35,60 @@ class SubscriptionController extends Controller
     public function index(Request $request)
     {
         try {
+            $perPage = (int) $request->get('per_page', 15);
+            $perPage = $perPage > 0 ? min($perPage, 100) : 15;
+            $search = trim((string) $request->get('search', ''));
+            $deviceType = strtolower(trim((string) $request->get('device_type', '')));
 
-            $plans = Plan::with([
-                'features' => function ($q) {
-                    $q->where('is_active', true)
-                        ->orderBy('sort_order');
+            $query = Subscription::with(['plan', 'devices'])
+                ->orderBy('created_at', 'desc');
+
+            if ($request->filled('is_active')) {
+                $query->where('is_active', filter_var(
+                    $request->get('is_active'),
+                    FILTER_VALIDATE_BOOLEAN,
+                    FILTER_NULL_ON_FAILURE
+                ) ?? false);
+            }
+
+            if ($search !== '') {
+                $query->where(function ($q) use ($search) {
+                    $q->where('user_id', 'like', '%' . $search . '%')
+                        ->orWhere('id', $search)
+                        ->orWhere('plan_id', $search)
+                        ->orWhereHas('plan', function ($planQuery) use ($search) {
+                            $planQuery->where('name', 'like', '%' . $search . '%');
+                        });
+                });
+            }
+
+            if ($deviceType !== '') {
+                if (!in_array($deviceType, ['mobile', 'browser', 'tv'], true)) {
+                    return $this->respond([
+                        'status' => 'error',
+                        'message' => 'Invalid device type. Allowed: mobile, browser, tv'
+                    ], 422);
                 }
-            ])
-                ->where('is_active', true)
-                ->orderByRaw("FIELD(name, 'Kar 1', 'Thla 1', 'Thla 4', 'Thla 6', 'Kum 1')")
-                ->get()
-                ->groupBy('name');
 
-            $response = [];
-
-            foreach ($plans as $planName => $planGroup) {
-
-                $perDevicePrice = [];
-                $deviceFeatures = [];
-
-                foreach ($planGroup as $plan) {
-
-                    $perDevicePrice[ucfirst($plan->device_type)] = (float) $plan->price;
-
-                    $deviceFeatures[ucfirst($plan->device_type)] =
-                        $plan->features->pluck('feature')->toArray();
-                }
-
-                $first = $planGroup->first();
-
-                $response[] = [
-                    "plan_id" => (int) $first->id,
-                    "plan" => $planName,
-                    "original_price" => (float) $planGroup->sum('price'),
-                    "duration_days" => (int) $first->duration_days,
-                    "per_device_price" => $perDevicePrice,
-                    "per_device_features" => $deviceFeatures
-                ];
+                $query->whereHas('plan', function ($q) use ($deviceType) {
+                    $q->where('device_type', $deviceType);
+                });
             }
 
             return $this->respond([
-                "status" => "success",
-                "data" => $response
+                'status' => 'success',
+                'data' => $query->paginate($perPage)
             ]);
 
         } catch (\Exception $e) {
+            Log::error('Subscription index error', [
+                'payload' => $request->all(),
+                'error' => $e->getMessage()
+            ]);
+
             return $this->respond([
                 "status" => "error",
-                "message" => "Failed to fetch plans"
+                "message" => "Failed to fetch subscriptions"
             ]);
         }
     }
