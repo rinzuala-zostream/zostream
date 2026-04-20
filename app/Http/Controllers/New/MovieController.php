@@ -482,11 +482,11 @@ class MovieController extends Controller
 
         $featuresQuery = PlanFeature::query()->where('is_active', 1);
 
-        if (Schema::hasColumn('n_plan_features', 'plan_id')) {
-            $featuresQuery->where('plan_id', $subscription->plan_id);
-        } else {
-            $featuresQuery->where('plan_name', $subscription->plan->name);
+        if (!Schema::hasColumn('n_plan_features', 'plan_id')) {
+            return 0;
         }
+
+        $featuresQuery->where('plan_id', $subscription->plan_id);
 
         return (float) $featuresQuery
             ->max('ppv_discount');

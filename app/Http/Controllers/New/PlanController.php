@@ -185,10 +185,6 @@ class PlanController extends Controller
                 $query->where('plan_id', $request->get('plan_id'));
             }
 
-            if ($request->filled('plan_name')) {
-                $query->where('plan_name', $request->get('plan_name'));
-            }
-
             if ($request->filled('search')) {
                 $search = trim((string) $request->get('search'));
                 $query->where('feature', 'like', "%{$search}%");
@@ -240,7 +236,7 @@ class PlanController extends Controller
     }
 
     /**
-     * Create a feature. Accepts plan_id or plan_name in request body.
+     * Create a feature.
      */
     public function storeFeature(Request $request)
     {
@@ -280,7 +276,6 @@ class PlanController extends Controller
 
             $validated = $request->validate($this->featureRules(true));
             $validated['plan_id'] = $plan->id;
-            $validated['plan_name'] = $plan->name;
             $validated = $this->normalizeFeaturePayload($validated);
 
             $feature = PlanFeature::create($validated);
@@ -401,12 +396,10 @@ class PlanController extends Controller
     private function featureRules(bool $planProvided = false, bool $isUpdate = false): array
     {
         $required = $isUpdate ? 'sometimes' : 'required';
-        $planRule = $planProvided || $isUpdate ? 'sometimes' : 'required_without:plan_name';
-        $planNameRule = $planProvided || $isUpdate ? 'sometimes' : 'required_without:plan_id';
+        $planRule = $planProvided || $isUpdate ? 'sometimes' : 'required';
 
         return [
             'plan_id' => [$planRule, 'integer', 'exists:n_plans,id'],
-            'plan_name' => [$planNameRule, 'string', 'max:100'],
             'feature' => [$required, 'string', 'max:255'],
             'ppv_discount' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:100'],
             'sort_order' => ['sometimes', 'integer', 'min:0'],
@@ -416,14 +409,6 @@ class PlanController extends Controller
 
     private function normalizeFeaturePayload(array $payload, bool $isUpdate = false): array
     {
-        if (isset($payload['plan_id'])) {
-            $plan = Plan::find($payload['plan_id']);
-
-            if ($plan && empty($payload['plan_name'])) {
-                $payload['plan_name'] = $plan->name;
-            }
-        }
-
         if (!$isUpdate) {
             $payload['ppv_discount'] = $payload['ppv_discount'] ?? 0;
             $payload['sort_order'] = $payload['sort_order'] ?? 0;
