@@ -4,6 +4,7 @@ namespace App\Http\Controllers\New;
 
 use App\Http\Controllers\Controller;
 use App\Models\New\Episode;
+use App\Models\New\PaymentHistory;
 use App\Models\New\PlanFeature;
 use App\Models\New\Subscription;
 use App\Models\New\VideoUrl;
@@ -232,6 +233,137 @@ class MovieController extends Controller
 
             return $this->errorResponse('Failed to fetch pay per view content', $e);
         }
+    }
+
+    /**
+     * Check whether a PPV movie or episode is currently rented.
+     *
+     * Required query params:
+     *   type = movie|episode
+     *   movie_id = movie.id or episode.id based on type
+     *   user_id = renter user id
+     *
+     * Optional:
+     *   device_type = match rentals for a specific device type
+     */
+    public function checkPayPerViewRental(Request $request)
+    {
+        try {
+
+            $validated = $request->validate([
+                'type' => 'required|string|in:movie,episode',
+                'content_id' => 'required|string',
+                'user_id' => 'required|string',
+                'device_type' => 'nullable|string',
+            ]);
+
+            $type = $validated['type'];
+            $contentId = $validated['content_id'];
+            $userId = $validated['user_id'];
+            $deviceType = $validated['device_type'] ?? null;
+            $seasonId = null;
+
+            $content = $this->findPpvRentalContent($type, $contentId);
+
+            if (!$content) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => ucfirst($type) . ' not found'
+                ], 404);
+            }
+
+            $baseQuery = $this->activePpvRentalQuery($userId, $deviceType);
+            $isRented = false;
+            $rental = null;
+            $rentedBy = null;
+
+            if ($type === 'episode' && $content->season_id) {
+                $seasonId = $content->season_id;
+
+                $rental = (clone $baseQuery)
+                    ->where('movie_id', $seasonId)
+                    ->orderByDesc('expiry_date')
+                    ->first();
+
+                if ($rental) {
+                    $isRented = true;
+                    $rentedBy = 'season';
+                }
+            }
+
+            if (!$isRented) {
+                $rental = (clone $baseQuery)
+                    ->where('movie_id', $contentId)
+                    ->orderByDesc('expiry_date')
+                    ->first();
+
+                if ($rental) {
+                    $isRented = true;
+                    $rentedBy = $type;
+                }
+            }
+
+            return response()->json([
+                'status' => 'success',
+                'data' => [
+                    'type' => $type,
+                    'movie_id' => $contentId,
+                    'season_id' => $seasonId,
+                    'user_id' => $userId,
+                    'device_type' => $deviceType,
+                    'isPayPerView' => (bool) $content->isPayPerView,
+                    'isRented' => $isRented,
+                    'rented_by' => $rentedBy,
+                    'rentalPurchased' => $rental?->created_at?->format('F j, Y'),
+                    'rentalExpiry' => $rental?->expiry_date?->format('F j, Y'),
+                    'rental' => $rental ? [
+                        'id' => $rental->id,
+                        'payment_movie_id' => $rental->movie_id,
+                        'transaction_id' => $rental->transaction_id,
+                        'amount' => $rental->amount,
+                        'currency' => $rental->currency,
+                        'status' => $rental->status,
+                        'expiry_date' => $rental->expiry_date,
+                    ] : null,
+                ]
+            ]);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (Exception $e) {
+            Log::error('Movie checkPayPerViewRental error', [
+                'query' => $request->query(),
+                'error' => $e->getMessage()
+            ]);
+
+            return $this->errorResponse('Failed to check pay per view rental', $e);
+        }
+    }
+
+    private function findPpvRentalContent(string $type, string $contentId)
+    {
+        if ($type === 'movie') {
+            return MovieModel::where('id', $contentId)->first();
+        }
+
+        return Episode::where('id', $contentId)->first();
+    }
+
+    private function activePpvRentalQuery(string $userId, ?string $deviceType = null)
+    {
+        $query = PaymentHistory::where('user_id', $userId)
+            ->where('status', 'success')
+            ->where('expiry_date', '>', now())
+            ->where('app_payment_type', 'ppv');
+
+        if ($deviceType) {
+            $query->where('device_type', $deviceType);
+        }
+
+        return $query;
     }
 
     private function getPayPerViewMovieContent(string $movieId, float $discountPercent)
