@@ -415,7 +415,7 @@ class NewStreamController extends Controller
         // 🔹 Device check
         $deviceQuery = Devices::where('device_token', $deviceToken);
 
-        if (!$isNoSubscription) {
+        if (!$isNoSubscription && $subscriptionId) {
             $deviceQuery->where('subscription_id', $subscriptionId);
         }
 
@@ -464,6 +464,14 @@ class NewStreamController extends Controller
         }
 
         $stream = $streamQuery->first();
+
+        if (!$stream && !$subscriptionId) {
+            $stream = ActiveStream::where('device_id', $device->id)
+                ->where('stream_token', $streamToken)
+                ->where('status', 'active')
+                ->whereNull('subscription_id')
+                ->first();
+        }
 
         if (!$stream) {
             return response()->json([
