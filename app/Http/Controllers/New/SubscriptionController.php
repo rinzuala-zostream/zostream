@@ -495,9 +495,7 @@ class SubscriptionController extends Controller
                 'payment_date' => now(),
                 'expiry_date' => $endAt,
                 'meta' => [
-                    'device_id' => $device->id,
-                    'device_token' => $device->device_token,
-                    'device_name' => $device->device_name,
+                    'identifier' => 'Manual subscription entry',
                 ],
             ]);
 
