@@ -5,6 +5,7 @@ namespace App\Http\Controllers\New;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\NewStreamController;
 use App\Http\Controllers\RazorpayController;
+use App\Models\UserModel;
 use App\Models\New\Devices;
 use App\Models\New\PaymentHistory;
 use DB;
@@ -425,6 +426,17 @@ class SubscriptionController extends Controller
                 'status' => 'nullable|string|in:pending,success,failed,refunded',
             ]);
 
+            $resolvedUserId = $this->resolveUserIdFromUidOrPhone($validated['user_id']);
+
+            if (!$resolvedUserId) {
+                DB::rollBack();
+
+                return $this->respond([
+                    'status' => 'error',
+                    'message' => 'User not found for the provided user id or phone number'
+                ], 404);
+            }
+
             $plan = Plan::where('id', $validated['plan_id'])
                 ->where('is_active', true)
                 ->first();
@@ -438,7 +450,7 @@ class SubscriptionController extends Controller
                 ], 404);
             }
 
-            $device = Devices::where('user_id', $validated['user_id'])
+            $device = Devices::where('user_id', $resolvedUserId)
                 ->where('device_type', $plan->device_type)
                 ->where('is_owner_device', true)
                 ->orderByDesc('created_at')
@@ -460,7 +472,7 @@ class SubscriptionController extends Controller
             $isActive = $paymentStatus === 'success';
 
             $subscription = Subscription::create([
-                'user_id' => $validated['user_id'],
+                'user_id' => $resolvedUserId,
                 'plan_id' => $plan->id,
                 'start_at' => $startAt,
                 'end_at' => $endAt,
@@ -470,7 +482,7 @@ class SubscriptionController extends Controller
 
             $payment = PaymentHistory::create([
                 'subscription_id' => $subscription->id,
-                'user_id' => $validated['user_id'],
+                'user_id' => $resolvedUserId,
                 'plan_id' => $plan->id,
                 'device_type' => $plan->device_type,
                 'app_payment_type' => 'subscription',
@@ -499,7 +511,7 @@ class SubscriptionController extends Controller
             DB::commit();
 
             $fakeRequest = new Request([
-                'user_id' => $validated['user_id'],
+                'user_id' => $resolvedUserId,
                 'device_id' => $device->id,
                 'subscription_id' => $subscription->id,
                 'device_type' => $plan->device_type
@@ -511,6 +523,8 @@ class SubscriptionController extends Controller
                 'status' => 'success',
                 'message' => 'Subscription and payment history created successfully.',
                 'data' => [
+                    'requested_user_id' => $validated['user_id'],
+                    'resolved_user_id' => $resolvedUserId,
                     'subscription' => $subscription->fresh('plan'),
                     'payment_history' => $payment,
                     'device' => $device->fresh(),
@@ -526,6 +540,36 @@ class SubscriptionController extends Controller
 
             return $this->errorResponse('Failed to create subscription with payment history', $e);
         }
+    }
+
+    private function resolveUserIdFromUidOrPhone(string $value): ?string
+    {
+        $value = trim($value);
+
+        if ($value === '') {
+            return null;
+        }
+
+        $user = UserModel::where('uid', $value)->first();
+
+        if ($user) {
+            return $user->uid;
+        }
+
+        $normalizedPhone = preg_replace('/\D+/', '', $value);
+
+        if ($normalizedPhone === '') {
+            return null;
+        }
+
+        $phoneSuffix = substr($normalizedPhone, -10);
+
+        $user = UserModel::where('auth_phone', $value)
+            ->orWhere('auth_phone', $normalizedPhone)
+            ->orWhere('auth_phone', 'like', '%' . $phoneSuffix)
+            ->first();
+
+        return $user?->uid;
     }
 
     /**
