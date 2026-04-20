@@ -507,14 +507,32 @@ class SubscriptionController extends Controller
                 'status' => $device->status ?: 'inactive',
             ]);
 
-            $fakeRequest = new Request([
+            $renewPayload = [
                 'user_id' => $resolvedUserId,
-                'device_id' => $device->id,
+                'device_id' => $device->device_token,
                 'subscription_id' => $subscription->id,
                 'device_type' => $plan->device_type
+            ];
+
+            Log::info('Subscription createSubscriptionWithPayment renew request', [
+                'payload' => $renewPayload,
+                'actual_device_id' => $device->id,
             ]);
 
-            $this->streamEventController->renew($fakeRequest);
+            $fakeRequest = new Request($renewPayload);
+            $renewResponse = $this->streamEventController->renew($fakeRequest);
+            $renewData = [];
+
+            if ($renewResponse && method_exists($renewResponse, 'getContent')) {
+                $renewData = json_decode($renewResponse->getContent(), true) ?? [];
+            }
+
+            Log::info('Subscription createSubscriptionWithPayment renew response', [
+                'status_code' => method_exists($renewResponse, 'getStatusCode')
+                    ? $renewResponse->getStatusCode()
+                    : null,
+                'response' => $renewData,
+            ]);
 
             DB::commit();
             return $this->respond([
@@ -526,6 +544,7 @@ class SubscriptionController extends Controller
                     'subscription' => $subscription->fresh('plan'),
                     'payment_history' => $payment,
                     'device' => $device->fresh(),
+                    'renew_response' => $renewData,
                 ],
             ], 201);
         } catch (Exception $e) {
