@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\New;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\NewStreamController;
 use App\Http\Controllers\RazorpayController;
 use App\Models\New\Devices;
 use App\Models\New\PaymentHistory;
@@ -17,12 +18,15 @@ use Exception;
 class SubscriptionController extends Controller
 {
     protected $razorpayController;
+    protected $streamEventController;
 
     public function __construct(
         RazorpayController $razorpayController,
+        NewStreamController $streamEventController
 
     ) {
         $this->razorpayController = $razorpayController;
+        $this->streamEventController = $streamEventController;
     }
     /**
      * 📋 List all subscriptions (with filters and pagination)
@@ -350,7 +354,7 @@ class SubscriptionController extends Controller
             $endAt = $startAt->copy()->addDays($plan->duration_days);
 
             PaymentHistory::create([
-            
+
                 'user_id' => $request->user_id,
                 'plan_id' => $plan->id,
                 'app_payment_type' => $request->app_payment_type,
@@ -436,7 +440,7 @@ class SubscriptionController extends Controller
 
             $device = Devices::where('user_id', $validated['user_id'])
                 ->where('device_type', $plan->device_type)
-                ->where('is_owner_device' , true)
+                ->where('is_owner_device', true)
                 ->orderByDesc('created_at')
                 ->lockForUpdate()
                 ->first();
@@ -493,6 +497,15 @@ class SubscriptionController extends Controller
             ]);
 
             DB::commit();
+
+            $fakeRequest = new Request([
+                'user_id' => $validated['user_id'],
+                'device_id' => $device->id,
+                'subscription_id' => $subscription->id,
+                'device_type' => $plan->device_type
+            ]);
+
+            $this->streamEventController->renew($fakeRequest);
 
             return $this->respond([
                 'status' => 'success',
