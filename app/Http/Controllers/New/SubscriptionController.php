@@ -4,6 +4,7 @@ namespace App\Http\Controllers\New;
 
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\RazorpayController;
+use App\Models\New\Devices;
 use App\Models\New\PaymentHistory;
 use DB;
 use Illuminate\Http\Request;
@@ -390,6 +391,127 @@ class SubscriptionController extends Controller
             ]);
 
             return $this->errorResponse('Failed to create subscription: ' . $e->getMessage(), $e);
+        }
+    }
+
+    /**
+     * Create an active subscription and payment history for a user's selected plan.
+     *
+     * The device is resolved from user_id + the selected plan's device_type, then
+     * linked to the newly created subscription.
+     */
+    public function createSubscriptionWithPayment(Request $request)
+    {
+        DB::beginTransaction();
+
+        try {
+            $request->merge([
+                'plan_id' => $request->input('plan_id') ?? $request->input('selected_plan_id'),
+            ]);
+
+            $validated = $request->validate([
+                'user_id' => 'required|string|max:225',
+                'plan_id' => 'required|integer|exists:n_plans,id',
+                'amount' => 'nullable|numeric|min:0',
+                'currency' => 'nullable|string|max:10',
+                'payment_method' => 'nullable|string|max:100',
+                'payment_gateway' => 'nullable|string|max:100',
+                'transaction_id' => 'nullable|string|max:255',
+                'payment_type' => 'nullable|string|in:new,renew,upgrade,downgrade',
+                'status' => 'nullable|string|in:pending,success,failed,refunded',
+            ]);
+
+            $plan = Plan::where('id', $validated['plan_id'])
+                ->where('is_active', true)
+                ->first();
+
+            if (!$plan) {
+                DB::rollBack();
+
+                return $this->respond([
+                    'status' => 'error',
+                    'message' => 'Invalid or inactive plan selected'
+                ], 404);
+            }
+
+            $device = Devices::where('user_id', $validated['user_id'])
+                ->where('device_type', $plan->device_type)
+                ->where('is_owner_device' , true)
+                ->orderByDesc('created_at')
+                ->lockForUpdate()
+                ->first();
+
+            if (!$device) {
+                DB::rollBack();
+
+                return $this->respond([
+                    'status' => 'error',
+                    'message' => 'No device found for this user and plan device type'
+                ], 404);
+            }
+
+            $startAt = now();
+            $endAt = $startAt->copy()->addDays($plan->duration_days);
+            $paymentStatus = $validated['status'] ?? 'success';
+            $isActive = $paymentStatus === 'success';
+
+            $subscription = Subscription::create([
+                'user_id' => $validated['user_id'],
+                'plan_id' => $plan->id,
+                'start_at' => $startAt,
+                'end_at' => $endAt,
+                'is_active' => $isActive,
+                'renewed_by' => null,
+            ]);
+
+            $payment = PaymentHistory::create([
+                'subscription_id' => $subscription->id,
+                'user_id' => $validated['user_id'],
+                'plan_id' => $plan->id,
+                'device_type' => $plan->device_type,
+                'app_payment_type' => 'subscription',
+                'amount' => $validated['amount'] ?? $plan->price,
+                'currency' => $validated['currency'] ?? 'INR',
+                'payment_method' => $validated['payment_method'] ?? "manual",
+                'payment_gateway' => $validated['payment_gateway'] ?? "manual",
+                'transaction_id' => $validated['transaction_id'] ?? "manual",
+                'status' => $paymentStatus,
+                'payment_type' => $validated['payment_type'] ?? 'new',
+                'payment_date' => now(),
+                'expiry_date' => $endAt,
+                'meta' => [
+                    'device_id' => $device->id,
+                    'device_token' => $device->device_token,
+                    'device_name' => $device->device_name,
+                ],
+            ]);
+
+            $device->update([
+                'subscription_id' => $subscription->id,
+                'last_activity' => now(),
+                'status' => $device->status ?: 'inactive',
+            ]);
+
+            DB::commit();
+
+            return $this->respond([
+                'status' => 'success',
+                'message' => 'Subscription and payment history created successfully.',
+                'data' => [
+                    'subscription' => $subscription->fresh('plan'),
+                    'payment_history' => $payment,
+                    'device' => $device->fresh(),
+                ],
+            ], 201);
+        } catch (Exception $e) {
+            DB::rollBack();
+
+            Log::error('Subscription createSubscriptionWithPayment error', [
+                'payload' => $request->all(),
+                'error' => $e->getMessage()
+            ]);
+
+            return $this->errorResponse('Failed to create subscription with payment history', $e);
         }
     }
 

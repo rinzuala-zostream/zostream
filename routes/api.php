@@ -267,6 +267,7 @@ Route::prefix('v3.0')->group(function () {
         Route::delete('/plans/{id}', [\App\Http\Controllers\New\PlanController::class, 'destroy'])->name('plans.destroy');
         Route::get('/{id}', [\App\Http\Controllers\New\SubscriptionController::class, 'show'])->name('subscriptions.show');
         Route::get('/user/{userId}', [\App\Http\Controllers\New\SubscriptionController::class, 'getByUser'])->name('subscriptions.by_user');
+        Route::post('/with-payment', [\App\Http\Controllers\New\SubscriptionController::class, 'createSubscriptionWithPayment']);
         Route::post('/', [\App\Http\Controllers\New\SubscriptionController::class, 'store'])->name('subscriptions.store');
         Route::put('/{id}', [\App\Http\Controllers\New\SubscriptionController::class, 'update'])->name('subscriptions.update');
         Route::delete('/{id}', [\App\Http\Controllers\New\SubscriptionController::class, 'destroy'])->name('subscriptions.destroy');
