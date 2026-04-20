@@ -457,21 +457,7 @@ class NewStreamController extends Controller
             ->where('stream_token', $streamToken)
             ->where('status', 'active');
 
-        if (!$isNoSubscription) {
-            $streamQuery->where('subscription_id', $device->subscription_id);
-        } else {
-            $streamQuery->whereNull('subscription_id'); // ✅ PPV/FREE
-        }
-
         $stream = $streamQuery->first();
-
-        if (!$stream && !$subscriptionId) {
-            $stream = ActiveStream::where('device_id', $device->id)
-                ->where('stream_token', $streamToken)
-                ->where('status', 'active')
-                ->whereNull('subscription_id')
-                ->first();
-        }
 
         if (!$stream) {
             return response()->json([
