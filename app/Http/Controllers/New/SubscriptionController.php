@@ -452,8 +452,7 @@ class SubscriptionController extends Controller
 
             $device = Devices::where('user_id', $resolvedUserId)
                 ->where('device_type', $plan->device_type)
-                ->where('is_owner_device', true)
-                ->orderByDesc('created_at')
+                ->where('is_owner_device', 1)
                 ->lockForUpdate()
                 ->first();
 
