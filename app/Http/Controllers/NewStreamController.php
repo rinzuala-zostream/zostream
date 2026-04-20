@@ -388,7 +388,7 @@ class NewStreamController extends Controller
         $deviceToken = $request->header('Device-Token');
         $streamToken = $request->input('stream_token');
         $subscriptionId = $request->input('subscription_id');
-        $movieId = $request->input('movie_id'); 
+        $movieId = $request->input('movie_id');
         $movieType = $request->input('type');
 
         // 🔥 Detect movie type (same as start)
@@ -403,19 +403,18 @@ class NewStreamController extends Controller
             } elseif ($movieType === 'episode') {
                 // For episodes, we need to check the parent movie
                 $movie = Episode::where('id', $movieId)->first();
-                $isFree = $movie && $movie->isPremium == 0;
+                $isFree = 1;
             }
 
             $isPPV = $movie && $movie->isPayPerView == 1;
-            $isFree = $movie && $movie->isPremium == 0; // ✅ NEW
+
         }
 
-        $isNoSubscription = $isPPV || $isFree;
+        // 1️⃣ Device check
+        $deviceQuery = Devices::where('device_token', $deviceToken)
+            ->where('status', 'active');
 
-        // 🔹 Device check
-        $deviceQuery = Devices::where('device_token', $deviceToken);
-
-        if (!$isNoSubscription && $subscriptionId) {
+        if (!$isPPV && !$isFree) {
             $deviceQuery->where('subscription_id', $subscriptionId);
         }
 
@@ -425,7 +424,7 @@ class NewStreamController extends Controller
             return response()->json([
                 'status' => 'error',
                 'title' => 'Device Not Recognized',
-                'message' => 'We couldn’t verify this device. Please sign in again or contact support if the issue continues.'
+                'message' => 'We couldn’t verify this device or your device has no subscription. Please sign in again or contact support if the issue continues.'
             ], 404);
         }
 
@@ -439,17 +438,15 @@ class NewStreamController extends Controller
         }
 
         // 🔹 Subscription check ONLY for premium
-        if (!$isNoSubscription) {
-            $subscription = Subscription::find($device->subscription_id);
 
-            if (!$subscription) {
-                return response()->json([
-                    'status' => 'error',
-                    'title' => 'Subscription Unavailable',
-                    'message' => 'We could not find an active subscription for your account. Please check your subscription status.',
-                    'device' => $device
-                ], 404);
-            }
+        $subscription = Subscription::find($subscriptionId);
+        if (!$subscription && !$isPPV && !$isFree) {
+            return response()->json([
+                'status' => 'error',
+                'title' => 'Subscription Unavailable',
+                'message' => 'We could not find an active subscription for your account. Please check your subscription status.',
+                'device' => $device
+            ], 404);
         }
 
         // 🔹 Stream check
