@@ -249,12 +249,6 @@ class MovieController extends Controller
     public function checkPayPerViewRental(Request $request)
     {
         try {
-            $request->merge([
-                'type' => strtolower((string) $request->query('type')),
-                'content_id' => $request->query('movie_id')
-                    ?? $request->query('episode_id')
-                    ?? $request->query('id'),
-            ]);
 
             $validated = $request->validate([
                 'type' => 'required|string|in:movie,episode',
