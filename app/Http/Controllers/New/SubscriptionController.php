@@ -507,8 +507,6 @@ class SubscriptionController extends Controller
                 'status' => $device->status ?: 'inactive',
             ]);
 
-            DB::commit();
-
             $fakeRequest = new Request([
                 'user_id' => $resolvedUserId,
                 'device_id' => $device->id,
@@ -518,6 +516,7 @@ class SubscriptionController extends Controller
 
             $this->streamEventController->renew($fakeRequest);
 
+            DB::commit();
             return $this->respond([
                 'status' => 'success',
                 'message' => 'Subscription and payment history created successfully.',
@@ -555,17 +554,8 @@ class SubscriptionController extends Controller
             return $user->uid;
         }
 
-        $normalizedPhone = preg_replace('/\D+/', '', $value);
-
-        if ($normalizedPhone === '') {
-            return null;
-        }
-
-        $phoneSuffix = substr($normalizedPhone, -10);
-
         $user = UserModel::where('auth_phone', $value)
-            ->orWhere('auth_phone', $normalizedPhone)
-            ->orWhere('auth_phone', 'like', '%' . $phoneSuffix)
+            ->orWhere('auth_phone', $value)
             ->first();
 
         return $user?->uid;
