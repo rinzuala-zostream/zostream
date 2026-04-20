@@ -253,6 +253,7 @@ class MovieController extends Controller
             $validated = $request->validate([
                 'type' => 'required|string|in:movie,episode',
                 'content_id' => 'required|string',
+                'season_id' => 'nullable|string',
                 'user_id' => 'required|string',
                 'device_type' => 'nullable|string',
             ]);
@@ -261,7 +262,7 @@ class MovieController extends Controller
             $contentId = $validated['content_id'];
             $userId = $validated['user_id'];
             $deviceType = $validated['device_type'] ?? null;
-            $seasonId = null;
+            $seasonId = $validated['season_id'] ?? null;
 
             $content = $this->findPpvRentalContent($type, $contentId);
 
@@ -277,17 +278,19 @@ class MovieController extends Controller
             $rental = null;
             $rentedBy = null;
 
-            if ($type === 'episode' && $content->season_id) {
-                $seasonId = $content->season_id;
+            if ($type === 'episode') {
+                $seasonId = $seasonId ?: $content->season_id;
 
-                $rental = (clone $baseQuery)
-                    ->where('movie_id', $seasonId)
-                    ->orderByDesc('expiry_date')
-                    ->first();
+                if ($seasonId) {
+                    $rental = (clone $baseQuery)
+                        ->where('movie_id', $seasonId)
+                        ->orderByDesc('expiry_date')
+                        ->first();
 
-                if ($rental) {
-                    $isRented = true;
-                    $rentedBy = 'season';
+                    if ($rental) {
+                        $isRented = true;
+                        $rentedBy = 'season';
+                    }
                 }
             }
 
