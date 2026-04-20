@@ -9,6 +9,7 @@ class PlanFeature extends Model
     protected $table = 'n_plan_features';
 
     protected $fillable = [
+        'plan_id',
         'plan_name',
         'feature',
         'ppv_discount',

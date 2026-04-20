@@ -253,6 +253,18 @@ Route::prefix('v3.0')->group(function () {
     Route::prefix('subscriptions')->group(function () {
         Route::get('/', [\App\Http\Controllers\New\SubscriptionController::class, 'index'])->name('subscriptions.index');
         Route::get('/plans/by-device/{device_type}', [\App\Http\Controllers\New\SubscriptionController::class, 'getByDeviceType']);
+        Route::get('/plans', [\App\Http\Controllers\New\PlanController::class, 'index'])->name('plans.index');
+        Route::post('/plans', [\App\Http\Controllers\New\PlanController::class, 'store'])->name('plans.store');
+        Route::get('/plans/features', [\App\Http\Controllers\New\PlanController::class, 'featureIndex'])->name('plans.features.index');
+        Route::post('/plans/features', [\App\Http\Controllers\New\PlanController::class, 'storeFeature'])->name('plans.features.store');
+        Route::get('/plans/features/{featureId}', [\App\Http\Controllers\New\PlanController::class, 'showFeature'])->name('plans.features.show');
+        Route::put('/plans/features/{featureId}', [\App\Http\Controllers\New\PlanController::class, 'updateFeature'])->name('plans.features.update');
+        Route::delete('/plans/features/{featureId}', [\App\Http\Controllers\New\PlanController::class, 'destroyFeature'])->name('plans.features.destroy');
+        Route::get('/plans/{planId}/features', [\App\Http\Controllers\New\PlanController::class, 'planFeatures'])->name('plans.plan_features.index');
+        Route::post('/plans/{planId}/features', [\App\Http\Controllers\New\PlanController::class, 'storePlanFeature'])->name('plans.plan_features.store');
+        Route::get('/plans/{id}', [\App\Http\Controllers\New\PlanController::class, 'show'])->name('plans.show');
+        Route::put('/plans/{id}', [\App\Http\Controllers\New\PlanController::class, 'update'])->name('plans.update');
+        Route::delete('/plans/{id}', [\App\Http\Controllers\New\PlanController::class, 'destroy'])->name('plans.destroy');
         Route::get('/{id}', [\App\Http\Controllers\New\SubscriptionController::class, 'show'])->name('subscriptions.show');
         Route::get('/user/{userId}', [\App\Http\Controllers\New\SubscriptionController::class, 'getByUser'])->name('subscriptions.by_user');
         Route::post('/', [\App\Http\Controllers\New\SubscriptionController::class, 'store'])->name('subscriptions.store');
