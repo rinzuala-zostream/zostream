@@ -126,9 +126,6 @@ Route::get('/alsolike', [AlsoLikeController::class, 'alsoLike']);
 Route::get('/price', [PlanPriceController::class, 'getPlanPrice']);
 
 Route::post('/temp-payment', [TempPayment::class, 'storeTempPayment']);
-Route::post('/wish-list', [WistListController::class, 'store']);
-Route::get('/wish-list', [WistListController::class, 'index']);
-Route::delete('/wish-list', [WistListController::class, 'destroy']);
 
 Route::get('/episodes', [EpisodeController::class, 'getBySeason']);
 Route::post('/episode-insert', [EpisodeController::class, 'insert']);
@@ -356,7 +353,9 @@ Route::prefix('v3.0')->group(function () {
 
     });
 
-
+    Route::post('/wish-list', [WistListController::class, 'store']);
+    Route::get('/wish-list', [WistListController::class, 'index']);
+    Route::delete('/wish-list', [WistListController::class, 'destroy']);
     Route::get('/wish-list/check', [WistListController::class, 'check']);
 
 });
