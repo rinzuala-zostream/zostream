@@ -356,4 +356,7 @@ Route::prefix('v3.0')->group(function () {
 
     });
 
+
+    Route::get('/wist-list/check', [WistListController::class, 'check']);
+
 });

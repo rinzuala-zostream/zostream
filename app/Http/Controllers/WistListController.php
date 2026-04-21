@@ -79,6 +79,28 @@ class WistListController extends Controller
         ]);
     }
 
+    public function check(Request $request)
+    {
+        $validated = $request->validate([
+            'uid' => 'required_without:userId|string|max:128',
+            'userId' => 'required_without:uid|string|max:128',
+            'movie_id' => 'required_without:movieId|string|max:64',
+            'movieId' => 'required_without:movie_id|string|max:64',
+        ]);
+
+        $uid = $validated['uid'] ?? $validated['userId'];
+        $movieId = $validated['movie_id'] ?? $validated['movieId'];
+
+        $isWishlisted = WistListModel::where('uid', $uid)
+            ->where('movie_id', $movieId)
+            ->exists();
+
+        return response()->json([
+            'status' => 'success',
+            'is_wishlisted' => $isWishlisted,
+        ]);
+    }
+
     public function destroy(Request $request)
     {
 
@@ -109,4 +131,3 @@ class WistListController extends Controller
         ]);
     }
 }
-
