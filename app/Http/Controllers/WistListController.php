@@ -82,14 +82,12 @@ class WistListController extends Controller
     public function check(Request $request)
     {
         $validated = $request->validate([
-            'uid' => 'required_without:userId|string|max:128',
-            'userId' => 'required_without:uid|string|max:128',
+            'user_id' => 'required_without:uid|string|max:128',
             'movie_id' => 'required_without:movieId|string|max:64',
-            'movieId' => 'required_without:movie_id|string|max:64',
         ]);
 
-        $uid = $validated['uid'] ?? $validated['userId'];
-        $movieId = $validated['movie_id'] ?? $validated['movieId'];
+        $uid = $validated['user_id'];
+        $movieId = $validated['movie_id'];
 
         $isWishlisted = WistListModel::where('uid', $uid)
             ->where('movie_id', $movieId)
