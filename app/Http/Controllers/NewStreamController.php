@@ -104,7 +104,7 @@ class NewStreamController extends Controller
                 return response()->json([
                     'status' => 'error',
                     'title' => 'Subscription Not Found',
-                    'message' => 'We could not find an active subscription for your account. Please check your subscription status.'
+                    'message' => 'We could not find an active subscription for your account. Please subscribe to continue watching.'
                 ], 404);
             }
 
