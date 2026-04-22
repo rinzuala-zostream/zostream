@@ -44,7 +44,6 @@ class NewStreamController extends Controller
         $userId = $request->input('user_id');
         $platform = $request->input('platform');
 
-        $isFree = false;
         $isPPV = false;
         $requiresSubscription = false;
         $movie = null;
@@ -58,10 +57,10 @@ class NewStreamController extends Controller
 
             $isPPV = (bool) ($movie?->isPayPerView ?? false);
             $requiresSubscription = (bool) ($movie?->isPremium ?? false) && !$isPPV;
-            $isFree = !$requiresSubscription && !$isPPV;
+            
         }
 
-        if ((!$subscriptionId && $requiresSubscription) || !$deviceToken || !$userId) {
+        if (!$deviceToken || !$userId) {
             return response()->json([
                 'status' => 'error',
                 'title' => 'Missing Information',
