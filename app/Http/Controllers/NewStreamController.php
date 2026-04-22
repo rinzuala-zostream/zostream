@@ -45,24 +45,23 @@ class NewStreamController extends Controller
         $platform = $request->input('platform');
 
         $isFree = false;
+        $isPPV = false;
+        $requiresSubscription = false;
+        $movie = null;
 
         if ($movieId) {
-
             if ($movieType === 'movie') {
                 $movie = MovieModel::where('id', $movieId)->first();
-                $isFree = $movie && $movie->isPremium;
             } elseif ($movieType === 'episode') {
-                // For episodes, we need to check the parent movie
                 $movie = Episode::where('id', $movieId)->first();
-                $isFree = $movie && $movie->isPremium;
             }
 
-            $isPPV = $movie && $movie->isPayPerView;
-            $isFree = $movie && $movie->isPremium; // ✅ NEW
+            $isPPV = (bool) ($movie?->isPayPerView ?? false);
+            $requiresSubscription = (bool) ($movie?->isPremium ?? false) && !$isPPV;
+            $isFree = !$requiresSubscription && !$isPPV;
         }
 
-        // ✅ Allow no subscription for PPV
-        if ((!$subscriptionId && !$isPPV && !$isFree) || !$deviceToken || !$userId) {
+        if ((!$subscriptionId && $requiresSubscription) || !$deviceToken || !$userId) {
             return response()->json([
                 'status' => 'error',
                 'title' => 'Missing Information',
@@ -74,7 +73,7 @@ class NewStreamController extends Controller
         $deviceQuery = Devices::where('device_token', $deviceToken)
             ->where('user_id', $userId);
 
-        if (!$isPPV && !$isFree) {
+        if ($requiresSubscription) {
             $deviceQuery->where('subscription_id', $subscriptionId);
         }
 
@@ -97,7 +96,7 @@ class NewStreamController extends Controller
         // =========================
         // ✅ SUBSCRIPTION FLOW ONLY
         // =========================
-        if (!$isPPV && !$isFree) {
+        if ($requiresSubscription) {
 
             // 2️⃣ Subscription check
             $subscription = Subscription::find($subscriptionId);
@@ -141,7 +140,7 @@ class NewStreamController extends Controller
 
             $limit = $plan->device_limit ?? 1;
 
-        } else if ($isPPV) {
+        } elseif ($isPPV) {
             $baseQuery = PaymentHistory::where('user_id', $userId)
                 ->where('status', 'success')
                 ->where('expiry_date', '>', now())
@@ -197,7 +196,7 @@ class NewStreamController extends Controller
             // =========================
             // ✅ SUBSCRIPTION STREAM LOGIC ONLY
             // =========================
-            if (!$isPPV && !$isFree) {
+            if ($requiresSubscription) {
 
                 // 4️⃣ Cleanup stale streams
                 $timeout = now()->subSeconds($this->streamTimeout);
@@ -266,7 +265,7 @@ class NewStreamController extends Controller
 
             ActiveStream::updateOrCreate(
                 [
-                    'subscription_id' => ($isPPV || $isFree) ? null : $subscriptionId,
+                    'subscription_id' => $requiresSubscription ? $subscriptionId : null,
                     'device_id' => $device->id
                 ],
                 [
@@ -391,30 +390,27 @@ class NewStreamController extends Controller
         $movieId = $request->input('movie_id');
         $movieType = $request->input('type');
 
-        // 🔥 Detect movie type (same as start)
         $isPPV = false;
-        $isFree = false;
+        $requiresSubscription = false;
+        $movie = null;
 
         if ($movieId) {
-
             if ($movieType === 'movie') {
                 $movie = MovieModel::where('id', $movieId)->first();
-                $isFree = $movie && $movie->isPremium;
             } elseif ($movieType === 'episode') {
-                // For episodes, we need to check the parent movie
                 $movie = Episode::where('id', $movieId)->first();
-                $isFree = $movie && $movie->isPremium;
             }
 
-            $isPPV = $movie && $movie->isPayPerView;
-
+            $isPPV = (bool) ($movie?->isPayPerView ?? false);
+            $requiresSubscription = (bool) ($movie?->isPremium ?? false) && !$isPPV;
+            $isFree = !$requiresSubscription && !$isPPV;
         }
 
         // 1️⃣ Device check
         $deviceQuery = Devices::where('device_token', $deviceToken)
             ->where('status', 'active');
 
-        if (!$isPPV && !$isFree) {
+        if ($requiresSubscription) {
             $deviceQuery->where('subscription_id', $subscriptionId);
         }
 
@@ -440,7 +436,7 @@ class NewStreamController extends Controller
         // 🔹 Subscription check ONLY for premium
 
         $subscription = Subscription::find($subscriptionId);
-        if (!$subscription && !$isPPV && !$isFree) {
+        if (!$subscription && $requiresSubscription) {
             return response()->json([
                 'status' => 'error',
                 'title' => 'Subscription Unavailable',
