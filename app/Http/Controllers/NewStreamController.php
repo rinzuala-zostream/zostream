@@ -36,7 +36,10 @@ class NewStreamController extends Controller
 
     public function start(Request $request)
     {
-        $subscriptionId = $request->input('subscription_id');
+        $rawSubscriptionId = $request->input('subscription_id');
+        $subscriptionId = filled($rawSubscriptionId) && (int) $rawSubscriptionId > 0
+            ? (int) $rawSubscriptionId
+            : null;
         $deviceToken = $request->header('Device-Token');
         $movieId = $request->input('movie_id');
         $seasonId = $request->input('season_id'); //This is optional and only used for rent whole episodes of season
@@ -385,7 +388,10 @@ class NewStreamController extends Controller
     {
         $deviceToken = $request->header('Device-Token');
         $streamToken = $request->input('stream_token');
-        $subscriptionId = $request->input('subscription_id');
+        $rawSubscriptionId = $request->input('subscription_id');
+        $subscriptionId = filled($rawSubscriptionId) && (int) $rawSubscriptionId > 0
+            ? (int) $rawSubscriptionId
+            : null;
         $movieId = $request->input('movie_id');
         $movieType = $request->input('type');
 
