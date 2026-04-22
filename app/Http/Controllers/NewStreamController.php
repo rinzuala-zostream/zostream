@@ -50,15 +50,15 @@ class NewStreamController extends Controller
 
             if ($movieType === 'movie') {
                 $movie = MovieModel::where('id', $movieId)->first();
-                $isFree = $movie && $movie->isPremium == 0;
+                $isFree = $movie && $movie->isPremium;
             } elseif ($movieType === 'episode') {
                 // For episodes, we need to check the parent movie
                 $movie = Episode::where('id', $movieId)->first();
-                $isFree = $movie && $movie->isPremium == 0;
+                $isFree = $movie && $movie->isPremium;
             }
 
-            $isPPV = $movie && $movie->isPayPerView == 1;
-            $isFree = $movie && $movie->isPremium == 0; // ✅ NEW
+            $isPPV = $movie && $movie->isPayPerView;
+            $isFree = $movie && $movie->isPremium; // ✅ NEW
         }
 
         // ✅ Allow no subscription for PPV
@@ -399,14 +399,14 @@ class NewStreamController extends Controller
 
             if ($movieType === 'movie') {
                 $movie = MovieModel::where('id', $movieId)->first();
-                $isFree = $movie && $movie->isPremium == 0;
+                $isFree = $movie && $movie->isPremium;
             } elseif ($movieType === 'episode') {
                 // For episodes, we need to check the parent movie
                 $movie = Episode::where('id', $movieId)->first();
-                $isFree = 1;
+                $isFree = $movie && $movie->isPremium;
             }
 
-            $isPPV = $movie && $movie->isPayPerView == 1;
+            $isPPV = $movie && $movie->isPayPerView;
 
         }
 
