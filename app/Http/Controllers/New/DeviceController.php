@@ -49,6 +49,43 @@ class DeviceController extends Controller
         return response()->json(['status' => 'success', 'data' => $devices]);
     }
 
+    // Clear devices for a user
+    public function clear(Request $request)
+    {
+        $request->validate([
+            'user_id' => 'required|string|max:225',
+            'device_type' => 'nullable|string',
+            'device_token' => 'nullable|string',
+        ]);
+
+        $query = Devices::where('user_id', $request->user_id);
+
+        if ($request->filled('device_type')) {
+            $query->where('device_type', $request->device_type);
+        }
+
+        if ($request->filled('device_token')) {
+            $query->where('device_token', $request->device_token);
+        }
+
+        $deletedCount = (clone $query)->count();
+
+        if ($deletedCount === 0) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'No devices found for the given filters'
+            ], 404);
+        }
+
+        $query->delete();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Device data cleared successfully',
+            'deleted_count' => $deletedCount
+        ]);
+    }
+
     // Create a device
     public function store(Request $request)
     {

@@ -242,6 +242,7 @@ Route::prefix('v3.0')->group(function () {
         Route::get('/list', [DeviceController::class, 'index'])->name('index');             // List all devices
         Route::get('/{id}', [DeviceController::class, 'show'])->name('show');           // Get device by ID
         Route::get('/user/{userId}', [DeviceController::class, 'getByUser'])->name('byUser'); // Get by user (owner + shared)
+        Route::post('/clear', [DeviceController::class, 'clear'])->name('clear');        // Clear device records by user/filter
         Route::post('/store', [DeviceController::class, 'store'])->name('store');            // Create device
         Route::put('/{id}', [DeviceController::class, 'update'])->name('update');       // Update device
         Route::delete('/{id}', [DeviceController::class, 'destroy'])->name('destroy');  // Delete device
@@ -331,6 +332,7 @@ Route::prefix('v3.0')->group(function () {
 
     Route::prefix('banners')->group(function () {
         Route::get('/', [BannerController::class, 'index']);
+        Route::get('/{id}', [BannerController::class, 'show']);
         Route::post('/', [BannerController::class, 'store']);
         Route::put('/{id}', [BannerController::class, 'update']);
         Route::delete('/{id}', [BannerController::class, 'destroy']);

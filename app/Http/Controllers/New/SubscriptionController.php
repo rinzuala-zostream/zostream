@@ -39,9 +39,17 @@ class SubscriptionController extends Controller
             $perPage = $perPage > 0 ? min($perPage, 100) : 15;
             $search = trim((string) $request->get('search', ''));
             $deviceType = strtolower(trim((string) $request->get('device_type', '')));
+            $sortBy = (string) $request->get('sort_by', 'created_at');
+            $sortDirection = strtolower((string) $request->get('sort_direction', 'desc')) === 'asc'
+                ? 'asc'
+                : 'desc';
 
-            $query = Subscription::with(['plan', 'devices'])
-                ->orderBy('created_at', 'desc');
+            $allowedSorts = ['id', 'user_id', 'plan_id', 'start_at', 'end_at', 'created_at'];
+            if (!in_array($sortBy, $allowedSorts, true)) {
+                $sortBy = 'created_at';
+            }
+
+            $query = Subscription::with(['plan', 'devices']);
 
             if ($request->filled('is_active')) {
                 $query->where('is_active', filter_var(
@@ -74,6 +82,8 @@ class SubscriptionController extends Controller
                     $q->where('device_type', $deviceType);
                 });
             }
+
+            $query->orderBy($sortBy, $sortDirection);
 
             return $this->respond([
                 'status' => 'success',

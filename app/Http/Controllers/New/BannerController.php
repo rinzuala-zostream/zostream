@@ -79,6 +79,35 @@ class BannerController extends Controller
     }
 
     // =========================
+    // SHOW
+    // =========================
+    public function show($id)
+    {
+        try {
+            $banner = Banner::find($id);
+
+            if (!$banner) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Banner not found'
+                ], 404);
+            }
+
+            return response()->json([
+                'status' => true,
+                'data' => $banner
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Failed to fetch banner',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    // =========================
     // STORE
     // =========================
     public function store(Request $request)
