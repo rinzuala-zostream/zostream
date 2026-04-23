@@ -121,15 +121,16 @@ class WatchPositionController extends Controller
             ->orderByDesc($orderColumn)
             ->get();
 
-        $movieIds = $watchData
-            ->where('movie_type', '!=', 'episode')
+        $movieRows = $watchData->filter(fn ($item) => $this->normalizeMovieType($item->movie_type) !== 'episode');
+        $episodeRows = $watchData->filter(fn ($item) => $this->normalizeMovieType($item->movie_type) === 'episode');
+
+        $movieIds = $movieRows
             ->pluck('movie_id')
             ->filter()
             ->unique()
             ->values();
 
-        $episodeIds = $watchData
-            ->where('movie_type', 'episode')
+        $episodeIds = $episodeRows
             ->pluck('movie_id')
             ->filter()
             ->unique()
@@ -146,19 +147,34 @@ class WatchPositionController extends Controller
             ->unique()
             ->values();
 
-        $movies = MovieModel::whereIn('id', $allMovieIds)
-            ->get()
-            ->keyBy('id');
+        $movies = MovieModel::where(function ($query) use ($allMovieIds) {
+                $query->whereIn('id', $allMovieIds)
+                    ->orWhereIn('num', $allMovieIds);
+            })
+            ->get();
+
+        $moviesByKey = collect();
+
+        foreach ($movies as $movie) {
+            if (!empty($movie->id)) {
+                $moviesByKey->put((string) $movie->id, $movie);
+            }
+
+            if (isset($movie->num)) {
+                $moviesByKey->put((string) $movie->num, $movie);
+            }
+        }
 
         $result = [];
 
         foreach ($watchData as $history) {
-            $isEpisode = $history->movie_type === 'episode';
+            $normalizedMovieType = $this->normalizeMovieType($history->movie_type);
+            $isEpisode = $normalizedMovieType === 'episode';
             $episode = $isEpisode ? $episodes->get($history->movie_id) : null;
             $parentMovieId = $isEpisode ? ($episode?->season?->movie_id) : $history->movie_id;
             $movie = $isEpisode
-                ? $movies->get($parentMovieId)
-                : $movies->get($history->movie_id);
+                ? $moviesByKey->get((string) $parentMovieId)
+                : $moviesByKey->get((string) $history->movie_id);
 
             // Skip rows whose source content is missing, or age-restricted movies when excluded.
             if ($isEpisode && !$episode) {
@@ -177,7 +193,7 @@ class WatchPositionController extends Controller
                 'id' => $history->num,
                 'movie_id' => $parentMovieId ?? $history->movie_id,
                 'episode_id' => $isEpisode ? $history->movie_id : null,
-                'movie_type' => $history->movie_type,
+                'movie_type' => $normalizedMovieType ?: $history->movie_type,
                 'position' => $history->position,
                 'watched_at' => $watchedAt,
                 'updated_at' => $hasUpdatedAt ? $history->updated_at : null,
@@ -276,5 +292,16 @@ class WatchPositionController extends Controller
         unset($episode->season);
 
         return $episode;
+    }
+
+    private function normalizeMovieType($movieType): ?string
+    {
+        if ($movieType === null) {
+            return null;
+        }
+
+        $normalized = strtolower(trim((string) $movieType));
+
+        return $normalized !== '' ? $normalized : null;
     }
 }
