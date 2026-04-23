@@ -2,8 +2,8 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\EpisodeModel;
 use App\Models\MovieModel;
+use App\Models\New\Episode;
 use App\Models\WatchHistoryModel;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
@@ -135,12 +135,13 @@ class WatchPositionController extends Controller
             ->unique()
             ->values();
 
-        $episodes = EpisodeModel::whereIn('id', $episodeIds)
+        $episodes = Episode::with('season')
+            ->whereIn('id', $episodeIds)
             ->get()
             ->keyBy('id');
 
         $allMovieIds = $movieIds
-            ->merge($episodes->pluck('movie_id'))
+            ->merge($episodes->pluck('season.movie_id'))
             ->filter()
             ->unique()
             ->values();
@@ -155,7 +156,7 @@ class WatchPositionController extends Controller
             $isEpisode = $history->movie_type === 'episode';
             $episode = $isEpisode ? $episodes->get($history->movie_id) : null;
             $movie = $isEpisode
-                ? $movies->get($episode->movie_id ?? null)
+                ? $movies->get($episode->season?->movie_id)
                 : $movies->get($history->movie_id);
 
             // Skip if movie not found or is age restricted
@@ -169,7 +170,7 @@ class WatchPositionController extends Controller
 
             $result[] = [
                 'id' => $history->num,
-                'movie_id' => $isEpisode ? ($episode->movie_id ?? $history->movie_id) : $history->movie_id,
+                'movie_id' => $isEpisode ? ($episode->season?->movie_id ?? $history->movie_id) : $history->movie_id,
                 'episode_id' => $isEpisode ? $history->movie_id : null,
                 'movie_type' => $history->movie_type,
                 'position' => $history->position,
@@ -255,25 +256,19 @@ class WatchPositionController extends Controller
         return $movie;
     }
 
-    private function transformEpisode(EpisodeModel $episode)
+    private function transformEpisode(Episode $episode)
     {
         foreach ([
-            'isProtected',
-            'isPPV',
+            'isPayPerView',
             'isPremium',
-            'isEnable',
+            'is_active',
         ] as $key) {
             if (isset($episode->$key)) {
                 $episode->$key = (bool) $episode->$key;
             }
         }
 
-        unset(
-            $episode->url,
-            $episode->dash_url,
-            $episode->hls_url,
-            $episode->token
-        );
+        unset($episode->season);
 
         return $episode;
     }
