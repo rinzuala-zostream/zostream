@@ -6,6 +6,7 @@ use App\Models\MovieModel;
 use App\Models\New\Episode;
 use App\Models\WatchHistoryModel;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Schema;
 
 class WatchPositionController extends Controller
@@ -100,10 +101,14 @@ class WatchPositionController extends Controller
         $request->validate([
             'userId' => 'required|string',
             'isAgeRestricted' => 'nullable|string|in:true,false',
+            'page' => 'nullable|integer|min:1',
+            'per_page' => 'nullable|integer|min:1|max:100',
         ]);
 
         $userId = $request->query('userId');
         $includeAgeRestricted = ($request->query('isAgeRestricted') ?? 'false') === 'true';
+        $page = max((int) $request->query('page', 1), 1);
+        $perPage = min(max((int) $request->query('per_page', 20), 1), 100);
 
         if (!$userId) {
             return response()->json([
@@ -112,6 +117,40 @@ class WatchPositionController extends Controller
             ], 400);
         }
 
+        $result = $this->buildWatchContinueResult($userId, $includeAgeRestricted);
+
+        $resultCollection = collect($result);
+        $paginator = new LengthAwarePaginator(
+            $resultCollection->forPage($page, $perPage)->values(),
+            $resultCollection->count(),
+            $perPage,
+            $page,
+            [
+                'path' => $request->url(),
+                'query' => $request->query(),
+            ]
+        );
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $paginator->items(),
+            'watch_history' => $paginator->items(),
+            'pagination' => [
+                'current_page' => $paginator->currentPage(),
+                'per_page' => $paginator->perPage(),
+                'total' => $paginator->total(),
+                'last_page' => $paginator->lastPage(),
+                'from' => $paginator->firstItem(),
+                'to' => $paginator->lastItem(),
+                'has_more_pages' => $paginator->hasMorePages(),
+                'next_page_url' => $paginator->nextPageUrl(),
+                'prev_page_url' => $paginator->previousPageUrl(),
+            ],
+        ]);
+    }
+
+    private function buildWatchContinueResult($userId, $includeAgeRestricted)
+    {
         $hasUpdatedAt = Schema::hasColumn('watch_position', 'updated_at');
         $hasCreatedAt = Schema::hasColumn('watch_position', 'created_at');
         $orderColumn = $hasUpdatedAt ? 'updated_at' : ($hasCreatedAt ? 'created_at' : 'num');
@@ -124,47 +163,38 @@ class WatchPositionController extends Controller
         $movieRows = $watchData->filter(fn ($item) => $this->normalizeMovieType($item->movie_type) !== 'episode');
         $episodeRows = $watchData->filter(fn ($item) => $this->normalizeMovieType($item->movie_type) === 'episode');
 
-        $movieIds = $movieRows
-            ->pluck('movie_id')
-            ->filter()
-            ->unique()
-            ->values();
+        $movieIds = $movieRows->pluck('movie_id')->filter()->unique()->values();
+        $episodeIds = $episodeRows->pluck('movie_id')->filter()->unique()->values();
 
-        $episodeIds = $episodeRows
-            ->pluck('movie_id')
-            ->filter()
-            ->unique()
-            ->values();
+        $episodes = Episode::with('season')->whereIn('id', $episodeIds)->get()->keyBy('id');
 
-        $episodes = Episode::with('season')
-            ->whereIn('id', $episodeIds)
-            ->get()
-            ->keyBy('id');
-
-        $allMovieIds = $movieIds
-            ->merge($episodes->pluck('season.movie_id'))
-            ->filter()
-            ->unique()
-            ->values();
+        $allMovieIds = $movieIds->merge($episodes->pluck('season.movie_id'))->filter()->unique()->values();
 
         $movies = MovieModel::where(function ($query) use ($allMovieIds) {
-                $query->whereIn('id', $allMovieIds)
-                    ->orWhereIn('num', $allMovieIds);
-            })
-            ->get();
+                $query->whereIn('id', $allMovieIds)->orWhereIn('num', $allMovieIds);
+            })->get();
 
+        $moviesByKey = $this->buildMovieKeyMap($movies);
+
+        return $this->processWatchHistory($watchData, $episodes, $moviesByKey, $hasUpdatedAt, $hasCreatedAt, $includeAgeRestricted);
+    }
+
+    private function buildMovieKeyMap($movies)
+    {
         $moviesByKey = collect();
-
         foreach ($movies as $movie) {
             if (!empty($movie->id)) {
                 $moviesByKey->put((string) $movie->id, $movie);
             }
-
             if (isset($movie->num)) {
                 $moviesByKey->put((string) $movie->num, $movie);
             }
         }
+        return $moviesByKey;
+    }
 
+    private function processWatchHistory($watchData, $episodes, $moviesByKey, $hasUpdatedAt, $hasCreatedAt, $includeAgeRestricted)
+    {
         $result = [];
 
         foreach ($watchData as $history) {
@@ -172,11 +202,8 @@ class WatchPositionController extends Controller
             $isEpisode = $normalizedMovieType === 'episode';
             $episode = $isEpisode ? $episodes->get($history->movie_id) : null;
             $parentMovieId = $isEpisode ? ($episode?->season?->movie_id) : $history->movie_id;
-            $movie = $isEpisode
-                ? $moviesByKey->get((string) $parentMovieId)
-                : $moviesByKey->get((string) $history->movie_id);
+            $movie = $isEpisode ? $moviesByKey->get((string) $parentMovieId) : $moviesByKey->get((string) $history->movie_id);
 
-            // Skip rows whose source content is missing, or age-restricted movies when excluded.
             if ($isEpisode && !$episode) {
                 continue;
             }
@@ -185,9 +212,7 @@ class WatchPositionController extends Controller
                 continue;
             }
 
-            $watchedAt = $hasUpdatedAt
-                ? $history->updated_at
-                : ($hasCreatedAt ? $history->created_at : null);
+            $watchedAt = $hasUpdatedAt ? $history->updated_at : ($hasCreatedAt ? $history->created_at : null);
 
             $result[] = [
                 'id' => $history->num,
@@ -203,11 +228,7 @@ class WatchPositionController extends Controller
             ];
         }
 
-        return response()->json([
-            'status' => 'success',
-            'data' => $result,
-            'watch_history' => $result,
-        ]);
+        return $result;
     }
 
     public function getWatchPosition(Request $request)
