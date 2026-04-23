@@ -108,7 +108,7 @@ class WatchPositionController extends Controller
         $userId = $request->query('userId');
         $includeAgeRestricted = ($request->query('isAgeRestricted') ?? 'false') === 'true';
         $page = max((int) $request->query('page', 1), 1);
-        $perPage = min(max((int) $request->query('per_page', 20), 1), 100);
+        $perPage = min(max((int) $request->query('per_page', 10), 1), 100);
 
         if (!$userId) {
             return response()->json([
