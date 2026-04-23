@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\EpisodeModel;
 use App\Models\MovieModel;
 use App\Models\WatchHistoryModel;
 use Illuminate\Http\Request;
@@ -120,15 +121,42 @@ class WatchPositionController extends Controller
             ->orderByDesc($orderColumn)
             ->get();
 
-        $movieIds = $watchData->pluck('movie_id')->filter()->unique()->values();
-        $movies = MovieModel::whereIn('id', $movieIds)
+        $movieIds = $watchData
+            ->where('movie_type', '!=', 'episode')
+            ->pluck('movie_id')
+            ->filter()
+            ->unique()
+            ->values();
+
+        $episodeIds = $watchData
+            ->where('movie_type', 'episode')
+            ->pluck('movie_id')
+            ->filter()
+            ->unique()
+            ->values();
+
+        $episodes = EpisodeModel::whereIn('id', $episodeIds)
+            ->get()
+            ->keyBy('id');
+
+        $allMovieIds = $movieIds
+            ->merge($episodes->pluck('movie_id'))
+            ->filter()
+            ->unique()
+            ->values();
+
+        $movies = MovieModel::whereIn('id', $allMovieIds)
             ->get()
             ->keyBy('id');
 
         $result = [];
 
         foreach ($watchData as $history) {
-            $movie = $movies->get($history->movie_id);
+            $isEpisode = $history->movie_type === 'episode';
+            $episode = $isEpisode ? $episodes->get($history->movie_id) : null;
+            $movie = $isEpisode
+                ? $movies->get($episode->movie_id ?? null)
+                : $movies->get($history->movie_id);
 
             // Skip if movie not found or is age restricted
             if (!$movie || (!$includeAgeRestricted && (int) ($movie->isAgeRestricted ?? 0) === 1)) {
@@ -141,13 +169,15 @@ class WatchPositionController extends Controller
 
             $result[] = [
                 'id' => $history->num,
-                'movie_id' => $history->movie_id,
+                'movie_id' => $isEpisode ? ($episode->movie_id ?? $history->movie_id) : $history->movie_id,
+                'episode_id' => $isEpisode ? $history->movie_id : null,
                 'movie_type' => $history->movie_type,
                 'position' => $history->position,
                 'watched_at' => $watchedAt,
                 'updated_at' => $hasUpdatedAt ? $history->updated_at : null,
                 'created_at' => $hasCreatedAt ? $history->created_at : null,
                 'movie' => $this->transformMovie($movie),
+                'episode' => $isEpisode && $episode ? $this->transformEpisode($episode) : null,
             ];
         }
 
@@ -223,5 +253,28 @@ class WatchPositionController extends Controller
         );
 
         return $movie;
+    }
+
+    private function transformEpisode(EpisodeModel $episode)
+    {
+        foreach ([
+            'isProtected',
+            'isPPV',
+            'isPremium',
+            'isEnable',
+        ] as $key) {
+            if (isset($episode->$key)) {
+                $episode->$key = (bool) $episode->$key;
+            }
+        }
+
+        unset(
+            $episode->url,
+            $episode->dash_url,
+            $episode->hls_url,
+            $episode->token
+        );
+
+        return $episode;
     }
 }

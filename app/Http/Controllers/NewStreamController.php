@@ -408,7 +408,6 @@ class NewStreamController extends Controller
 
             $isPPV = (bool) ($movie?->isPayPerView ?? false);
             $requiresSubscription = (bool) ($movie?->isPremium ?? false) && !$isPPV;
-            $isFree = !$requiresSubscription && !$isPPV;
         }
 
         // 1️⃣ Device check
