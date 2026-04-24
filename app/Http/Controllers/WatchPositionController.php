@@ -141,7 +141,6 @@ class WatchPositionController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'data' => $paginator->items(),
             'watch_history' => $paginator->items(),
             'pagination' => [
                 'current_page' => $paginator->currentPage(),
