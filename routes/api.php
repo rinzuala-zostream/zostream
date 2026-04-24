@@ -138,7 +138,6 @@ Route::get('/update-dob', [UserController::class, 'updateDob']);
 
 Route::post('/watch-position', [WatchPositionController::class, 'save']);
 Route::get('/get-position', [WatchPositionController::class, 'getWatchPosition']);
-Route::get('/watch-history', [WatchPositionController::class, 'getWatchContinue']);
 
 Route::get('/update-token', [UserController::class, 'updateToken']);
 
@@ -359,5 +358,8 @@ Route::prefix('v3.0')->group(function () {
     Route::get('/wish-list', [WistListController::class, 'index']);
     Route::delete('/wish-list', [WistListController::class, 'destroy']);
     Route::get('/wish-list/check', [WistListController::class, 'check']);
+
+
+    Route::get('/watch-history', [WatchPositionController::class, 'getWatchContinue']);
 
 });
