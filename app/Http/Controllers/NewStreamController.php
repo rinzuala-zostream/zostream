@@ -60,7 +60,7 @@ class NewStreamController extends Controller
 
             $isPPV = (bool) ($movie?->isPayPerView ?? false);
             $requiresSubscription = (bool) ($movie?->isPremium ?? false) && !$isPPV;
-            
+
         }
 
         if (!$deviceToken || !$userId) {
@@ -477,50 +477,95 @@ class NewStreamController extends Controller
     // 🧹 Stop stream
     public function stop(Request $request)
     {
-        $streamToken = $request->input('stream_token');
-        $watchPosition = $request->input('watch_position');
-        $contentType = $request->input('content_type');
-        $movieId = $request->input('movie_id');
-        $userId = $request->input('user_id');
-        $duration = $request->input('duration');
+        try {
+            // ✅ Validate input first
+            $validated = $request->validate([
+                'stream_token' => 'required|string',
+                'watch_position' => 'nullable|integer|min:0',
+                'content_type' => 'required|string|in:movie,episode',
+                'movie_id' => 'required',
+                'user_id' => 'required',
+                'duration' => 'nullable|integer|min:0',
+            ]);
 
-        $stream = ActiveStream::where('stream_token', $streamToken)->first();
+            $streamToken = $validated['stream_token'];
+            $watchPosition = $validated['watch_position'] ?? 0;
+            $contentType = $validated['content_type'];
+            $movieId = $validated['movie_id'];
+            $userId = $validated['user_id'];
+            $duration = $validated['duration'] ?? 0;
 
-        if (!$stream) {
+            // ✅ Find stream
+            $stream = ActiveStream::where('stream_token', $streamToken)->first();
+
+            if (!$stream) {
+                return response()->json([
+                    'status' => 'error',
+                    'title' => 'Session Not Found',
+                    'message' => 'This streaming session could not be found or has already ended.'
+                ], 404);
+            }
+
+            // ✅ Update safely
+            $stream->update([
+                'status' => 'stopped',
+                'last_ping' => now()
+            ]);
+
+            // ✅ Call watch position safely
+            $watchData = [];
+
+            try {
+                $fakeRequest = Request::create('', 'POST', [
+                    'movie_id' => $movieId,
+                    'position' => $watchPosition,
+                    'user_id' => $userId,
+                    'duration' => $duration,
+                    'movie_type' => $contentType,
+                ]);
+
+                $watchResponse = $this->watchPositionController->save($fakeRequest);
+
+                if ($watchResponse && method_exists($watchResponse, 'getContent')) {
+                    $watchData = json_decode($watchResponse->getContent(), true) ?? [];
+                }
+
+            } catch (\Throwable $e) {
+                // ❗ Watch position failed but do not break stop API
+                Log::warning('Watch position save failed', [
+                    'stream_token' => $streamToken,
+                    'error' => $e->getMessage()
+                ]);
+            }
+
+            $watchMessage = $watchData['message'] ?? '';
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Streaming stopped.' . ($watchMessage ? ' ' . $watchMessage : ''),
+                'watch_position_response' => $watchData,
+            ]);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+
             return response()->json([
                 'status' => 'error',
-                'title' => 'Session Not Found',
-                'message' => 'This streaming session could not be found or has already ended. Please restart playback if needed.'
-            ], 401);
+                'message' => 'Invalid request data.',
+                'errors' => $e->errors(),
+            ], 422);
+
+        } catch (\Throwable $e) {
+
+            Log::error('Stop stream failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Something went wrong while stopping the stream.',
+            ], 500);
         }
-
-        $stream->update([
-            'status' => 'stopped',
-            'last_ping' => now()
-        ]);
-
-        $fakeRequest = Request::create('', 'POST', [
-            'movie_id' => $movieId,
-            'position' => $watchPosition,
-            'user_id' => $userId,
-            'duration' => $duration,
-            'movie_type' => $contentType,
-        ]);
-
-        $watchResponse = $this->watchPositionController->save($fakeRequest);
-
-        $watchData = [];
-        if ($watchResponse && method_exists($watchResponse, 'getContent')) {
-            $watchData = json_decode($watchResponse->getContent(), true) ?? [];
-        }
-
-        $watchMessage = $watchData['message'] ?? '';
-
-        return response()->json([
-            'status' => 'success',
-            'message' => 'Streaming stopped.' . ($watchMessage ? ' ' . $watchMessage : ''),
-            'watch_position_response' => $watchData,
-        ]);
     }
 
     // 🔁 Renew subscription
