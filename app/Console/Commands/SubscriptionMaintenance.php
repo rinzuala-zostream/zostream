@@ -109,7 +109,7 @@ class SubscriptionMaintenance extends Command
                 "type" => "template",
                 "template_name" => "zostream_subscription_reminder",
                 "template_params" => [$planName, $daysText],
-                "language" => "en"
+                "language" => "en_US"
             ]));
 
 
