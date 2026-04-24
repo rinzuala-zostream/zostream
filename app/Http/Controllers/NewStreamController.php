@@ -482,6 +482,7 @@ class NewStreamController extends Controller
         $contentType = $request->input('content_type');
         $movieId = $request->input('movie_id');
         $userId = $request->input('user_id');
+        $duration = $request->input('duration');
 
         $stream = ActiveStream::where('stream_token', $streamToken)->first();
 
@@ -502,6 +503,7 @@ class NewStreamController extends Controller
             'movie_id' => $movieId,
             'position' => $watchPosition,
             'user_id' => $userId,
+            'duration' => $duration,
             'movie_type' => $contentType,
         ]);
 

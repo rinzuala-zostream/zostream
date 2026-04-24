@@ -26,6 +26,7 @@ class WatchPositionController extends Controller
             'movie_id' => 'required|string',
             'position' => 'required|integer',
             'user_id' => 'required|string',
+            'duration' => 'nullable|biginteger',
             'movie_type' => 'nullable|string',
         ]);
 
@@ -35,6 +36,7 @@ class WatchPositionController extends Controller
             $position = $request->input('position');
             $userId = $request->input('user_id');
             $movieType = $request->input('movie_type');
+            $duration = $request->input('duration');
             $now = now();
             $hasCreatedAt = Schema::hasColumn('watch_position', 'created_at');
             $hasUpdatedAt = Schema::hasColumn('watch_position', 'updated_at');
@@ -50,6 +52,7 @@ class WatchPositionController extends Controller
                 $payload = [
                     'position' => $position,
                     'movie_type' => $movieType,
+                    'duration' => $duration,
                 ];
 
                 if ($hasUpdatedAt) {
@@ -59,12 +62,14 @@ class WatchPositionController extends Controller
                 WatchHistoryModel::where('movie_id', $movieId)
                     ->where('user_id', $userId)
                     ->update($payload);
+                    
             } else {
                 // Insert new
                 $payload = [
                     'movie_id' => $movieId,
                     'position' => $position,
                     'user_id' => $userId,
+                    'duration' => $duration,
                     'movie_type' => $movieType,
                 ];
 
@@ -87,6 +92,7 @@ class WatchPositionController extends Controller
                     'position' => $position,
                     'user_id' => $userId,
                     'movie_type' => $movieType,
+                    'duration' => $duration,
                 ],
             ]);
 

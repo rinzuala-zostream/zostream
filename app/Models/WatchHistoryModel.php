@@ -19,6 +19,7 @@ class WatchHistoryModel extends Model
         'movie_id',
         'movie_type',
         'position',
+        'duration',
         'user_id',
     ];
 }
