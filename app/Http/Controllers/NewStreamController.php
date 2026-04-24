@@ -15,6 +15,7 @@ use App\Models\New\Subscription;
 use App\Models\New\Devices;
 use App\Models\New\ActiveStream;
 use App\Models\New\StreamEvent;
+use Log;
 
 class NewStreamController extends Controller
 {

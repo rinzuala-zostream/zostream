@@ -232,6 +232,7 @@ class WatchPositionController extends Controller
                 'episode_id' => $isEpisode ? $history->movie_id : null,
                 'movie_type' => $normalizedMovieType ?: $history->movie_type,
                 'position' => $history->position,
+                'duration' => $history->duration ?? null,
                 'watched_at' => $watchedAt,
                 'updated_at' => $hasUpdatedAt ? $history->updated_at : null,
                 'created_at' => $hasCreatedAt ? $history->created_at : null,
