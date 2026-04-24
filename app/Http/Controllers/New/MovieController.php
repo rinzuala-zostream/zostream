@@ -1035,4 +1035,37 @@ class MovieController extends Controller
             ], 500);
         }
     }
+
+    public function latestUpdates(Request $request)
+    {
+        $perPage = $request->input('per_page', 10);
+
+        $movies = MovieModel::query()
+            ->leftJoin('seasons', 'seasons.movie_id', '=', 'movie.num')
+            ->leftJoin('episodes', 'episodes.season_id', '=', 'seasons.id')
+            ->select('movie.*')
+            ->selectRaw('
+            GREATEST(
+                movie.created_at,
+                COALESCE(MAX(seasons.created_at), movie.created_at),
+                COALESCE(MAX(episodes.created_at), movie.created_at)
+            ) as latest_created_at
+        ')
+            ->groupBy('movie.num')
+            ->orderByDesc('latest_created_at')
+            ->paginate($perPage);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Latest updates fetched successfully',
+            'data' => $movies->items(),
+            'pagination' => [
+                'current_page' => $movies->currentPage(),
+                'per_page' => $movies->perPage(),
+                'total' => $movies->total(),
+                'last_page' => $movies->lastPage(),
+                'next_page_url' => $movies->nextPageUrl(),
+            ],
+        ]);
+    }
 }

@@ -13,4 +13,5 @@ Schedule::command("app:queue-today-birthdays")->daily();
 
 Schedule::command('app:movie-schedule')->hourly()->between('12:00', '14:00');
 
+Schedule::command('app:subscription-maintenance --reminder-days=3 --send-reminders=1')->dailyAt('10:00');
 

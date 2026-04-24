@@ -213,8 +213,6 @@ Route::post('/send-payment-mail', [PaymentMailController::class, 'sendPaymentSuc
 
 Route::post('/send-birthday-mail', [BirthdayMailController::class, 'send']);
 
-Route::post('/send-whatsapp', [WhatsAppController::class, 'send']);
-
 
 
 Route::prefix('v3.0')->group(function () {
@@ -285,6 +283,7 @@ Route::prefix('v3.0')->group(function () {
         Route::get('/{id}', [\App\Http\Controllers\New\MovieController::class, 'getById'])->name('movies.show');
         Route::get('/{id}/admin-links', [\App\Http\Controllers\New\MovieController::class, 'adminGetLink'])->name('movies.admin-links');
         Route::get('/{id}/links', [\App\Http\Controllers\New\MovieController::class, 'getLink'])->name('movies.links');
+        Route::get('/movies/latest-updates', [\App\Http\Controllers\New\MovieController::class, 'latestUpdates']);
 
     });
 
@@ -361,5 +360,7 @@ Route::prefix('v3.0')->group(function () {
 
 
     Route::get('/watch-history', [WatchPositionController::class, 'getWatchContinue']);
+
+    Route::post('/send-whatsapp', [WhatsAppController::class, 'send']);
 
 });
