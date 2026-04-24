@@ -101,12 +101,14 @@ class WatchPositionController extends Controller
         $request->validate([
             'userId' => 'required|string',
             'isAgeRestricted' => 'nullable|string|in:true,false',
+            'parental_mode' => 'nullable|string|in:kids,adult',
             'page' => 'nullable|integer|min:1',
             'per_page' => 'nullable|integer|min:1|max:100',
         ]);
 
         $userId = $request->query('userId');
         $includeAgeRestricted = ($request->query('isAgeRestricted') ?? 'false') === 'true';
+        $parentalMode = strtolower((string) $request->query('parental_mode', 'adult'));
         $page = max((int) $request->query('page', 1), 1);
         $perPage = min(max((int) $request->query('per_page', 10), 1), 100);
 
@@ -117,7 +119,7 @@ class WatchPositionController extends Controller
             ], 400);
         }
 
-        $result = $this->buildWatchContinueResult($userId, $includeAgeRestricted);
+        $result = $this->buildWatchContinueResult($userId, $includeAgeRestricted, $parentalMode);
 
         $resultCollection = collect($result);
         $paginator = new LengthAwarePaginator(
@@ -149,7 +151,7 @@ class WatchPositionController extends Controller
         ]);
     }
 
-    private function buildWatchContinueResult($userId, $includeAgeRestricted)
+    private function buildWatchContinueResult($userId, $includeAgeRestricted, $parentalMode = 'adult')
     {
         $hasUpdatedAt = Schema::hasColumn('watch_position', 'updated_at');
         $hasCreatedAt = Schema::hasColumn('watch_position', 'created_at');
@@ -176,7 +178,7 @@ class WatchPositionController extends Controller
 
         $moviesByKey = $this->buildMovieKeyMap($movies);
 
-        return $this->processWatchHistory($watchData, $episodes, $moviesByKey, $hasUpdatedAt, $hasCreatedAt, $includeAgeRestricted);
+        return $this->processWatchHistory($watchData, $episodes, $moviesByKey, $hasUpdatedAt, $hasCreatedAt, $includeAgeRestricted, $parentalMode);
     }
 
     private function buildMovieKeyMap($movies)
@@ -193,9 +195,10 @@ class WatchPositionController extends Controller
         return $moviesByKey;
     }
 
-    private function processWatchHistory($watchData, $episodes, $moviesByKey, $hasUpdatedAt, $hasCreatedAt, $includeAgeRestricted)
+    private function processWatchHistory($watchData, $episodes, $moviesByKey, $hasUpdatedAt, $hasCreatedAt, $includeAgeRestricted, $parentalMode = 'adult')
     {
         $result = [];
+        $isKidsMode = $parentalMode === 'kids';
 
         foreach ($watchData as $history) {
             $normalizedMovieType = $this->normalizeMovieType($history->movie_type);
@@ -209,6 +212,10 @@ class WatchPositionController extends Controller
             }
 
             if (!$movie || (!$includeAgeRestricted && (int) ($movie->isAgeRestricted ?? 0) === 1)) {
+                continue;
+            }
+
+            if ($isKidsMode && (int) ($movie->isChildMode ?? 0) !== 1) {
                 continue;
             }
 
