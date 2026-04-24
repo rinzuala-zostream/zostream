@@ -26,7 +26,7 @@ class WatchPositionController extends Controller
             'movie_id' => 'required|string',
             'position' => 'required|integer',
             'user_id' => 'required|string',
-            'duration' => 'nullable|biginteger',
+            'duration' => 'nullable|integer',
             'movie_type' => 'nullable|string',
         ]);
 
