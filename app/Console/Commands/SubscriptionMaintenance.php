@@ -13,10 +13,11 @@ use Illuminate\Support\Facades\Log;
 class SubscriptionMaintenance extends Command
 {
     protected $signature = 'app:subscription-maintenance
+                            {--deactivate=1 : Whether to deactivate expired subscriptions}
                             {--reminder-days=3 : Send reminders for subscriptions expiring within this many days}
-                            {--send-reminders=1 : Whether to send WhatsApp reminders to users}';
+                            {--send-reminders=0 : Whether to send WhatsApp reminders to users}';
 
-    protected $description = 'Deactivate expired subscriptions and send WhatsApp reminders for subscriptions that are about to expire.';
+    protected $description = 'Deactivate expired subscriptions and send WhatsApp reminders.';
 
     public function __construct(
         protected WhatsAppController $whatsAppController
@@ -26,11 +27,17 @@ class SubscriptionMaintenance extends Command
 
     public function handle(): int
     {
-        $reminderDays = max((int) $this->option('reminder-days'), 1);
+        $deactivate = filter_var((string) $this->option('deactivate'), FILTER_VALIDATE_BOOLEAN);
         $sendReminders = filter_var((string) $this->option('send-reminders'), FILTER_VALIDATE_BOOLEAN);
+        $reminderDays = max((int) $this->option('reminder-days'), 1);
 
-        $this->deactivateExpiredSubscriptions();
-        $this->processExpiringSubscriptions($reminderDays, $sendReminders);
+        if ($deactivate) {
+            $this->deactivateExpiredSubscriptions();
+        }
+
+        if ($sendReminders) {
+            $this->processExpiringSubscriptions($reminderDays);
+        }
 
         return self::SUCCESS;
     }
@@ -48,12 +55,14 @@ class SubscriptionMaintenance extends Command
             return;
         }
 
-        Subscription::whereIn('id', $expiredIds)->update(['is_active' => false]);
+        Subscription::whereIn('id', $expiredIds)->update([
+            'is_active' => false
+        ]);
 
         $this->info("Deactivated {$expiredIds->count()} expired subscriptions.");
     }
 
-    protected function processExpiringSubscriptions(int $reminderDays, bool $sendReminders): void
+    protected function processExpiringSubscriptions(int $reminderDays): void
     {
         $cutoff = now()->copy()->addDays($reminderDays);
 
@@ -71,19 +80,13 @@ class SubscriptionMaintenance extends Command
         }
 
         foreach ($subscriptions as $subscription) {
-            $daysLeft = max(Carbon::now()->startOfDay()->diffInDays($subscription->end_at->copy()->startOfDay(), false), 0);
+            $daysLeft = max(
+                Carbon::now()->startOfDay()
+                    ->diffInDays($subscription->end_at->copy()->startOfDay(), false),
+                0
+            );
 
-            $this->line(sprintf(
-                'Reminder: subscription #%d for user %s expires on %s (%d day(s) left).',
-                $subscription->id,
-                $subscription->user_id,
-                $subscription->end_at->format('Y-m-d H:i:s'),
-                $daysLeft
-            ));
-
-            if ($sendReminders) {
-                $this->sendReminderNotification($subscription, $daysLeft);
-            }
+            $this->sendReminderNotification($subscription, $daysLeft);
         }
     }
 
@@ -105,31 +108,38 @@ class SubscriptionMaintenance extends Command
 
         try {
             $response = $this->whatsAppController->send(new Request([
-                "to" => $phone,
-                "type" => "template",
-                "template_name" => "zostream_subscription_reminder",
-                "template_params" => [$planName, $daysText],
-                "language" => "en_US"
+                'to' => $phone,
+                'type' => 'template',
+                'template_name' => 'zostream_subscription_reminder',
+                'template_params' => [
+                    $planName,
+                    $daysText,
+                ],
+                'language' => 'en_US',
             ]));
-
 
             if ($response->getStatusCode() >= 400) {
                 $payload = $response->getData(true);
-                $error = is_array($payload) ? ($payload['message'] ?? json_encode($payload)) : 'Unknown error';
+                $error = is_array($payload)
+                    ? ($payload['message'] ?? json_encode($payload))
+                    : 'Unknown error';
 
                 $this->warn("Reminder failed for subscription #{$subscription->id}: {$error}");
+
                 Log::warning('Subscription reminder failed', [
                     'subscription_id' => $subscription->id,
                     'user_id' => $subscription->user_id,
                     'phone' => $phone,
                     'error' => $error,
                 ]);
+
                 return;
             }
 
             $this->info("Reminder sent for subscription #{$subscription->id}.");
         } catch (\Throwable $e) {
             $this->warn("Reminder failed for subscription #{$subscription->id}: {$e->getMessage()}");
+
             Log::error('Subscription reminder exception', [
                 'subscription_id' => $subscription->id,
                 'user_id' => $subscription->user_id,
