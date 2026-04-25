@@ -103,19 +103,23 @@ class SubscriptionMaintenance extends Command
             return;
         }
 
+        $name = $user->name ?? 'Zo Stream User';
         $planName = $subscription->plan?->name ?? 'subscription';
+        $device_type = $subscription->plan?->device_type ?? 'unknown device';
         $daysText = $daysLeft <= 0 ? 'today' : "{$daysLeft} day(s)";
 
         try {
             $response = $this->whatsAppController->send(new Request([
                 'to' => $phone,
                 'type' => 'template',
-                'template_name' => 'zostream_subscription_reminder',
+                'template_name' => 'zostream_sub_reminder',
                 'template_params' => [
+                    $name,
                     $planName,
+                    $device_type,
                     $daysText,
                 ],
-                'language' => 'en_US',
+                'language' => 'en',
             ]));
 
             if ($response->getStatusCode() >= 400) {
