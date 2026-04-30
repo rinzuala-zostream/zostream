@@ -295,6 +295,7 @@ class SubscriptionController extends Controller
         $currentDateString = $request->query('currentDate');
         $sub_plan = $request->query('plan');
         $device_type = $request->query('device_type');
+        $normalizedDeviceType = strtolower($device_type);
 
         try {
             $currentDate = $currentDateString
@@ -302,11 +303,13 @@ class SubscriptionController extends Controller
                 : Carbon::now();
 
             $createDate = $currentDate->format('F j, Y');
+            $endDate = $currentDate->copy()->addDays($period);
+            $savedSubscriptions = [];
 
             $saved = false;
 
-            if (str_contains($device_type, 'Mobile')) {
-                $saved = SubscriptionModel::updateOrInsert(
+            if (str_contains($normalizedDeviceType, 'mobile')) {
+                $subscription = SubscriptionModel::updateOrCreate(
                     ['id' => $id],
                     [
                         'sub_plan' => $sub_plan,
@@ -314,10 +317,21 @@ class SubscriptionController extends Controller
                         'create_date' => $createDate,
                     ]
                 );
+                $savedSubscriptions[] = [
+                    'device_type' => 'mobile',
+                    'subscription_id' => $subscription->num,
+                    'uid' => $subscription->id,
+                    'plan' => $subscription->sub_plan,
+                    'period' => (int) $subscription->period,
+                    'start_date' => $currentDate->toDateString(),
+                    'end_date' => $endDate->toDateString(),
+                    'create_date' => $subscription->create_date,
+                ];
+                $saved = true;
             }
 
-            if (str_contains($device_type, 'Browser')) {
-                $saved = BrowserSubscriptionModel::updateOrInsert(
+            if (str_contains($normalizedDeviceType, 'browser')) {
+                $subscription = BrowserSubscriptionModel::updateOrCreate(
                     ['id' => $id],
                     [
                         'sub_plan' => $sub_plan,
@@ -325,10 +339,21 @@ class SubscriptionController extends Controller
                         'create_date' => $createDate,
                     ]
                 );
+                $savedSubscriptions[] = [
+                    'device_type' => 'browser',
+                    'subscription_id' => $subscription->num,
+                    'uid' => $subscription->id,
+                    'plan' => $subscription->sub_plan,
+                    'period' => (int) $subscription->period,
+                    'start_date' => $currentDate->toDateString(),
+                    'end_date' => $endDate->toDateString(),
+                    'create_date' => $subscription->create_date,
+                ];
+                $saved = true;
             }
 
-            if (str_contains($device_type, 'TV')) {
-                $saved = TVSubscriptionModel::updateOrInsert(
+            if (str_contains($normalizedDeviceType, 'tv')) {
+                $subscription = TVSubscriptionModel::updateOrCreate(
                     ['id' => $id],
                     [
                         'sub_plan' => $sub_plan,
@@ -336,20 +361,47 @@ class SubscriptionController extends Controller
                         'create_date' => $createDate,
                     ]
                 );
+                $savedSubscriptions[] = [
+                    'device_type' => 'tv',
+                    'subscription_id' => $subscription->num,
+                    'uid' => $subscription->id,
+                    'plan' => $subscription->sub_plan,
+                    'period' => (int) $subscription->period,
+                    'start_date' => $currentDate->toDateString(),
+                    'end_date' => $endDate->toDateString(),
+                    'create_date' => $subscription->create_date,
+                ];
+                $saved = true;
             }
 
             if ($saved) {
 
                 $deleteResponse = $this->deleteSharedUser($id, $apiKey);
+                $responseData = [
+                    'uid' => $id,
+                    'subscription_id' => $savedSubscriptions[0]['subscription_id'] ?? $id,
+                    'plan' => $sub_plan,
+                    'period' => $period,
+                    'start_date' => $currentDate->toDateString(),
+                    'end_date' => $endDate->toDateString(),
+                    'devices' => array_values(array_unique(array_column($savedSubscriptions, 'device_type'))),
+                    'subscriptions' => $savedSubscriptions,
+                ];
 
                 if ($deleteResponse instanceof \Illuminate\Http\JsonResponse && $deleteResponse->getStatusCode() !== 200) {
                     return response()->json([
                         'status' => 'success',
-                        'message' => json_decode($deleteResponse->getContent(), true)
+                        'message' => 'Record saved successfully, but shared user cleanup returned an error',
+                        'cleanup_error' => json_decode($deleteResponse->getContent(), true),
+                        'data' => $responseData,
                     ]);
                 }
 
-                return response()->json(['status' => 'success', 'message' => 'Record saved successfully']);
+                return response()->json([
+                    'status' => 'success',
+                    'message' => 'Record saved successfully',
+                    'data' => $responseData,
+                ]);
             }
 
             return response()->json(['status' => 'error', 'message' => 'Failed to save subscription']);
