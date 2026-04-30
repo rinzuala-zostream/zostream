@@ -131,17 +131,17 @@ class UserController extends Controller
             $users = $baseQuery
                 ->orderByRaw(
                     "CASE
-                        WHEN mail = ? THEN 1000
-                        WHEN uid = ? THEN 980
-                        WHEN name = ? THEN 950
-                        WHEN mail LIKE ? THEN 900
-                        WHEN uid LIKE ? THEN 880
-                        WHEN name LIKE ? THEN 860
-                        WHEN mail LIKE ? THEN 760
-                        WHEN uid LIKE ? THEN 740
-                        WHEN name LIKE ? THEN 720
-                        WHEN call LIKE ? THEN 620
-                        WHEN auth_phone LIKE ? THEN 600
+                        WHEN `mail` = ? THEN 1000
+                        WHEN `uid` = ? THEN 980
+                        WHEN `name` = ? THEN 950
+                        WHEN `mail` LIKE ? THEN 900
+                        WHEN `uid` LIKE ? THEN 880
+                        WHEN `name` LIKE ? THEN 860
+                        WHEN `mail` LIKE ? THEN 760
+                        WHEN `uid` LIKE ? THEN 740
+                        WHEN `name` LIKE ? THEN 720
+                        WHEN `call` LIKE ? THEN 620
+                        WHEN `auth_phone` LIKE ? THEN 600
                         ELSE 0
                     END DESC",
                     [
