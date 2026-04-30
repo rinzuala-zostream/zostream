@@ -74,6 +74,7 @@ Route::get('/test', function () {
 });
 
 Route::get('/user', [UserController::class, 'getUserData']);
+Route::get('/users/search', [UserController::class, 'searchUsers']);
 Route::get('/birthday-send', [UserController::class, 'sendWishes']);
 Route::delete('/user-delete', [UserController::class, 'deleteUser']);
 

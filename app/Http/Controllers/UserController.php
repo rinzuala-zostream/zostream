@@ -60,6 +60,142 @@ class UserController extends Controller
         }
     }
 
+    public function searchUsers(Request $request)
+    {
+        $apiKey = $request->header('X-Api-Key');
+
+        if ($apiKey !== $this->validApiKey) {
+            return response()->json(['status' => 'error', 'message' => 'Invalid API key'], 401);
+        }
+
+        $request->validate([
+            'q' => 'nullable|string|max:120',
+            'query' => 'nullable|string|max:120',
+            'search' => 'nullable|string|max:120',
+            'mail' => 'nullable|email|max:180',
+            'email' => 'nullable|email|max:180',
+            'uid' => 'nullable|string|max:180',
+            'name' => 'nullable|string|max:180',
+            'page' => 'nullable|integer|min:1',
+            'per_page' => 'nullable|integer|min:1|max:100',
+        ]);
+
+        $searchQuery = trim((string) (
+            $request->query('q')
+            ?? $request->query('query')
+            ?? $request->query('search')
+            ?? ''
+        ));
+        $mail = trim((string) ($request->query('mail') ?? $request->query('email') ?? ''));
+        $uid = trim((string) $request->query('uid', ''));
+        $name = trim((string) $request->query('name', ''));
+        $perPage = (int) $request->query('per_page', 20);
+        $perPage = max(1, min($perPage, 100));
+
+        if ($searchQuery === '' && $mail === '' && $uid === '' && $name === '') {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Provide at least one search value: q, query, search, mail, email, uid, or name'
+            ], 422);
+        }
+
+        try {
+            $baseQuery = UserModel::query();
+
+            $baseQuery->where(function ($query) use ($searchQuery, $mail, $uid, $name) {
+                if ($mail !== '') {
+                    $query->orWhere('mail', 'like', '%' . $mail . '%');
+                }
+
+                if ($uid !== '') {
+                    $query->orWhere('uid', 'like', '%' . $uid . '%');
+                }
+
+                if ($name !== '') {
+                    $query->orWhere('name', 'like', '%' . $name . '%');
+                }
+
+                if ($searchQuery !== '') {
+                    $query->orWhere('mail', 'like', '%' . $searchQuery . '%')
+                        ->orWhere('uid', 'like', '%' . $searchQuery . '%')
+                        ->orWhere('name', 'like', '%' . $searchQuery . '%')
+                        ->orWhere('call', 'like', '%' . $searchQuery . '%')
+                        ->orWhere('auth_phone', 'like', '%' . $searchQuery . '%');
+                }
+            });
+
+            $orderNeedle = $searchQuery !== '' ? $searchQuery : ($mail !== '' ? $mail : ($uid !== '' ? $uid : $name));
+            $likeNeedle = '%' . $orderNeedle . '%';
+            $prefixNeedle = $orderNeedle . '%';
+
+            $users = $baseQuery
+                ->orderByRaw(
+                    "CASE
+                        WHEN mail = ? THEN 1000
+                        WHEN uid = ? THEN 980
+                        WHEN name = ? THEN 950
+                        WHEN mail LIKE ? THEN 900
+                        WHEN uid LIKE ? THEN 880
+                        WHEN name LIKE ? THEN 860
+                        WHEN mail LIKE ? THEN 760
+                        WHEN uid LIKE ? THEN 740
+                        WHEN name LIKE ? THEN 720
+                        WHEN call LIKE ? THEN 620
+                        WHEN auth_phone LIKE ? THEN 600
+                        ELSE 0
+                    END DESC",
+                    [
+                        $orderNeedle,
+                        $orderNeedle,
+                        $orderNeedle,
+                        $prefixNeedle,
+                        $prefixNeedle,
+                        $prefixNeedle,
+                        $likeNeedle,
+                        $likeNeedle,
+                        $likeNeedle,
+                        $likeNeedle,
+                        $likeNeedle,
+                    ]
+                )
+                ->orderBy('name')
+                ->orderByDesc('num')
+                ->paginate($perPage);
+
+            $users->getCollection()->transform(function ($user) use ($searchQuery, $mail, $uid, $name) {
+                return $this->formatUserSearchResult($user, $searchQuery, $mail, $uid, $name);
+            });
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Users fetched successfully',
+                'search' => [
+                    'query' => $searchQuery,
+                    'mail' => $mail,
+                    'uid' => $uid,
+                    'name' => $name,
+                    'sort' => 'best_match',
+                ],
+                'pagination' => [
+                    'current_page' => $users->currentPage(),
+                    'per_page' => $users->perPage(),
+                    'total' => $users->total(),
+                    'last_page' => $users->lastPage(),
+                    'from' => $users->firstItem(),
+                    'to' => $users->lastItem(),
+                    'has_more_pages' => $users->hasMorePages(),
+                ],
+                'data' => $users->items(),
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error searching users: ' . $e->getMessage());
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Internal Server Error'
+            ], 500);
+        }
+    }
+
     public function updateDob(Request $request)
     {
         // Validate required input
@@ -297,6 +433,125 @@ class UserController extends Controller
         $user->save();
 
         return response()->json(['status' => 'success', 'message' => 'Device ID cleared successfully']);
+    }
+
+    private function formatUserSearchResult(UserModel $user, string $searchQuery, string $mail, string $uid, string $name): array
+    {
+        $needles = array_values(array_filter([$searchQuery, $mail, $uid, $name], function ($value) {
+            return trim((string) $value) !== '';
+        }));
+
+        $matchedFields = $this->getMatchedUserFields($user, $needles);
+        $relevanceScore = $this->calculateUserSearchScore($user, $needles);
+        $data = $user->toArray();
+
+        if (empty($data['dob'])) {
+            $data['dob'] = "0";
+        }
+
+        return [
+            'match' => [
+                'score' => $relevanceScore,
+                'fields' => $matchedFields,
+            ],
+            'identity' => [
+                'num' => $data['num'] ?? null,
+                'uid' => $data['uid'] ?? null,
+                'name' => $data['name'] ?? null,
+                'mail' => $data['mail'] ?? null,
+                'call' => $data['call'] ?? null,
+                'auth_phone' => $data['auth_phone'] ?? null,
+            ],
+            'account' => [
+                'isACActive' => (bool) ($data['isACActive'] ?? false),
+                'isAccountComplete' => (bool) ($data['isAccountComplete'] ?? false),
+                'is_auth_phone_active' => (bool) ($data['is_auth_phone_active'] ?? false),
+                'dob' => $data['dob'] ?? "0",
+                'khua' => $data['khua'] ?? null,
+                'veng' => $data['veng'] ?? null,
+                'img' => $data['img'] ?? null,
+            ],
+            'device' => [
+                'device_id' => $data['device_id'] ?? null,
+                'device_name' => $data['device_name'] ?? null,
+                'token' => $data['token'] ?? null,
+            ],
+            'activity' => [
+                'created_date' => $data['created_date'] ?? null,
+                'edit_date' => $data['edit_date'] ?? null,
+                'lastLogin' => $data['lastLogin'] ?? null,
+            ],
+            'raw' => $data,
+        ];
+    }
+
+    private function getMatchedUserFields(UserModel $user, array $needles): array
+    {
+        $fields = ['mail', 'uid', 'name', 'call', 'auth_phone'];
+        $matchedFields = [];
+
+        foreach ($fields as $field) {
+            $value = (string) ($user->{$field} ?? '');
+
+            if ($value === '') {
+                continue;
+            }
+
+            foreach ($needles as $needle) {
+                if (stripos($value, (string) $needle) !== false) {
+                    $matchedFields[] = $field;
+                    break;
+                }
+            }
+        }
+
+        return array_values(array_unique($matchedFields));
+    }
+
+    private function calculateUserSearchScore(UserModel $user, array $needles): int
+    {
+        $score = 0;
+        $weightedFields = [
+            'mail' => 100,
+            'uid' => 95,
+            'name' => 90,
+            'call' => 65,
+            'auth_phone' => 65,
+        ];
+
+        foreach ($needles as $needle) {
+            $normalizedNeedle = mb_strtolower(trim((string) $needle));
+
+            if ($normalizedNeedle === '') {
+                continue;
+            }
+
+            foreach ($weightedFields as $field => $weight) {
+                $value = mb_strtolower((string) ($user->{$field} ?? ''));
+
+                if ($value === '') {
+                    continue;
+                }
+
+                if ($value === $normalizedNeedle) {
+                    $score += $weight * 10;
+                } elseif (str_starts_with($value, $normalizedNeedle)) {
+                    $score += $weight * 7;
+                } elseif (str_contains($value, $normalizedNeedle)) {
+                    $score += $weight * 5;
+                }
+
+                similar_text($normalizedNeedle, $value, $percent);
+
+                if ($percent >= 85) {
+                    $score += $weight * 4;
+                } elseif ($percent >= 65) {
+                    $score += $weight * 2;
+                }
+            }
+        }
+
+        return $score;
     }
 
 }
