@@ -303,6 +303,7 @@ Route::prefix('v3.0')->group(function () {
 
     Route::prefix('users')->group(function () {
         Route::get('/', [\App\Http\Controllers\New\UserController::class, 'index']);
+        Route::get('/search', [\App\Http\Controllers\New\UserController::class, 'search']);
         Route::get('/{id}', [\App\Http\Controllers\New\UserController::class, 'show']);
         Route::post('/', [\App\Http\Controllers\New\UserController::class, 'store']);
         Route::put('/{id}', [\App\Http\Controllers\New\UserController::class, 'update']);
