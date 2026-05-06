@@ -26,9 +26,10 @@ class FCMNotificationController extends Controller
         $token = $request->input('token');
         $topic = $request->input('topic', 'all');
         $key   = $request->input('key');
+        $data  = $request->input('data', []);
 
         $accessToken = $this->getAccessToken($serviceAccountData);
-        return $this->sendNotification($accessToken, $title, $body, $image, $token, $topic, $key);
+        return $this->sendNotification($accessToken, $title, $body, $image, $token, $topic, $key, $data);
     }
 
     private function getAccessToken($serviceAccountData)
@@ -64,7 +65,7 @@ class FCMNotificationController extends Controller
         return $data['access_token'];
     }
 
-    private function sendNotification($accessToken, $title, $body, $image, $token = null, $topic = 'all', $key = null)
+    private function sendNotification($accessToken, $title, $body, $image, $token = null, $topic = 'all', $key = null, $data = [])
     {
         $client = new Client();
         $url = 'https://fcm.googleapis.com/v1/projects/zo-stream-f04ea/messages:send';
@@ -103,8 +104,24 @@ class FCMNotificationController extends Controller
             $message["message"]["topic"] = $topic;
         }
 
-        if ($key !== null) {
-            $message['message']['data'] = ["key" => $key];
+        $messageData = [];
+
+        if (is_array($data)) {
+            foreach ($data as $dataKey => $dataValue) {
+                if ($dataValue === null || is_array($dataValue) || is_object($dataValue)) {
+                    continue;
+                }
+
+                $messageData[(string) $dataKey] = (string) $dataValue;
+            }
+        }
+
+        if ($key !== null && $key !== '') {
+            $messageData['key'] = (string) $key;
+        }
+
+        if (!empty($messageData)) {
+            $message['message']['data'] = $messageData;
         }
 
         try {

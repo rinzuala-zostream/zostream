@@ -21,6 +21,7 @@ use App\Http\Controllers\New\DeviceController;
 use App\Http\Controllers\New\OfflineController;
 use App\Http\Controllers\New\PaymentController;
 use App\Http\Controllers\New\PaymentHistoryController;
+use App\Http\Controllers\New\PollController;
 use App\Http\Controllers\New\QRSessionController;
 use App\Http\Controllers\New\ReelController;
 use App\Http\Controllers\New\SeasonController;
@@ -315,6 +316,23 @@ Route::prefix('v3.0')->group(function () {
         Route::post('/admin/qcreate', [QRSessionController::class, 'createAdmin']);
         Route::get('/status/{token}', [QRSessionController::class, 'status']);
         Route::post('/verify', [QRSessionController::class, 'verify']);
+    });
+
+    Route::prefix('polls')->group(function () {
+        Route::get('/', [PollController::class, 'index']);
+        Route::post('/', [PollController::class, 'store']);
+        Route::get('/{id}', [PollController::class, 'show']);
+        Route::put('/{id}', [PollController::class, 'update']);
+        Route::delete('/{id}', [PollController::class, 'destroy']);
+
+        Route::get('/{id}/results', [PollController::class, 'results']);
+        Route::get('/{id}/voters', [PollController::class, 'voters']);
+        Route::post('/{id}/vote', [PollController::class, 'vote']);
+        Route::delete('/{id}/vote', [PollController::class, 'removeVote']);
+
+        Route::post('/{id}/options', [PollController::class, 'storeOption']);
+        Route::put('/options/{optionId}', [PollController::class, 'updateOption']);
+        Route::delete('/options/{optionId}', [PollController::class, 'destroyOption']);
     });
 
     Route::prefix('reels')->group(function () {
