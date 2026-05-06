@@ -38,7 +38,10 @@ class DeviceController extends Controller
     {
         $perPage = $request->get('per_page', 15);
 
-        $devices = Devices::where('user_id', $userId)
+        $devices = Devices::where(function ($query) use ($userId) {
+                $query->where('user_id', $userId)
+                    ->orWhere('shared_to_user_id', $userId);
+            })
             ->orderBy('created_at', 'desc')
             ->paginate($perPage);
 
