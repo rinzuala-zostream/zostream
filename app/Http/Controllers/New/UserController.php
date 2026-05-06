@@ -389,24 +389,24 @@ class UserController extends Controller
     private function searchRankSql()
     {
         return "CASE
-            WHEN uid = ? THEN 1000
-            WHEN num = ? THEN 990
-            WHEN mail = ? THEN 980
-            WHEN mail = ? THEN 970
-            WHEN auth_phone = ? THEN 960
-            WHEN call = ? THEN 950
-            WHEN name = ? THEN 940
-            WHEN uid LIKE ? THEN 900
-            WHEN mail LIKE ? THEN 880
-            WHEN mail LIKE ? THEN 870
-            WHEN name LIKE ? THEN 860
-            WHEN auth_phone LIKE ? THEN 840
-            WHEN call LIKE ? THEN 830
-            WHEN uid LIKE ? THEN 760
-            WHEN mail LIKE ? THEN 740
-            WHEN name LIKE ? THEN 720
-            WHEN auth_phone LIKE ? THEN 700
-            WHEN call LIKE ? THEN 690
+            WHEN `uid` = ? THEN 1000
+            WHEN `num` = ? THEN 990
+            WHEN `mail` = ? THEN 980
+            WHEN `mail` = ? THEN 970
+            WHEN `auth_phone` = ? THEN 960
+            WHEN `call` = ? THEN 950
+            WHEN `name` = ? THEN 940
+            WHEN `uid` LIKE ? THEN 900
+            WHEN `mail` LIKE ? THEN 880
+            WHEN `mail` LIKE ? THEN 870
+            WHEN `name` LIKE ? THEN 860
+            WHEN `auth_phone` LIKE ? THEN 840
+            WHEN `call` LIKE ? THEN 830
+            WHEN `uid` LIKE ? THEN 760
+            WHEN `mail` LIKE ? THEN 740
+            WHEN `name` LIKE ? THEN 720
+            WHEN `auth_phone` LIKE ? THEN 700
+            WHEN `call` LIKE ? THEN 690
             ELSE 0
         END DESC";
     }
@@ -416,6 +416,7 @@ class UserController extends Controller
     {
         $primary = $term !== '' ? $term : ($uid !== '' ? $uid : ($mail !== '' ? $mail : ($phone !== '' ? $phone : $name)));
         $primaryPhone = $termPhone !== '' ? $termPhone : $phone;
+        $phoneRankNeedle = $primaryPhone !== '' ? $primaryPhone : '__NO_PHONE_MATCH__';
         $primaryMail = $mail !== '' ? $mail : $primary;
         $expandedMail = $mailNeedles[0] ?? $primaryMail;
 
@@ -424,20 +425,20 @@ class UserController extends Controller
             is_numeric($primary) ? $primary : -1,
             $primaryMail,
             $expandedMail,
-            $primaryPhone,
-            $primaryPhone,
+            $phoneRankNeedle,
+            $phoneRankNeedle,
             $name !== '' ? $name : $primary,
             $primary . '%',
             $primaryMail . '%',
             $expandedMail . '%',
             ($name !== '' ? $name : $primary) . '%',
-            $primaryPhone . '%',
-            $primaryPhone . '%',
+            $phoneRankNeedle . '%',
+            $phoneRankNeedle . '%',
             '%' . $primary . '%',
             '%' . $primaryMail . '%',
             '%' . ($name !== '' ? $name : $primary) . '%',
-            '%' . $primaryPhone . '%',
-            '%' . $primaryPhone . '%',
+            '%' . $phoneRankNeedle . '%',
+            '%' . $phoneRankNeedle . '%',
         ];
     }
 
