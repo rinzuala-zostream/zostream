@@ -967,6 +967,182 @@ class MovieController extends Controller
         }
     }
 
+    public function filter(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'category' => 'nullable|string|max:100',
+                'genre' => 'nullable|string|max:100',
+                'range' => ['nullable', 'regex:/^\d+\-\d+$/'],
+                'per_page' => 'nullable|integer|min:1|max:100',
+                'page' => 'nullable|integer|min:1',
+                'age_restriction' => 'nullable|string|in:true,false',
+                'isChildMode' => 'nullable|string|in:true,false',
+                'is_enable' => 'nullable|boolean',
+                'status' => 'nullable|string|max:50',
+                'sort_by' => 'nullable|string|in:num,title,views,create_date,release_on',
+                'sort_dir' => 'nullable|string|in:asc,desc',
+            ]);
+
+            $category = strtolower(trim((string) ($validated['category'] ?? '')));
+            $genre = trim((string) ($validated['genre'] ?? ''));
+            $includeAgeRestricted = ($request->query('age_restriction') ?? 'false') === 'true';
+            $isKidsMode = strtolower($request->header('X-Mode', '')) === 'kids'
+                || ($request->query('isChildMode') ?? 'false') === 'true';
+
+            $categoryMap = [
+                "hollywood" => "isHollywood",
+                "bollywood" => "isBollywood",
+                "mizo" => "isMizo",
+                "animation" => "genre",
+                "asian" => "isKorean",
+                "most watched" => "mostwatch",
+                "pay per view" => "isPayPerView",
+                "new release" => "newrelease",
+                "latest update" => "all",
+                "series" => "isSeason",
+                "documentary" => "isDocumentary",
+                "18+" => "isAgeRestricted",
+                "free" => "free",
+            ];
+
+            $query = MovieModel::query()
+                ->where('isEnable', $request->filled('is_enable') ? (int) $request->boolean('is_enable') : 1)
+                ->where('status', $validated['status'] ?? 'Published');
+
+            if ($isKidsMode) {
+                $query->where('isChildMode', 1)
+                    ->where('isAgeRestricted', 0);
+            } elseif (!$includeAgeRestricted && $category !== '18+') {
+                $query->where('isAgeRestricted', 0);
+            }
+
+            if ($category !== '') {
+                $column = $categoryMap[$category] ?? null;
+
+                if (!$column) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'Invalid category',
+                        'allowed_categories' => array_keys($categoryMap),
+                    ], 422);
+                }
+
+                $this->applyFilterCategory($query, $column, $category);
+            }
+
+            if ($genre !== '') {
+                $query->where('genre', 'LIKE', "%{$genre}%");
+            }
+
+            [$defaultSortBy, $defaultSortDir] = $this->defaultFilterSort($category);
+            $sortBy = $validated['sort_by'] ?? $defaultSortBy;
+            $sortDir = $validated['sort_dir'] ?? $defaultSortDir;
+
+            if (in_array($sortBy, ['create_date', 'release_on'], true)) {
+                $query->orderByRaw("STR_TO_DATE({$sortBy}, '%M %e, %Y') {$sortDir}");
+            } else {
+                $query->orderBy($sortBy, $sortDir);
+            }
+
+            if (!empty($validated['range'])) {
+                [$offset, $limit] = $this->parseMovieRange($validated['range']);
+                $movies = $query->offset($offset)->limit($limit)->get();
+
+                return response()->json([
+                    'status' => 'success',
+                    'filters' => [
+                        'category' => $category ?: null,
+                        'genre' => $genre ?: null,
+                    ],
+                    'data' => $movies->map(fn($movie) => $this->transformMovie($movie))->values(),
+                ]);
+            }
+
+            $perPage = (int) ($validated['per_page'] ?? 15);
+            $movies = $query->paginate($perPage);
+
+            return response()->json([
+                'status' => 'success',
+                'filters' => [
+                    'category' => $category ?: null,
+                    'genre' => $genre ?: null,
+                ],
+                'data' => $movies->getCollection()->map(fn($movie) => $this->transformMovie($movie))->values(),
+                'pagination' => [
+                    'current_page' => $movies->currentPage(),
+                    'per_page' => $movies->perPage(),
+                    'total' => $movies->total(),
+                    'last_page' => $movies->lastPage(),
+                    'next_page_url' => $movies->nextPageUrl(),
+                ],
+            ]);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Validation failed',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (Exception $e) {
+            Log::error('Movie filter error', [
+                'query' => $request->query(),
+                'error' => $e->getMessage(),
+            ]);
+
+            return $this->errorResponse('Failed to filter movies', $e);
+        }
+    }
+
+    private function applyFilterCategory($query, string $column, string $category): void
+    {
+        if ($column === 'genre') {
+            $query->where('genre', 'LIKE', "%{$category}%");
+            return;
+        }
+
+        if ($column === 'newrelease') {
+            $query->whereNotNull('release_on');
+            return;
+        }
+
+        if ($column === 'free') {
+            $query->where('isPremium', 0);
+            return;
+        }
+
+        if ($column === 'all' || $column === 'mostwatch') {
+            return;
+        }
+
+        $query->where($column, 1);
+    }
+
+    private function defaultFilterSort(string $category): array
+    {
+        if ($category === 'most watched') {
+            return ['views', 'desc'];
+        }
+
+        if ($category === 'new release') {
+            return ['release_on', 'desc'];
+        }
+
+        if ($category === 'latest update') {
+            return ['create_date', 'desc'];
+        }
+
+        return ['num', 'desc'];
+    }
+
+    private function parseMovieRange(string $range): array
+    {
+        [$from, $to] = array_map('intval', explode('-', $range));
+        $from = max($from, 1);
+        $to = max($to, $from);
+
+        return [$from - 1, min(($to - $from) + 1, 100)];
+    }
+
     private function transformMovie($movie)
     {
         foreach ([
