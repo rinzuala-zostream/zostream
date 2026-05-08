@@ -451,12 +451,12 @@ class NewStreamController extends Controller
         }
 
         // 🔹 Stream check
-        $streamQuery = ActiveStream::where('device_id', $device->id)
-            ->where('stream_token', $streamToken)
+        $streamQuery = ActiveStream::where('stream_token', $streamToken)
             ->where('status', 'active');
 
         if ($requiresSubscription) {
-            $streamQuery->where('subscription_id', $subscriptionId);
+            $streamQuery->where('device_id', $device->id)
+                ->where('subscription_id', $subscriptionId);
         }
 
         $stream = $streamQuery->first();
