@@ -389,10 +389,7 @@ class NewStreamController extends Controller
     {
         $deviceToken = $request->header('Device-Token');
         $streamToken = $request->input('stream_token');
-        $rawSubscriptionId = $request->input('subscription_id');
-        $subscriptionId = filled($rawSubscriptionId) && (int) $rawSubscriptionId > 0
-            ? (int) $rawSubscriptionId
-            : null;
+        $subscriptionId = $request->input('subscription_id');
         $movieId = $request->input('movie_id');
         $movieType = $request->input('type');
 
