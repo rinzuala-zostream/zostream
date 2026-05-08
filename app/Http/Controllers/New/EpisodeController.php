@@ -57,6 +57,7 @@ class EpisodeController extends Controller
                 'episode_number' => 'required|integer',
                 'isPayPerView' => 'nullable|boolean',
                 'amount' => 'nullable|numeric|min:0',
+                'isPremium' => 'nullable|boolean',
                 'title' => 'nullable|string',
                 'description' => 'nullable|string',
                 'thumbnail' => 'nullable|string',
@@ -69,6 +70,7 @@ class EpisodeController extends Controller
                 'id' => (string) Str::uuid(),
                 'amount' => $validated['amount'] ?? 0,
                 'isPayPerView' => $validated['isPayPerView'] ?? false,
+                'isPremium' => $validated['isPremium'] ?? false,
                 'season_id' => $validated['season_id'],
                 'episode_number' => $validated['episode_number'],
                 'title' => $validated['title'] ?? null,
@@ -157,7 +159,8 @@ class EpisodeController extends Controller
                 'thumbnail' => 'nullable|string',
                 'release_date' => 'nullable|date',
                 'is_active' => 'nullable|boolean',
-                'status' => 'nullable|in:Draft,Published,Scheduled'
+                'status' => 'nullable|in:Draft,Published,Scheduled',
+                'isPremium' => 'nullable|boolean'
             ]);
 
             $episode->update($validated);
