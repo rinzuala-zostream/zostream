@@ -166,7 +166,8 @@ class OTPController extends Controller
                 'otp' => 'required|string',
                 'device_name' => 'nullable|string',
                 'device_id' => 'nullable|string',
-                'device_type' => 'nullable|string'
+                'device_type' => 'nullable|string',
+                'fcm_token' => 'nullable|string',
             ]);
 
             $userId = $request->user_id;
@@ -174,6 +175,7 @@ class OTPController extends Controller
             $deviceName = $request->device_name ?? 'Unknown Device';
             $deviceId = $request->device_id;
             $deviceType = $request->device_type ?? 'mobile';
+            $fcmToken = $request->fcm_token;
 
             if ($otp !== '326416') {
 
@@ -309,6 +311,8 @@ class OTPController extends Controller
                 }
 
             }
+
+            UserModel::where('uid', $user->uid)->update(['token' => $fcmToken]);
 
             // Return response
             return response()->json([
