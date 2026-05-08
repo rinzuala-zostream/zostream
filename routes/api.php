@@ -365,6 +365,16 @@ Route::prefix('v3.0')->group(function () {
         Route::delete('/{id}', [\App\Http\Controllers\New\EpisodeController::class, 'destroy']);
     });
 
+    Route::prefix('customer-support')->group(function () {
+        Route::get('/', [\App\Http\Controllers\New\CustomerSupportController::class, 'index']);
+        Route::post('/', [\App\Http\Controllers\New\CustomerSupportController::class, 'store']);
+        Route::get('/{id}', [\App\Http\Controllers\New\CustomerSupportController::class, 'show']);
+        Route::post('/{id}/reply', [\App\Http\Controllers\New\CustomerSupportController::class, 'reply']);
+        Route::put('/{id}/status', [\App\Http\Controllers\New\CustomerSupportController::class, 'updateStatus']);
+        Route::post('/admin/device', [\App\Http\Controllers\New\CustomerSupportController::class, 'registerAdminDevice']);
+        Route::delete('/admin/device', [\App\Http\Controllers\New\CustomerSupportController::class, 'deleteAdminDevice']);
+    });
+
     Route::prefix('episodes')->group(function () {
 
         Route::post('/url', [\App\Http\Controllers\New\EpisodeController::class, 'addUrl']);
