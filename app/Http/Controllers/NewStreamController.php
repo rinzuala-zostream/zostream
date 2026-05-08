@@ -460,8 +460,6 @@ class NewStreamController extends Controller
 
         if ($requiresSubscription) {
             $streamQuery->where('subscription_id', $subscriptionId);
-        } else {
-            $streamQuery->whereNull('subscription_id');
         }
 
         $stream = $streamQuery->first();
