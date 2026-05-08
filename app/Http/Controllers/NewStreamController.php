@@ -412,11 +412,11 @@ class NewStreamController extends Controller
         }
 
         // 1️⃣ Device check
-        $deviceQuery = Devices::where('device_token', $deviceToken)
-            ->where('status', 'active');
+        $deviceQuery = Devices::where('device_token', $deviceToken);
 
         if ($requiresSubscription) {
-            $deviceQuery->where('subscription_id', $subscriptionId);
+            $deviceQuery->where('subscription_id', $subscriptionId)
+                ->where('status', 'active');
         }
 
         $device = $deviceQuery->first();
@@ -440,20 +440,29 @@ class NewStreamController extends Controller
 
         // 🔹 Subscription check ONLY for premium
 
-        $subscription = Subscription::find($subscriptionId);
-        if (!$subscription && $requiresSubscription) {
-            return response()->json([
-                'status' => 'error',
-                'title' => 'Subscription Unavailable',
-                'message' => 'We could not find an active subscription for your account. Please check your subscription status.',
-                'device' => $device
-            ], 404);
+        if ($requiresSubscription) {
+            $subscription = Subscription::find($subscriptionId);
+
+            if (!$subscription) {
+                return response()->json([
+                    'status' => 'error',
+                    'title' => 'Subscription Unavailable',
+                    'message' => 'We could not find an active subscription for your account. Please check your subscription status.',
+                    'device' => $device
+                ], 404);
+            }
         }
 
         // 🔹 Stream check
         $streamQuery = ActiveStream::where('device_id', $device->id)
             ->where('stream_token', $streamToken)
             ->where('status', 'active');
+
+        if ($requiresSubscription) {
+            $streamQuery->where('subscription_id', $subscriptionId);
+        } else {
+            $streamQuery->whereNull('subscription_id');
+        }
 
         $stream = $streamQuery->first();
 
