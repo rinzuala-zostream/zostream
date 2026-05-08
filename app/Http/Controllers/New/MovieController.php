@@ -984,6 +984,9 @@ class MovieController extends Controller
                 'sort_dir' => 'nullable|string|in:asc,desc',
             ]);
 
+            $userId = $request->header('X-User-Id') ?? $request->query('user_id', '');
+            $onlyMizoUser = empty($userId) || $userId === 'AW7ovVnTdgWuvE1Uke7QTQ5OEQt1';
+
             $category = strtolower(trim((string) ($validated['category'] ?? '')));
             $genre = trim((string) ($validated['genre'] ?? ''));
             $includeAgeRestricted = ($request->query('age_restriction') ?? 'false') === 'true';
@@ -1009,6 +1012,10 @@ class MovieController extends Controller
             $query = MovieModel::query()
                 ->where('isEnable', $request->filled('is_enable') ? (int) $request->boolean('is_enable') : 1)
                 ->where('status', $validated['status'] ?? 'Published');
+
+            if ($onlyMizoUser) {
+                $query->where('isMizo', 1);
+            }
 
             if ($isKidsMode) {
                 $query->where('isChildMode', 1)
