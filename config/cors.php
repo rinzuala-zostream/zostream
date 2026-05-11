@@ -13,6 +13,7 @@ return [
         'https://tv.zostream.in',
         'http://localhost:3000',
         'https://web.zostream.in',
+        'http://localhost:5173',
     ],
 
     'allowed_origins_patterns' => [],
