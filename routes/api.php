@@ -204,8 +204,8 @@ Route::prefix('quiz')->group(function () {
 });
 
 // Logging
-Route::post('/watch/log-duration', [WatchStatsController::class, 'logDuration']);
-Route::post('/watch/log-bandwidth', [WatchStatsController::class, 'logBandwidth']);
+//Route::post('/watch/log-duration', [WatchStatsController::class, 'logDuration']);
+//Route::post('/watch/log-bandwidth', [WatchStatsController::class, 'logBandwidth']);
 
 // Summary stats
 Route::get('/watch/{user_id}/stats', [WatchStatsController::class, 'stats']);
