@@ -17,6 +17,7 @@ use App\Http\Controllers\MovieController;
 use App\Http\Controllers\MovieSearchController;
 use App\Http\Controllers\New\AdminWhatsAppController;
 use App\Http\Controllers\New\BannerController;
+use App\Http\Controllers\New\DashboardController;
 use App\Http\Controllers\New\DeviceController;
 use App\Http\Controllers\New\OfflineController;
 use App\Http\Controllers\New\PaymentController;
@@ -312,6 +313,8 @@ Route::prefix('v3.0')->group(function () {
         Route::post('/find', [\App\Http\Controllers\New\UserController::class, 'find']);
 
     });
+
+    Route::get('/dashboard', [DashboardController::class, 'index']);
 
     Route::prefix('qr')->group(function () {
         Route::post('/qcreate', [QRSessionController::class, 'create']);
