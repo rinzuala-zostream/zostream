@@ -20,8 +20,6 @@ class WatchPositionController extends Controller
 
     public function save(Request $request)
     {
-    
-        // Validate input
         $request->validate([
             'movie_id' => 'required|string',
             'position' => 'required|integer',
@@ -31,73 +29,27 @@ class WatchPositionController extends Controller
         ]);
 
         try {
-
             $movieId = $request->input('movie_id');
-            $position = $request->input('position');
             $userId = $request->input('user_id');
-            $movieType = $request->input('movie_type');
-            $duration = $request->input('duration');
-            $now = now();
-            $hasCreatedAt = Schema::hasColumn('watch_position', 'created_at');
-            $hasUpdatedAt = Schema::hasColumn('watch_position', 'updated_at');
 
-            // Check if the record exists
-            $existing = WatchHistoryModel::where('movie_id', $movieId)
-                ->where('user_id', $userId)
-                ->lockForUpdate()
-                ->first();
-
-            if ($existing) {
-                // Update existing
-                $payload = [
-                    'position' => $position,
-                    'movie_type' => $movieType,
-                    'duration' => $duration,
-                ];
-
-                if ($hasUpdatedAt) {
-                    $payload['updated_at'] = $now;
-                }
-
-                WatchHistoryModel::where('movie_id', $movieId)
-                    ->where('user_id', $userId)
-                    ->update($payload);
-                    
-            } else {
-                // Insert new
-                $payload = [
-                    'movie_id' => $movieId,
-                    'position' => $position,
-                    'user_id' => $userId,
-                    'duration' => $duration,
-                    'movie_type' => $movieType,
-                ];
-
-                if ($hasCreatedAt) {
-                    $payload['created_at'] = $now;
-                }
-
-                if ($hasUpdatedAt) {
-                    $payload['updated_at'] = $now;
-                }
-
-                WatchHistoryModel::insert($payload);
-            }
+            // lockForUpdate() paih la, updateOrCreate hmang zawk rawh
+            $watchHistory = WatchHistoryModel::updateOrCreate(
+                ['movie_id' => $movieId, 'user_id' => $userId], // Hei hi zawnna (WHERE)
+                [
+                    'position' => $request->input('position'),
+                    'movie_type' => $request->input('movie_type'),
+                    'duration' => $request->input('duration'),
+                    // updated_at hi Laravel-in a tifel vek tawh ang
+                ]
+            );
 
             return response()->json([
                 'status' => 'success',
                 'message' => 'Record saved successfully',
-                'data' => [
-                    'movie_id' => $movieId,
-                    'position' => $position,
-                    'user_id' => $userId,
-                    'movie_type' => $movieType,
-                    'duration' => $duration,
-                ],
+                'data' => $watchHistory
             ]);
 
         } catch (\Exception $e) {
-
             return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
         }
     }
@@ -167,8 +119,8 @@ class WatchPositionController extends Controller
             ->orderByDesc($orderColumn)
             ->get();
 
-        $movieRows = $watchData->filter(fn ($item) => $this->normalizeMovieType($item->movie_type) !== 'episode');
-        $episodeRows = $watchData->filter(fn ($item) => $this->normalizeMovieType($item->movie_type) === 'episode');
+        $movieRows = $watchData->filter(fn($item) => $this->normalizeMovieType($item->movie_type) !== 'episode');
+        $episodeRows = $watchData->filter(fn($item) => $this->normalizeMovieType($item->movie_type) === 'episode');
 
         $movieIds = $movieRows->pluck('movie_id')->filter()->unique()->values();
         $episodeIds = $episodeRows->pluck('movie_id')->filter()->unique()->values();
@@ -178,8 +130,8 @@ class WatchPositionController extends Controller
         $allMovieIds = $movieIds->merge($episodes->pluck('season.movie_id'))->filter()->unique()->values();
 
         $movies = MovieModel::where(function ($query) use ($allMovieIds) {
-                $query->whereIn('id', $allMovieIds)->orWhereIn('num', $allMovieIds);
-            })->get();
+            $query->whereIn('id', $allMovieIds)->orWhereIn('num', $allMovieIds);
+        })->get();
 
         $moviesByKey = $this->buildMovieKeyMap($movies);
 
@@ -246,7 +198,7 @@ class WatchPositionController extends Controller
 
     public function getWatchPosition(Request $request)
     {
-    
+
         $request->validate([
             'userId' => 'required|string',
             'movieId' => 'required|string',
