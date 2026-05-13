@@ -357,6 +357,7 @@ class UserController extends Controller
 
             $editDate = now('Asia/Kolkata')->format('M d Y, h:i:s A');
             $data['edit_date'] = $editDate;
+            $data['isAccountComplete'] = true;
 
             $user->fill($data);
 
