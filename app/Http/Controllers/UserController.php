@@ -299,8 +299,10 @@ class UserController extends Controller
     public function updateProfile(Request $request)
     {
         try {
-            $payload = $request->input('body');
-            $payload = is_array($payload) ? $payload : $request->all();
+            $body = $request->input('body');
+            $body = is_array($body) ? $body : [];
+            $payload = array_merge($request->all(), $body);
+            unset($payload['body']);
 
             $uid = $payload['uid'] ?? null;
 
