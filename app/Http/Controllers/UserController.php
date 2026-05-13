@@ -299,8 +299,10 @@ class UserController extends Controller
     public function updateProfile(Request $request)
     {
         try {
-            // Prefer uid from root or inside body
-            $uid = $request->input('uid') ?? ($request->body['uid'] ?? null);
+            $payload = $request->input('body');
+            $payload = is_array($payload) ? $payload : $request->all();
+
+            $uid = $payload['uid'] ?? null;
 
             if (!$uid) {
                 return response()->json([
@@ -309,20 +311,38 @@ class UserController extends Controller
                 ], 400);
             }
 
-            // Determine data source: body{} or root fields
-            $data = $request->has('body') && is_array($request->body)
-                ? $request->body
-                : $request->all();
+            $validator = validator($payload, [
+                'uid' => 'required|string',
+                'name' => 'sometimes|nullable|string|max:255',
+                'mail' => 'sometimes|nullable|email|max:255',
+                'call' => 'sometimes|nullable|string|max:50',
+                'dob' => 'sometimes|nullable|date',
+                'img' => 'sometimes|nullable|string',
+                'khua' => 'sometimes|nullable|string|max:255',
+                'veng' => 'sometimes|nullable|string|max:255',
+            ]);
 
-            // Remove uid from data (not updatable)
-            unset($data['uid']);
+            if ($validator->fails()) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Validation failed',
+                    'errors' => $validator->errors(),
+                ], 422);
+            }
 
-            // Stop if body is empty or no fields to update
+            $data = collect($validator->validated())
+                ->only(['name', 'mail', 'call', 'dob', 'img', 'khua', 'veng'])
+                ->toArray();
+
+            if (array_key_exists('dob', $data) && !empty($data['dob'])) {
+                $data['dob'] = Carbon::parse($data['dob'])->format('F d, Y');
+            }
+
             if (empty($data)) {
                 return response()->json([
                     'status' => 'no_change',
                     'message' => 'No fields provided to update'
-                ]);
+                ], 200);
             }
 
             $user = UserModel::where('uid', $uid)->first();
@@ -336,25 +356,38 @@ class UserController extends Controller
             $editDate = now('Asia/Kolkata')->format('M d Y, h:i:s A');
             $data['edit_date'] = $editDate;
 
-            // Fill and save if there are any changes
             $user->fill($data);
 
             if ($user->isDirty()) {
                 $user->save();
+                $changed = array_values(array_diff(array_keys($user->getChanges()), ['edit_date']));
+
                 return response()->json([
                     'status' => 'success',
                     'message' => 'Profile updated successfully',
-                    'edit_date' => $editDate,
-                    'changed' => array_keys($user->getChanges()),
-                    'data' => $user
-                ]);
+                    'data' => [
+                        'uid' => $user->uid,
+                        'name' => $user->name,
+                        'mail' => $user->mail,
+                        'call' => $user->call,
+                        'dob' => $user->dob ?: '0',
+                        'img' => $user->img,
+                        'khua' => $user->khua,
+                        'veng' => $user->veng,
+                        'edit_date' => $editDate,
+                    ],
+                    'changed' => $changed,
+                ], 200);
             }
 
             return response()->json([
                 'status' => 'no_change',
                 'message' => 'Nothing changed',
-                'edit_date' => $editDate
-            ]);
+                'data' => [
+                    'uid' => $user->uid,
+                    'edit_date' => $user->edit_date,
+                ],
+            ], 200);
 
         } catch (\Throwable $e) {
             return response()->json([
