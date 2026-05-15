@@ -320,6 +320,8 @@ class UserController extends Controller
                 'call' => 'sometimes|nullable|string|max:50',
                 'dob' => 'sometimes|nullable|date',
                 'img' => 'sometimes|nullable|string',
+                'auth_phone' => 'sometimes|nullable|string|max:50',
+                'is_auth_phone_active' => 'sometimes|nullable|boolean',
                 'khua' => 'sometimes|nullable|string|max:255',
                 'veng' => 'sometimes|nullable|string|max:255',
             ]);
@@ -333,7 +335,7 @@ class UserController extends Controller
             }
 
             $data = collect($validator->validated())
-                ->only(['name', 'mail', 'call', 'dob', 'img', 'khua', 'veng'])
+                ->only(['name', 'mail', 'call', 'dob', 'img', 'auth_phone', 'is_auth_phone_active', 'khua', 'veng'])
                 ->toArray();
 
             if (array_key_exists('dob', $data) && !empty($data['dob'])) {
@@ -375,6 +377,8 @@ class UserController extends Controller
                         'call' => $user->call,
                         'dob' => $user->dob ?: '0',
                         'img' => $user->img,
+                        'auth_phone' => $user->auth_phone,
+                        'is_auth_phone_active' => $user->is_auth_phone_active,
                         'khua' => $user->khua,
                         'veng' => $user->veng,
                         'edit_date' => $editDate,
