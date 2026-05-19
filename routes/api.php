@@ -222,7 +222,7 @@ Route::prefix('v3.0')->group(function () {
 
     Route::post('/request-otp', [OTPController::class, 'send']);
     Route::post('/verify-otp', [OTPController::class, 'verify']);
-    Route::delete('/delete/account', [OTPController::class, 'deleteAccount'])->middleware('auth.token');
+    Route::delete('/delete/account', [OTPController::class, 'deleteAccount']);
     Route::post('/token/refresh', [TokenController::class, 'refresh']);
     Route::post('/token/revoke', [TokenController::class, 'revoke']);
     Route::post('/admin/whatsapp/request-otp', [AdminWhatsAppController::class, 'requestOtp']);
