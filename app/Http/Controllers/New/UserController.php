@@ -192,23 +192,17 @@ class UserController extends Controller
             $request->validate([
                 'uid' => 'nullable|string|max:180',
                 'mail' => 'nullable|string|max:180',
-                'email' => 'nullable|string|max:180',
+                
             ]);
 
-            $uid = $this->cleanSearchTerm($request->input('uid', ''));
-            $mail = $this->cleanSearchTerm($request->input('mail', $request->input('email', '')));
+            $uid = $request->query('uid', '');
+            $mail = $request->query('mail', '');
 
-            if ($uid === '' && $mail === '') {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'UID or email is required'
-                ], 422);
-            }
-
+        
             $user = UserModel::query()
                 ->where(function ($query) use ($uid, $mail) {
                     if ($uid !== '') {
-                        $query->orWhere('uid', $uid);
+                        $query->where('uid', $uid);
                     }
 
                     if ($mail !== '') {
