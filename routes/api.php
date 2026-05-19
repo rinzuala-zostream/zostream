@@ -305,13 +305,14 @@ Route::prefix('v3.0')->group(function () {
     Route::delete('/seasons/{id}', [SeasonController::class, 'destroy']);
 
     Route::prefix('users')->group(function () {
+        Route::get('/find', [\App\Http\Controllers\New\UserController::class, 'find']);
         Route::get('/', [\App\Http\Controllers\New\UserController::class, 'index']);
         Route::get('/search', [\App\Http\Controllers\New\UserController::class, 'search']);
         Route::get('/{id}', [\App\Http\Controllers\New\UserController::class, 'show']);
         Route::post('/', [\App\Http\Controllers\New\UserController::class, 'store']);
         Route::put('/{id}', [\App\Http\Controllers\New\UserController::class, 'update']);
         Route::delete('/{id}', [\App\Http\Controllers\New\UserController::class, 'destroy']);
-        Route::get('/find', [\App\Http\Controllers\New\UserController::class, 'find']);
+        
 
     });
 
