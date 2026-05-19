@@ -13,6 +13,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Exception;
 use Illuminate\Support\Facades\Redis;
 
@@ -381,9 +382,13 @@ class OTPController extends Controller
                 OTPRequestModel::where('user_id', $authUserId)->delete();
                 SessionTokenModel::where('user_id', $authUserId)->delete();
 
-                Devices::where('user_id', $authUserId)
-                    ->orWhere('shared_to_user_id', $authUserId)
-                    ->delete();
+                $deviceQuery = Devices::where('user_id', $authUserId);
+
+                if (Schema::hasColumn('n_devices', 'shared_to_user_id')) {
+                    $deviceQuery->orWhere('shared_to_user_id', $authUserId);
+                }
+
+                $deviceQuery->delete();
 
                 Subscription::where('user_id', $authUserId)->delete();
                 $user->delete();
