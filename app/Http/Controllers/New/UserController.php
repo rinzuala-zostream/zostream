@@ -197,8 +197,7 @@ class UserController extends Controller
 
             $uid = $request->query('uid', '');
             $mail = $request->query('mail', '');
-
-        
+            
             $user = UserModel::query()
                 ->where(function ($query) use ($uid, $mail) {
                     if ($uid !== '') {
@@ -206,7 +205,7 @@ class UserController extends Controller
                     }
 
                     if ($mail !== '') {
-                        $query->orWhere('mail', $mail);
+                        $query->where('mail', $mail);
                     }
                 })
                 ->first();
