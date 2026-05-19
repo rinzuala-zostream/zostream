@@ -311,7 +311,7 @@ Route::prefix('v3.0')->group(function () {
         Route::post('/', [\App\Http\Controllers\New\UserController::class, 'store']);
         Route::put('/{id}', [\App\Http\Controllers\New\UserController::class, 'update']);
         Route::delete('/{id}', [\App\Http\Controllers\New\UserController::class, 'destroy']);
-        Route::post('/find', [\App\Http\Controllers\New\UserController::class, 'find']);
+        Route::get('/find', [\App\Http\Controllers\New\UserController::class, 'find']);
 
     });
 
