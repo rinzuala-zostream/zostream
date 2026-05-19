@@ -408,6 +408,7 @@ class OTPController extends Controller
             return response()->json([
                 'status' => 'error',
                 'message' => 'Something went wrong while deleting account',
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
