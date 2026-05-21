@@ -50,6 +50,7 @@ use App\Http\Controllers\WatchPositionController;
 use App\Http\Controllers\WatchStatsController;
 use App\Http\Controllers\WhatsAppController;
 use App\Http\Controllers\WistListController;
+use App\Http\Controllers\ZostreamIspController;
 use App\Http\Controllers\ZonetController;
 use App\Http\Controllers\ZonetOperatorController;
 use Illuminate\Http\Request;
@@ -305,7 +306,6 @@ Route::prefix('v3.0')->group(function () {
     Route::delete('/seasons/{id}', [SeasonController::class, 'destroy']);
 
     Route::prefix('users')->group(function () {
-        Route::get('/find', [\App\Http\Controllers\New\UserController::class, 'find']);
         Route::get('/', [\App\Http\Controllers\New\UserController::class, 'index']);
         Route::get('/search', [\App\Http\Controllers\New\UserController::class, 'search']);
         Route::get('/{id}', [\App\Http\Controllers\New\UserController::class, 'show']);
@@ -398,5 +398,7 @@ Route::prefix('v3.0')->group(function () {
     Route::get('/watch-history', [WatchPositionController::class, 'getWatchContinue']);
 
     Route::post('/send-whatsapp', [WhatsAppController::class, 'send']);
+
+    Route::post('/zostream-isp/subscribe', [ZostreamIspController::class, 'subscribeThlaOne']);
 
 });
