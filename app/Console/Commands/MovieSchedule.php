@@ -91,7 +91,12 @@ class MovieSchedule extends Command
             'key' => $key
         ]);
 
-        $this->fCMNotificationController->send($fakeRequest);
-        $this->info("Notification sent: {$title}"); 
+        try {
+            $result = $this->fCMNotificationController->send($fakeRequest);
+            $status = is_array($result) ? ($result['status'] ?? 'unknown') : 'unknown';
+            $this->info("Notification sent: {$title} (status: {$status})");
+        } catch (\Exception $e) {
+            $this->error("Notification failed: {$title} - {$e->getMessage()}");
+        }
     }
 }

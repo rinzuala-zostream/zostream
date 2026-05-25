@@ -96,6 +96,8 @@ class FCMNotificationController extends Controller
                 'grant_type' => 'urn:ietf:params:oauth:grant-type:jwt-bearer',
                 'assertion'  => $jwt,
             ],
+            'timeout' => 15,
+            'connect_timeout' => 5,
         ]);
 
         $data = json_decode($response->getBody()->getContents(), true);
@@ -168,6 +170,8 @@ class FCMNotificationController extends Controller
                     'Content-Type'  => 'application/json',
                 ],
                 'body' => json_encode($message),
+                'timeout' => 15,
+                'connect_timeout' => 5,
             ]);
 
             return [
