@@ -6,6 +6,7 @@ use App\Http\Controllers\AlsoLikeController;
 use App\Http\Controllers\AxinomLicense;
 use App\Http\Controllers\BirthdayMailController;
 use App\Http\Controllers\CashFreeController;
+use App\Http\Controllers\Channel\ChannelController;
 use App\Http\Controllers\EpisodeController;
 use App\Http\Controllers\CalculatePlan;
 use App\Http\Controllers\CheckDeviceAvailable;
@@ -216,6 +217,43 @@ Route::get('/stats/top', [WatchStatsController::class, 'topStats']);
 Route::post('/send-payment-mail', [PaymentMailController::class, 'sendPaymentSuccess']);
 
 Route::post('/send-birthday-mail', [BirthdayMailController::class, 'send']);
+
+Route::prefix('v3.0/channels')->group(function () {
+    Route::get('/', [ChannelController::class, 'index']);
+    Route::post('/', [ChannelController::class, 'store']);
+    Route::get('/{channelId}', [ChannelController::class, 'show']);
+    Route::put('/{channelId}', [ChannelController::class, 'update']);
+    Route::delete('/{channelId}', [ChannelController::class, 'destroy']);
+
+    Route::get('/{channelId}/plans', [ChannelController::class, 'plans']);
+    Route::post('/{channelId}/plans', [ChannelController::class, 'storePlan']);
+    Route::get('/plans/{planId}', [ChannelController::class, 'showPlan']);
+    Route::put('/plans/{planId}', [ChannelController::class, 'updatePlan']);
+    Route::delete('/plans/{planId}', [ChannelController::class, 'destroyPlan']);
+
+    Route::get('/{channelId}/subscribers', [ChannelController::class, 'subscribers']);
+    Route::post('/{channelId}/subscribe', [ChannelController::class, 'subscribe']);
+    Route::delete('/{channelId}/subscribers/{userId}', [ChannelController::class, 'cancelSubscription']);
+    Route::get('/{channelId}/subscription-history', [ChannelController::class, 'subscriptionHistory']);
+
+    Route::get('/{channelId}/contents', [ChannelController::class, 'contents']);
+    Route::post('/{channelId}/contents', [ChannelController::class, 'storeContent']);
+    Route::get('/contents/{contentId}', [ChannelController::class, 'showContent']);
+    Route::put('/contents/{contentId}', [ChannelController::class, 'updateContent']);
+    Route::delete('/contents/{contentId}', [ChannelController::class, 'destroyContent']);
+
+    Route::post('/contents/{contentId}/media', [ChannelController::class, 'storeMedia']);
+    Route::put('/media/{mediaId}', [ChannelController::class, 'updateMedia']);
+    Route::delete('/media/{mediaId}', [ChannelController::class, 'destroyMedia']);
+
+    Route::post('/contents/{contentId}/ppv', [ChannelController::class, 'upsertPpv']);
+    Route::put('/contents/{contentId}/ppv', [ChannelController::class, 'upsertPpv']);
+    Route::delete('/contents/{contentId}/ppv', [ChannelController::class, 'destroyPpv']);
+
+    Route::post('/contents/{contentId}/rent', [ChannelController::class, 'rentContent']);
+    Route::delete('/contents/{contentId}/rentals/{userId}', [ChannelController::class, 'cancelRental']);
+    Route::get('/contents/{contentId}/rental-history', [ChannelController::class, 'rentalHistory']);
+});
 
 
 

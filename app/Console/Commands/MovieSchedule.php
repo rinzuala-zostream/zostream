@@ -7,6 +7,7 @@ use App\Models\EpisodeModel;
 use App\Models\MovieModel;
 use Illuminate\Http\Request;
 use Illuminate\Console\Command;
+use Illuminate\Support\Carbon;
 
 class MovieSchedule extends Command
 {
@@ -24,15 +25,19 @@ class MovieSchedule extends Command
 
     public function handle()
     {
-        $this->handleMovies();
-        $this->handleEpisodes();
+        $movies = $this->handleMovies();
+        $episodes = $this->handleEpisodes();
+
+        $this->sendScheduleNotification($movies, $episodes);
     }
 
     protected function handleMovies()
     {
         $movies = MovieModel::where('status', 'Scheduled')
-            ->whereRaw("STR_TO_DATE(create_date, '%M %e, %Y') <= CURDATE()")
-            ->get();
+            ->orderBy('num')
+            ->get()
+            ->filter(fn ($movie) => $this->isDue($movie->create_date))
+            ->values();
 
 
         if ($movies->isEmpty()) {
@@ -40,25 +45,20 @@ class MovieSchedule extends Command
         } else {
             MovieModel::whereIn('id', $movies->pluck('id'))->update(['status' => 'Published']);
             $this->info("Published {$movies->count()} movies.");
-
-            foreach ($movies as $movie) {
-                $this->sendNotification(
-                    title: $movie->title,
-                    body: 'Streaming now on Zo Stream',
-                    image: $movie->cover_img ?? '',
-                    key: $movie->id ?? '',
-                );
-            }
         }
+
+        return $movies;
     }
 
     protected function handleEpisodes()
     {
         // Load scheduled episodes with their related movie
         $episodes = EpisodeModel::where('status', 'Scheduled')
-            ->whereRaw("STR_TO_DATE(create_date, '%M %e, %Y') <= CURDATE()")
             ->with('movie')
-            ->get();
+            ->orderBy('num')
+            ->get()
+            ->filter(fn ($episode) => $this->isDue($episode->create_date))
+            ->values();
 
 
         if ($episodes->isEmpty()) {
@@ -66,20 +66,66 @@ class MovieSchedule extends Command
         } else {
             EpisodeModel::whereIn('id', $episodes->pluck('id'))->update(['status' => 'Published']);
             $this->info("Published {$episodes->count()} episodes.");
-
-            foreach ($episodes as $episode) {
-                $movieTitle = $episode->movie->title ?? 'Unknown Movie';
-                $movieImage = $episode->movie->cover_img ?? '';
-                $movieKey = $episode->movie->id ?? '';
-
-                $this->sendNotification(
-                    title: "{$movieTitle} {$episode->txt}",
-                    body: 'New episode streaming on Zo Stream',
-                    image: $movieImage,
-                    key: $movieKey
-                );
-            }
         }
+
+        return $episodes;
+    }
+
+    protected function sendScheduleNotification($movies, $episodes): void
+    {
+        $movieCount = $movies->count();
+        $episodeCount = $episodes->count();
+
+        if ($movieCount + $episodeCount === 0) {
+            return;
+        }
+
+        if ($movieCount === 1 && $episodeCount === 0) {
+            $movie = $movies->first();
+
+            $this->sendNotification(
+                title: $movie->title,
+                body: 'Streaming now on Zo Stream',
+                image: $movie->cover_img ?? '',
+                key: $movie->id ?? '',
+            );
+
+            return;
+        }
+
+        if ($movieCount === 0 && $episodeCount === 1) {
+            $episode = $episodes->first();
+            $movieTitle = $episode->movie->title ?? 'Unknown Movie';
+
+            $this->sendNotification(
+                title: "{$movieTitle} {$episode->txt}",
+                body: 'New episode streaming on Zo Stream',
+                image: $episode->movie?->cover_img ?? '',
+                key: $episode->movie?->id ?? '',
+            );
+
+            return;
+        }
+
+        $parts = [];
+
+        if ($movieCount > 0) {
+            $parts[] = "{$movieCount} new " . ($movieCount === 1 ? 'movie' : 'movies');
+        }
+
+        if ($episodeCount > 0) {
+            $parts[] = "{$episodeCount} new " . ($episodeCount === 1 ? 'episode' : 'episodes');
+        }
+
+        $firstMovie = $movies->first();
+        $firstEpisode = $episodes->first();
+
+        $this->sendNotification(
+            title: 'New on Zo Stream',
+            body: implode(' and ', $parts) . ' streaming now',
+            image: $firstMovie?->cover_img ?? $firstEpisode?->movie?->cover_img ?? '',
+            key: $firstMovie?->id ?? $firstEpisode?->movie?->id ?? '',
+        );
     }
 
     protected function sendNotification(string $title, string $body, string $image, string $key)
@@ -97,6 +143,20 @@ class MovieSchedule extends Command
             $this->info("Notification sent: {$title} (status: {$status})");
         } catch (\Exception $e) {
             $this->error("Notification failed: {$title} - {$e->getMessage()}");
+        }
+    }
+
+    private function isDue(?string $createDate): bool
+    {
+        if (empty($createDate)) {
+            return false;
+        }
+
+        try {
+            return Carbon::parse($createDate)->startOfDay()->lte(today());
+        } catch (\Throwable) {
+            $this->warn("Invalid create_date skipped: {$createDate}");
+            return false;
         }
     }
 }

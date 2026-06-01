@@ -7,6 +7,9 @@ use GuzzleHttp\Client;
 
 class FCMNotificationController extends Controller
 {
+    private static ?string $cachedAccessToken = null;
+    private static int $cachedAccessTokenExpiresAt = 0;
+
     public function send(Request $request)
     {
         // 📨 Inputs
@@ -71,6 +74,10 @@ class FCMNotificationController extends Controller
 
     private function getAccessToken($serviceAccountData)
     {
+        if (self::$cachedAccessToken && self::$cachedAccessTokenExpiresAt > time()) {
+            return self::$cachedAccessToken;
+        }
+
         $client = new Client();
         $url = "https://oauth2.googleapis.com/token";
 
@@ -101,7 +108,10 @@ class FCMNotificationController extends Controller
         ]);
 
         $data = json_decode($response->getBody()->getContents(), true);
-        return $data['access_token'];
+        self::$cachedAccessToken = $data['access_token'];
+        self::$cachedAccessTokenExpiresAt = time() + 3300;
+
+        return self::$cachedAccessToken;
     }
 
     private function sendNotification($accessToken, $title, $body, $image, $token = null, $topic = 'all', $key = null, $data = [])
