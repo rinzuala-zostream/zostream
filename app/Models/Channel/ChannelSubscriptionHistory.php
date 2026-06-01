@@ -38,7 +38,7 @@ class ChannelSubscriptionHistory extends Model
 
     public function user()
     {
-        return $this->belongsTo(UserModel::class, 'user_id', 'num');
+        return $this->belongsTo(UserModel::class, 'user_id', 'uid');
     }
 
     public function plan()

@@ -10,7 +10,7 @@ return new class extends Migration
     {
         Schema::create('channels', function (Blueprint $table) {
             $table->id();
-            $table->unsignedBigInteger('user_id');
+            $table->string('user_id');
             $table->string('name');
             $table->string('slug')->unique();
             $table->text('description')->nullable();
@@ -20,7 +20,7 @@ return new class extends Migration
             $table->enum('status', ['pending', 'active', 'suspended', 'deleted'])->default('pending');
             $table->timestamps();
 
-            $table->foreign('user_id')->references('num')->on('user');
+            $table->foreign('user_id')->references('uid')->on('user');
         });
 
         Schema::create('channel_subscription_plans', function (Blueprint $table) {
@@ -40,7 +40,7 @@ return new class extends Migration
         Schema::create('channel_subscribers', function (Blueprint $table) {
             $table->id();
             $table->foreignId('channel_id')->constrained('channels');
-            $table->unsignedBigInteger('user_id');
+            $table->string('user_id');
             $table->foreignId('plan_id')->constrained('channel_subscription_plans');
             $table->dateTime('subscribed_at')->nullable();
             $table->dateTime('expires_at')->nullable();
@@ -49,13 +49,13 @@ return new class extends Migration
 
             $table->unique(['channel_id', 'user_id']);
             $table->index(['user_id', 'status']);
-            $table->foreign('user_id')->references('num')->on('user');
+            $table->foreign('user_id')->references('uid')->on('user');
         });
 
         Schema::create('channel_subscription_history', function (Blueprint $table) {
             $table->id();
             $table->foreignId('channel_id')->constrained('channels');
-            $table->unsignedBigInteger('user_id');
+            $table->string('user_id');
             $table->foreignId('plan_id')->constrained('channel_subscription_plans');
             $table->decimal('amount', 10, 2)->nullable();
             $table->string('transaction_id')->nullable();
@@ -67,7 +67,7 @@ return new class extends Migration
 
             $table->index(['channel_id', 'user_id']);
             $table->index('transaction_id');
-            $table->foreign('user_id')->references('num')->on('user');
+            $table->foreign('user_id')->references('uid')->on('user');
         });
 
         Schema::create('channel_contents', function (Blueprint $table) {
@@ -109,7 +109,7 @@ return new class extends Migration
 
         Schema::create('channel_content_rentals', function (Blueprint $table) {
             $table->id();
-            $table->unsignedBigInteger('user_id');
+            $table->string('user_id');
             $table->foreignId('content_id')->constrained('channel_contents');
             $table->dateTime('rented_at')->nullable();
             $table->dateTime('expires_at')->nullable();
@@ -118,12 +118,12 @@ return new class extends Migration
 
             $table->unique(['user_id', 'content_id']);
             $table->index(['content_id', 'status']);
-            $table->foreign('user_id')->references('num')->on('user');
+            $table->foreign('user_id')->references('uid')->on('user');
         });
 
         Schema::create('channel_content_rental_history', function (Blueprint $table) {
             $table->id();
-            $table->unsignedBigInteger('user_id');
+            $table->string('user_id');
             $table->foreignId('content_id')->constrained('channel_contents');
             $table->decimal('amount', 10, 2)->nullable();
             $table->string('transaction_id')->nullable();
@@ -135,7 +135,7 @@ return new class extends Migration
 
             $table->index(['user_id', 'content_id']);
             $table->index('transaction_id');
-            $table->foreign('user_id')->references('num')->on('user');
+            $table->foreign('user_id')->references('uid')->on('user');
         });
     }
 

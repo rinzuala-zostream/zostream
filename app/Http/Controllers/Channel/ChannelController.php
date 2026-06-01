@@ -226,7 +226,7 @@ class ChannelController extends Controller
             }
 
             $validated = $request->validate([
-                'user_id' => ['required', 'integer', 'exists:user,num'],
+                'user_id' => ['required', 'string', 'exists:user,uid'],
                 'plan_id' => ['required', 'integer', 'exists:channel_subscription_plans,id'],
                 'transaction_id' => ['nullable', 'string', 'max:255'],
                 'payment_method' => ['nullable', 'string', 'max:50'],
@@ -496,7 +496,7 @@ class ChannelController extends Controller
             }
 
             $validated = $request->validate([
-                'user_id' => ['required', 'integer', 'exists:user,num'],
+                'user_id' => ['required', 'string', 'exists:user,uid'],
                 'transaction_id' => ['nullable', 'string', 'max:255'],
                 'payment_method' => ['nullable', 'string', 'max:50'],
                 'status' => ['nullable', Rule::in(['pending', 'success', 'failed', 'refunded'])],
@@ -574,7 +574,7 @@ class ChannelController extends Controller
         $required = $ignoreId ? 'sometimes' : 'required';
 
         return [
-            'user_id' => [$required, 'integer', 'exists:user,num'],
+            'user_id' => [$required, 'string', 'exists:user,uid'],
             'name' => [$required, 'string', 'max:255'],
             'slug' => ['nullable', 'string', 'max:255', Rule::unique('channels', 'slug')->ignore($ignoreId)],
             'description' => ['nullable', 'string'],
