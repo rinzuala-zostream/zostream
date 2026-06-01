@@ -65,7 +65,6 @@ Route::get('/user', function (Request $request) {
 Route::post('/register', [RegisterController::class, 'store']);
 
 Route::prefix('device')->group(function () {
-
     Route::get('/store', [DeviceManagementController::class, 'store']);
     Route::get('/delete', [DeviceManagementController::class, 'delete']);
     Route::get('/get', [DeviceManagementController::class, 'get']);
@@ -117,7 +116,6 @@ Route::get('/details', [DetailsController::class, 'getDetails']);
 Route::get('/calculate', [CalculatePlan::class, 'calculate']);
 
 Route::get('/ppv-price', [PPVPriceCalculate::class, 'getPPVPrice']);
-Route::delete('/user-delete', [UserController::class, 'deleteUser']);
 
 //Search
 Route::get('/search', [MovieSearchController::class, 'search']);
@@ -137,7 +135,6 @@ Route::post('/episode-insert', [EpisodeController::class, 'insert']);
 Route::put('/episode/{id}', [EpisodeController::class, 'update']);
 Route::delete('/episode/{id}', [EpisodeController::class, 'destroy']);
 Route::get('/episode/{id}', [EpisodeController::class, 'getById']);
-
 
 Route::get('/update-dob', [UserController::class, 'updateDob']);
 
@@ -162,11 +159,9 @@ Route::post('/send-fcm', [FCMNotificationController::class, 'send']);
 
 Route::get('/stream', [StreamController::class, 'stream']);
 
-
 Route::get('/preview', [AxinomLicense::class, 'previewMPD']);
 Route::post('/axinom', [AxinomLicense::class, 'invokeWidevineCommonEncryption']);
 Route::get('/generate-token', [MovieController::class, 'generateFromMpd']);
-
 
 //Zonet
 Route::post('/zonet-users/insert', [ZonetController::class, 'insert']);
@@ -186,7 +181,6 @@ Route::prefix('zonet-operator')->group(function () {
     Route::post('/login', [ZonetOperatorController::class, 'login']);
     Route::post('/operator/{operator_id}/wallet/topup', [ZonetOperatorController::class, 'topUpWallet']);
     Route::get('/operators', [ZonetOperatorController::class, 'getAll']);
-
 });
 
 Route::get('/admin/users', [AdminDashboardController::class, 'getUserStats']);
@@ -255,65 +249,69 @@ Route::prefix('v3.0/channels')->group(function () {
     Route::get('/contents/{contentId}/rental-history', [ChannelController::class, 'rentalHistory']);
 });
 
-
-
 Route::prefix('v3.0')->group(function () {
-
     Route::post('/request-otp', [OTPController::class, 'send']);
     Route::post('/verify-otp', [OTPController::class, 'verify']);
-    Route::delete('/delete/account', [OTPController::class, 'deleteAccount']);
+    
     Route::post('/token/refresh', [TokenController::class, 'refresh']);
     Route::post('/token/revoke', [TokenController::class, 'revoke']);
     Route::post('/admin/whatsapp/request-otp', [AdminWhatsAppController::class, 'requestOtp']);
     Route::post('/admin/whatsapp/send', [AdminWhatsAppController::class, 'send'])->middleware('auth.token');
 
     // ✅ Protected routes
-    // Route::middleware('auth.token')->group(function () {
+    Route::middleware('auth.token')->group(function () {
+        Route::prefix('stream')->group(function () {
+            Route::post('start', [NewStreamController::class, 'start']); // Start streaming
+            Route::post('ping', [NewStreamController::class, 'ping']);   // Heartbeat ping
+            Route::post('stop', [NewStreamController::class, 'stop']);   // Stop stream
+        });
 
-    Route::prefix('stream')->group(function () {
-        Route::post('start', [NewStreamController::class, 'start']); // Start streaming
-        Route::post('ping', [NewStreamController::class, 'ping']);   // Heartbeat ping
-        Route::post('stop', [NewStreamController::class, 'stop']);   // Stop stream
-    });
+        Route::delete('/delete/account', [OTPController::class, 'deleteAccount']);
 
-    //});
+        Route::prefix('devices')->group(function () {
+            Route::get('/list', [DeviceController::class, 'index'])->name('index');
+            Route::get('/user/{userId}', [DeviceController::class, 'getByUser'])->name('byUser');
+            Route::post('/clear', [DeviceController::class, 'clear'])->name('clear');
+            Route::post('/store', [DeviceController::class, 'store'])->name('store');
+            Route::get('/{id}', [DeviceController::class, 'show'])->name('show');
+            Route::put('/{id}', [DeviceController::class, 'update'])->name('update');
+            Route::delete('/{id}', [DeviceController::class, 'destroy'])->name('destroy');
+        });
 
-    Route::prefix('devices')->group(function () {
-        Route::get('/list', [DeviceController::class, 'index'])->name('index');             // List all devices
-        Route::get('/user/{userId}', [DeviceController::class, 'getByUser'])->name('byUser'); // Get by user (owner + shared)
-        Route::post('/clear', [DeviceController::class, 'clear'])->name('clear');        // Clear device records by user/filter
-        Route::post('/store', [DeviceController::class, 'store'])->name('store');            // Create device
-        Route::get('/{id}', [DeviceController::class, 'show'])->name('show');           // Get device by ID
-        Route::put('/{id}', [DeviceController::class, 'update'])->name('update');       // Update device
-        Route::delete('/{id}', [DeviceController::class, 'destroy'])->name('destroy');  // Delete device
-    });
+        Route::prefix('subscriptions')->group(function () {
+            Route::get('/', [\App\Http\Controllers\New\SubscriptionController::class, 'index'])->name('subscriptions.index');
+            Route::get('/plans/by-device/{device_type}', [\App\Http\Controllers\New\SubscriptionController::class, 'getByDeviceType']);
+            Route::get('/plans', [\App\Http\Controllers\New\PlanController::class, 'index'])->name('plans.index');
+            Route::post('/plans', [\App\Http\Controllers\New\PlanController::class, 'store'])->name('plans.store');
+            Route::get('/plans/features', [\App\Http\Controllers\New\PlanController::class, 'featureIndex'])->name('plans.features.index');
+            Route::post('/plans/features', [\App\Http\Controllers\New\PlanController::class, 'storeFeature'])->name('plans.features.store');
+            Route::get('/plans/features/{featureId}', [\App\Http\Controllers\New\PlanController::class, 'showFeature'])->name('plans.features.show');
+            Route::put('/plans/features/{featureId}', [\App\Http\Controllers\New\PlanController::class, 'updateFeature'])->name('plans.features.update');
+            Route::delete('/plans/features/{featureId}', [\App\Http\Controllers\New\PlanController::class, 'destroyFeature'])->name('plans.features.destroy');
+            Route::get('/plans/{planId}/features', [\App\Http\Controllers\New\PlanController::class, 'planFeatures'])->name('plans.plan_features.index');
+            Route::post('/plans/{planId}/features', [\App\Http\Controllers\New\PlanController::class, 'storePlanFeature'])->name('plans.plan_features.store');
+            Route::get('/plans/{id}', [\App\Http\Controllers\New\PlanController::class, 'show'])->name('plans.show');
+            Route::put('/plans/{id}', [\App\Http\Controllers\New\PlanController::class, 'update'])->name('plans.update');
+            Route::delete('/plans/{id}', [\App\Http\Controllers\New\PlanController::class, 'destroy'])->name('plans.destroy');
+            Route::get('/user/{userId}', [\App\Http\Controllers\New\SubscriptionController::class, 'getByUser'])->name('subscriptions.by_user');
+            Route::get('/{id}', [\App\Http\Controllers\New\SubscriptionController::class, 'show'])->name('subscriptions.show');
+            Route::post('/with-payment', [\App\Http\Controllers\New\SubscriptionController::class, 'createSubscriptionWithPayment']);
+            Route::post('/', [\App\Http\Controllers\New\SubscriptionController::class, 'store'])->name('subscriptions.store');
+            Route::put('/{id}', [\App\Http\Controllers\New\SubscriptionController::class, 'update'])->name('subscriptions.update');
+            Route::delete('/{id}', [\App\Http\Controllers\New\SubscriptionController::class, 'destroy'])->name('subscriptions.destroy');
 
-    Route::prefix('subscriptions')->group(function () {
-        Route::get('/', [\App\Http\Controllers\New\SubscriptionController::class, 'index'])->name('subscriptions.index');
-        Route::get('/plans/by-device/{device_type}', [\App\Http\Controllers\New\SubscriptionController::class, 'getByDeviceType']);
-        Route::get('/plans', [\App\Http\Controllers\New\PlanController::class, 'index'])->name('plans.index');
-        Route::post('/plans', [\App\Http\Controllers\New\PlanController::class, 'store'])->name('plans.store');
-        Route::get('/plans/features', [\App\Http\Controllers\New\PlanController::class, 'featureIndex'])->name('plans.features.index');
-        Route::post('/plans/features', [\App\Http\Controllers\New\PlanController::class, 'storeFeature'])->name('plans.features.store');
-        Route::get('/plans/features/{featureId}', [\App\Http\Controllers\New\PlanController::class, 'showFeature'])->name('plans.features.show');
-        Route::put('/plans/features/{featureId}', [\App\Http\Controllers\New\PlanController::class, 'updateFeature'])->name('plans.features.update');
-        Route::delete('/plans/features/{featureId}', [\App\Http\Controllers\New\PlanController::class, 'destroyFeature'])->name('plans.features.destroy');
-        Route::get('/plans/{planId}/features', [\App\Http\Controllers\New\PlanController::class, 'planFeatures'])->name('plans.plan_features.index');
-        Route::post('/plans/{planId}/features', [\App\Http\Controllers\New\PlanController::class, 'storePlanFeature'])->name('plans.plan_features.store');
-        Route::get('/plans/{id}', [\App\Http\Controllers\New\PlanController::class, 'show'])->name('plans.show');
-        Route::put('/plans/{id}', [\App\Http\Controllers\New\PlanController::class, 'update'])->name('plans.update');
-        Route::delete('/plans/{id}', [\App\Http\Controllers\New\PlanController::class, 'destroy'])->name('plans.destroy');
-        Route::get('/user/{userId}', [\App\Http\Controllers\New\SubscriptionController::class, 'getByUser'])->name('subscriptions.by_user');
-        Route::get('/{id}', [\App\Http\Controllers\New\SubscriptionController::class, 'show'])->name('subscriptions.show');
-        Route::post('/with-payment', [\App\Http\Controllers\New\SubscriptionController::class, 'createSubscriptionWithPayment']);
-        Route::post('/', [\App\Http\Controllers\New\SubscriptionController::class, 'store'])->name('subscriptions.store');
-        Route::put('/{id}', [\App\Http\Controllers\New\SubscriptionController::class, 'update'])->name('subscriptions.update');
-        Route::delete('/{id}', [\App\Http\Controllers\New\SubscriptionController::class, 'destroy'])->name('subscriptions.destroy');
+            // 🔁 Subscription Renewal
+            Route::post('/renew', [NewStreamController::class, 'renew']);
+        });
 
-        // 🔁 Subscription Renewal
-        Route::post('/renew', [NewStreamController::class, 'renew']); // Renew subscription
-    });
+        Route::prefix('payments')->group(function () {
+            Route::post('/', [PaymentHistoryController::class, 'store']);
+            Route::post('/process', [PaymentController::class, 'processUserPayments']);
+            Route::get('/user/{userId}', [PaymentHistoryController::class, 'getByUser']);
+        });
+    }); // Close auth.token middleware group
 
+    // Public routes (no auth required)
     Route::prefix('movies')->group(function () {
         Route::get('/alsolike', [\App\Http\Controllers\New\AlsoLikeController::class, 'alsoLike']);
         Route::get('/home', [\App\Http\Controllers\New\MovieController::class, 'getMovies']);
@@ -327,14 +325,7 @@ Route::prefix('v3.0')->group(function () {
         Route::get('/{id}', [\App\Http\Controllers\New\MovieController::class, 'getById'])->name('movies.show');
         Route::get('/{id}/admin-links', [\App\Http\Controllers\New\MovieController::class, 'adminGetLink'])->name('movies.admin-links');
         Route::get('/{id}/links', [\App\Http\Controllers\New\MovieController::class, 'getLink'])->name('movies.links');
-        Route::get('/movies/latest-updates', [\App\Http\Controllers\New\MovieController::class, 'latestUpdates']);
-
-    });
-
-    Route::prefix('payments')->group(function () {
-        Route::post('/', [PaymentHistoryController::class, 'store']);
-        Route::post('/process', [PaymentController::class, 'processUserPayments']);
-        Route::get('/user/{userId}', [PaymentHistoryController::class, 'getByUser']);
+        Route::get('/latest-updates', [\App\Http\Controllers\New\MovieController::class, 'latestUpdates']);
     });
 
     Route::post('/seasons', [SeasonController::class, 'store']);
@@ -351,18 +342,9 @@ Route::prefix('v3.0')->group(function () {
         Route::post('/', [\App\Http\Controllers\New\UserController::class, 'store']);
         Route::put('/{id}', [\App\Http\Controllers\New\UserController::class, 'update']);
         Route::delete('/{id}', [\App\Http\Controllers\New\UserController::class, 'destroy']);
-        
-
     });
 
     Route::get('/dashboard', [DashboardController::class, 'index']);
-
-    Route::prefix('qr')->group(function () {
-        Route::post('/qcreate', [QRSessionController::class, 'create']);
-        Route::post('/admin/qcreate', [QRSessionController::class, 'createAdmin']);
-        Route::get('/status/{token}', [QRSessionController::class, 'status']);
-        Route::post('/verify', [QRSessionController::class, 'verify']);
-    });
 
     Route::prefix('polls')->group(function () {
         Route::get('/', [PollController::class, 'index']);
@@ -420,12 +402,10 @@ Route::prefix('v3.0')->group(function () {
     });
 
     Route::prefix('episodes')->group(function () {
-
         Route::post('/url', [\App\Http\Controllers\New\EpisodeController::class, 'addUrl']);
         Route::get('/url/{episodeId}', [\App\Http\Controllers\New\MovieController::class, 'getUrls']);
         Route::put('/url/{id}', [\App\Http\Controllers\New\EpisodeController::class, 'updateUrl']);
         Route::delete('/url/{id}', [\App\Http\Controllers\New\EpisodeController::class, 'deleteUrl']);
-
     });
 
     Route::post('/wish-list', [WistListController::class, 'store']);
@@ -433,11 +413,16 @@ Route::prefix('v3.0')->group(function () {
     Route::delete('/wish-list', [WistListController::class, 'destroy']);
     Route::get('/wish-list/check', [WistListController::class, 'check']);
 
-
     Route::get('/watch-history', [WatchPositionController::class, 'getWatchContinue']);
 
     Route::post('/send-whatsapp', [WhatsAppController::class, 'send']);
 
     Route::post('/zostream-isp/subscribe', [ZostreamIspController::class, 'subscribeThlaOne']);
 
-});
+    Route::prefix('qr')->group(function () {
+        Route::post('/create', [QRSessionController::class, 'create']);
+        Route::post('/admin/create', [QRSessionController::class, 'createAdmin']);
+        Route::get('/status/{token}', [QRSessionController::class, 'status']);
+        Route::post('/verify', [QRSessionController::class, 'verify']);
+    });
+}); // Close v3.0 prefix group
