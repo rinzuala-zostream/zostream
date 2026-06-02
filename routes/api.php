@@ -420,8 +420,8 @@ Route::prefix('v3.0')->group(function () {
     Route::post('/zostream-isp/subscribe', [ZostreamIspController::class, 'subscribeThlaOne']);
 
     Route::prefix('qr')->group(function () {
-        Route::post('/create', [QRSessionController::class, 'create']);
-        Route::post('/admin/create', [QRSessionController::class, 'createAdmin']);
+        Route::post('/qcreate', [QRSessionController::class, 'create']);
+        Route::post('/admin/qcreate', [QRSessionController::class, 'createAdmin']);
         Route::get('/status/{token}', [QRSessionController::class, 'status']);
         Route::post('/verify', [QRSessionController::class, 'verify']);
     });
