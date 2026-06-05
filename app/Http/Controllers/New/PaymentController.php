@@ -221,7 +221,7 @@ class PaymentController extends Controller
         }
 
         $currency = strtoupper($validated['currency'] ?? 'INR');
-        $receipt = substr('sub_' . $plan->id . '_' . $authUserId . '_' . now()->timestamp, 0, 64);
+        $receipt = substr('sub_' . $plan->id . '_' . now()->timestamp, 0, 40);
         $razorpayRequest = new Request([
             'amount' => $amount,
             'currency' => $currency,
@@ -236,7 +236,7 @@ class PaymentController extends Controller
 
         $razorpayRequest->headers->set(
             'X-RZ-Env',
-            strtolower(trim((string) $request->header('X-RZ-Env', 'production')))
+            $this->razorpayEnv($request)
         );
 
         $razorpayResponse = $this->razorpayController->createOrder($razorpayRequest);
@@ -333,7 +333,7 @@ class PaymentController extends Controller
         $statusRequest = new Request();
         $statusRequest->headers->set(
             'X-RZ-Env',
-            strtolower(trim((string) $request->header('X-RZ-Env', 'production')))
+            $this->razorpayEnv($request)
         );
         $statusResponse = $this->razorpayController
             ->checkPaymentStatus($statusRequest, $validated['razorpay_order_id']);
@@ -403,7 +403,15 @@ class PaymentController extends Controller
     {
         $raw = strtoupper(trim((string) $request->header('X-RZ-Env', '')));
 
-        return in_array($raw, ['PRODUCTION', 'SANDBOX'], true) ? $raw : 'PRODUCTION';
+        if (in_array($raw, ['PRODUCTION', 'SANDBOX'], true)) {
+            return $raw;
+        }
+
+        $configured = strtoupper(trim((string) config('razorpay.env', 'PRODUCTION')));
+
+        return in_array($configured, ['PRODUCTION', 'SANDBOX'], true)
+            ? $configured
+            : 'PRODUCTION';
     }
 
     private function razorpayKeyId(Request $request): string
