@@ -36,10 +36,14 @@ class RequestOTPController extends Controller
             $request->validate([
                 'user_id' => 'nullable|string',
                 'phone_number' => 'nullable|string', // optional override
+                'call' => 'nullable|string',
             ]);
 
             $userId = $request->user_id;
-            $phoneRequest = $request->phone_number;
+            $requestCall = $request->call;
+            $phoneDigits = $this->normalizePhoneDigits($request->phone_number);
+            $callCode = $this->normalizeCallCode($requestCall);
+            $phoneRequest = $this->phoneWithoutCallCode($phoneDigits, $callCode);
 
             // 🔍 Find user
             $user = UserModel::where('uid', $userId)->first();
@@ -58,13 +62,13 @@ class RequestOTPController extends Controller
 
                 $user = UserModel::create([
                     'uid' => $request->user_id,
-                    'auth_phone' => $request->phone_number,
+                    'auth_phone' => $phoneRequest,
                     'created_date' => $createdDate,
                     'device_name' => $deviceName,
                     'isACActive' => $request->isACActive ?? true,
                     'isAccountComplete' => $request->isAccountComplete ?? false,
                     // Optional fields
-                    'call' => $request->call,
+                    'call' => $requestCall,
                     'device_id' => $request->device_id,
                     'dob' => $request->dob,
                     'edit_date' => $request->edit_date,
@@ -80,7 +84,7 @@ class RequestOTPController extends Controller
             }
 
             // Determine OTP target phone
-            $otpPhone = $user->auth_phone ?? $phoneRequest;
+            $otpPhone = $this->formatWhatsAppPhone($user->auth_phone ?? $phoneRequest, $user->call ?? $requestCall);
             if (!$otpPhone) {
                 return response()->json([
                     'status' => 'error',
@@ -150,5 +154,58 @@ class RequestOTPController extends Controller
                 'error' => app()->environment('local') ? $e->getMessage() : null
             ]);
         }
+    }
+
+    private function formatWhatsAppPhone(?string $phone, ?string $call): ?string
+    {
+        $phoneDigits = $this->normalizePhoneDigits($phone);
+
+        if ($phoneDigits === '') {
+            return null;
+        }
+
+        $callCode = $this->normalizeCallCode($call);
+        if (!$callCode) {
+            return $phoneDigits;
+        }
+
+        if (substr($phoneDigits, 0, strlen($callCode)) === $callCode && strlen($phoneDigits) > strlen($callCode)) {
+            return $phoneDigits;
+        }
+
+        return $callCode . ltrim($phoneDigits, '0');
+    }
+
+    private function phoneWithoutCallCode(string $phoneDigits, ?string $callCode): string
+    {
+        if ($callCode && substr($phoneDigits, 0, strlen($callCode)) === $callCode && strlen($phoneDigits) > strlen($callCode)) {
+            return substr($phoneDigits, strlen($callCode));
+        }
+
+        return $phoneDigits;
+    }
+
+    private function normalizePhoneDigits(?string $phone): string
+    {
+        $phoneDigits = preg_replace('/\D/', '', (string) $phone);
+
+        if (substr($phoneDigits, 0, 2) === '00') {
+            return substr($phoneDigits, 2);
+        }
+
+        return $phoneDigits;
+    }
+
+    private function normalizeCallCode(?string $call): ?string
+    {
+        $callCode = preg_replace('/\D/', '', (string) $call);
+
+        if (substr($callCode, 0, 2) === '00') {
+            $callCode = substr($callCode, 2);
+        }
+
+        $callCode = ltrim($callCode, '0');
+
+        return $callCode !== '' ? $callCode : null;
     }
 }

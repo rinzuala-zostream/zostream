@@ -46,23 +46,20 @@ class OTPController extends Controller
             ]);
 
             $userId = $request->user_id;
-            $phoneRequest = $request->phone_number;
-
-            // ✅ Normalize phone number (keep only digits)
-            $phoneRequest = preg_replace('/\D/', '', $phoneRequest);
-
-            // ✅ Take last 10 digits only
-            $phoneRequest = substr($phoneRequest, -10);
+            $requestCall = $request->call;
+            $phoneDigits = $this->normalizePhoneDigits($request->phone_number);
+            $callCode = $this->normalizeCallCode($requestCall);
+            $phoneRequest = $this->phoneWithoutCallCode($phoneDigits, $callCode);
 
             // 🔍 Find user
-            $user = UserModel::where('auth_phone', $phoneRequest)->first();
+            $user = $this->findUserForOtp($phoneDigits, $phoneRequest, $callCode);
 
             if ($phoneRequest === '8837076347') {
 
                 return response()->json([
                     'status' => 'success',
                     'message' => 'Test OTP sent successfully',
-                    'user_id' => $user->uid,
+                    'user_id' => $user?->uid ?? $userId,
                     'WhatsApp_Status' => 'skipped',
                     'otp' => '326416'
                 ]);
@@ -87,7 +84,7 @@ class OTPController extends Controller
                     'device_name' => $deviceName,
                     'isACActive' => $request->isACActive ?? true,
                     'isAccountComplete' => $request->isAccountComplete ?? false,
-                    'call' => $request->call,
+                    'call' => $requestCall,
                     'device_id' => $request->device_id,
                     'dob' => $request->dob,
                     'edit_date' => $request->edit_date,
@@ -103,7 +100,7 @@ class OTPController extends Controller
             }
 
             // 📱 Determine OTP target phone
-            $otpPhone = $user->auth_phone ?? $phoneRequest;
+            $otpPhone = $this->formatWhatsAppPhone($user->auth_phone ?? $phoneRequest, $user->call ?? $requestCall);
             if (!$otpPhone) {
                 return response()->json(['status' => 'error', 'message' => 'No phone available to send OTP']);
             }
@@ -154,6 +151,87 @@ class OTPController extends Controller
             Log::error('OTP send failed', ['error' => $e->getMessage()]);
             return response()->json(['status' => 'error', 'message' => 'Something went wrong']);
         }
+    }
+
+    private function findUserForOtp(string $phoneDigits, string $phoneRequest, ?string $callCode): ?UserModel
+    {
+        $candidates = array_values(array_unique(array_filter([
+            $phoneRequest,
+            $phoneDigits,
+            $callCode ? $callCode . ltrim($phoneRequest, '0') : null,
+            strlen($phoneDigits) > 10 ? substr($phoneDigits, -10) : null,
+        ])));
+
+        if (empty($candidates)) {
+            return null;
+        }
+
+        $users = UserModel::whereIn('auth_phone', $candidates)->get();
+
+        if ($callCode) {
+            $matchedUser = $users->first(function ($user) use ($callCode) {
+                return $this->normalizeCallCode($user->call) === $callCode;
+            });
+
+            if ($matchedUser) {
+                return $matchedUser;
+            }
+        }
+
+        return $users->first();
+    }
+
+    private function formatWhatsAppPhone(?string $phone, ?string $call): ?string
+    {
+        $phoneDigits = $this->normalizePhoneDigits($phone);
+
+        if ($phoneDigits === '') {
+            return null;
+        }
+
+        $callCode = $this->normalizeCallCode($call);
+        if (!$callCode) {
+            return $phoneDigits;
+        }
+
+        if (substr($phoneDigits, 0, strlen($callCode)) === $callCode && strlen($phoneDigits) > strlen($callCode)) {
+            return $phoneDigits;
+        }
+
+        return $callCode . ltrim($phoneDigits, '0');
+    }
+
+    private function phoneWithoutCallCode(string $phoneDigits, ?string $callCode): string
+    {
+        if ($callCode && substr($phoneDigits, 0, strlen($callCode)) === $callCode && strlen($phoneDigits) > strlen($callCode)) {
+            return substr($phoneDigits, strlen($callCode));
+        }
+
+        return $phoneDigits;
+    }
+
+    private function normalizePhoneDigits(?string $phone): string
+    {
+        $phoneDigits = preg_replace('/\D/', '', (string) $phone);
+
+        if (substr($phoneDigits, 0, 2) === '00') {
+            return substr($phoneDigits, 2);
+        }
+
+        return $phoneDigits;
+    }
+
+    private function normalizeCallCode(?string $call): ?string
+    {
+        $callCode = preg_replace('/\D/', '', (string) $call);
+
+        if (substr($callCode, 0, 2) === '00') {
+            $callCode = substr($callCode, 2);
+        }
+
+        $callCode = ltrim($callCode, '0');
+
+        return $callCode !== '' ? $callCode : null;
     }
 
     /**
