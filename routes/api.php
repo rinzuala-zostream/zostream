@@ -62,7 +62,7 @@ Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:sanctum');
 
-Route::post('/register', [RegisterController::class, 'store']);
+/**Route::post('/register', [RegisterController::class, 'store']);
 
 Route::prefix('device')->group(function () {
     Route::get('/store', [DeviceManagementController::class, 'store']);
@@ -427,4 +427,4 @@ Route::prefix('v3.0')->group(function () {
         Route::get('/status/{token}', [QRSessionController::class, 'status']);
         Route::post('/verify', [QRSessionController::class, 'verify']);
     });
-}); // Close v3.0 prefix group
+}); // Close v3.0 prefix group**/
