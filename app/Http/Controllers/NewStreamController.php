@@ -83,6 +83,20 @@ class NewStreamController extends Controller
         $device = $deviceQuery->first();
 
         if (!$device) {
+            Log::warning('Start stream device not recognized', [
+                'request' => $request->all(),
+                'device_token' => $deviceToken,
+                'subscription_id' => $subscriptionId,
+                'requires_subscription' => $requiresSubscription,
+                'movie_id' => $movieId,
+                'season_id' => $seasonId,
+                'type' => $movieType,
+                'user_id' => $userId,
+                'platform' => $platform,
+                'ip' => $request->ip(),
+                'user_agent' => $request->userAgent(),
+            ]);
+
             return response()->json([
                 'status' => 'error',
                 'title' => 'Device Not Recognized',
