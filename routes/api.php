@@ -307,6 +307,8 @@ Route::prefix('v3.0')->group(function () {
         Route::prefix('payments')->group(function () {
             Route::post('/', [PaymentHistoryController::class, 'store']);
             Route::post('/process', [PaymentController::class, 'processUserPayments']);
+            Route::post('/razorpay/subscription-order', [PaymentController::class, 'createRazorpaySubscriptionOrder']);
+            Route::post('/razorpay/subscription-verify', [PaymentController::class, 'verifyRazorpaySubscriptionPayment']);
             Route::get('/user/{userId}', [PaymentHistoryController::class, 'getByUser']);
         });
     }); // Close auth.token middleware group
