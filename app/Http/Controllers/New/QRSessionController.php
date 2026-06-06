@@ -2,9 +2,9 @@
 
 namespace App\Http\Controllers\New;
 
+use App\Http\Controllers\Concerns\ResolvesLoginDevices;
 use App\Http\Controllers\RazorpayController;
 use App\Http\Controllers\TokenController;
-use App\Models\New\Devices;
 use App\Models\New\Subscription;
 use App\Models\UserModel;
 use Illuminate\Http\Request;
@@ -15,6 +15,8 @@ use Log;
 
 class QRSessionController extends Controller
 {
+    use ResolvesLoginDevices;
+
     private $database;
 
     protected $razorpayController;
@@ -201,7 +203,7 @@ class QRSessionController extends Controller
 
             $deviceName = $request->device_name ?? $session['device_name'] ?? 'Unknown Device';
             $deviceId = $request->device_id ?? $request->device_token ?? $session['device_id'] ?? $session['device_token'] ?? null;
-            $deviceType = $request->device_type ?? $session['device_type'] ?? 'mobile';
+            $deviceType = $this->normalizeLoginDeviceType($request->device_type ?? $session['device_type'] ?? 'mobile');
             $fcmToken = $request->fcm_token ?: $request->token;
             $type = $session['type'] ?? 'login';
 
@@ -257,7 +259,6 @@ class QRSessionController extends Controller
 
                     try {
 
-                        // 🔄 Check subscription and n_devices
                         $subscription = Subscription::where('user_id', $user->uid)
                             ->where('end_at', '>', now())
                             ->where('is_active', true)
@@ -267,93 +268,9 @@ class QRSessionController extends Controller
                             ->orderByDesc('id')
                             ->first();
 
-                        $device = Devices::where('user_id', $user->uid)
-                            ->where('device_type', $deviceType)
-                            ->first();
-
-                        if (!$device) {
-
-                            $device = Devices::create([
-                                'user_id' => $user->uid,
-                                'subscription_id' => $subscription?->id ?? null,
-                                'device_token' => $deviceId,
-                                'device_name' => $deviceName,
-                                'device_type' => $deviceType,
-                                'status' => 'active',
-                                'is_owner_device' => true,
-                            ]);
-
-                            $isOwnerDevice = true;
-                            $message = ucfirst($deviceType) . ' owner device created';
-                        } else {
-                            $this->syncDeviceInfo($device, $deviceId, $deviceName, $deviceType);
-                        }
-
-                        if ($subscription && $deviceId) {
-
-                            $device = Devices::where('user_id', $user->uid)
-                                ->where('subscription_id', $subscription->id)
-                                ->where('device_token', $deviceId)
-                                ->first();
-
-                            if (!$device) {
-
-                                $device = Devices::create([
-                                    'user_id' => $user->uid,
-                                    'subscription_id' => $subscription->id,
-                                    'device_token' => $deviceId,
-                                    'device_name' => $deviceName,
-                                    'device_type' => $deviceType,
-                                    'status' => 'inactive',
-                                    'is_owner_device' => false,
-                                ]);
-
-                                $isOwnerDevice = false;
-                                $message = 'Device created and set as inactive';
-
-                            } elseif ($device->status === 'blocked' && !$device->is_owner_device) {
-
-                                $device->update(['status' => 'inactive']);
-                                $this->syncDeviceInfo($device, $deviceId, $deviceName, $deviceType);
-
-                                $isOwnerDevice = $device->is_owner_device;
-                                $message = 'Blocked device reset to inactive';
-
-                            } else {
-
-                                $this->syncDeviceInfo($device, $deviceId, $deviceName, $deviceType);
-                                $isOwnerDevice = $device->is_owner_device;
-                                $message = 'Device already exists with status: ' . $device->status;
-                            }
-
-                        } else {
-
-                            $device = Devices::where('user_id', $user->uid)
-                                ->where('device_token', $deviceId)
-                                ->first();
-
-                            if (!$device) {
-
-                                $device = Devices::create([
-                                    'user_id' => $user->uid,
-                                    'subscription_id' => $subscription->id ?? null,
-                                    'device_token' => $deviceId,
-                                    'device_name' => $deviceName,
-                                    'device_type' => $deviceType,
-                                    'status' => 'inactive',
-                                    'is_owner_device' => false,
-                                ]);
-
-                                $isOwnerDevice = false;
-                                $message = 'Device created and set as inactive without subscription';
-
-                            } else {
-
-                                $this->syncDeviceInfo($device, $deviceId, $deviceName, $deviceType);
-                                $isOwnerDevice = $device->is_owner_device;
-                                $message = 'Device already exists with status: ' . $device->status . ' without subscription';
-                            }
-                        }
+                        $deviceResult = $this->resolveLoginDevice($user, $subscription, $deviceId, $deviceName, $deviceType);
+                        $isOwnerDevice = $deviceResult['is_owner_device'];
+                        $message = $deviceResult['message'];
 
                         if ($fcmToken) {
                             UserModel::where('uid', $user->uid)->update(['token' => $fcmToken]);
@@ -566,27 +483,6 @@ class QRSessionController extends Controller
             Log::error('Firebase update failed', [
                 'error' => $e->getMessage()
             ]);
-        }
-    }
-
-    private function syncDeviceInfo(Devices $device, ?string $deviceId, ?string $deviceName, string $deviceType): void
-    {
-        $updates = [];
-
-        if ($deviceId && $device->device_token !== $deviceId) {
-            $updates['device_token'] = $deviceId;
-        }
-
-        if ($deviceName && $deviceName !== 'Unknown Device' && $device->device_name !== $deviceName) {
-            $updates['device_name'] = $deviceName;
-        }
-
-        if ($deviceType && $device->device_type !== $deviceType) {
-            $updates['device_type'] = $deviceType;
-        }
-
-        if (!empty($updates)) {
-            $device->update($updates);
         }
     }
 

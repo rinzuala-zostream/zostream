@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\ResolvesLoginDevices;
 use App\Http\Controllers\New\DeviceController;
 use App\Models\New\Devices;
 use App\Models\New\Subscription;
@@ -19,6 +20,8 @@ use Illuminate\Support\Str;
 
 class OTPController extends Controller
 {
+    use ResolvesLoginDevices;
+
     private $whatsappController;
     private $tokenController;
     protected $deviceController;
@@ -187,7 +190,7 @@ class OTPController extends Controller
             $otp = $request->otp;
             $deviceName = $request->device_name ?? 'Unknown Device';
             $deviceId = $request->device_id ?: $request->device_token;
-            $deviceType = $request->device_type ?? 'mobile';
+            $deviceType = $this->normalizeLoginDeviceType($request->device_type);
             $fcmToken = $request->fcm_token ?: $request->token;
 
             if ($otp !== '326416') {
@@ -238,7 +241,6 @@ class OTPController extends Controller
                 return response()->json(['status' => 'error', 'message' => 'Failed to generate tokens'], 500);
             }
 
-            // 🔄 Check subscription and n_devices
             $subscription = Subscription::where('user_id', $user->uid)
                 ->where('end_at', '>', now())
                 ->where('is_active', true)
@@ -248,89 +250,9 @@ class OTPController extends Controller
                 ->orderByDesc('id')
                 ->first();
 
-            $device = Devices::where('user_id', $user->uid)
-                ->where('device_type', $deviceType)
-                ->first();
-
-            if (!$device) {
-                $device = Devices::create([
-                    'user_id' => $user->uid,
-                    'subscription_id' => $subscription?->id ?? null,
-                    'device_token' => $deviceId,
-                    'device_name' => $deviceName,
-                    'device_type' => $deviceType,
-                    'status' => 'active',
-                    'is_owner_device' => true,
-                ]);
-
-                $isOwnerDevice = true;
-
-                $message = ucfirst($deviceType) . ' owner device created';
-
-            } else {
-                $this->syncDeviceInfo($device, $deviceId, $deviceName, $deviceType);
-            }
-
-            if ($subscription && $deviceId) {
-
-                $device = Devices::where('user_id', $user->uid)
-                    ->where('subscription_id', $subscription->id)
-                    ->where('device_token', $deviceId)
-                    ->first();
-
-                if (!$device) {
-                    // Create device if missing
-                    $device = Devices::create([
-                        'user_id' => $user->uid,
-                        'subscription_id' => $subscription->id,
-                        'device_token' => $deviceId,
-                        'device_name' => $deviceName,
-                        'device_type' => $request->device_type ?? 'mobile',
-                        'status' => 'inactive',
-                        'is_owner_device' => false,
-                    ]);
-                    $isOwnerDevice = false;
-
-                    $message = 'Device created and set as inactive';
-                } elseif ($device->status === 'blocked' && !$device->is_owner_device) {
-                    // Reset blocked device to inactive
-                    $device->update(['status' => 'inactive']);
-                    $this->syncDeviceInfo($device, $deviceId, $deviceName, $deviceType);
-                    $isOwnerDevice = $device->is_owner_device;
-                    $message = 'Blocked device reset to inactive';
-                } else {
-                    // Device exists and is not blocked
-                    $this->syncDeviceInfo($device, $deviceId, $deviceName, $deviceType);
-                    $isOwnerDevice = $device->is_owner_device;
-                    $message = 'Device already exists with status: ' . $device->status;
-                }
-
-            } else {
-                $device = Devices::where('user_id', $user->uid)
-                    ->where('device_token', $deviceId)
-                    ->first();
-
-                if (!$device) {
-                    // Create device if missing
-                    $device = Devices::create([
-                        'user_id' => $user->uid,
-                        'subscription_id' => $subscription->id ?? null,
-                        'device_token' => $deviceId,
-                        'device_name' => $deviceName,
-                        'device_type' => $request->device_type ?? 'mobile',
-                        'status' => 'inactive',
-                        'is_owner_device' => false,
-                    ]);
-                    $isOwnerDevice = false;
-
-                    $message = 'Device created and set as inactive without subscription';
-                } else {
-                    $this->syncDeviceInfo($device, $deviceId, $deviceName, $deviceType);
-                    $isOwnerDevice = $device->is_owner_device;
-                    $message = 'Device already exists with status: ' . $device->status . ' without subscription';
-                }
-
-            }
+            $deviceResult = $this->resolveLoginDevice($user, $subscription, $deviceId, $deviceName, $deviceType);
+            $isOwnerDevice = $deviceResult['is_owner_device'];
+            $message = $deviceResult['message'];
 
             if ($fcmToken) {
                 UserModel::where('uid', $user->uid)->update(['token' => $fcmToken]);
@@ -471,27 +393,6 @@ class OTPController extends Controller
         $otpRequest->delete();
 
         return null;
-    }
-
-    private function syncDeviceInfo(Devices $device, ?string $deviceId, ?string $deviceName, string $deviceType): void
-    {
-        $updates = [];
-
-        if ($deviceId && $device->device_token !== $deviceId) {
-            $updates['device_token'] = $deviceId;
-        }
-
-        if ($deviceName && $deviceName !== 'Unknown Device' && $device->device_name !== $deviceName) {
-            $updates['device_name'] = $deviceName;
-        }
-
-        if ($deviceType && $device->device_type !== $deviceType) {
-            $updates['device_type'] = $deviceType;
-        }
-
-        if (!empty($updates)) {
-            $device->update($updates);
-        }
     }
 
     private function syncUserDeviceInfo(UserModel $user, ?string $deviceId, ?string $deviceName, ?string $fcmToken): void
