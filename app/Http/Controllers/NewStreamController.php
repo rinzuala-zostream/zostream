@@ -143,28 +143,17 @@ class NewStreamController extends Controller
         if (!$device && $requiresSubscription) {
             $existingDevice = Devices::where('device_token', $deviceToken)
                 ->where('user_id', $userId)
+                ->where('device_type', $type)
                 ->first();
 
             if ($existingDevice) {
                 $existingDevice->update([
                     'subscription_id' => $subscriptionId,
-                    'device_type' => $type,
                     'last_activity' => now(),
                     'status' => $existingDevice->status ?: 'inactive',
                 ]);
 
                 $device = $existingDevice->fresh();
-            } else {
-                $device = Devices::create([
-                    'subscription_id' => $subscriptionId,
-                    'user_id' => $userId,
-                    'device_name' => $request->input('device_name', 'Unknown Device'),
-                    'device_type' => $type,
-                    'device_token' => $deviceToken,
-                    'is_owner_device' => false,
-                    'last_activity' => now(),
-                    'status' => 'inactive',
-                ]);
             }
         }
 
