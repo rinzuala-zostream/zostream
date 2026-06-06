@@ -56,6 +56,7 @@ class QRSessionController extends Controller
 
         $data = [
             'device_id' => $request->device_id,
+            'device_token' => $request->device_token,
             'movie_id' => $request->movie_id,
             'movie_name' => $request->movie_name,
             'device_name' => $request->device_name,
@@ -169,6 +170,12 @@ class QRSessionController extends Controller
             $request->validate([
                 'token' => 'required|string',
                 'user_id' => 'required',
+                'device_name' => 'nullable|string',
+                'device_id' => 'nullable|string',
+                'device_token' => 'nullable|string',
+                'device_type' => 'nullable|string',
+                'fcm_token' => 'nullable|string',
+                'token' => 'nullable|string',
             ]);
 
             $userId = $request->user_id;
@@ -192,9 +199,10 @@ class QRSessionController extends Controller
                 ], 400);
             }
 
-            $deviceName = $session['device_name'] ?? 'Unknown Device';
-            $deviceId = $session['device_id'] ?? null;
-            $deviceType = $session['device_type'] ?? 'mobile';
+            $deviceName = $request->device_name ?? $session['device_name'] ?? 'Unknown Device';
+            $deviceId = $request->device_id ?? $request->device_token ?? $session['device_id'] ?? $session['device_token'] ?? null;
+            $deviceType = $request->device_type ?? $session['device_type'] ?? 'mobile';
+            $fcmToken = $request->fcm_token ?: $request->token;
             $type = $session['type'] ?? 'login';
 
             //base on $ref type(login, payment) call controller to process login or payment approval
@@ -216,6 +224,8 @@ class QRSessionController extends Controller
                     if (!$user) {
                         return response()->json(['status' => 'error', 'message' => 'User not found'], 404);
                     }
+
+                    $this->syncUserDeviceInfo($user, $deviceId, $deviceName, $fcmToken);
 
                     // 🔑 Generate token
                     try {
@@ -275,6 +285,8 @@ class QRSessionController extends Controller
 
                             $isOwnerDevice = true;
                             $message = ucfirst($deviceType) . ' owner device created';
+                        } else {
+                            $this->syncDeviceInfo($device, $deviceId, $deviceName, $deviceType);
                         }
 
                         if ($subscription && $deviceId) {
@@ -302,12 +314,14 @@ class QRSessionController extends Controller
                             } elseif ($device->status === 'blocked' && !$device->is_owner_device) {
 
                                 $device->update(['status' => 'inactive']);
+                                $this->syncDeviceInfo($device, $deviceId, $deviceName, $deviceType);
 
                                 $isOwnerDevice = $device->is_owner_device;
                                 $message = 'Blocked device reset to inactive';
 
                             } else {
 
+                                $this->syncDeviceInfo($device, $deviceId, $deviceName, $deviceType);
                                 $isOwnerDevice = $device->is_owner_device;
                                 $message = 'Device already exists with status: ' . $device->status;
                             }
@@ -335,9 +349,14 @@ class QRSessionController extends Controller
 
                             } else {
 
+                                $this->syncDeviceInfo($device, $deviceId, $deviceName, $deviceType);
                                 $isOwnerDevice = $device->is_owner_device;
                                 $message = 'Device already exists with status: ' . $device->status . ' without subscription';
                             }
+                        }
+
+                        if ($fcmToken) {
+                            UserModel::where('uid', $user->uid)->update(['token' => $fcmToken]);
                         }
 
 
@@ -547,6 +566,48 @@ class QRSessionController extends Controller
             Log::error('Firebase update failed', [
                 'error' => $e->getMessage()
             ]);
+        }
+    }
+
+    private function syncDeviceInfo(Devices $device, ?string $deviceId, ?string $deviceName, string $deviceType): void
+    {
+        $updates = [];
+
+        if ($deviceId && $device->device_token !== $deviceId) {
+            $updates['device_token'] = $deviceId;
+        }
+
+        if ($deviceName && $deviceName !== 'Unknown Device' && $device->device_name !== $deviceName) {
+            $updates['device_name'] = $deviceName;
+        }
+
+        if ($deviceType && $device->device_type !== $deviceType) {
+            $updates['device_type'] = $deviceType;
+        }
+
+        if (!empty($updates)) {
+            $device->update($updates);
+        }
+    }
+
+    private function syncUserDeviceInfo(UserModel $user, ?string $deviceId, ?string $deviceName, ?string $fcmToken): void
+    {
+        $updates = [];
+
+        if ($deviceId && $user->device_id !== $deviceId) {
+            $updates['device_id'] = $deviceId;
+        }
+
+        if ($deviceName && $deviceName !== 'Unknown Device' && $user->device_name !== $deviceName) {
+            $updates['device_name'] = $deviceName;
+        }
+
+        if ($fcmToken && $user->token !== $fcmToken) {
+            $updates['token'] = $fcmToken;
+        }
+
+        if (!empty($updates)) {
+            $user->update($updates);
         }
     }
 }

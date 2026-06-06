@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Exception;
 use Illuminate\Support\Facades\Redis;
+use Illuminate\Support\Str;
 
 class OTPController extends Controller
 {
@@ -43,10 +44,22 @@ class OTPController extends Controller
             $request->validate([
                 'user_id' => 'nullable|string',
                 'phone_number' => 'required|string',
+                'device_name' => 'nullable|string',
+                'device_id' => 'nullable|string',
+                'device_token' => 'nullable|string',
+                'device_type' => 'nullable|string',
+                'fcm_token' => 'nullable|string',
+                'token' => 'nullable|string',
             ]);
 
             $userId = $request->user_id;
+            if (!$this->isUuid($userId)) {
+                $userId = (string) Str::uuid();
+            }
             $phoneRequest = $request->phone_number;
+            $deviceId = $request->device_id ?: $request->device_token;
+            $deviceName = $request->device_name ?: 'Unknown Device';
+            $fcmToken = $request->fcm_token ?: $request->token;
 
             // ✅ Normalize phone number (keep only digits)
             $phoneRequest = preg_replace('/\D/', '', $phoneRequest);
@@ -78,8 +91,6 @@ class OTPController extends Controller
                 }
 
                 $createdDate = $request->created_date ?: Carbon::now()->format('M d, Y h:i:s a');
-                $deviceName = $request->device_name ?: 'Unknown Device';
-
                 $user = UserModel::create([
                     'uid' => $userId,
                     'auth_phone' => $phoneRequest,
@@ -88,7 +99,7 @@ class OTPController extends Controller
                     'isACActive' => $request->isACActive ?? true,
                     'isAccountComplete' => $request->isAccountComplete ?? false,
                     'call' => $request->call,
-                    'device_id' => $request->device_id,
+                    'device_id' => $deviceId,
                     'dob' => $request->dob,
                     'edit_date' => $request->edit_date,
                     'img' => $request->img,
@@ -97,7 +108,7 @@ class OTPController extends Controller
                     'mail' => $request->mail,
                     'name' => $request->name,
                     'veng' => $request->veng,
-                    'token' => $request->token,
+                    'token' => $fcmToken,
                     'is_auth_phone_active' => true,
                 ]);
             }
@@ -168,16 +179,18 @@ class OTPController extends Controller
                 'otp' => 'required|string',
                 'device_name' => 'nullable|string',
                 'device_id' => 'nullable|string',
+                'device_token' => 'nullable|string',
                 'device_type' => 'nullable|string',
                 'fcm_token' => 'nullable|string',
+                'token' => 'nullable|string',
             ]);
 
             $userId = $request->user_id;
             $otp = $request->otp;
             $deviceName = $request->device_name ?? 'Unknown Device';
-            $deviceId = $request->device_id;
+            $deviceId = $request->device_id ?: $request->device_token;
             $deviceType = $request->device_type ?? 'mobile';
-            $fcmToken = $request->fcm_token;
+            $fcmToken = $request->fcm_token ?: $request->token;
 
             if ($otp !== '326416') {
 
@@ -209,6 +222,8 @@ class OTPController extends Controller
             if (!$user) {
                 return response()->json(['status' => 'error', 'message' => 'User not found'], 404);
             }
+
+            $this->syncUserDeviceInfo($user, $deviceId, $deviceName, $fcmToken);
 
             // 🔑 Generate token
             try {
@@ -254,6 +269,8 @@ class OTPController extends Controller
 
                 $message = ucfirst($deviceType) . ' owner device created';
 
+            } else {
+                $this->syncDeviceInfo($device, $deviceId, $deviceName, $deviceType);
             }
 
             if ($subscription && $deviceId) {
@@ -280,10 +297,12 @@ class OTPController extends Controller
                 } elseif ($device->status === 'blocked' && !$device->is_owner_device) {
                     // Reset blocked device to inactive
                     $device->update(['status' => 'inactive']);
+                    $this->syncDeviceInfo($device, $deviceId, $deviceName, $deviceType);
                     $isOwnerDevice = $device->is_owner_device;
                     $message = 'Blocked device reset to inactive';
                 } else {
                     // Device exists and is not blocked
+                    $this->syncDeviceInfo($device, $deviceId, $deviceName, $deviceType);
                     $isOwnerDevice = $device->is_owner_device;
                     $message = 'Device already exists with status: ' . $device->status;
                 }
@@ -308,13 +327,16 @@ class OTPController extends Controller
 
                     $message = 'Device created and set as inactive without subscription';
                 } else {
+                    $this->syncDeviceInfo($device, $deviceId, $deviceName, $deviceType);
                     $isOwnerDevice = $device->is_owner_device;
                     $message = 'Device already exists with status: ' . $device->status . ' without subscription';
                 }
 
             }
 
-            UserModel::where('uid', $user->uid)->update(['token' => $fcmToken]);
+            if ($fcmToken) {
+                UserModel::where('uid', $user->uid)->update(['token' => $fcmToken]);
+            }
 
             // Return response
             return response()->json([
@@ -451,5 +473,55 @@ class OTPController extends Controller
         $otpRequest->delete();
 
         return null;
+    }
+
+    private function syncDeviceInfo(Devices $device, ?string $deviceId, ?string $deviceName, string $deviceType): void
+    {
+        $updates = [];
+
+        if ($deviceId && $device->device_token !== $deviceId) {
+            $updates['device_token'] = $deviceId;
+        }
+
+        if ($deviceName && $deviceName !== 'Unknown Device' && $device->device_name !== $deviceName) {
+            $updates['device_name'] = $deviceName;
+        }
+
+        if ($deviceType && $device->device_type !== $deviceType) {
+            $updates['device_type'] = $deviceType;
+        }
+
+        if (!empty($updates)) {
+            $device->update($updates);
+        }
+    }
+
+    private function syncUserDeviceInfo(UserModel $user, ?string $deviceId, ?string $deviceName, ?string $fcmToken): void
+    {
+        $updates = [];
+
+        if ($deviceId && $user->device_id !== $deviceId) {
+            $updates['device_id'] = $deviceId;
+        }
+
+        if ($deviceName && $deviceName !== 'Unknown Device' && $user->device_name !== $deviceName) {
+            $updates['device_name'] = $deviceName;
+        }
+
+        if ($fcmToken && $user->token !== $fcmToken) {
+            $updates['token'] = $fcmToken;
+        }
+
+        if (!empty($updates)) {
+            $user->update($updates);
+        }
+    }
+
+    private function isUuid(?string $value): bool
+    {
+        return is_string($value) && preg_match(
+            '/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i',
+            $value
+        ) === 1;
     }
 }
