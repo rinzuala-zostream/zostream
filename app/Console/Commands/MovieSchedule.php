@@ -3,8 +3,8 @@
 namespace App\Console\Commands;
 
 use App\Http\Controllers\FCMNotificationController;
-use App\Models\EpisodeModel;
 use App\Models\MovieModel;
+use App\Models\New\Episode;
 use Illuminate\Http\Request;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
@@ -52,19 +52,18 @@ class MovieSchedule extends Command
 
     protected function handleEpisodes()
     {
-        // Load scheduled episodes with their related movie
-        $episodes = EpisodeModel::where('status', 'Scheduled')
-            ->with('movie')
+        $episodes = Episode::where('status', 'Scheduled')
+            ->with('season.movie')
             ->orderBy('num')
             ->get()
-            ->filter(fn ($episode) => $this->isDue($episode->create_date))
+            ->filter(fn ($episode) => $this->isDue($episode->release_date))
             ->values();
 
 
         if ($episodes->isEmpty()) {
             $this->info('No scheduled episodes to publish.');
         } else {
-            EpisodeModel::whereIn('id', $episodes->pluck('id'))->update(['status' => 'Published']);
+            Episode::whereIn('id', $episodes->pluck('id'))->update(['status' => 'Published']);
             $this->info("Published {$episodes->count()} episodes.");
         }
 
@@ -95,13 +94,14 @@ class MovieSchedule extends Command
 
         if ($movieCount === 0 && $episodeCount === 1) {
             $episode = $episodes->first();
-            $movieTitle = $episode->movie->title ?? 'Unknown Movie';
+            $movie = $episode->season?->movie;
+            $movieTitle = $movie?->title ?? 'Unknown Movie';
 
             $this->sendNotification(
-                title: "{$movieTitle} {$episode->txt}",
+                title: "{$movieTitle} {$episode->title}",
                 body: 'New episode streaming on Zo Stream',
-                image: $episode->movie?->cover_img ?? '',
-                key: $episode->movie?->id ?? '',
+                image: $episode->thumbnail ?? $movie?->cover_img ?? '',
+                key: $movie?->id ?? '',
             );
 
             return;
@@ -123,8 +123,8 @@ class MovieSchedule extends Command
         $this->sendNotification(
             title: 'New on Zo Stream',
             body: implode(' and ', $parts) . ' streaming now',
-            image: $firstMovie?->cover_img ?? $firstEpisode?->movie?->cover_img ?? '',
-            key: $firstMovie?->id ?? $firstEpisode?->movie?->id ?? '',
+            image: $firstMovie?->cover_img ?? $firstEpisode?->thumbnail ?? $firstEpisode?->season?->movie?->cover_img ?? '',
+            key: $firstMovie?->id ?? $firstEpisode?->season?->movie?->id ?? '',
         );
     }
 
@@ -146,16 +146,16 @@ class MovieSchedule extends Command
         }
     }
 
-    private function isDue(?string $createDate): bool
+    private function isDue($date): bool
     {
-        if (empty($createDate)) {
+        if (empty($date)) {
             return false;
         }
 
         try {
-            return Carbon::parse($createDate)->startOfDay()->lte(today());
+            return Carbon::parse($date)->startOfDay()->lte(today());
         } catch (\Throwable) {
-            $this->warn("Invalid create_date skipped: {$createDate}");
+            $this->warn("Invalid schedule date skipped: {$date}");
             return false;
         }
     }
