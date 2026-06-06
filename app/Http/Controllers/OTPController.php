@@ -61,12 +61,6 @@ class OTPController extends Controller
             $deviceName = $request->device_name ?: 'Unknown Device';
             $fcmToken = $request->fcm_token ?: $request->token;
 
-            // ✅ Normalize phone number (keep only digits)
-            $phoneRequest = preg_replace('/\D/', '', $phoneRequest);
-
-            // ✅ Take last 10 digits only
-            $phoneRequest = substr($phoneRequest, -10);
-
             // 🔍 Find user
             $user = UserModel::where('auth_phone', $phoneRequest)->first();
 
