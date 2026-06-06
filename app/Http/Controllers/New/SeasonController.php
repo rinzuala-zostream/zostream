@@ -118,7 +118,7 @@ class SeasonController extends Controller
                 'title' => 'nullable|string',
                 'description' => 'nullable|string',
                 'poster' => 'nullable|string',
-                'release_year' => 'nullable|integer',
+                'release_date' => 'nullable|date',
                 'status' => 'nullable|string|in:Draft,Published,Scheduled'
             ]);
 
@@ -131,7 +131,7 @@ class SeasonController extends Controller
                 'title' => $validated['title'] ?? null,
                 'description' => $validated['description'] ?? null,
                 'poster' => $validated['poster'] ?? null,
-                'release_year' => $validated['release_year'] ?? null,
+                'release_date' => $validated['release_date'] ?? null,
                 'status' => $validated['status'] ?? null
             ]);
 
@@ -212,7 +212,7 @@ class SeasonController extends Controller
                 'isPayPerView',
                 'description',
                 'poster',
-                'release_year',
+                'release_date',
                 'status'
             ]));
 

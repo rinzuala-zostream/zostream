@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Http\Controllers\FCMNotificationController;
 use App\Models\MovieModel;
 use App\Models\New\Episode;
+use App\Models\New\Season;
 use Illuminate\Http\Request;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
@@ -13,7 +14,7 @@ class MovieSchedule extends Command
 {
     protected $signature = 'app:movie-schedule';
 
-    protected $description = 'Update scheduled movies and episodes, and send FCM notifications.';
+    protected $description = 'Update scheduled movies, seasons, and episodes, and send FCM notifications.';
 
     protected $fCMNotificationController;
 
@@ -26,9 +27,10 @@ class MovieSchedule extends Command
     public function handle()
     {
         $movies = $this->handleMovies();
+        $seasons = $this->handleSeasons();
         $episodes = $this->handleEpisodes();
 
-        $this->sendScheduleNotification($movies, $episodes);
+        $this->sendScheduleNotification($movies, $seasons, $episodes);
     }
 
     protected function handleMovies()
@@ -48,6 +50,26 @@ class MovieSchedule extends Command
         }
 
         return $movies;
+    }
+
+    protected function handleSeasons()
+    {
+        $seasons = Season::where('status', 'Scheduled')
+            ->with('movie')
+            ->orderBy('num')
+            ->get()
+            ->filter(fn ($season) => $this->isDue($season->release_date))
+            ->values();
+
+
+        if ($seasons->isEmpty()) {
+            $this->info('No scheduled seasons to publish.');
+        } else {
+            Season::whereIn('id', $seasons->pluck('id'))->update(['status' => 'Published']);
+            $this->info("Published {$seasons->count()} seasons.");
+        }
+
+        return $seasons;
     }
 
     protected function handleEpisodes()
@@ -70,16 +92,17 @@ class MovieSchedule extends Command
         return $episodes;
     }
 
-    protected function sendScheduleNotification($movies, $episodes): void
+    protected function sendScheduleNotification($movies, $seasons, $episodes): void
     {
         $movieCount = $movies->count();
+        $seasonCount = $seasons->count();
         $episodeCount = $episodes->count();
 
-        if ($movieCount + $episodeCount === 0) {
+        if ($movieCount + $seasonCount + $episodeCount === 0) {
             return;
         }
 
-        if ($movieCount === 1 && $episodeCount === 0) {
+        if ($movieCount === 1 && $seasonCount === 0 && $episodeCount === 0) {
             $movie = $movies->first();
 
             $this->sendNotification(
@@ -92,7 +115,22 @@ class MovieSchedule extends Command
             return;
         }
 
-        if ($movieCount === 0 && $episodeCount === 1) {
+        if ($movieCount === 0 && $seasonCount === 1 && $episodeCount === 0) {
+            $season = $seasons->first();
+            $movie = $season->movie;
+            $title = trim(($movie?->title ?? 'New Season') . ' ' . ($season->title ?? ''));
+
+            $this->sendNotification(
+                title: $title,
+                body: 'New season streaming on Zo Stream',
+                image: $season->poster ?? $movie?->cover_img ?? '',
+                key: $movie?->id ?? '',
+            );
+
+            return;
+        }
+
+        if ($movieCount === 0 && $seasonCount === 0 && $episodeCount === 1) {
             $episode = $episodes->first();
             $movie = $episode->season?->movie;
             $movieTitle = $movie?->title ?? 'Unknown Movie';
@@ -113,29 +151,36 @@ class MovieSchedule extends Command
             $parts[] = "{$movieCount} new " . ($movieCount === 1 ? 'movie' : 'movies');
         }
 
+        if ($seasonCount > 0) {
+            $parts[] = "{$seasonCount} new " . ($seasonCount === 1 ? 'season' : 'seasons');
+        }
+
         if ($episodeCount > 0) {
             $parts[] = "{$episodeCount} new " . ($episodeCount === 1 ? 'episode' : 'episodes');
         }
 
-        $firstMovie = $movies->first();
-        $firstEpisode = $episodes->first();
-
         $this->sendNotification(
             title: 'New on Zo Stream',
             body: implode(' and ', $parts) . ' streaming now',
-            image: $firstMovie?->cover_img ?? $firstEpisode?->thumbnail ?? $firstEpisode?->season?->movie?->cover_img ?? '',
-            key: $firstMovie?->id ?? $firstEpisode?->season?->movie?->id ?? '',
         );
     }
 
-    protected function sendNotification(string $title, string $body, string $image, string $key)
+    protected function sendNotification(string $title, string $body, ?string $image = null, ?string $key = null)
     {
-        $fakeRequest = new Request([
+        $payload = [
             'title' => $title,
             'body' => $body,
-            'image' => $image,
-            'key' => $key
-        ]);
+        ];
+
+        if (!empty($image)) {
+            $payload['image'] = $image;
+        }
+
+        if (!empty($key)) {
+            $payload['key'] = $key;
+        }
+
+        $fakeRequest = new Request($payload);
 
         try {
             $result = $this->fCMNotificationController->send($fakeRequest);
