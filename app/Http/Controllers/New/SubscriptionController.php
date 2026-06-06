@@ -481,19 +481,41 @@ class SubscriptionController extends Controller
                 ], 404);
             }
 
-            $startAt = now();
-            $endAt = $startAt->copy()->addDays($plan->duration_days);
             $paymentStatus = $validated['status'] ?? 'success';
             $isActive = $paymentStatus === 'success';
+            $startAt = now();
+            $subscription = $isActive
+                ? Subscription::activeForUserAndDeviceType($resolvedUserId, $plan->device_type)
+                    ->lockForUpdate()
+                    ->first()
+                : null;
+            $endAt = $subscription && $subscription->end_at && $subscription->end_at->isFuture()
+                ? $subscription->end_at->copy()->addDays($plan->duration_days)
+                : $startAt->copy()->addDays($plan->duration_days);
 
-            $subscription = Subscription::create([
-                'user_id' => $resolvedUserId,
-                'plan_id' => $plan->id,
-                'start_at' => $startAt,
-                'end_at' => $endAt,
-                'is_active' => $isActive,
-                'renewed_by' => null,
-            ]);
+            if ($subscription) {
+                $updates = [
+                    'plan_id' => $plan->id,
+                    'end_at' => $endAt,
+                    'is_active' => true,
+                    'renewed_by' => null,
+                ];
+
+                if (!$subscription->end_at || $subscription->end_at->isPast()) {
+                    $updates['start_at'] = $startAt;
+                }
+
+                $subscription->update($updates);
+            } else {
+                $subscription = Subscription::create([
+                    'user_id' => $resolvedUserId,
+                    'plan_id' => $plan->id,
+                    'start_at' => $startAt,
+                    'end_at' => $endAt,
+                    'is_active' => $isActive,
+                    'renewed_by' => null,
+                ]);
+            }
 
             $payment = PaymentHistory::create([
                 'subscription_id' => $subscription->id,

@@ -119,14 +119,34 @@ class PaymentController extends Controller
                         }
 
                         $startAt = now();
+                        $subscription = Subscription::activeForUserAndDeviceType($uid, $plan->device_type)
+                            ->lockForUpdate()
+                            ->first();
+                        $endAt = $subscription && $subscription->end_at && $subscription->end_at->isFuture()
+                            ? $subscription->end_at->copy()->addDays($plan->duration_days)
+                            : $startAt->copy()->addDays($plan->duration_days);
 
-                        $subscription = Subscription::create([
-                            'user_id' => $uid,
-                            'plan_id' => $plan->id,
-                            'start_at' => $startAt,
-                            'end_at' => $startAt->copy()->addDays($plan->duration_days),
-                            'is_active' => true,
-                        ]);
+                        if ($subscription) {
+                            $updates = [
+                                'plan_id' => $plan->id,
+                                'end_at' => $endAt,
+                                'is_active' => true,
+                            ];
+
+                            if (!$subscription->end_at || $subscription->end_at->isPast()) {
+                                $updates['start_at'] = $startAt;
+                            }
+
+                            $subscription->update($updates);
+                        } else {
+                            $subscription = Subscription::create([
+                                'user_id' => $uid,
+                                'plan_id' => $plan->id,
+                                'start_at' => $startAt,
+                                'end_at' => $endAt,
+                                'is_active' => true,
+                            ]);
+                        }
 
                         // 🔹 Update payment (single update block)
                         $payment->update([

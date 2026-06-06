@@ -3,6 +3,7 @@
 namespace App\Models\New;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Carbon\Carbon;
 
@@ -51,6 +52,15 @@ class Subscription extends Model
     public function streamEvents()
     {
         return $this->hasMany(StreamEvent::class, 'subscription_id');
+    }
+
+    public function scopeActiveForUserAndDeviceType(Builder $query, $userId, string $deviceType): Builder
+    {
+        return $query->where('user_id', $userId)
+            ->where('is_active', true)
+            ->whereHas('plan', function (Builder $planQuery) use ($deviceType) {
+                $planQuery->where('device_type', strtolower(trim($deviceType)));
+            });
     }
 
     /*
