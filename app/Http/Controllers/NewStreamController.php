@@ -72,43 +72,11 @@ class NewStreamController extends Controller
             ], 400);
         }
 
-        // 1️⃣ Device check
-        $deviceQuery = Devices::where('device_token', $deviceToken)
-            ->where('user_id', $userId);
-
-        if ($requiresSubscription) {
-            $deviceQuery->where('subscription_id', $subscriptionId);
-        }
-
-        $device = $deviceQuery->first();
-
-        if (!$device) {
-            Log::warning('Start stream device not recognized', [
-                'request' => $request->all(),
-                'device_token' => $deviceToken,
-                'subscription_id' => $subscriptionId,
-                'requires_subscription' => $requiresSubscription,
-                'movie_id' => $movieId,
-                'season_id' => $seasonId,
-                'type' => $movieType,
-                'user_id' => $userId,
-                'platform' => $platform,
-                'ip' => $request->ip(),
-                'user_agent' => $request->userAgent(),
-            ]);
-
-            return response()->json([
-                'status' => 'error',
-                'title' => 'Device Not Recognized',
-                'message' => 'We couldn’t verify this device or your device has no subscription. Please sign in again or contact support if the issue continues.'
-            ], 404);
-        }
-
         // 🔥 Default values for PPV
         $subscription = null;
         $plan = null;
         $limit = 1;
-        $type = strtolower(trim((string) $device->device_type));
+        $type = strtolower(trim((string) $request->input('device_type', '')));
 
         // =========================
         // ✅ SUBSCRIPTION FLOW ONLY
@@ -146,8 +114,9 @@ class NewStreamController extends Controller
             }
 
             $planType = strtolower(trim((string) $plan->device_type));
+            $requestedType = $type;
 
-            if ($planType !== $type) {
+            if ($requestedType && $planType !== $requestedType) {
                 return response()->json([
                     'status' => 'error',
                     'title' => 'Invalid Plan for This Device',
@@ -156,8 +125,76 @@ class NewStreamController extends Controller
             }
 
             $limit = $plan->device_limit ?? 1;
+            $type = $planType;
+        }
 
-        } elseif ($isPPV) {
+        // 1️⃣ Device check
+        $deviceQuery = Devices::where('device_token', $deviceToken)
+            ->where('user_id', $userId);
+
+        if ($requiresSubscription) {
+            $deviceQuery
+                ->where('subscription_id', $subscriptionId)
+                ->where('device_type', $type);
+        }
+
+        $device = $deviceQuery->first();
+
+        if (!$device && $requiresSubscription) {
+            $existingDevice = Devices::where('device_token', $deviceToken)
+                ->where('user_id', $userId)
+                ->first();
+
+            if ($existingDevice) {
+                $existingDevice->update([
+                    'subscription_id' => $subscriptionId,
+                    'device_type' => $type,
+                    'last_activity' => now(),
+                    'status' => $existingDevice->status ?: 'inactive',
+                ]);
+
+                $device = $existingDevice->fresh();
+            } else {
+                $device = Devices::create([
+                    'subscription_id' => $subscriptionId,
+                    'user_id' => $userId,
+                    'device_name' => $request->input('device_name', 'Unknown Device'),
+                    'device_type' => $type,
+                    'device_token' => $deviceToken,
+                    'is_owner_device' => false,
+                    'last_activity' => now(),
+                    'status' => 'inactive',
+                ]);
+            }
+        }
+
+        if (!$device) {
+            Log::warning('Start stream device not recognized', [
+                'request' => $request->all(),
+                'device_token' => $deviceToken,
+                'subscription_id' => $subscriptionId,
+                'requires_subscription' => $requiresSubscription,
+                'movie_id' => $movieId,
+                'season_id' => $seasonId,
+                'type' => $movieType,
+                'user_id' => $userId,
+                'platform' => $platform,
+                'ip' => $request->ip(),
+                'user_agent' => $request->userAgent(),
+            ]);
+
+            return response()->json([
+                'status' => 'error',
+                'title' => 'Device Not Recognized',
+                'message' => 'We couldn’t verify this device or your device has no subscription. Please sign in again or contact support if the issue continues.'
+            ], 404);
+        }
+
+        if (!$type) {
+            $type = strtolower(trim((string) $device->device_type));
+        }
+
+        if ($isPPV) {
             $baseQuery = PaymentHistory::where('user_id', $userId)
                 ->where('status', 'success')
                 ->where('expiry_date', '>', now())
