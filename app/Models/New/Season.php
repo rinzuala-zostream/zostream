@@ -21,14 +21,14 @@ class Season extends Model
         'title',
         'description',
         'poster',
-        'release_year',
+        'release_date',
         'status',
     ];
 
     protected $casts = [
         'amount' => 'decimal:2',
         'season_number' => 'integer',
-        'release_year' => 'integer',
+        'release_date' => 'date',
         'isPayPerView' => 'boolean'
     ];
 

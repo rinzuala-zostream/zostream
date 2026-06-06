@@ -15,7 +15,7 @@ class FCMNotificationController extends Controller
         // 📨 Inputs
         $title = $request->input('title', '');
         $body  = $request->input('body', '');
-        $image = $request->input('image', '');
+        $image = $request->input('image');
         $token = $request->input('token');
         $topic = $request->input('topic', 'all');
         $key   = $request->input('key');
@@ -36,7 +36,7 @@ class FCMNotificationController extends Controller
             $accessToken,
             (string) $title,
             (string) $body,
-            (string) $image,
+            $image,
             (string) $token,
             'all',
             $key,
@@ -52,7 +52,7 @@ class FCMNotificationController extends Controller
             $accessToken,
             (string) $title,
             (string) $body,
-            (string) $image,
+            $image,
             null,
             (string) $topic,
             $key,
@@ -114,18 +114,23 @@ class FCMNotificationController extends Controller
         return self::$cachedAccessToken;
     }
 
-    private function sendNotification($accessToken, $title, $body, $image, $token = null, $topic = 'all', $key = null, $data = [])
+    private function sendNotification($accessToken, $title, $body, $image = null, $token = null, $topic = 'all', $key = null, $data = [])
     {
         $client = new Client();
         $url = 'https://fcm.googleapis.com/v1/projects/zo-stream-f04ea/messages:send';
 
+        $notification = [
+            "title" => $title,
+            "body"  => $body,
+        ];
+
+        if (!empty($image)) {
+            $notification["image"] = (string) $image;
+        }
+
         $message = [
             "message" => [
-                "notification" => [
-                    "title" => $title,
-                    "body"  => $body,
-                    "image" => $image,
-                ],
+                "notification" => $notification,
                 "android" => [
                     "priority" => "high",
                     "notification" => [
