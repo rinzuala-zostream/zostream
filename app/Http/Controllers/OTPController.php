@@ -61,8 +61,12 @@ class OTPController extends Controller
             $deviceName = $request->device_name ?: 'Unknown Device';
             $fcmToken = $request->fcm_token ?: $request->token;
 
-            // 🔍 Find user
-            $user = UserModel::where('auth_phone', $phoneRequest)->first();
+            // 🔍 Find user$phoneRequest = preg_replace('/\D/', '', $phoneRequest);
+
+            $phoneRequest = preg_replace('/\D/', '', $phoneRequest);
+
+            $user = UserModel::where('auth_phone', 'LIKE', '%' . $phoneRequest)
+                ->first();
 
             if ($phoneRequest === '8837076347') {
 
