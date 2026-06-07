@@ -12,6 +12,7 @@ use App\Models\UserModel;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -38,8 +39,7 @@ class DashboardController extends Controller
 
             $activeSubscriptionsQuery = Subscription::query()
                 ->where('is_active', true)
-                ->where('end_at', '>=', now())
-                ->with('plan');
+                ->where('end_at', '>=', now());
 
             if ($deviceType) {
                 $activeSubscriptionsQuery->whereHas('plan', function ($query) use ($deviceType) {
@@ -47,48 +47,70 @@ class DashboardController extends Controller
                 });
             }
 
-            $filteredActiveSubscriptionsQuery = clone $activeSubscriptionsQuery;
-
-            if ($rangeStart && $rangeEnd) {
-                $filteredActiveSubscriptionsQuery->whereBetween($dateField, [$rangeStart, $rangeEnd]);
-            }
-
-            $filteredActiveSubscriptions = $filteredActiveSubscriptionsQuery->get();
-            $activeSubscriptionsByPlan = $filteredActiveSubscriptions
-                ->groupBy('plan_id')
-                ->map(function ($subscriptions, $planId) {
-                    $plan = $subscriptions->first()?->plan;
-
-                    return [
-                        'plan_id' => (int) $planId,
-                        'plan_name' => $plan?->name,
-                        'device_type' => $plan?->device_type,
-                        'duration_days' => (int) ($plan?->duration_days ?? 0),
-                        'plan_price' => (float) ($plan?->price ?? 0),
-                        'total_active_subscriptions' => $subscriptions->count(),
-                        'total_amount' => round($subscriptions->count() * (float) ($plan?->price ?? 0), 2),
-                    ];
+            $filteredActiveSubscriptionAggregates = DB::table('n_subscriptions as subscriptions')
+                ->join('n_plans as plans', 'plans.id', '=', 'subscriptions.plan_id')
+                ->where('subscriptions.is_active', true)
+                ->where('subscriptions.end_at', '>=', now())
+                ->when($deviceType, function ($query) use ($deviceType) {
+                    $query->where('plans.device_type', $deviceType);
                 })
-                ->sortBy(function ($item) {
-                    return sprintf('%s|%s', $item['plan_name'] ?? '', $item['device_type'] ?? '');
+                ->when($rangeStart && $rangeEnd, function ($query) use ($dateField, $rangeStart, $rangeEnd) {
+                    $query->whereBetween("subscriptions.{$dateField}", [$rangeStart, $rangeEnd]);
+                });
+
+            $activeSubscriptionsByPlan = (clone $filteredActiveSubscriptionAggregates)
+                ->select([
+                    'subscriptions.plan_id',
+                    'plans.name as plan_name',
+                    'plans.device_type',
+                    'plans.duration_days',
+                    'plans.price as plan_price',
+                ])
+                ->selectRaw('COUNT(*) as total_active_subscriptions')
+                ->selectRaw('SUM(plans.price) as total_amount')
+                ->groupBy(
+                    'subscriptions.plan_id',
+                    'plans.name',
+                    'plans.device_type',
+                    'plans.duration_days',
+                    'plans.price'
+                )
+                ->orderBy('plans.name')
+                ->orderBy('plans.device_type')
+                ->get()
+                ->map(function ($item) {
+                    return [
+                        'plan_id' => (int) $item->plan_id,
+                        'plan_name' => $item->plan_name,
+                        'device_type' => $item->device_type,
+                        'duration_days' => (int) ($item->duration_days ?? 0),
+                        'plan_price' => (float) ($item->plan_price ?? 0),
+                        'total_active_subscriptions' => (int) $item->total_active_subscriptions,
+                        'total_amount' => round((float) ($item->total_amount ?? 0), 2),
+                    ];
                 })
                 ->values();
 
-            $activeSubscriptionsByDevice = $filteredActiveSubscriptions
-                ->groupBy(fn($subscription) => $subscription->plan?->device_type ?? 'unknown')
-                ->map(function ($subscriptions, $groupDeviceType) {
-                    $totalAmount = $subscriptions->sum(function ($subscription) {
-                        return (float) ($subscription->plan?->price ?? 0);
-                    });
-
+            $activeSubscriptionsByDevice = (clone $filteredActiveSubscriptionAggregates)
+                ->selectRaw("COALESCE(plans.device_type, 'unknown') as device_type")
+                ->selectRaw('COUNT(*) as total_active_subscriptions')
+                ->selectRaw('SUM(plans.price) as total_amount')
+                ->groupBy('plans.device_type')
+                ->orderBy('plans.device_type')
+                ->get()
+                ->map(function ($item) {
                     return [
-                        'device_type' => $groupDeviceType,
-                        'total_active_subscriptions' => $subscriptions->count(),
-                        'total_amount' => round($totalAmount, 2),
+                        'device_type' => $item->device_type,
+                        'total_active_subscriptions' => (int) $item->total_active_subscriptions,
+                        'total_amount' => round((float) ($item->total_amount ?? 0), 2),
                     ];
                 })
-                ->sortBy('device_type')
                 ->values();
+
+            $planAmountSummary = (clone $filteredActiveSubscriptionAggregates)
+                ->selectRaw('COUNT(*) as total_active_subscriptions_in_range')
+                ->selectRaw('SUM(plans.price) as total_amount')
+                ->first();
 
             $movieCategoryMap = [
                 'hollywood' => 'isHollywood',
@@ -147,10 +169,8 @@ class DashboardController extends Controller
                     'active_subscriptions_by_plan' => $activeSubscriptionsByPlan,
                     'active_subscriptions_by_device' => $activeSubscriptionsByDevice,
                     'plan_amount_summary' => [
-                        'total_active_subscriptions_in_range' => $filteredActiveSubscriptions->count(),
-                        'total_amount' => round($filteredActiveSubscriptions->sum(function ($subscription) {
-                            return (float) ($subscription->plan?->price ?? 0);
-                        }), 2),
+                        'total_active_subscriptions_in_range' => (int) ($planAmountSummary?->total_active_subscriptions_in_range ?? 0),
+                        'total_amount' => round((float) ($planAmountSummary?->total_amount ?? 0), 2),
                     ],
                     'content' => [
                         'total_movies' => $totalMovies,
