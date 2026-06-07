@@ -251,6 +251,7 @@ Route::prefix('v3.0/channels')->group(function () {
 
 Route::prefix('v3.0')->group(function () {
     Route::post('/request-otp', [OTPController::class, 'send']);
+    Route::post('/request-otp-phone-login', [OTPController::class, 'sendPhoneLogin']);
     Route::post('/verify-otp', [OTPController::class, 'verify']);
     
     Route::post('/token/refresh', [TokenController::class, 'refresh']);

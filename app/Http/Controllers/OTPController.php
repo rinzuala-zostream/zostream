@@ -169,6 +169,137 @@ class OTPController extends Controller
     }
 
     /**
+     * Send OTP for browser/PWA phone login using flexible phone matching.
+     *
+     * This keeps the legacy send() behavior untouched for existing apps while
+     * allowing newer clients to resolve users whose stored phone format differs
+     * by country-code prefix.
+     */
+    public function sendPhoneLogin(Request $request)
+    {
+        try {
+            $request->validate([
+                'user_id' => 'nullable|string',
+                'phone_number' => 'required|string',
+                'device_name' => 'nullable|string',
+                'device_id' => 'nullable|string',
+                'device_token' => 'nullable|string',
+                'device_type' => 'nullable|string',
+                'fcm_token' => 'nullable|string',
+                'token' => 'nullable|string',
+            ]);
+
+            $userId = $request->user_id;
+            if (!$this->isUuid($userId)) {
+                $userId = (string) Str::uuid();
+            }
+
+            $phoneRequest = $this->digitsOnly($request->phone_number);
+            $deviceId = $request->device_id ?: $request->device_token;
+            $deviceName = $request->device_name ?: 'Unknown Device';
+            $fcmToken = $request->fcm_token ?: $request->token;
+
+            $user = $this->findUserForPhoneLogin($phoneRequest);
+
+            if ($phoneRequest === '8837076347') {
+                if (!$user) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'Test user not found'
+                    ], 404);
+                }
+
+                return response()->json([
+                    'status' => 'success',
+                    'message' => 'Test OTP sent successfully',
+                    'user_id' => $user->uid,
+                    'WhatsApp_Status' => 'skipped',
+                    'otp' => '326416'
+                ]);
+            }
+
+            if (!$user) {
+                if (!$phoneRequest) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'User not found and no phone provided'
+                    ]);
+                }
+
+                $createdDate = $request->created_date ?: Carbon::now()->format('M d, Y h:i:s a');
+                $user = UserModel::create([
+                    'uid' => $userId,
+                    'auth_phone' => $phoneRequest,
+                    'created_date' => $createdDate,
+                    'device_name' => $deviceName,
+                    'isACActive' => $request->isACActive ?? true,
+                    'isAccountComplete' => $request->isAccountComplete ?? false,
+                    'call' => $request->call,
+                    'device_id' => $deviceId,
+                    'dob' => $request->dob,
+                    'edit_date' => $request->edit_date,
+                    'img' => $request->img,
+                    'khua' => $request->khua,
+                    'lastLogin' => $request->lastLogin,
+                    'mail' => $request->mail,
+                    'name' => $request->name,
+                    'veng' => $request->veng,
+                    'token' => $fcmToken,
+                    'is_auth_phone_active' => true,
+                ]);
+            }
+
+            $otpPhone = $user->auth_phone ?? $phoneRequest;
+            if (!$otpPhone) {
+                return response()->json(['status' => 'error', 'message' => 'No phone available to send OTP']);
+            }
+
+            $otp = rand(100000, 999999);
+            $otpHash = Hash::make($otp);
+            $expiry = now()->addMinutes(5);
+
+            OTPRequestModel::updateOrCreate(
+                ['user_id' => $user->uid, 'is_verified' => 0],
+                ['otp_code' => $otpHash, 'expires_at' => $expiry, 'updated_at' => now()]
+            );
+
+            $whatsappStatus = null;
+            try {
+                $payload = [
+                    "to" => $otpPhone,
+                    "type" => "template",
+                    "template_name" => "zostream_auth_otp",
+                    "template_params" => [$otp],
+                    "language" => "en"
+                ];
+                $response = $this->whatsappController->send(new Request($payload));
+                $whatsappStatus = $response->getStatusCode() === 200 ? 'sent' : 'failed';
+            } catch (Exception $e) {
+                Log::warning('WhatsApp OTP send failed', ['error' => $e->getMessage()]);
+                $whatsappStatus = 'failed';
+            }
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'OTP sent successfully',
+                'user_id' => $user->uid,
+                'WhatsApp_Status' => $whatsappStatus,
+                'otp' => app()->environment('local') ? $otp : null,
+            ]);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Validation failed',
+                'errors' => $e->errors()
+            ]);
+        } catch (Exception $e) {
+            Log::error('OTP phone-login send failed', ['error' => $e->getMessage()]);
+            return response()->json(['status' => 'error', 'message' => 'Something went wrong']);
+        }
+    }
+
+    /**
      * ✅ Verify OTP and generate token
      */
     public function verify(Request $request)
@@ -414,6 +545,133 @@ class OTPController extends Controller
         if (!empty($updates)) {
             $user->update($updates);
         }
+    }
+
+    private function findUserForPhoneLogin(string $phoneRequest): ?UserModel
+    {
+        if ($phoneRequest === '') {
+            return null;
+        }
+
+        $suffixes = $this->phoneSuffixCandidates($phoneRequest, 4);
+        if (empty($suffixes)) {
+            return null;
+        }
+
+        $users = UserModel::query()
+            ->where(function ($query) use ($suffixes) {
+                foreach ($suffixes as $suffix) {
+                    $query->orWhere('auth_phone', 'LIKE', '%' . $suffix)
+                        ->orWhere('call', 'LIKE', '%' . $suffix);
+                }
+            })
+            ->orderByDesc('num')
+            ->limit(25)
+            ->get();
+
+        $bestUser = null;
+        $bestScore = 0;
+        $bestUserNum = 0;
+
+        foreach ($users as $user) {
+            $score = $this->phoneLoginMatchScore($phoneRequest, $user);
+            $userNum = (int) $user->num;
+
+            if ($score > $bestScore || ($score === $bestScore && $score > 0 && $userNum > $bestUserNum)) {
+                $bestUser = $user;
+                $bestScore = $score;
+                $bestUserNum = $userNum;
+            }
+        }
+
+        return $bestScore > 0 ? $bestUser : null;
+    }
+
+    private function phoneSuffixCandidates(string $phone, int $minimumLength = 8): array
+    {
+        $length = strlen($phone);
+        if ($length === 0) {
+            return [];
+        }
+
+        $minimumLength = $length < $minimumLength ? $length : $minimumLength;
+        $suffixes = [];
+
+        for ($size = $length; $size >= $minimumLength; $size--) {
+            $suffix = substr($phone, -$size);
+            if ($suffix !== '') {
+                $suffixes[] = $suffix;
+            }
+        }
+
+        return array_values(array_unique($suffixes));
+    }
+
+    private function phoneLoginMatchScore(string $phoneRequest, UserModel $user): int
+    {
+        $score = 0;
+        $storedPhones = [
+            $this->digitsOnly($user->auth_phone),
+            $this->digitsOnly($user->call),
+        ];
+
+        foreach ($storedPhones as $storedPhone) {
+            if ($storedPhone === '') {
+                continue;
+            }
+
+            if ($storedPhone === $phoneRequest) {
+                $score = max($score, 1000 + strlen($storedPhone));
+                continue;
+            }
+
+            if ($this->endsWith($phoneRequest, $storedPhone)) {
+                $score = max($score, 900 + strlen($storedPhone));
+                continue;
+            }
+
+            if ($this->endsWith($storedPhone, $phoneRequest)) {
+                $score = max($score, 800 + strlen($phoneRequest));
+                continue;
+            }
+
+            $commonSuffixLength = $this->commonSuffixLength($phoneRequest, $storedPhone);
+            $minimumSafeLength = min(8, strlen($phoneRequest), strlen($storedPhone));
+            if ($commonSuffixLength >= $minimumSafeLength) {
+                $score = max($score, 700 + $commonSuffixLength);
+            }
+        }
+
+        return $score;
+    }
+
+    private function commonSuffixLength(string $left, string $right): int
+    {
+        $leftIndex = strlen($left) - 1;
+        $rightIndex = strlen($right) - 1;
+        $length = 0;
+
+        while ($leftIndex >= 0 && $rightIndex >= 0 && $left[$leftIndex] === $right[$rightIndex]) {
+            $length++;
+            $leftIndex--;
+            $rightIndex--;
+        }
+
+        return $length;
+    }
+
+    private function endsWith(string $value, string $suffix): bool
+    {
+        if ($suffix === '') {
+            return true;
+        }
+
+        return substr($value, -strlen($suffix)) === $suffix;
+    }
+
+    private function digitsOnly($value): string
+    {
+        return preg_replace('/\D/', '', (string) $value) ?: '';
     }
 
     private function isUuid(?string $value): bool
