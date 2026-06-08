@@ -430,6 +430,6 @@ Route::prefix('v3.0')->group(function () {
         Route::post('/verify', [QRSessionController::class, 'verify']);
     });
 
-    Route::post('/check-phone', [WhatsAppPhoneController::class, 'checkPhone']);
+    Route::get('/check-phone', [WhatsAppPhoneController::class, 'checkPhone']);
     Route::post('/update-phone', [WhatsAppPhoneController::class, 'updatePhone']);
 }); // Close v3.0 prefix group
