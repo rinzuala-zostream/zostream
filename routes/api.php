@@ -27,6 +27,7 @@ use App\Http\Controllers\New\PollController;
 use App\Http\Controllers\New\QRSessionController;
 use App\Http\Controllers\New\ReelController;
 use App\Http\Controllers\New\SeasonController;
+use App\Http\Controllers\new\WhatsAppPhoneController;
 use App\Http\Controllers\NewStreamController;
 use App\Http\Controllers\OTPController;
 use App\Http\Controllers\PaymentMailController;
@@ -253,7 +254,7 @@ Route::prefix('v3.0')->group(function () {
     Route::post('/request-otp', [OTPController::class, 'send']);
     Route::post('/request-otp-phone-login', [OTPController::class, 'sendPhoneLogin']);
     Route::post('/verify-otp', [OTPController::class, 'verify']);
-    
+
     Route::post('/token/refresh', [TokenController::class, 'refresh']);
     Route::post('/token/revoke', [TokenController::class, 'revoke']);
     Route::post('/admin/whatsapp/request-otp', [AdminWhatsAppController::class, 'requestOtp']);
@@ -428,4 +429,7 @@ Route::prefix('v3.0')->group(function () {
         Route::get('/status/{token}', [QRSessionController::class, 'status']);
         Route::post('/verify', [QRSessionController::class, 'verify']);
     });
+
+    Route::post('/check-phone', [WhatsAppPhoneController::class, 'checkPhone']);
+    Route::post('/update-phone', [WhatsAppPhoneController::class, 'updatePhone']);
 }); // Close v3.0 prefix group
