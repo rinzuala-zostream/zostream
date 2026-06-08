@@ -67,8 +67,6 @@ class OTPController extends Controller
 
             // 🔍 Find user$phoneRequest = preg_replace('/\D/', '', $phoneRequest);
 
-            $phoneRequest = preg_replace('/\D/', '', $phoneRequest);
-
             $user = UserModel::where('auth_phone', 'LIKE', '%' . $phoneRequest)
                 ->first();
 
@@ -120,7 +118,7 @@ class OTPController extends Controller
             $otpPhone = !empty($user->country_code)
                 ? ltrim($user->country_code, '+') . $user->auth_phone
                 : $phoneRequest;
-                
+
             if (!$otpPhone) {
                 return response()->json(['status' => 'error', 'message' => 'No phone available to send OTP']);
             }
