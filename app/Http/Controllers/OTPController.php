@@ -46,6 +46,7 @@ class OTPController extends Controller
             // 🧾 Validate input
             $request->validate([
                 'user_id' => 'nullable|string',
+                'country_code' => 'nullable|string|max:10',
                 'phone_number' => 'required|string',
                 'device_name' => 'nullable|string',
                 'device_id' => 'nullable|string',
@@ -106,6 +107,7 @@ class OTPController extends Controller
                     'img' => $request->img,
                     'khua' => $request->khua,
                     'lastLogin' => $request->lastLogin,
+                    'country_code' => $request->country_code,
                     'mail' => $request->mail,
                     'name' => $request->name,
                     'veng' => $request->veng,
@@ -115,7 +117,10 @@ class OTPController extends Controller
             }
 
             // 📱 Determine OTP target phone
-            $otpPhone = $user->auth_phone ?? $phoneRequest;
+            $otpPhone = !empty($user->country_code)
+                ? ltrim($user->country_code, '+') . $user->auth_phone
+                : $phoneRequest;
+                
             if (!$otpPhone) {
                 return response()->json(['status' => 'error', 'message' => 'No phone available to send OTP']);
             }

@@ -24,6 +24,7 @@ class UserModel extends Model
         'khua',
         'lastLogin',
         'mail',
+        'country_code',
         'auth_phone',
         'is_auth_phone_active',
         'name',
