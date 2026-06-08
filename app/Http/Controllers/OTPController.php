@@ -67,6 +67,8 @@ class OTPController extends Controller
 
             // 🔍 Find user$phoneRequest = preg_replace('/\D/', '', $phoneRequest);
 
+            
+            //change without "like" when app update
             $user = UserModel::where('auth_phone', 'LIKE', '%' . $phoneRequest)
                 ->first();
 
