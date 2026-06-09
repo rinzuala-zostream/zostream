@@ -257,6 +257,26 @@ class NewStreamController extends Controller
                         ->update(['status' => 'stopped']);
                 }
 
+                $staleDeviceIds = $staleStreams
+                    ->pluck('device_id')
+                    ->filter()
+                    ->unique()
+                    ->values();
+
+                if ($staleDeviceIds->isNotEmpty()) {
+                    Devices::whereIn('id', $staleDeviceIds)
+                        ->where('subscription_id', $subscriptionId)
+                        ->where('user_id', $subscription->user_id)
+                        ->where('device_type', $type)
+                        ->where('status', 'active')
+                        ->update([
+                            'status' => 'inactive',
+                            'last_activity' => now(),
+                        ]);
+
+                    $device->refresh();
+                }
+
                 // 5️⃣ DB SEAT COUNT
                 $dbActiveCount = Devices::where('subscription_id', $subscription->id)
                     ->where('user_id', $subscription->user_id)

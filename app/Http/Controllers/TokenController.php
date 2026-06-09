@@ -4,6 +4,9 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\SessionTokenModel;
+use App\Models\New\ActiveStream;
+use App\Models\New\Devices;
+use DB;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
 
@@ -119,10 +122,55 @@ class TokenController extends Controller
      */
     public function revoke(Request $request)
     {
-        $request->validate(['access_token' => 'required|string']);
+        $request->validate([
+            'access_token' => 'required|string',
+            'device_token' => 'nullable|string',
+        ]);
 
-        SessionTokenModel::where('access_token', $request->access_token)->delete();
+        DB::transaction(function () use ($request) {
+            $record = SessionTokenModel::where('access_token', $request->access_token)
+                ->lockForUpdate()
+                ->first();
+
+            $deviceToken = $request->input('device_token')
+                ?: $request->header('Device-Token')
+                ?: $record?->device_id;
+
+            if ($record && $deviceToken) {
+                $this->releaseDeviceSeat($record->user_id, $deviceToken);
+            }
+
+            if ($record) {
+                $record->delete();
+            }
+        });
 
         return response()->json(['status' => 'success', 'message' => 'Logged out successfully']);
+    }
+
+    private function releaseDeviceSeat($userId, string $deviceToken): void
+    {
+        $device = Devices::where('user_id', $userId)
+            ->where('device_token', $deviceToken)
+            ->lockForUpdate()
+            ->first();
+
+        if (!$device) {
+            return;
+        }
+
+        ActiveStream::where('device_id', $device->id)
+            ->where('status', 'active')
+            ->update([
+                'status' => 'stopped',
+                'last_ping' => now(),
+            ]);
+
+        if ($device->status !== 'blocked') {
+            $device->update([
+                'status' => 'inactive',
+                'last_activity' => now(),
+            ]);
+        }
     }
 }
