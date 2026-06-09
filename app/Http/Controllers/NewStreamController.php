@@ -45,6 +45,8 @@ class NewStreamController extends Controller
         $movieId = $request->input('movie_id');
         $seasonId = $request->input('season_id'); //This is optional and only used for rent whole episodes of season
         $movieType = $request->input('type');
+        $contentType = $movieType ? strtolower(trim((string) $movieType)) : null;
+        $contentId = filled($movieId) && is_numeric($movieId) ? (int) $movieId : null;
         $userId = $request->input('user_id');
         $platform = $request->input('platform');
 
@@ -246,6 +248,7 @@ class NewStreamController extends Controller
 
                 $staleStreams = ActiveStream::where('subscription_id', $subscriptionId)
                     ->where('device_type', $type)
+                    ->where('status', 'active')
                     ->where('last_ping', '<', $timeout)
                     ->get();
 
@@ -304,21 +307,48 @@ class NewStreamController extends Controller
             }
 
             // 9️⃣ Start stream (COMMON for both)
-            $streamToken = Str::uuid()->toString();
+            $streamKey = [
+                'subscription_id' => $requiresSubscription ? $subscriptionId : null,
+                'device_id' => $device->id
+            ];
 
-            ActiveStream::updateOrCreate(
-                [
-                    'subscription_id' => $requiresSubscription ? $subscriptionId : null,
-                    'device_id' => $device->id
-                ],
-                [
+            $existingStream = ActiveStream::where($streamKey)
+                ->lockForUpdate()
+                ->first();
+
+            $timeout = now()->subSeconds($this->streamTimeout);
+            $isSameActiveContent = $existingStream
+                && $contentType
+                && $contentId
+                && $existingStream->status === 'active'
+                && $existingStream->last_ping
+                && $existingStream->last_ping->gte($timeout)
+                && $existingStream->content_type === $contentType
+                && (int) $existingStream->content_id === $contentId;
+
+            if ($isSameActiveContent) {
+                $streamToken = $existingStream->stream_token;
+                $existingStream->update([
                     'device_type' => $type,
-                    'stream_token' => $streamToken,
-                    'started_at' => now(),
                     'last_ping' => now(),
                     'status' => 'active'
-                ]
-            );
+                ]);
+            } else {
+                $streamToken = Str::uuid()->toString();
+
+                ActiveStream::updateOrCreate(
+                    $streamKey,
+                    [
+                        'device_type' => $type,
+                        'content_type' => $contentType,
+                        'content_id' => $contentId,
+                        'stream_token' => $streamToken,
+                        'started_at' => now(),
+                        'last_ping' => now(),
+                        'status' => 'active'
+                    ]
+                );
+            }
 
             DB::commit();
 
@@ -432,6 +462,8 @@ class NewStreamController extends Controller
         $subscriptionId = $request->input('subscription_id');
         $movieId = $request->input('movie_id');
         $movieType = $request->input('type');
+        $contentType = $movieType ? strtolower(trim((string) $movieType)) : null;
+        $contentId = filled($movieId) && is_numeric($movieId) ? (int) $movieId : null;
 
         $isPPV = false;
         $requiresSubscription = false;
@@ -502,6 +534,27 @@ class NewStreamController extends Controller
         $stream = $streamQuery->first();
 
         if (!$stream) {
+            $activeDeviceStream = ActiveStream::where('device_id', $device->id)
+                ->where('status', 'active')
+                ->latest('last_ping')
+                ->first();
+
+            Log::warning('Stream ping session expired', [
+                'stream_token' => $streamToken,
+                'device_token' => $deviceToken,
+                'device_id' => $device->id,
+                'subscription_id' => $subscriptionId,
+                'movie_id' => $movieId,
+                'type' => $movieType,
+                'content_type' => $contentType,
+                'content_id' => $contentId,
+                'requires_subscription' => $requiresSubscription,
+                'active_device_stream_token' => $activeDeviceStream?->stream_token,
+                'active_device_stream_content_type' => $activeDeviceStream?->content_type,
+                'active_device_stream_content_id' => $activeDeviceStream?->content_id,
+                'active_device_stream_last_ping' => $activeDeviceStream?->last_ping,
+            ]);
+
             return response()->json([
                 'status' => 'error',
                 'title' => 'Session Expired',
