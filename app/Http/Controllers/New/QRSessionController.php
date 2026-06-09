@@ -357,6 +357,8 @@ class QRSessionController extends Controller
                         'user_id' => $request->user_id,
                         'plan_id' => $session['plan_id'] ?? null,
                         'movie_id' => $session['movie_id'] ?? null,
+                        'device_id' => $session['device_id'] ?? $session['device_token'] ?? null,
+                        'device_token' => $session['device_token'] ?? $session['device_id'] ?? null,
                         'device_type' => $session['device_type'] ?? 'mobile',
                         'app_payment_type' => $session['app_payment_type'] ?? 'subscription',
                         'payment_method' => $session['payment_method'] ?? 'qr',

@@ -166,11 +166,15 @@ class PaymentController extends Controller
 
                     // 🔹 If PPV → grant access
                     if ($payment->movie_id) {
+                        $meta = is_array($payment->meta) ? $payment->meta : [];
+                        $meta['device_token'] = $meta['device_token'] ?? $deviceId;
+                        $meta['device_type'] = $meta['device_type'] ?? strtolower(trim((string) $deviceType));
 
                         $payment->update([
                             'status' => 'success',
                             'payment_date' => now(),
-                            'expiry_date' => Carbon::now()->addDays(7) // 7-day access for PPV
+                            'expiry_date' => Carbon::now()->addDays(7), // 7-day access for PPV
+                            'meta' => $meta,
                         ]);
                     }
 

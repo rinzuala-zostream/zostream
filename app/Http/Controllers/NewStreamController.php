@@ -192,28 +192,34 @@ class NewStreamController extends Controller
                 ->where('device_type', $device->device_type)
                 ->where('app_payment_type', 'ppv'); // if you store this
 
-            $isRented = false;
+            $rental = null;
 
             if ($seasonId && $movieType === 'episode') {
                 // First check if whole season is rented
-                $isRented = (clone $baseQuery)
+                $rental = (clone $baseQuery)
                     ->where('movie_id', $seasonId)
-                    ->exists();
+                    ->latest('payment_date')
+                    ->latest('created_at')
+                    ->first();
 
                 // If not, check individual episode/movie
-                if (!$isRented) {
-                    $isRented = (clone $baseQuery)
+                if (!$rental) {
+                    $rental = (clone $baseQuery)
                         ->where('movie_id', $movieId)
-                        ->exists();
+                        ->latest('payment_date')
+                        ->latest('created_at')
+                        ->first();
                 }
             } else {
                 // Check direct movie/episode rental
-                $isRented = (clone $baseQuery)
+                $rental = (clone $baseQuery)
                     ->where('movie_id', $movieId)
-                    ->exists();
+                    ->latest('payment_date')
+                    ->latest('created_at')
+                    ->first();
             }
 
-            if (!$isRented) {
+            if (!$rental) {
                 return response()->json([
                     'status' => 'error',
                     'title' => 'Access Denied',
@@ -226,6 +232,14 @@ class NewStreamController extends Controller
                     'status' => 'error',
                     'title' => 'Permission Denied',
                     'message' => 'Only the owner device can start a PPV stream.'
+                ], 403);
+            }
+
+            if (!$this->isPpvRentalAllowedOnDevice($rental, $device, $deviceToken)) {
+                return response()->json([
+                    'status' => 'error',
+                    'title' => 'PPV Device Locked',
+                    'message' => 'This rental is only available on the device that purchased it. Please rent this content on this device to start streaming.'
                 ], 403);
             }
         }
@@ -825,6 +839,38 @@ class NewStreamController extends Controller
             'owner_device' => $kept,
             'blocked_devices' => $blocked
         ]);
+    }
+
+    private function isPpvRentalAllowedOnDevice(PaymentHistory $rental, Devices $device, string $deviceToken): bool
+    {
+        $meta = is_array($rental->meta) ? $rental->meta : [];
+        $rentalDeviceToken = trim((string) ($meta['device_token'] ?? ''));
+        $rentalDeviceId = isset($meta['device_id']) ? (int) $meta['device_id'] : null;
+
+        if ($rentalDeviceToken !== '') {
+            return hash_equals($rentalDeviceToken, $deviceToken);
+        }
+
+        if ($rentalDeviceId && (int) $device->id === $rentalDeviceId) {
+            return true;
+        }
+
+        // Older PPV rows were not device-bound. Let the owner device claim the
+        // rental once, then lock all future playback to this exact device.
+        if ($device->is_owner_device) {
+            $rental->update([
+                'meta' => array_merge($meta, [
+                    'device_token' => $deviceToken,
+                    'device_id' => $device->id,
+                    'device_type' => $device->device_type,
+                    'bound_at' => now()->toDateTimeString(),
+                ]),
+            ]);
+
+            return true;
+        }
+
+        return false;
     }
 
     private function resolveMpdUrl(string $raw): array
