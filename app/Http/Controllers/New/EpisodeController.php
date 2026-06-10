@@ -8,6 +8,7 @@ use App\Models\New\Season;
 use App\Models\New\VideoUrl;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -412,7 +413,7 @@ class EpisodeController extends Controller
                 $outputPath,
             ]);
 
-            $process->setTimeout(60);
+            $process->setTimeout(6);
             $process->run();
 
             if (!$process->isSuccessful() || !is_file($outputPath)) {
@@ -480,27 +481,39 @@ class EpisodeController extends Controller
 
     private function getMpdDurationSeconds(string $mpdUrl): float
     {
-        $process = new Process([
-            'ffprobe',
-            '-v',
-            'error',
-            '-show_entries',
-            'format=duration',
-            '-of',
-            'default=noprint_wrappers=1:nokey=1',
-            str_replace(' ', '%20', $mpdUrl),
-        ]);
+        try {
+            $response = Http::connectTimeout(1)
+                ->timeout(2)
+                ->get(str_replace(' ', '%20', $mpdUrl));
 
-        $process->setTimeout(30);
-        $process->run();
+            if (!$response->successful()) {
+                return 0;
+            }
 
-        if (!$process->isSuccessful()) {
+            $xml = @simplexml_load_string($response->body());
+
+            if (!$xml || empty($xml['mediaPresentationDuration'])) {
+                return 0;
+            }
+
+            return $this->parseIso8601Duration((string) $xml['mediaPresentationDuration']);
+        } catch (\Throwable $e) {
+            return 0;
+        }
+    }
+
+    private function parseIso8601Duration(string $duration): float
+    {
+        if (!preg_match('/^P(?:(\d+)Y)?(?:(\d+)M)?(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?$/', $duration, $matches)) {
             return 0;
         }
 
-        $duration = (float) trim($process->getOutput());
+        $days = (int) ($matches[3] ?? 0);
+        $hours = (int) ($matches[4] ?? 0);
+        $minutes = (int) ($matches[5] ?? 0);
+        $seconds = (float) ($matches[6] ?? 0);
 
-        return $duration > 0 ? $duration : 0;
+        return ($days * 86400) + ($hours * 3600) + ($minutes * 60) + $seconds;
     }
 
     private function formatSecondsAsTimestamp(int $seconds): string
