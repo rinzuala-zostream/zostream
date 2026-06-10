@@ -188,10 +188,52 @@ class EpisodeController extends Controller
                 'release_date' => 'nullable|date',
                 'is_active' => 'nullable|boolean',
                 'status' => 'nullable|in:Draft,Published,Scheduled',
-                'isPremium' => 'nullable|boolean'
+                'isPremium' => 'nullable|boolean',
+                'url' => 'nullable|string',
+                'dash_url' => 'nullable|string',
+                'quality' => 'nullable|string',
+                'type' => 'nullable|string'
             ]);
 
-            $episode->update($validated);
+            $videoUrl = $validated['url'] ?? $validated['dash_url'] ?? null;
+            $episodeData = $validated;
+            unset($episodeData['url'], $episodeData['dash_url'], $episodeData['quality'], $episodeData['type']);
+
+            if (!empty($videoUrl) && empty($episodeData['thumbnail'] ?? $episode->thumbnail)) {
+                $thumbnail = $this->extractThumbnailFromMpd($videoUrl, $episode->id);
+
+                if ($thumbnail) {
+                    $episodeData['thumbnail'] = $thumbnail;
+                } elseif (array_key_exists('thumbnail', $episodeData) && empty($episodeData['thumbnail'])) {
+                    unset($episodeData['thumbnail']);
+                }
+            }
+
+            $episode->update($episodeData);
+
+            if (!empty($videoUrl)) {
+                $freshEpisode = $episode->fresh();
+                $season = Season::where('id', $freshEpisode->season_id)->first();
+                $video = VideoUrl::where('episode_id', $freshEpisode->id)->first();
+
+                if ($season) {
+                    $videoData = [
+                        'movie_id' => $season->movie_id,
+                        'episode_id' => $freshEpisode->id,
+                        'quality' => $validated['quality'] ?? $video?->quality ?? 'HD',
+                        'type' => $validated['type'] ?? $video?->type ?? 'DASH',
+                        'url' => $videoUrl,
+                    ];
+
+                    if ($video) {
+                        $video->update($videoData);
+                    } else {
+                        VideoUrl::create(array_merge([
+                            'id' => (string) Str::uuid(),
+                        ], $videoData));
+                    }
+                }
+            }
 
             return response()->json([
                 'status' => 'success',
