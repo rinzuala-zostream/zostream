@@ -8,8 +8,10 @@ use App\Models\New\Season;
 use App\Models\New\VideoUrl;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Symfony\Component\Process\Process;
 
 class EpisodeController extends Controller
 {
@@ -63,11 +65,23 @@ class EpisodeController extends Controller
                 'thumbnail' => 'nullable|string',
                 'release_date' => 'nullable|date',
                 'is_active' => 'nullable|boolean',
-                'status' => 'nullable|in:Draft,Published,Scheduled'
+                'status' => 'nullable|in:Draft,Published,Scheduled',
+                'url' => 'nullable|string',
+                'dash_url' => 'nullable|string',
+                'quality' => 'nullable|string',
+                'type' => 'nullable|string'
             ]);
 
+            $episodeId = (string) Str::uuid();
+            $thumbnail = $validated['thumbnail'] ?? null;
+            $videoUrl = $validated['url'] ?? $validated['dash_url'] ?? null;
+
+            if (!$thumbnail && !empty($videoUrl)) {
+                $thumbnail = $this->extractThumbnailFromMpd($videoUrl, $episodeId);
+            }
+
             $episode = Episode::create([
-                'id' => (string) Str::uuid(),
+                'id' => $episodeId,
                 'amount' => $validated['amount'] ?? 0,
                 'isPayPerView' => $validated['isPayPerView'] ?? false,
                 'isPremium' => $validated['isPremium'] ?? false,
@@ -75,11 +89,24 @@ class EpisodeController extends Controller
                 'episode_number' => $validated['episode_number'],
                 'title' => $validated['title'] ?? null,
                 'description' => $validated['description'] ?? null,
-                'thumbnail' => $validated['thumbnail'] ?? null,
+                'thumbnail' => $thumbnail,
                 'release_date' => $validated['release_date'] ?? null,
                 'is_active' => $validated['is_active'] ?? true,
                 'status' => $validated['status'] ?? 'Draft'
             ]);
+
+            if (!empty($videoUrl)) {
+                $season = Season::where('id', $validated['season_id'])->first();
+
+                VideoUrl::create([
+                    'id' => (string) Str::uuid(),
+                    'movie_id' => $season->movie_id,
+                    'episode_id' => $episode->id,
+                    'quality' => $validated['quality'] ?? 'HD',
+                    'type' => $validated['type'] ?? 'DASH',
+                    'url' => $videoUrl,
+                ]);
+            }
 
             return response()->json([
                 'status' => 'success',
@@ -234,13 +261,17 @@ class EpisodeController extends Controller
             ]);
 
             $video = VideoUrl::create([
-                'id' => (string) \Str::uuid(),
+                'id' => (string) Str::uuid(),
                 'movie_id' => $validated['movie_id'],
                 'episode_id' => $validated['episode_id'] ?? null,
                 'quality' => $validated['quality'] ?? 'HD',
                 'type' => $validated['type'] ?? 'DASH',
                 'url' => $validated['url'],
             ]);
+
+            if (!empty($validated['episode_id'])) {
+                $this->setEpisodeThumbnailFromMpd($validated['episode_id'], $validated['url']);
+            }
 
             return response()->json([
                 'status' => 'success',
@@ -287,6 +318,10 @@ class EpisodeController extends Controller
 
             $video->update($validated);
 
+            if (!empty($validated['url']) && !empty($video->episode_id)) {
+                $this->setEpisodeThumbnailFromMpd($video->episode_id, $validated['url']);
+            }
+
             return response()->json([
                 'status' => 'success',
                 'data' => $video->fresh()
@@ -332,5 +367,206 @@ class EpisodeController extends Controller
                 'message' => 'Failed to delete video url'
             ], 500);
         }
+    }
+
+    private function setEpisodeThumbnailFromMpd(string $episodeId, string $url): void
+    {
+        $episode = Episode::where('id', $episodeId)->first();
+
+        if (!$episode || !empty($episode->thumbnail)) {
+            return;
+        }
+
+        $thumbnail = $this->extractThumbnailFromMpd($url, $episode->id);
+
+        if ($thumbnail) {
+            $episode->update(['thumbnail' => $thumbnail]);
+        }
+    }
+
+    private function extractThumbnailFromMpd(string $rawUrl, string $episodeId): ?string
+    {
+        $outputPath = null;
+
+        try {
+            $mpdUrl = $this->resolveMpdUrl($rawUrl);
+            $outputDir = storage_path('app/temp/episode-thumbnails');
+
+            if (!is_dir($outputDir) && !@mkdir($outputDir, 0755, true) && !is_dir($outputDir)) {
+                throw new \RuntimeException("Unable to create thumbnail directory: {$outputDir}");
+            }
+
+            $fileName = $episodeId . '.jpg';
+            $outputPath = $outputDir . DIRECTORY_SEPARATOR . $fileName;
+            $process = new Process([
+                'ffmpeg',
+                '-y',
+                '-ss',
+                $this->randomThumbnailSeekTime($mpdUrl),
+                '-i',
+                str_replace(' ', '%20', $mpdUrl),
+                '-frames:v',
+                '1',
+                '-q:v',
+                '2',
+                $outputPath,
+            ]);
+
+            $process->setTimeout(60);
+            $process->run();
+
+            if (!$process->isSuccessful() || !is_file($outputPath)) {
+                throw new \RuntimeException(trim($process->getErrorOutput()) ?: 'ffmpeg thumbnail extraction failed');
+            }
+
+            return $this->uploadEpisodeThumbnailToR2($outputPath);
+        } catch (\Throwable $e) {
+            Log::warning('Episode thumbnail extraction failed', [
+                'episode_id' => $episodeId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        } finally {
+            if ($outputPath && is_file($outputPath)) {
+                @unlink($outputPath);
+            }
+        }
+    }
+
+    private function uploadEpisodeThumbnailToR2(string $localPath): string
+    {
+        $r2Path = $this->makeEpisodeThumbnailR2Path();
+        $stream = fopen($localPath, 'r');
+
+        if ($stream === false) {
+            throw new \RuntimeException("Unable to read thumbnail file: {$localPath}");
+        }
+
+        try {
+            Storage::disk('r2')->put($r2Path, $stream, [
+                'visibility' => 'public',
+                'ContentType' => 'image/jpeg',
+            ]);
+        } finally {
+            fclose($stream);
+        }
+
+        return rtrim(config('filesystems.disks.r2.url'), '/') . '/' . $this->encodeR2Path($r2Path);
+    }
+
+    private function makeEpisodeThumbnailR2Path(): string
+    {
+        return 'thumbnail/episode/' . Str::uuid() . '.jpg';
+    }
+
+    private function randomThumbnailSeekTime(string $mpdUrl): string
+    {
+        $duration = $this->getMpdDurationSeconds($mpdUrl);
+
+        if ($duration <= 0) {
+            return '00:00:03';
+        }
+
+        $start = max(1, (int) floor($duration * 0.45));
+        $end = max($start, (int) ceil($duration * 0.55));
+
+        if ($duration > 20) {
+            $end = min($end, (int) $duration - 5);
+        }
+
+        return $this->formatSecondsAsTimestamp(random_int($start, max($start, $end)));
+    }
+
+    private function getMpdDurationSeconds(string $mpdUrl): float
+    {
+        $process = new Process([
+            'ffprobe',
+            '-v',
+            'error',
+            '-show_entries',
+            'format=duration',
+            '-of',
+            'default=noprint_wrappers=1:nokey=1',
+            str_replace(' ', '%20', $mpdUrl),
+        ]);
+
+        $process->setTimeout(30);
+        $process->run();
+
+        if (!$process->isSuccessful()) {
+            return 0;
+        }
+
+        $duration = (float) trim($process->getOutput());
+
+        return $duration > 0 ? $duration : 0;
+    }
+
+    private function formatSecondsAsTimestamp(int $seconds): string
+    {
+        return sprintf(
+            '%02d:%02d:%02d',
+            intdiv($seconds, 3600),
+            intdiv($seconds % 3600, 60),
+            $seconds % 60
+        );
+    }
+
+    private function encodeR2Path(string $path): string
+    {
+        return implode('/', array_map('rawurlencode', explode('/', $path)));
+    }
+
+    private function resolveMpdUrl(string $raw): string
+    {
+        $raw = trim($raw);
+
+        if (preg_match('/^https?:\/\//i', $raw) && stripos($raw, '.mpd') !== false) {
+            return $raw;
+        }
+
+        $rawParam = str_replace(' ', '+', $raw);
+        $b64 = strtr($rawParam, '-_', '+/');
+        $pad = strlen($b64) % 4;
+
+        if ($pad) {
+            $b64 .= str_repeat('=', 4 - $pad);
+        }
+
+        $data = base64_decode($b64, true);
+
+        if ($data === false || strlen($data) < 17) {
+            throw new \InvalidArgumentException('Invalid MPD URL or encrypted payload.');
+        }
+
+        $iv = substr($data, 0, 16);
+        $cipherText = substr($data, 16);
+        $decryptionKey = hash(
+            'sha256',
+            'd4c6198dabafb243b0d043a3c33a9fe171f81605158c267c7dfe5f66df29559a',
+            true
+        );
+
+        $decryptedMessage = openssl_decrypt(
+            $cipherText,
+            'aes-256-cbc',
+            $decryptionKey,
+            OPENSSL_RAW_DATA,
+            $iv
+        );
+
+        if ($decryptedMessage === false) {
+            throw new \InvalidArgumentException('Failed to decrypt MPD URL.');
+        }
+
+        $mpdUrl = trim(str_replace(["\r", "\n"], '', $decryptedMessage));
+        $mpdUrl = filter_var($mpdUrl, FILTER_VALIDATE_URL) ? $mpdUrl : urldecode($mpdUrl);
+
+        if (!filter_var($mpdUrl, FILTER_VALIDATE_URL) || stripos($mpdUrl, '.mpd') === false) {
+            throw new \InvalidArgumentException('Decrypted URL is not an MPD manifest.');
+        }
+
+        return $mpdUrl;
     }
 }
