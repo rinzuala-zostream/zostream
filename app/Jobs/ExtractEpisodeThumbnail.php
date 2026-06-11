@@ -48,7 +48,7 @@ class ExtractEpisodeThumbnail
                 throw new \RuntimeException("Unable to create thumbnail directory: {$outputDir}");
             }
 
-            $outputPath = $outputDir . DIRECTORY_SEPARATOR . $episodeId . '.jpg';
+            $outputPath = $outputDir . DIRECTORY_SEPARATOR . $episodeId . '.webp';
             $process = new Process([
                 'ffmpeg',
                 '-y',
@@ -58,8 +58,10 @@ class ExtractEpisodeThumbnail
                 str_replace(' ', '%20', $mpdUrl),
                 '-frames:v',
                 '1',
-                '-q:v',
-                '2',
+                '-c:v',
+                'libwebp',
+                '-quality',
+                '82',
                 $outputPath,
             ]);
 
@@ -87,7 +89,7 @@ class ExtractEpisodeThumbnail
 
     private function uploadEpisodeThumbnailToR2(string $localPath): string
     {
-        $r2Path = 'thumbnail/episode/' . Str::uuid() . '.jpg';
+        $r2Path = 'thumbnail/episode/' . Str::uuid() . '.webp';
         $stream = fopen($localPath, 'r');
 
         if ($stream === false) {
@@ -97,7 +99,7 @@ class ExtractEpisodeThumbnail
         try {
             Storage::disk('r2')->put($r2Path, $stream, [
                 'visibility' => 'public',
-                'ContentType' => 'image/jpeg',
+                'ContentType' => 'image/webp',
             ]);
         } finally {
             fclose($stream);
