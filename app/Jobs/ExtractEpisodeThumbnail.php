@@ -128,7 +128,7 @@ class ExtractEpisodeThumbnail
     {
         try {
             $response = Http::connectTimeout(5)
-                ->timeout(10)
+                ->timeout(60)
                 ->get(str_replace(' ', '%20', $mpdUrl));
 
             if (!$response->successful()) {
