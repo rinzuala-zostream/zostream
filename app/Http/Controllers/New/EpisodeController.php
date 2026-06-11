@@ -196,15 +196,42 @@ class EpisodeController extends Controller
             ]);
 
             $videoUrl = $validated['url'] ?? $validated['dash_url'] ?? null;
-            $episodeData = $validated;
-            unset($episodeData['url'], $episodeData['dash_url'], $episodeData['quality'], $episodeData['type']);
 
-            if (!empty($videoUrl) && empty($episodeData['thumbnail'] ?? $episode->thumbnail)) {
+            $episodeData = $validated;
+            unset(
+                $episodeData['url'],
+                $episodeData['dash_url'],
+                $episodeData['quality'],
+                $episodeData['type']
+            );
+
+            // Normalize thumbnail from request
+            $requestThumbnail = array_key_exists('thumbnail', $episodeData)
+                ? trim((string) $episodeData['thumbnail'])
+                : null;
+
+            // Check current episode thumbnail
+            $currentThumbnail = trim((string) ($episode->thumbnail ?? ''));
+
+            // If request thumbnail is null/empty AND current thumbnail is null/empty,
+            // then extract thumbnail from video URL.
+            $shouldExtractThumbnail =
+                !empty($videoUrl) &&
+                empty($requestThumbnail) &&
+                empty($currentThumbnail);
+
+            if ($shouldExtractThumbnail) {
                 $thumbnail = $this->extractThumbnailFromMpd($videoUrl, $episode->id);
 
                 if ($thumbnail) {
                     $episodeData['thumbnail'] = $thumbnail;
-                } elseif (array_key_exists('thumbnail', $episodeData) && empty($episodeData['thumbnail'])) {
+                } else {
+                    // Do not overwrite existing thumbnail with empty value
+                    unset($episodeData['thumbnail']);
+                }
+            } else {
+                // If thumbnail was sent as empty string, don't update DB with empty string
+                if (array_key_exists('thumbnail', $episodeData) && empty($requestThumbnail)) {
                     unset($episodeData['thumbnail']);
                 }
             }
