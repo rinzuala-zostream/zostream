@@ -104,7 +104,6 @@ class EpisodeController extends Controller
 
                 if (empty($thumbnail)) {
                     $this->runEpisodeThumbnailExtraction($episode->id, $videoUrl);
-                    $episode = $episode->fresh();
                 }
             }
 
@@ -234,7 +233,6 @@ class EpisodeController extends Controller
 
             if (!empty($videoUrl) && !$hasRequestThumbnail) {
                 $this->runEpisodeThumbnailExtraction($freshEpisode->id, $videoUrl, true);
-                $freshEpisode = $episode->fresh();
             }
 
             return response()->json([
@@ -428,7 +426,7 @@ class EpisodeController extends Controller
     private function runEpisodeThumbnailExtraction(string $episodeId, string $url, bool $replaceExisting = false): void
     {
         try {
-            (new ExtractEpisodeThumbnail($episodeId, $url, $replaceExisting))->handle();
+            ExtractEpisodeThumbnail::dispatchAfterResponse($episodeId, $url, $replaceExisting);
         } catch (\Throwable $e) {
             Log::warning('Episode thumbnail extraction failed', [
                 'episode_id' => $episodeId,

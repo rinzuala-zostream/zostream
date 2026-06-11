@@ -63,7 +63,7 @@ class ExtractEpisodeThumbnail
                 $outputPath,
             ]);
 
-        
+            $process->setTimeout(60);
             $process->run();
 
             if (!$process->isSuccessful() || !is_file($outputPath) || filesize($outputPath) === 0) {
@@ -127,8 +127,8 @@ class ExtractEpisodeThumbnail
     private function getMpdDurationSeconds(string $mpdUrl): float
     {
         try {
-            $response = Http::connectTimeout(5)
-
+            $response = Http::connectTimeout(1)
+                ->timeout(3)
                 ->get(str_replace(' ', '%20', $mpdUrl));
 
             if (!$response->successful()) {
