@@ -164,6 +164,7 @@ class EpisodeController extends Controller
     }
 
     // Update episode
+    // Update episode
     public function update(Request $request, $id)
     {
         try {
@@ -196,23 +197,46 @@ class EpisodeController extends Controller
             ]);
 
             $videoUrl = $validated['url'] ?? $validated['dash_url'] ?? null;
-            $episodeData = $validated;
-            unset($episodeData['url'], $episodeData['dash_url'], $episodeData['quality'], $episodeData['type']);
 
-            if (!empty($videoUrl) && empty($episodeData['thumbnail'] ?? $episode->thumbnail)) {
+            $episodeData = $validated;
+            unset(
+                $episodeData['url'],
+                $episodeData['dash_url'],
+                $episodeData['quality'],
+                $episodeData['type']
+            );
+
+            /*
+            |--------------------------------------------------------------------------
+            | Thumbnail logic
+            |--------------------------------------------------------------------------
+            | 1. If manual thumbnail is sent, use it.
+            | 2. If video URL is updated and thumbnail is not sent,
+            |    generate new thumbnail from ffmpeg and upload to R2.
+            | 3. Existing thumbnail can be replaced when video URL changes.
+            */
+            if (array_key_exists('thumbnail', $validated) && !empty($validated['thumbnail'])) {
+                $episodeData['thumbnail'] = $validated['thumbnail'];
+            } elseif (!empty($videoUrl)) {
                 $thumbnail = $this->extractThumbnailFromMpd($videoUrl, $episode->id);
 
                 if ($thumbnail) {
                     $episodeData['thumbnail'] = $thumbnail;
-                } elseif (array_key_exists('thumbnail', $episodeData) && empty($episodeData['thumbnail'])) {
+                } else {
                     unset($episodeData['thumbnail']);
                 }
             }
 
             $episode->update($episodeData);
 
+            /*
+            |--------------------------------------------------------------------------
+            | Video URL update/create logic
+            |--------------------------------------------------------------------------
+            */
             if (!empty($videoUrl)) {
                 $freshEpisode = $episode->fresh();
+
                 $season = Season::where('id', $freshEpisode->season_id)->first();
                 $video = VideoUrl::where('episode_id', $freshEpisode->id)->first();
 
@@ -361,8 +385,19 @@ class EpisodeController extends Controller
 
             $video->update($validated);
 
+            /*
+            |--------------------------------------------------------------------------
+            | Force thumbnail update when video URL changes
+            |--------------------------------------------------------------------------
+            | Even if episode already has old thumbnail, generate new thumbnail
+            | and update episodes.thumbnail.
+            */
             if (!empty($validated['url']) && !empty($video->episode_id)) {
-                $this->setEpisodeThumbnailFromMpd($video->episode_id, $validated['url']);
+                $this->setEpisodeThumbnailFromMpd(
+                    $video->episode_id,
+                    $validated['url'],
+                    true
+                );
             }
 
             return response()->json([
@@ -372,7 +407,7 @@ class EpisodeController extends Controller
 
         } catch (\Exception $e) {
 
-            \Log::error('Update video url error: ' . $e->getMessage());
+            Log::error('Update video url error: ' . $e->getMessage());
 
             return response()->json([
                 'status' => 'error',
@@ -412,18 +447,34 @@ class EpisodeController extends Controller
         }
     }
 
-    private function setEpisodeThumbnailFromMpd(string $episodeId, string $url): void
+    private function setEpisodeThumbnailFromMpd(string $episodeId, string $url, bool $force = false): void
     {
         $episode = Episode::where('id', $episodeId)->first();
 
-        if (!$episode || !empty($episode->thumbnail)) {
+        if (!$episode) {
+            return;
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Old behavior:
+        |--------------------------------------------------------------------------
+        | If thumbnail already exists, function returned and never updated.
+        |
+        | New behavior:
+        | - force=false: keep old thumbnail
+        | - force=true: replace old thumbnail with newly generated R2 thumbnail
+        */
+        if (!$force && !empty($episode->thumbnail)) {
             return;
         }
 
         $thumbnail = $this->extractThumbnailFromMpd($url, $episode->id);
 
         if ($thumbnail) {
-            $episode->update(['thumbnail' => $thumbnail]);
+            $episode->update([
+                'thumbnail' => $thumbnail
+            ]);
         }
     }
 
