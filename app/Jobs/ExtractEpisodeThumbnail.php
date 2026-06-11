@@ -63,7 +63,7 @@ class ExtractEpisodeThumbnail
                 $outputPath,
             ]);
 
-            $process->setTimeout(60);
+        
             $process->run();
 
             if (!$process->isSuccessful() || !is_file($outputPath) || filesize($outputPath) === 0) {
@@ -128,7 +128,7 @@ class ExtractEpisodeThumbnail
     {
         try {
             $response = Http::connectTimeout(5)
-                ->timeout(60)
+
                 ->get(str_replace(' ', '%20', $mpdUrl));
 
             if (!$response->successful()) {
