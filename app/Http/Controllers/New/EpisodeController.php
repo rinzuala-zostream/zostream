@@ -77,8 +77,12 @@ class EpisodeController extends Controller
             $thumbnail = $validated['thumbnail'] ?? null;
             $videoUrl = $validated['url'] ?? $validated['dash_url'] ?? null;
 
-            if (!$thumbnail && !empty($videoUrl)) {
-                $thumbnail = $this->extractThumbnailFromMpd($videoUrl, $episodeId);
+            // Only extract thumbnail if NO thumbnail is provided AND we have a video URL
+            if (empty($thumbnail) && !empty($videoUrl)) {
+                $extractedThumbnail = $this->extractThumbnailFromMpd($videoUrl, $episodeId);
+                if ($extractedThumbnail) {
+                    $thumbnail = $extractedThumbnail;
+                }
             }
 
             $episode = Episode::create([
@@ -111,7 +115,7 @@ class EpisodeController extends Controller
 
             return response()->json([
                 'status' => 'success',
-                'data' => $episode
+                'data' => $episode->fresh()
             ]);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
@@ -196,7 +200,8 @@ class EpisodeController extends Controller
             ]);
 
             $videoUrl = $validated['url'] ?? $validated['dash_url'] ?? null;
-
+            
+            // Prepare episode data (exclude video-related fields)
             $episodeData = $validated;
             unset(
                 $episodeData['url'],
@@ -205,39 +210,29 @@ class EpisodeController extends Controller
                 $episodeData['type']
             );
 
-            // Normalize thumbnail from request
-            $requestThumbnail = array_key_exists('thumbnail', $episodeData)
-                ? trim((string) $episodeData['thumbnail'])
-                : null;
-
-            // Check current episode thumbnail
-            $currentThumbnail = trim((string) ($episode->thumbnail ?? ''));
-
-            // If request thumbnail is null/empty AND current thumbnail is null/empty,
-            // then extract thumbnail from video URL.
-            $shouldExtractThumbnail =
-                !empty($videoUrl) &&
-                empty($requestThumbnail) &&
-                empty($currentThumbnail);
-
-            if ($shouldExtractThumbnail) {
-                $thumbnail = $this->extractThumbnailFromMpd($videoUrl, $episode->id);
-
-                if ($thumbnail) {
-                    $episodeData['thumbnail'] = $thumbnail;
-                } else {
-                    // Do not overwrite existing thumbnail with empty value
-                    unset($episodeData['thumbnail']);
+            // Handle thumbnail logic
+            $hasExplicitThumbnail = array_key_exists('thumbnail', $episodeData);
+            $requestThumbnail = $hasExplicitThumbnail ? ($episodeData['thumbnail'] ?? null) : null;
+            
+            // If thumbnail is explicitly provided (even empty string), use it
+            if ($hasExplicitThumbnail) {
+                // If thumbnail is provided as empty string, set to null
+                if ($requestThumbnail === '' || $requestThumbnail === null) {
+                    $episodeData['thumbnail'] = null;
                 }
-            } else {
-                // If thumbnail was sent as empty string, don't update DB with empty string
-                if (array_key_exists('thumbnail', $episodeData) && empty($requestThumbnail)) {
-                    unset($episodeData['thumbnail']);
+                // Otherwise keep the provided thumbnail URL
+            } 
+            // If no thumbnail provided and we have a video URL and no existing thumbnail, try to extract
+            else if (!empty($videoUrl) && empty($episode->thumbnail)) {
+                $extractedThumbnail = $this->extractThumbnailFromMpd($videoUrl, $episode->id);
+                if ($extractedThumbnail) {
+                    $episodeData['thumbnail'] = $extractedThumbnail;
                 }
             }
 
             $episode->update($episodeData);
 
+            // Handle video URL
             if (!empty($videoUrl)) {
                 $freshEpisode = $episode->fresh();
                 $season = Season::where('id', $freshEpisode->season_id)->first();
@@ -443,6 +438,7 @@ class EpisodeController extends Controller
     {
         $episode = Episode::where('id', $episodeId)->first();
 
+        // Only set thumbnail if episode exists and doesn't already have a thumbnail
         if (!$episode || !empty($episode->thumbnail)) {
             return;
         }
@@ -468,11 +464,23 @@ class EpisodeController extends Controller
 
             $fileName = $episodeId . '.jpg';
             $outputPath = $outputDir . DIRECTORY_SEPARATOR . $fileName;
+            
+            // Check if ffmpeg is available
+            $checkProcess = new Process(['ffmpeg', '-version']);
+            $checkProcess->run();
+            
+            if (!$checkProcess->isSuccessful()) {
+                Log::warning('FFmpeg not available for thumbnail extraction');
+                return null;
+            }
+            
+            $seekTime = $this->randomThumbnailSeekTime($mpdUrl);
+            
             $process = new Process([
                 'ffmpeg',
                 '-y',
                 '-ss',
-                $this->randomThumbnailSeekTime($mpdUrl),
+                $seekTime,
                 '-i',
                 str_replace(' ', '%20', $mpdUrl),
                 '-frames:v',
@@ -482,11 +490,11 @@ class EpisodeController extends Controller
                 $outputPath,
             ]);
 
-            $process->setTimeout(6);
+            $process->setTimeout(10); // Increased timeout
             $process->run();
 
-            if (!$process->isSuccessful() || !is_file($outputPath)) {
-                throw new \RuntimeException(trim($process->getErrorOutput()) ?: 'ffmpeg thumbnail extraction failed');
+            if (!$process->isSuccessful() || !is_file($outputPath) || filesize($outputPath) === 0) {
+                throw new \RuntimeException(trim($process->getErrorOutput()) ?: 'ffmpeg thumbnail extraction failed or produced empty file');
             }
 
             return $this->uploadEpisodeThumbnailToR2($outputPath);
@@ -522,7 +530,15 @@ class EpisodeController extends Controller
             fclose($stream);
         }
 
-        return rtrim(config('filesystems.disks.r2.url'), '/') . '/' . $this->encodeR2Path($r2Path);
+        $url = rtrim(config('filesystems.disks.r2.url'), '/') . '/' . $this->encodeR2Path($r2Path);
+        
+        Log::info('Thumbnail uploaded to R2', [
+            'local_path' => $localPath,
+            'r2_path' => $r2Path,
+            'url' => $url
+        ]);
+        
+        return $url;
     }
 
     private function makeEpisodeThumbnailR2Path(): string
@@ -545,14 +561,16 @@ class EpisodeController extends Controller
             $end = min($end, (int) $duration - 5);
         }
 
-        return $this->formatSecondsAsTimestamp(random_int($start, max($start, $end)));
+        $randomSeconds = random_int($start, max($start, $end));
+        
+        return $this->formatSecondsAsTimestamp($randomSeconds);
     }
 
     private function getMpdDurationSeconds(string $mpdUrl): float
     {
         try {
-            $response = Http::connectTimeout(1)
-                ->timeout(2)
+            $response = Http::connectTimeout(3)
+                ->timeout(5)
                 ->get(str_replace(' ', '%20', $mpdUrl));
 
             if (!$response->successful()) {
@@ -567,6 +585,7 @@ class EpisodeController extends Controller
 
             return $this->parseIso8601Duration((string) $xml['mediaPresentationDuration']);
         } catch (\Throwable $e) {
+            Log::warning('Failed to get MPD duration', ['error' => $e->getMessage()]);
             return 0;
         }
     }
