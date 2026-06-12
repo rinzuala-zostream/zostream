@@ -8,6 +8,7 @@ use App\Models\New\Episode;
 use App\Models\New\PaymentHistory;
 use DB;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
 use App\Models\New\Plan;
@@ -397,6 +398,8 @@ class NewStreamController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
+
+        $this->incrementContentViews($contentType, $movieId);
 
         // 🔟 Movie links (UNCHANGED)
         $movieLinks = null;
@@ -871,6 +874,39 @@ class NewStreamController extends Controller
         }
 
         return false;
+    }
+
+    private function incrementContentViews(?string $contentType, $contentId): void
+    {
+        if (!$contentType || !$contentId) {
+            return;
+        }
+
+        try {
+            $modelClass = match (strtolower(trim((string) $contentType))) {
+                'movie' => MovieModel::class,
+                'episode' => Episode::class,
+                default => null,
+            };
+
+            if (!$modelClass) {
+                return;
+            }
+
+            $model = new $modelClass;
+
+            if (!Schema::hasColumn($model->getTable(), 'views')) {
+                return;
+            }
+
+            $modelClass::where('id', $contentId)->increment('views', 1);
+        } catch (\Throwable $e) {
+            Log::warning('Start stream view increment failed', [
+                'content_type' => $contentType,
+                'content_id' => $contentId,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     private function resolveMpdUrl(string $raw): array
