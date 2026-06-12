@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Models\OTPRequestModel;
 use App\Models\UserModel;
-use App\Support\WhatsAppPhone;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -37,12 +36,10 @@ class RequestOTPController extends Controller
             $request->validate([
                 'user_id' => 'nullable|string',
                 'phone_number' => 'nullable|string', // optional override
-                'country_code' => 'nullable|string|max:10',
-                'call' => 'nullable|string|max:20',
             ]);
 
             $userId = $request->user_id;
-            $phoneRequest = WhatsAppPhone::digitsOnly($request->phone_number);
+            $phoneRequest = $request->phone_number;
 
             // 🔍 Find user
             $user = UserModel::where('uid', $userId)->first();
@@ -61,13 +58,13 @@ class RequestOTPController extends Controller
 
                 $user = UserModel::create([
                     'uid' => $request->user_id,
-                    'auth_phone' => $phoneRequest,
+                    'auth_phone' => $request->phone_number,
                     'created_date' => $createdDate,
                     'device_name' => $deviceName,
                     'isACActive' => $request->isACActive ?? true,
                     'isAccountComplete' => $request->isAccountComplete ?? false,
                     // Optional fields
-                    'call' => WhatsAppPhone::digitsOnly($request->call),
+                    'call' => $request->call,
                     'device_id' => $request->device_id,
                     'dob' => $request->dob,
                     'edit_date' => $request->edit_date,
@@ -78,16 +75,12 @@ class RequestOTPController extends Controller
                     'name' => $request->name,
                     'veng' => $request->veng,
                     'token' => $request->token,
-                    'country_code' => WhatsAppPhone::digitsOnly($request->country_code),
                     'is_auth_phone_active' => true,
                 ]);
             }
 
             // Determine OTP target phone
-            $otpPhone = WhatsAppPhone::recipient($user, $phoneRequest, [
-                'country_code' => $request->country_code,
-                'call' => $request->call,
-            ]);
+            $otpPhone = $user->auth_phone ?? $phoneRequest;
             if (!$otpPhone) {
                 return response()->json([
                     'status' => 'error',

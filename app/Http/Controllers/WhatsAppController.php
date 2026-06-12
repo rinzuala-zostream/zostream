@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
 
 class WhatsAppController extends Controller
 {
@@ -112,46 +111,20 @@ class WhatsAppController extends Controller
             ];
         }
 
-        Log::info('WhatsApp API request', [
-            'url' => $url,
-            'payload' => $payload,
-            'to' => $validated['to'],
-            'type' => $validated['type'],
-            'template_name' => $validated['template_name'] ?? null,
-        ]);
-
         $response = Http::withToken($this->whatsappToken)->post($url, $payload);
-        $responseBody = $response->json();
-
-        Log::info('WhatsApp API response', [
-            'status' => $response->status(),
-            'successful' => $response->successful(),
-            'body' => $responseBody ?? $response->body(),
-        ]);
 
         if ($response->successful()) {
             return response()->json([
                 'status' => 'success',
                 'message' => ucfirst($validated['type']) . ' message sent successfully.',
-                'response' => $responseBody
+                'response' => $response->json()
             ]);
         }
 
-        $graphError = is_array($responseBody) ? ($responseBody['error'] ?? null) : null;
-        $isTransient = (bool) ($graphError['is_transient'] ?? false);
-
         return response()->json([
             'status' => 'error',
-            'message' => $isTransient
-                ? 'WhatsApp API temporary error. Please retry shortly.'
-                : 'Failed to send WhatsApp message.',
-            'error' => $responseBody,
-            'meta' => [
-                'http_status' => $response->status(),
-                'is_transient' => $isTransient,
-                'graph_code' => $graphError['code'] ?? null,
-                'fbtrace_id' => $graphError['fbtrace_id'] ?? null,
-            ],
+            'message' => 'Failed to send WhatsApp message.',
+            'error' => $response->json()
         ], $response->status());
     }
 }

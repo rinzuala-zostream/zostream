@@ -9,7 +9,6 @@ use App\Models\New\Subscription;
 use App\Models\OTPRequestModel;
 use App\Models\SessionTokenModel;
 use App\Models\UserModel;
-use App\Support\WhatsAppPhone;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -48,7 +47,6 @@ class OTPController extends Controller
             $request->validate([
                 'user_id' => 'nullable|string',
                 'country_code' => 'nullable|string|max:10',
-                'call' => 'nullable|string|max:20',
                 'phone_number' => 'required|string',
                 'device_name' => 'nullable|string',
                 'device_id' => 'nullable|string',
@@ -62,7 +60,7 @@ class OTPController extends Controller
             if (!$this->isUuid($userId)) {
                 $userId = (string) Str::uuid();
             }
-            $phoneRequest = WhatsAppPhone::digitsOnly($request->phone_number);
+            $phoneRequest = $request->phone_number;
             $deviceId = $request->device_id ?: $request->device_token;
             $deviceName = $request->device_name ?: 'Unknown Device';
             $fcmToken = $request->fcm_token ?: $request->token;
@@ -101,14 +99,14 @@ class OTPController extends Controller
                     'device_name' => $deviceName,
                     'isACActive' => $request->isACActive ?? true,
                     'isAccountComplete' => $request->isAccountComplete ?? false,
-                    'call' => WhatsAppPhone::digitsOnly($request->call),
+                    'call' => $request->call,
                     'device_id' => $deviceId,
                     'dob' => $request->dob,
                     'edit_date' => $request->edit_date,
                     'img' => $request->img,
                     'khua' => $request->khua,
                     'lastLogin' => $request->lastLogin,
-                    'country_code' => WhatsAppPhone::digitsOnly($request->country_code),
+                    'country_code' => $request->country_code,
                     'mail' => $request->mail,
                     'name' => $request->name,
                     'veng' => $request->veng,
@@ -118,10 +116,9 @@ class OTPController extends Controller
             }
 
             // 📱 Determine OTP target phone
-            $otpPhone = WhatsAppPhone::recipient($user, $phoneRequest, [
-                'country_code' => $request->country_code,
-                'call' => $request->call,
-            ]);
+            $otpPhone = !empty($user->country_code)
+                ? ltrim($user->country_code, '+') . $user->auth_phone
+                : $phoneRequest;
 
             if (!$otpPhone) {
                 return response()->json(['status' => 'error', 'message' => 'No phone available to send OTP']);
@@ -187,8 +184,6 @@ class OTPController extends Controller
         try {
             $request->validate([
                 'user_id' => 'nullable|string',
-                'country_code' => 'nullable|string|max:10',
-                'call' => 'nullable|string|max:20',
                 'phone_number' => 'required|string',
                 'device_name' => 'nullable|string',
                 'device_id' => 'nullable|string',
@@ -203,7 +198,7 @@ class OTPController extends Controller
                 $userId = (string) Str::uuid();
             }
 
-            $phoneRequest = WhatsAppPhone::digitsOnly($request->phone_number);
+            $phoneRequest = $this->digitsOnly($request->phone_number);
             $deviceId = $request->device_id ?: $request->device_token;
             $deviceName = $request->device_name ?: 'Unknown Device';
             $fcmToken = $request->fcm_token ?: $request->token;
@@ -243,14 +238,13 @@ class OTPController extends Controller
                     'device_name' => $deviceName,
                     'isACActive' => $request->isACActive ?? true,
                     'isAccountComplete' => $request->isAccountComplete ?? false,
-                    'call' => WhatsAppPhone::digitsOnly($request->call),
+                    'call' => $request->call,
                     'device_id' => $deviceId,
                     'dob' => $request->dob,
                     'edit_date' => $request->edit_date,
                     'img' => $request->img,
                     'khua' => $request->khua,
                     'lastLogin' => $request->lastLogin,
-                    'country_code' => WhatsAppPhone::digitsOnly($request->country_code),
                     'mail' => $request->mail,
                     'name' => $request->name,
                     'veng' => $request->veng,
@@ -259,10 +253,7 @@ class OTPController extends Controller
                 ]);
             }
 
-            $otpPhone = WhatsAppPhone::recipient($user, $phoneRequest, [
-                'country_code' => $request->country_code,
-                'call' => $request->call,
-            ]);
+            $otpPhone = $user->auth_phone ?? $phoneRequest;
             if (!$otpPhone) {
                 return response()->json(['status' => 'error', 'message' => 'No phone available to send OTP']);
             }
@@ -624,8 +615,8 @@ class OTPController extends Controller
     {
         $score = 0;
         $storedPhones = [
-            WhatsAppPhone::digitsOnly($user->auth_phone),
-            WhatsAppPhone::digitsOnly($user->call),
+            $this->digitsOnly($user->auth_phone),
+            $this->digitsOnly($user->call),
         ];
 
         foreach ($storedPhones as $storedPhone) {
@@ -680,6 +671,11 @@ class OTPController extends Controller
         }
 
         return substr($value, -strlen($suffix)) === $suffix;
+    }
+
+    private function digitsOnly($value): string
+    {
+        return preg_replace('/\D/', '', (string) $value) ?: '';
     }
 
     private function isUuid(?string $value): bool
