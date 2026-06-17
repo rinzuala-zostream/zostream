@@ -74,7 +74,8 @@ class EpisodeController extends Controller
             ]);
 
             $episodeId = (string) Str::uuid();
-            $thumbnail = $this->uploadEpisodeThumbnailImage($request) ?? ($validated['thumbnail'] ?? null);
+            $thumbnail = $this->uploadEpisodeThumbnailImage($request)
+                ?? $this->normalizeThumbnail($validated['thumbnail'] ?? null);
             $videoUrl = $validated['url'] ?? $validated['dash_url'] ?? null;
 
             $episode = Episode::create([
@@ -206,8 +207,8 @@ class EpisodeController extends Controller
                 $episodeData['thumbnail'] = $uploadedThumbnail;
             }
 
-            if (array_key_exists('thumbnail', $episodeData) && $episodeData['thumbnail'] === '') {
-                $episodeData['thumbnail'] = null;
+            if (array_key_exists('thumbnail', $episodeData)) {
+                $episodeData['thumbnail'] = $this->normalizeThumbnail($episodeData['thumbnail']);
             }
 
             $hasRequestThumbnail = array_key_exists('thumbnail', $episodeData) && !empty($episodeData['thumbnail']);
@@ -239,9 +240,14 @@ class EpisodeController extends Controller
             }
 
             $freshEpisode = $episode->fresh();
+            $thumbnailExtractionUrl = $videoUrl;
 
-            if (!empty($videoUrl) && !$hasRequestThumbnail) {
-                $this->runEpisodeThumbnailExtraction($freshEpisode->id, $videoUrl, true);
+            if (empty($thumbnailExtractionUrl) && empty($freshEpisode->thumbnail)) {
+                $thumbnailExtractionUrl = VideoUrl::where('episode_id', $freshEpisode->id)->value('url');
+            }
+
+            if (!empty($thumbnailExtractionUrl) && !$hasRequestThumbnail) {
+                $this->runEpisodeThumbnailExtraction($freshEpisode->id, $thumbnailExtractionUrl, true);
             }
 
             return response()->json([
@@ -419,6 +425,17 @@ class EpisodeController extends Controller
                 'message' => 'Failed to delete video url'
             ], 500);
         }
+    }
+
+    private function normalizeThumbnail(?string $thumbnail): ?string
+    {
+        if ($thumbnail === null) {
+            return null;
+        }
+
+        $thumbnail = trim($thumbnail);
+
+        return $thumbnail === '' ? null : $thumbnail;
     }
 
     private function uploadEpisodeThumbnailImage(Request $request): ?string
