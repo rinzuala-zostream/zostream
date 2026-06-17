@@ -10,6 +10,7 @@ use App\Jobs\ExtractEpisodeThumbnail;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class EpisodeController extends Controller
@@ -62,6 +63,7 @@ class EpisodeController extends Controller
                 'title' => 'nullable|string',
                 'description' => 'nullable|string',
                 'thumbnail' => 'nullable|string',
+                'image' => 'nullable|image|max:10240',
                 'release_date' => 'nullable|date',
                 'is_active' => 'nullable|boolean',
                 'status' => 'nullable|in:Draft,Published,Scheduled',
@@ -72,7 +74,7 @@ class EpisodeController extends Controller
             ]);
 
             $episodeId = (string) Str::uuid();
-            $thumbnail = $validated['thumbnail'] ?? null;
+            $thumbnail = $this->uploadEpisodeThumbnailImage($request) ?? ($validated['thumbnail'] ?? null);
             $videoUrl = $validated['url'] ?? $validated['dash_url'] ?? null;
 
             $episode = Episode::create([
@@ -183,6 +185,7 @@ class EpisodeController extends Controller
                 'title' => 'nullable|string',
                 'description' => 'nullable|string',
                 'thumbnail' => 'nullable|string',
+                'image' => 'nullable|image|max:10240',
                 'release_date' => 'nullable|date',
                 'is_active' => 'nullable|boolean',
                 'status' => 'nullable|in:Draft,Published,Scheduled',
@@ -195,13 +198,19 @@ class EpisodeController extends Controller
 
             $videoUrl = $validated['url'] ?? $validated['dash_url'] ?? null;
             $episodeData = $validated;
-            unset($episodeData['url'], $episodeData['dash_url'], $episodeData['quality'], $episodeData['type']);
+            unset($episodeData['url'], $episodeData['dash_url'], $episodeData['quality'], $episodeData['type'], $episodeData['image']);
 
-            $hasRequestThumbnail = array_key_exists('thumbnail', $episodeData) && !empty($episodeData['thumbnail']);
+            $uploadedThumbnail = $this->uploadEpisodeThumbnailImage($request);
+
+            if (!empty($uploadedThumbnail)) {
+                $episodeData['thumbnail'] = $uploadedThumbnail;
+            }
 
             if (array_key_exists('thumbnail', $episodeData) && $episodeData['thumbnail'] === '') {
                 $episodeData['thumbnail'] = null;
             }
+
+            $hasRequestThumbnail = array_key_exists('thumbnail', $episodeData) && !empty($episodeData['thumbnail']);
 
             $episode->update($episodeData);
 
@@ -410,6 +419,25 @@ class EpisodeController extends Controller
                 'message' => 'Failed to delete video url'
             ], 500);
         }
+    }
+
+    private function uploadEpisodeThumbnailImage(Request $request): ?string
+    {
+        if (!$request->hasFile('image') || !$request->file('image')->isValid()) {
+            return null;
+        }
+
+        $image = $request->file('image');
+        $path = Storage::disk('r2')->putFile(
+            'thumbnail/episode',
+            $image,
+            [
+                'visibility' => 'public',
+                'ContentType' => $image->getMimeType(),
+            ]
+        );
+
+        return rtrim(config('filesystems.disks.r2.url'), '/') . '/' . $path;
     }
 
     private function setEpisodeThumbnailFromMpd(string $episodeId, string $url): void
