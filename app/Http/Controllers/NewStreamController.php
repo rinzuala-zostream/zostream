@@ -994,7 +994,7 @@ class NewStreamController extends Controller
 
         return filter_var($url, FILTER_VALIDATE_URL)
             && (
-                str_contains($lower, '.m3u8')
+                str_contains($lower, 'm3u8')
                 || str_contains($lower, '.mpd')
                 || str_contains($lower, '.mp4')
                 || str_contains($lower, '.m4v')
