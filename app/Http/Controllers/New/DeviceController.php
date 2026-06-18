@@ -5,6 +5,8 @@ namespace App\Http\Controllers\New;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\New\Devices;
+use App\Models\New\ActiveStream;
+use Illuminate\Support\Facades\DB;
 
 class DeviceController extends Controller
 {
@@ -71,7 +73,8 @@ class DeviceController extends Controller
             $query->where('device_token', $request->device_token);
         }
 
-        $deletedCount = (clone $query)->count();
+        $deviceIds = (clone $query)->pluck('id');
+        $deletedCount = $deviceIds->count();
 
         if ($deletedCount === 0) {
             return response()->json([
@@ -80,7 +83,16 @@ class DeviceController extends Controller
             ], 404);
         }
 
-        $query->delete();
+        DB::transaction(function () use ($query, $deviceIds) {
+            ActiveStream::whereIn('device_id', $deviceIds)
+                ->where('status', 'active')
+                ->update([
+                    'status' => 'stopped',
+                    'last_ping' => now(),
+                ]);
+
+            $query->delete();
+        });
 
         return response()->json([
             'status' => 'success',
