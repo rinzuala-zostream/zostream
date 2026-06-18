@@ -123,21 +123,32 @@ class TokenController extends Controller
     public function revoke(Request $request)
     {
         $request->validate([
-            'access_token' => 'required|string',
+            'access_token' => 'nullable|string',
             'device_token' => 'nullable|string',
+            'user_id' => 'nullable|string',
         ]);
 
+        if (!$request->filled('access_token') && (!$request->filled('device_token') || !$request->filled('user_id'))) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'access_token or user_id with device_token is required'
+            ], 422);
+        }
+
         DB::transaction(function () use ($request) {
-            $record = SessionTokenModel::where('access_token', $request->access_token)
-                ->lockForUpdate()
-                ->first();
+            $record = $request->filled('access_token')
+                ? SessionTokenModel::where('access_token', $request->access_token)
+                    ->lockForUpdate()
+                    ->first()
+                : null;
 
             $deviceToken = $request->input('device_token')
                 ?: $request->header('Device-Token')
                 ?: $record?->device_id;
+            $userId = $record?->user_id ?: $request->input('user_id');
 
-            if ($record && $deviceToken) {
-                $this->releaseDeviceSeat($record->user_id, $deviceToken);
+            if ($userId && $deviceToken) {
+                $this->releaseDeviceSeat($userId, $deviceToken);
             }
 
             if ($record) {

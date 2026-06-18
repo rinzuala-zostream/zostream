@@ -292,6 +292,43 @@ class NewStreamController extends Controller
                     $device->refresh();
                 }
 
+                $revokedDeviceIds = ActiveStream::query()
+                    ->join('n_devices', 'n_active_streams.device_id', '=', 'n_devices.id')
+                    ->leftJoin('session_tokens', function ($join) use ($subscription) {
+                        $join->on('session_tokens.device_id', '=', 'n_devices.device_token')
+                            ->where('session_tokens.user_id', '=', $subscription->user_id)
+                            ->where('session_tokens.refresh_expires_at', '>', now());
+                    })
+                    ->where('n_active_streams.subscription_id', $subscriptionId)
+                    ->where('n_active_streams.device_type', $type)
+                    ->where('n_active_streams.status', 'active')
+                    ->where('n_active_streams.last_ping', '>=', $timeout)
+                    ->where('n_devices.user_id', $subscription->user_id)
+                    ->whereNull('session_tokens.id')
+                    ->pluck('n_active_streams.device_id')
+                    ->filter()
+                    ->unique()
+                    ->values();
+
+                if ($revokedDeviceIds->isNotEmpty()) {
+                    ActiveStream::where('subscription_id', $subscriptionId)
+                        ->whereIn('device_id', $revokedDeviceIds)
+                        ->where('status', 'active')
+                        ->update([
+                            'status' => 'stopped',
+                            'last_ping' => now(),
+                        ]);
+
+                    Devices::whereIn('id', $revokedDeviceIds)
+                        ->where('status', 'active')
+                        ->update([
+                            'status' => 'inactive',
+                            'last_activity' => now(),
+                        ]);
+
+                    $device->refresh();
+                }
+
                 // 5️⃣ Count actual streaming seats, not remembered login devices.
                 $activeDeviceIds = ActiveStream::where('subscription_id', $subscriptionId)
                     ->where('device_type', $type)
