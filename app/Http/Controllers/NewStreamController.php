@@ -911,16 +911,25 @@ class NewStreamController extends Controller
 
     private function resolveMpdUrl(string $raw): array
     {
-        // Case 1: Plain MPD URL
-        if (Str::contains($raw, 'http') && Str::contains($raw, 'mpd')) {
+        $trimmedRaw = trim($raw);
+
+        if ($this->isDirectPlayableStreamUrl($trimmedRaw)) {
             return [
-                'url' => $raw,
+                'url' => $trimmedRaw,
+                'source' => 'direct'
+            ];
+        }
+
+        // Case 1: Plain MPD URL
+        if (Str::contains($trimmedRaw, 'http') && Str::contains($trimmedRaw, 'mpd')) {
+            return [
+                'url' => $trimmedRaw,
                 'source' => 'plaintext'
             ];
         }
 
         // Try decrypt
-        $rawParam = str_replace('%2B', '+', $raw); // 🔥 fix
+        $rawParam = str_replace('%2B', '+', $trimmedRaw); // 🔥 fix
         $rawParam = str_replace(' ', '+', $rawParam);
 
         $shaKey = 'd4c6198dabafb243b0d043a3c33a9fe171f81605158c267c7dfe5f66df29559a';
@@ -977,5 +986,23 @@ class NewStreamController extends Controller
             'url' => $maybeUrl,
             'source' => 'decrypted'
         ];
+    }
+
+    private function isDirectPlayableStreamUrl(string $url): bool
+    {
+        $lower = strtolower($url);
+
+        return filter_var($url, FILTER_VALIDATE_URL)
+            && (
+                str_contains($lower, '.m3u8')
+                || str_contains($lower, '.mpd')
+                || str_contains($lower, '.mp4')
+                || str_contains($lower, '.m4v')
+                || str_contains($lower, '.mp3')
+                || str_contains($lower, '.aac')
+                || str_contains($lower, 'webrtc')
+                || str_contains($lower, 'whep')
+                || str_contains($lower, 'live')
+            );
     }
 }
