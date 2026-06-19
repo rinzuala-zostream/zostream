@@ -5,7 +5,6 @@ namespace App\Http\Controllers\New;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\UserModel;
-use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 class UserController extends Controller
@@ -46,9 +45,7 @@ class UserController extends Controller
     {
         try {
 
-            $user = UserModel::where('uid', $id)
-                ->orWhere('num', $id)
-                ->first();
+            $user = $this->findUserByRouteId($id);
 
             if (!$user) {
                 return response()->json([
@@ -285,7 +282,7 @@ class UserController extends Controller
     {
         try {
 
-            $user = UserModel::find($id);
+            $user = $this->findUserByRouteId($id);
 
             if (!$user) {
                 return response()->json([
@@ -295,13 +292,6 @@ class UserController extends Controller
             }
 
             $validated = $request->validate([
-                'uid' => [
-                    'sometimes',
-                    'required',
-                    'string',
-                    'max:180',
-                    Rule::unique('user', 'uid')->ignore($user->uid, 'uid'),
-                ],
                 'mail' => 'nullable|string|max:180',
                 'name' => 'nullable|string|max:180',
                 'call' => 'nullable|string|max:40',
@@ -350,7 +340,7 @@ class UserController extends Controller
     {
         try {
 
-            $user = UserModel::find($id);
+            $user = $this->findUserByRouteId($id);
 
             if (!$user) {
                 return response()->json([
@@ -381,6 +371,22 @@ class UserController extends Controller
     {
         $limit = (int) $request->get('limit', $request->get('per_page', 20));
         return max(1, min($limit, 100));
+    }
+
+
+    private function findUserByRouteId($id)
+    {
+        $value = trim((string) $id);
+
+        if ($value === '') {
+            return null;
+        }
+
+        if (ctype_digit($value)) {
+            return UserModel::where('num', (int) $value)->first();
+        }
+
+        return UserModel::where('uid', $value)->first();
     }
 
 
