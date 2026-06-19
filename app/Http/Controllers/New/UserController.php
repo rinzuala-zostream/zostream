@@ -5,6 +5,7 @@ namespace App\Http\Controllers\New;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\UserModel;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 class UserController extends Controller
@@ -293,13 +294,45 @@ class UserController extends Controller
                 ], 404);
             }
 
-            $user->update($request->all());
+            $validated = $request->validate([
+                'uid' => [
+                    'sometimes',
+                    'required',
+                    'string',
+                    'max:180',
+                    Rule::unique('user', 'uid')->ignore($user->uid, 'uid'),
+                ],
+                'mail' => 'nullable|string|max:180',
+                'name' => 'nullable|string|max:180',
+                'call' => 'nullable|string|max:40',
+                'auth_phone' => 'nullable|string|max:40',
+                'is_auth_phone_active' => 'sometimes|boolean',
+                'img' => 'nullable|string|max:2048',
+                'dob' => 'nullable|date',
+                'khua' => 'nullable|string|max:180',
+                'veng' => 'nullable|string|max:180',
+                'device_id' => 'nullable|string|max:255',
+                'device_name' => 'nullable|string|max:255',
+                'token' => 'nullable|string|max:2048',
+                'isACActive' => 'sometimes|boolean',
+                'isAccountComplete' => 'sometimes|boolean',
+            ]);
+
+            $user->update($validated);
 
             return response()->json([
                 'status' => 'success',
                 'message' => 'User updated successfully',
                 'data' => $user
             ]);
+
+        } catch (ValidationException $e) {
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
 
         } catch (\Exception $e) {
 
