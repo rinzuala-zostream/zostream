@@ -60,16 +60,13 @@ class OTPController extends Controller
             if (!$this->isUuid($userId)) {
                 $userId = (string) Str::uuid();
             }
-            $phoneRequest = $request->phone_number;
+            $countryCode = $this->normalizeCountryCode($request->country_code);
+            $phoneRequest = $this->digitsOnly($request->phone_number);
             $deviceId = $request->device_id ?: $request->device_token;
             $deviceName = $request->device_name ?: 'Unknown Device';
             $fcmToken = $request->fcm_token ?: $request->token;
 
-            // 🔍 Find user$phoneRequest = preg_replace('/\D/', '', $phoneRequest);
-            
-            //change without "like" when app update
-            $user = UserModel::where('auth_phone', $phoneRequest)
-                ->first();
+            $user = $this->findUserForOtpRequest($phoneRequest, $countryCode);
 
             if ($phoneRequest === '8837076347') {
 
@@ -106,19 +103,20 @@ class OTPController extends Controller
                     'img' => $request->img,
                     'khua' => $request->khua,
                     'lastLogin' => $request->lastLogin,
-                    'country_code' => $request->country_code,
+                    'country_code' => $countryCode,
                     'mail' => $request->mail,
                     'name' => $request->name,
                     'veng' => $request->veng,
                     'token' => $fcmToken,
                     'is_auth_phone_active' => true,
                 ]);
+            } elseif ($countryCode && $user->country_code !== $countryCode) {
+                $user->country_code = $countryCode;
+                $user->save();
             }
 
             // 📱 Determine OTP target phone
-            $otpPhone = !empty($user->country_code)
-                ? ltrim($user->country_code, '+') . $user->auth_phone
-                : $phoneRequest;
+            $otpPhone = $this->fullPhoneNumber($user->auth_phone ?: $phoneRequest, $user->country_code ?: $countryCode);
 
             if (!$otpPhone) {
                 return response()->json(['status' => 'error', 'message' => 'No phone available to send OTP']);
@@ -589,6 +587,40 @@ class OTPController extends Controller
         }
 
         return $bestScore > 0 ? $bestUser : null;
+    }
+
+    private function findUserForOtpRequest(string $phoneRequest, ?string $countryCode): ?UserModel
+    {
+        if ($phoneRequest === '') {
+            return null;
+        }
+
+        $fullPhone = $this->fullPhoneNumber($phoneRequest, $countryCode);
+
+        return UserModel::where('auth_phone', $phoneRequest)
+            ->when($fullPhone !== $phoneRequest, function ($query) use ($fullPhone) {
+                $query->orWhere('auth_phone', $fullPhone);
+            })
+            ->first();
+    }
+
+    private function fullPhoneNumber(string $phone, ?string $countryCode): string
+    {
+        $phone = $this->digitsOnly($phone);
+        $countryCodeDigits = $this->digitsOnly($countryCode);
+
+        if ($countryCodeDigits === '' || str_starts_with($phone, $countryCodeDigits)) {
+            return $phone;
+        }
+
+        return $countryCodeDigits . $phone;
+    }
+
+    private function normalizeCountryCode($countryCode): ?string
+    {
+        $digits = $this->digitsOnly($countryCode);
+
+        return $digits === '' ? null : '+' . $digits;
     }
 
     private function phoneSuffixCandidates(string $phone, int $minimumLength = 8): array
