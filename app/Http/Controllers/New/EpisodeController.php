@@ -201,9 +201,11 @@ class EpisodeController extends Controller
             $episodeData = $validated;
             unset($episodeData['url'], $episodeData['dash_url'], $episodeData['quality'], $episodeData['type'], $episodeData['image']);
 
+            $originalThumbnail = $this->normalizeThumbnail($episode->thumbnail);
             $uploadedThumbnail = $this->uploadEpisodeThumbnailImage($request);
+            $hasUploadedThumbnail = !empty($uploadedThumbnail);
 
-            if (!empty($uploadedThumbnail)) {
+            if ($hasUploadedThumbnail) {
                 $episodeData['thumbnail'] = $uploadedThumbnail;
             }
 
@@ -211,7 +213,11 @@ class EpisodeController extends Controller
                 $episodeData['thumbnail'] = $this->normalizeThumbnail($episodeData['thumbnail']);
             }
 
-            $hasRequestThumbnail = array_key_exists('thumbnail', $episodeData) && !empty($episodeData['thumbnail']);
+            $requestThumbnail = $episodeData['thumbnail'] ?? null;
+            $hasChangedThumbnailUrl = array_key_exists('thumbnail', $episodeData)
+                && !empty($requestThumbnail)
+                && $requestThumbnail !== $originalThumbnail;
+            $hasManualThumbnail = $hasUploadedThumbnail || $hasChangedThumbnailUrl;
 
             $episode->update($episodeData);
 
@@ -242,11 +248,11 @@ class EpisodeController extends Controller
             $freshEpisode = $episode->fresh();
             $thumbnailExtractionUrl = $videoUrl;
 
-            if (empty($thumbnailExtractionUrl) && empty($freshEpisode->thumbnail)) {
+            if (empty($thumbnailExtractionUrl)) {
                 $thumbnailExtractionUrl = VideoUrl::where('episode_id', $freshEpisode->id)->value('url');
             }
 
-            if (!empty($thumbnailExtractionUrl) && !$hasRequestThumbnail) {
+            if (!empty($thumbnailExtractionUrl) && !$hasManualThumbnail) {
                 $this->runEpisodeThumbnailExtraction($freshEpisode->id, $thumbnailExtractionUrl, true);
             }
 
