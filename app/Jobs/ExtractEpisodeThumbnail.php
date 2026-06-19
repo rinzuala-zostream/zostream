@@ -76,6 +76,8 @@ class ExtractEpisodeThumbnail
         } catch (\Throwable $e) {
             Log::warning('Episode thumbnail extraction failed', [
                 'episode_id' => $episodeId,
+                'url_type' => $this->debugUrlType($rawUrl),
+                'url_start' => substr($rawUrl, 0, 80),
                 'error' => $e->getMessage(),
             ]);
 
@@ -187,15 +189,31 @@ class ExtractEpisodeThumbnail
         return implode('/', array_map('rawurlencode', explode('/', $path)));
     }
 
+    private function debugUrlType(string $url): string
+    {
+        $trimmed = trim($url);
+
+        if ($this->isDirectHttpUrl($trimmed)) {
+            return 'direct_http';
+        }
+
+        if ($trimmed === '') {
+            return 'empty';
+        }
+
+        return 'encrypted_or_unknown';
+    }
+
     private function resolveMpdUrl(string $raw): string
     {
         $raw = trim($raw);
 
-        if ($this->isDirectPlayableStreamUrl($raw)) {
+        if ($this->isDirectHttpUrl($raw)) {
             return $raw;
         }
 
-        $rawParam = str_replace(' ', '+', $raw);
+        $rawParam = rawurldecode($raw);
+        $rawParam = str_replace(' ', '+', $rawParam);
         $b64 = strtr($rawParam, '-_', '+/');
         $pad = strlen($b64) % 4;
 
@@ -232,32 +250,16 @@ class ExtractEpisodeThumbnail
         $mpdUrl = trim(str_replace(["\r", "\n"], '', $decryptedMessage));
         $mpdUrl = filter_var($mpdUrl, FILTER_VALIDATE_URL) ? $mpdUrl : urldecode($mpdUrl);
 
-        if (!filter_var($mpdUrl, FILTER_VALIDATE_URL) || stripos($mpdUrl, '.mpd') === false) {
-            throw new \InvalidArgumentException('Decrypted URL is not an MPD manifest.');
+        if (!$this->isDirectHttpUrl($mpdUrl)) {
+            throw new \InvalidArgumentException('Decrypted payload is not a valid stream URL.');
         }
 
         return $mpdUrl;
     }
 
-    private function isDirectPlayableStreamUrl(string $url): bool
+    private function isDirectHttpUrl(string $url): bool
     {
-        if (!filter_var($url, FILTER_VALIDATE_URL)) {
-            return false;
-        }
-
-        $lower = strtolower($url);
-
         return preg_match('/^https?:\/\//i', $url)
-            && (
-                str_contains($lower, '.mpd')
-                || str_contains($lower, 'm3u8')
-                || str_contains($lower, '.mp4')
-                || str_contains($lower, '.m4v')
-                || str_contains($lower, '.mov')
-                || str_contains($lower, '.webm')
-                || str_contains($lower, 'webrtc')
-                || str_contains($lower, 'whep')
-                || str_contains($lower, 'live')
-            );
+            && filter_var($url, FILTER_VALIDATE_URL);
     }
 }
