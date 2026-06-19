@@ -552,7 +552,7 @@ class SubscriptionController extends Controller
             $device->update([
                 'subscription_id' => $subscription->id,
                 'last_activity' => now(),
-                'status' => $device->status ?: 'inactive',
+                'status' => $isActive ? 'active' : ($device->status ?: 'inactive'),
             ]);
 
             $renewPayload = [

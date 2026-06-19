@@ -150,10 +150,14 @@ class NewStreamController extends Controller
                 ->first();
 
             if ($existingDevice) {
+                $nextStatus = strtolower(trim((string) $existingDevice->status)) === 'blocked'
+                    ? 'inactive'
+                    : ($existingDevice->status ?: 'inactive');
+
                 $existingDevice->update([
                     'subscription_id' => $subscriptionId,
                     'last_activity' => now(),
-                    'status' => $existingDevice->status ?: 'inactive',
+                    'status' => $nextStatus,
                 ]);
 
                 $device = $existingDevice->fresh();
@@ -351,6 +355,8 @@ class NewStreamController extends Controller
                 }
 
                 if (!in_array($dbStatus, ['active', 'inactive', 'blocked'], true)) {
+                    DB::rollBack();
+
                     return response()->json([
                         'status' => 'error',
                         'title' => 'Device Status Error',
@@ -359,15 +365,19 @@ class NewStreamController extends Controller
                 }
 
                 if ($dbStatus === 'blocked') {
-                    return response()->json([
-                        'status' => 'error',
-                        'title' => 'Device Blocked',
-                        'message' => 'This device has been blocked due to subscription renewal. Please verify your account or contact support for assistance.'
-                    ], 403);
+                    $device->update([
+                        'status' => 'inactive',
+                        'subscription_id' => $subscriptionId,
+                        'last_activity' => now(),
+                    ]);
+                    $device->refresh();
+                    $dbStatus = 'inactive';
                 }
 
                 // 7️⃣ Enforce device limit
                 if (!$currentDeviceHasActiveStream && $dbActiveCount >= $limit) {
+                    DB::rollBack();
+
                     return response()->json([
                         'status' => 'error',
                         'title' => 'Device Limit Reached',
@@ -568,8 +578,7 @@ class NewStreamController extends Controller
         $deviceQuery = Devices::where('device_token', $deviceToken);
 
         if ($requiresSubscription) {
-            $deviceQuery->where('subscription_id', $subscriptionId)
-                ->where('status', 'active');
+            $deviceQuery->where('subscription_id', $subscriptionId);
         }
 
         $device = $deviceQuery->first();
@@ -583,12 +592,11 @@ class NewStreamController extends Controller
         }
 
         if ($device->status === 'blocked') {
-            return response()->json([
-                'status' => 'error',
-                'title' => 'Device Blocked',
-                'message' => 'This device has been blocked due to subscription renewal. Please verify your account or contact support for assistance.',
-                'device' => $device
-            ], 403);
+            $device->update([
+                'status' => 'active',
+                'last_activity' => now(),
+            ]);
+            $device->refresh();
         }
 
         // 🔹 Subscription check ONLY for premium
@@ -818,49 +826,34 @@ class NewStreamController extends Controller
         try {
 
             $kept = [];
-            $blocked = [];
+            $reset = [];
+            $currentDeviceId = (int) $currentDevice->id;
 
             // Devices for this user + type
             $devices = Devices::where('device_type', $deviceType)
                 ->where('user_id', $userId)
                 ->get();
 
-            $owner = $devices->where('is_owner_device', true)->first();
-
             foreach ($devices as $device) {
 
                 $deviceId = $device->id;
+                $nextStatus = (int) $deviceId === $currentDeviceId
+                    ? 'active'
+                    : (strtolower(trim((string) $device->status)) === 'blocked'
+                        ? 'inactive'
+                        : ($device->status ?: 'inactive'));
 
                 // ensure device linked to subscription
-                if ($device->subscription_id !== $subId) {
-                    $device->update(['subscription_id' => $subId]);
-                }
+                $device->update([
+                    'subscription_id' => $subId,
+                    'status' => $nextStatus,
+                    'last_activity' => now(),
+                ]);
 
-                if ($owner && $deviceId === $owner->id) {
-
-                    ActiveStream::updateOrCreate(
-                        [
-                            'subscription_id' => $subId,
-                            'device_id' => $deviceId
-                        ],
-                        [
-                            'device_type' => $deviceType,
-                            'stream_token' => Str::uuid()->toString(),
-                            'status' => 'active',
-                            'last_ping' => now()
-                        ]
-                    );
-                    Devices::where('id', $deviceId)->update(['status' => 'active']);
+                if ($nextStatus === 'active') {
                     $kept[] = $deviceId;
-
-                } else {
-
-                    ActiveStream::where('subscription_id', $subId)
-                        ->where('device_id', $deviceId)
-                        ->update(['status' => 'stopped']);
-
-                    Devices::where('id', $deviceId)->update(['status' => 'blocked']);
-                    $blocked[] = $deviceId;
+                } elseif (strtolower(trim((string) $device->status)) === 'blocked') {
+                    $reset[] = $deviceId;
                 }
             }
 
@@ -878,7 +871,7 @@ class NewStreamController extends Controller
             'event_data' => [
                 'device_type' => $deviceType,
                 'owner' => $kept,
-                'blocked' => $blocked
+                'reset' => $reset
             ],
         ]);
 
@@ -887,7 +880,7 @@ class NewStreamController extends Controller
             'message' => 'Your subscription has been renewed successfully.',
             'device_type' => $deviceType,
             'owner_device' => $kept,
-            'blocked_devices' => $blocked
+            'reset_devices' => $reset
         ]);
     }
 
