@@ -20,7 +20,7 @@ use Log;
 
 class NewStreamController extends Controller
 {
-    protected $streamTimeout = 500; // 5 minutes
+    protected $streamTimeout = 500; // 8 minutes 20 seconds
     protected $lockTTL = 30000; // milliseconds
 
     public $movieController;
@@ -408,38 +408,24 @@ class NewStreamController extends Controller
                 ->lockForUpdate()
                 ->first();
 
-            $timeout = now()->subSeconds($this->streamTimeout);
-            $isSameActiveContent = $existingStream
-                && $contentType
-                && $contentId
-                && $existingStream->status === 'active'
-                && $existingStream->last_ping
-                && $existingStream->last_ping->gte($timeout)
-                && $existingStream->content_type === $contentType
-                && (int) $existingStream->content_id === $contentId;
+            // Every playback attempt gets a fresh token. A delayed stop request from
+            // an older player can then no longer stop the current attempt.
+            $streamToken = Str::uuid()->toString();
 
-            if ($isSameActiveContent) {
-                $streamToken = $existingStream->stream_token;
-                $existingStream->update([
-                    'device_type' => $type,
-                    'last_ping' => now(),
-                    'status' => 'active'
-                ]);
+            $streamValues = [
+                'device_type' => $type,
+                'content_type' => $contentType,
+                'content_id' => $contentId,
+                'stream_token' => $streamToken,
+                'started_at' => now(),
+                'last_ping' => now(),
+                'status' => 'active'
+            ];
+
+            if ($existingStream) {
+                $existingStream->update($streamValues);
             } else {
-                $streamToken = Str::uuid()->toString();
-
-                ActiveStream::updateOrCreate(
-                    $streamKey,
-                    [
-                        'device_type' => $type,
-                        'content_type' => $contentType,
-                        'content_id' => $contentId,
-                        'stream_token' => $streamToken,
-                        'started_at' => now(),
-                        'last_ping' => now(),
-                        'status' => 'active'
-                    ]
-                );
+                ActiveStream::create(array_merge($streamKey, $streamValues));
             }
 
             DB::commit();
@@ -575,7 +561,8 @@ class NewStreamController extends Controller
         }
 
         // 1️⃣ Device check
-        $deviceQuery = Devices::where('device_token', $deviceToken);
+        $deviceQuery = Devices::where('device_token', $deviceToken)
+            ->where('user_id', $request->input('auth_user_id'));
 
         if ($requiresSubscription) {
             $deviceQuery->where('subscription_id', $subscriptionId);
@@ -625,6 +612,36 @@ class NewStreamController extends Controller
 
         $stream = $streamQuery->first();
 
+        if (!$stream && $contentType && $contentId) {
+            // A superseded start response or delayed stop can leave the player with
+            // an old token. Recover only the authenticated device's same content.
+            $recoveryQuery = ActiveStream::where('device_id', $device->id)
+                ->where('content_type', $contentType)
+                ->where('content_id', $contentId);
+
+            if ($requiresSubscription) {
+                $recoveryQuery->where('subscription_id', $subscriptionId);
+            }
+
+            $stream = $recoveryQuery->latest('last_ping')->first();
+
+            if ($stream) {
+                $stream->update([
+                    'status' => 'active',
+                    'last_ping' => now(),
+                ]);
+
+                Log::info('Stream ping session recovered', [
+                    'requested_stream_token' => $streamToken,
+                    'recovered_stream_token' => $stream->stream_token,
+                    'device_id' => $device->id,
+                    'subscription_id' => $subscriptionId,
+                    'content_type' => $contentType,
+                    'content_id' => $contentId,
+                ]);
+            }
+        }
+
         if (!$stream) {
             $activeDeviceStream = ActiveStream::where('device_id', $device->id)
                 ->where('status', 'active')
@@ -660,7 +677,8 @@ class NewStreamController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'message' => 'Streaming session is active.'
+            'message' => 'Streaming session is active.',
+            'stream_token' => $stream->stream_token,
         ]);
     }
 
