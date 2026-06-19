@@ -110,6 +110,10 @@ class ExtractEpisodeThumbnail
 
     private function randomThumbnailSeekTime(string $mpdUrl): string
     {
+        if (stripos($mpdUrl, '.mpd') === false) {
+            return '00:00:03';
+        }
+
         $duration = $this->getMpdDurationSeconds($mpdUrl);
 
         if ($duration <= 0) {
@@ -187,7 +191,7 @@ class ExtractEpisodeThumbnail
     {
         $raw = trim($raw);
 
-        if (preg_match('/^https?:\/\//i', $raw) && stripos($raw, '.mpd') !== false) {
+        if ($this->isDirectPlayableStreamUrl($raw)) {
             return $raw;
         }
 
@@ -233,5 +237,27 @@ class ExtractEpisodeThumbnail
         }
 
         return $mpdUrl;
+    }
+
+    private function isDirectPlayableStreamUrl(string $url): bool
+    {
+        if (!filter_var($url, FILTER_VALIDATE_URL)) {
+            return false;
+        }
+
+        $lower = strtolower($url);
+
+        return preg_match('/^https?:\/\//i', $url)
+            && (
+                str_contains($lower, '.mpd')
+                || str_contains($lower, 'm3u8')
+                || str_contains($lower, '.mp4')
+                || str_contains($lower, '.m4v')
+                || str_contains($lower, '.mov')
+                || str_contains($lower, '.webm')
+                || str_contains($lower, 'webrtc')
+                || str_contains($lower, 'whep')
+                || str_contains($lower, 'live')
+            );
     }
 }
