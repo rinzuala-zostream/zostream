@@ -284,7 +284,7 @@ Route::prefix('v3.0')->group(function () {
             Route::get('/', [\App\Http\Controllers\New\SubscriptionController::class, 'index'])->name('subscriptions.index');
             Route::get('/plans/by-device/{device_type}', [\App\Http\Controllers\New\SubscriptionController::class, 'getByDeviceType']);
             Route::get('/plans', [\App\Http\Controllers\New\PlanController::class, 'index'])->name('plans.index');
-            Route::post('/plans', [\App\Http\Controllers\New\PlanController::class, 'store'])->name('plans.store');
+            //Route::post('/plans', [\App\Http\Controllers\New\PlanController::class, 'store'])->name('plans.store');
             Route::get('/plans/features', [\App\Http\Controllers\New\PlanController::class, 'featureIndex'])->name('plans.features.index');
             Route::post('/plans/features', [\App\Http\Controllers\New\PlanController::class, 'storeFeature'])->name('plans.features.store');
             Route::get('/plans/features/{featureId}', [\App\Http\Controllers\New\PlanController::class, 'showFeature'])->name('plans.features.show');

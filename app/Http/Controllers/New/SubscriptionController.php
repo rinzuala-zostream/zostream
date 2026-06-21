@@ -266,6 +266,7 @@ class SubscriptionController extends Controller
         DB::beginTransaction();
 
         try {
+            $razorpayKeyId = null;
 
             $request->validate([
                 'user_id' => 'required|string|max:225',
@@ -306,6 +307,7 @@ class SubscriptionController extends Controller
                 }
 
                 $transactionId = $razorpayData['order']['id'];
+                $razorpayKeyId = $razorpayData['key_id'] ?? null;
             }
 
             /*
@@ -360,7 +362,9 @@ class SubscriptionController extends Controller
                 return $this->respond([
                     'status' => 'success',
                     'message' => 'PPV payment created.',
-                    'data' => $payment
+                    'data' => array_merge($payment->toArray(), [
+                        'key_id' => $razorpayKeyId,
+                    ])
                 ], 201);
             }
 
@@ -412,6 +416,7 @@ class SubscriptionController extends Controller
                     ['end_at' => $endAt],
                     ['is_active' => false],
                     ['transaction_id' => $transactionId],
+                    ['key_id' => $razorpayKeyId],
                 )
             ], 201);
 

@@ -88,10 +88,17 @@ class DetailsController extends Controller
 
         try {
             // Call sub-controllers and decode JSON responses
-            $paymentRequest = new Request(['user_id' => $userId, 'device_id' => $deviceId, 'device_type' => $deviceType]);
-            $paymentRequest->headers->set('X-Api-Key', $apiKey);
-            $paymentResponse = $this->paymentStatusController->processUserPayments($paymentRequest);
-            $paymentData = json_decode($paymentResponse->getContent(), true);
+            $paymentData = [
+                'status' => 'skipped',
+                'message' => 'Device ID not provided',
+            ];
+
+            if (!empty($deviceId)) {
+                $paymentRequest = new Request(['user_id' => $userId, 'device_id' => $deviceId, 'device_type' => $deviceType]);
+                $paymentRequest->headers->set('X-Api-Key', $apiKey);
+                $paymentResponse = $this->paymentStatusController->processUserPayments($paymentRequest);
+                $paymentData = json_decode($paymentResponse->getContent(), true);
+            }
 
             $subscriptionRequest = new Request([
                 'id' => $userId,
@@ -145,6 +152,7 @@ class DetailsController extends Controller
 
             $movie['num'] = (int) ($movie['num'] ?? 0);
             $movie['views'] = (int) ($movie['views'] ?? 0);
+            $movie['desc'] = $movie['desc'] ?? $movie['description'] ?? null;
         
             // Ad display time
             if ($type === 'episode') {

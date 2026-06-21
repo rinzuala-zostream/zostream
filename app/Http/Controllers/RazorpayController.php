@@ -83,6 +83,7 @@ class RazorpayController extends Controller
             return response()->json([
                 'ok'    => true,
                 'env'   => $this->env,
+                'key_id' => $this->keyId,
                 'order' => $body,
             ], 201);
 
