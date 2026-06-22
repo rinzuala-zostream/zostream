@@ -236,7 +236,11 @@ class QRSessionController extends Controller
                             $deviceName,
                             $deviceId
                         );
-                        if (!$tokens || !isset($tokens['access_token'])) {
+                        if (
+                            !$tokens ||
+                            empty($tokens['access_token']) ||
+                            empty($tokens['refresh_token'])
+                        ) {
                             $this->updateFirebaseError($ref, 'Token generation failed');
 
                             return response()->json([
