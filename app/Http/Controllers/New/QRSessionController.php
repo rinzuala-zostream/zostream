@@ -5,6 +5,8 @@ namespace App\Http\Controllers\New;
 use App\Http\Controllers\Concerns\ResolvesLoginDevices;
 use App\Http\Controllers\RazorpayController;
 use App\Http\Controllers\TokenController;
+use App\Models\New\Devices;
+use App\Models\New\Plan;
 use App\Models\New\Subscription;
 use App\Models\UserModel;
 use Illuminate\Http\Request;
@@ -177,7 +179,6 @@ class QRSessionController extends Controller
                 'device_token' => 'nullable|string',
                 'device_type' => 'nullable|string',
                 'fcm_token' => 'nullable|string',
-                'token' => 'nullable|string',
             ]);
 
             $userId = $request->user_id;
@@ -204,7 +205,7 @@ class QRSessionController extends Controller
             $deviceName = $request->device_name ?? $session['device_name'] ?? 'Unknown Device';
             $deviceId = $request->device_id ?? $request->device_token ?? $session['device_id'] ?? $session['device_token'] ?? null;
             $deviceType = $this->normalizeLoginDeviceType($request->device_type ?? $session['device_type'] ?? 'mobile');
-            $fcmToken = $request->fcm_token ?: $request->token;
+            $fcmToken = $request->fcm_token;
             $type = $session['type'] ?? 'login';
 
             //base on $ref type(login, payment) call controller to process login or payment approval
@@ -436,6 +437,352 @@ class QRSessionController extends Controller
                 'error' => config('app.debug') ? $e->getMessage() : null
             ], 500);
         }
+    }
+
+    public function inspect(Request $request, $token)
+    {
+        if (!is_string($token) || !preg_match('/^[A-Za-z0-9]{22}$/', $token)) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Invalid QR token',
+            ], 400);
+        }
+
+        $userId = (string) $request->input('auth_user_id', '');
+        if ($userId === '') {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Authenticated user is required',
+            ], 401);
+        }
+
+        $ref = $this->database->getReference('qr_sessions/' . $token);
+        $session = $ref->getValue();
+        if (!$session) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'QR session not found',
+            ], 404);
+        }
+
+        if (
+            ($session['type'] ?? '') === 'payment' &&
+            (string) ($session['user_id'] ?? '') !== $userId
+        ) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'This QR belongs to another account',
+            ], 403);
+        }
+
+        $paymentStillInProgress =
+            ($session['status'] ?? '') === 'payment_started' &&
+            isset($session['payment_expires_at']) &&
+            time() <= (int) $session['payment_expires_at'];
+        $sessionFinished = in_array(
+            ($session['status'] ?? ''),
+            ['completed', 'success'],
+            true
+        );
+
+        if (
+            isset($session['expires_at']) &&
+            time() > (int) $session['expires_at'] &&
+            !$paymentStillInProgress &&
+            !$sessionFinished
+        ) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'QR session expired',
+                'session_status' => 'expired',
+            ], 400);
+        }
+
+        if (($session['status'] ?? 'initialized') === 'initialized') {
+            $ref->update([
+                'status' => 'pending',
+                'updated_at' => time(),
+            ]);
+            $session['status'] = 'pending';
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'QR session found',
+            'data' => $session,
+        ]);
+    }
+
+    public function startSubscriptionPayment(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'token' => 'required|string|size:22',
+                'plan_id' => 'required|integer|exists:n_plans,id',
+                'currency' => 'nullable|string|size:3',
+            ]);
+
+            $userId = (string) $request->input('auth_user_id', '');
+            if ($userId === '') {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Authenticated user is required',
+                ], 401);
+            }
+
+            $ref = $this->database->getReference('qr_sessions/' . $validated['token']);
+            $session = $ref->getValue();
+            $sessionError = $this->validateSubscriptionPaymentSession($session, $userId, true);
+            if ($sessionError) {
+                return $sessionError;
+            }
+
+            if (in_array(($session['status'] ?? ''), ['completed', 'success'], true)) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'This QR payment is already completed',
+                ], 409);
+            }
+
+            $plan = $this->resolveQrSubscriptionPlan($validated['plan_id'], $session);
+            if (!$plan) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'The selected plan is not available for this QR device',
+                ], 422);
+            }
+
+            if (!$this->resolveQrTargetDevice($userId, $plan, $session)) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'The device from this QR is not registered on your account',
+                ], 422);
+            }
+
+            if (
+                ($session['status'] ?? '') === 'payment_started' &&
+                (int) ($session['plan_id'] ?? 0) === (int) $plan->id &&
+                isset($session['payment_expires_at']) &&
+                time() <= (int) $session['payment_expires_at'] &&
+                !empty($session['checkout'])
+            ) {
+                return response()->json([
+                    'status' => 'success',
+                    'message' => 'Razorpay order is ready',
+                    'data' => $session['checkout'],
+                ]);
+            }
+
+            $orderRequest = new Request([
+                'auth_user_id' => $userId,
+                'plan_id' => $plan->id,
+                'currency' => strtoupper($validated['currency'] ?? 'INR'),
+            ]);
+            $orderRequest->headers->set('X-RZ-Env', $request->header('X-RZ-Env', ''));
+            $orderResponse = app(PaymentController::class)
+                ->createRazorpaySubscriptionOrder($orderRequest);
+            $orderData = $orderResponse->getData(true);
+
+            if (!$orderResponse->isSuccessful() || ($orderData['status'] ?? '') !== 'success') {
+                return $orderResponse;
+            }
+
+            $orderId = $orderData['data']['order']['id'] ?? null;
+            if (!$orderId) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Razorpay order was not returned',
+                ], 500);
+            }
+
+            $ref->update([
+                'status' => 'payment_started',
+                'plan_id' => $plan->id,
+                'amount' => (float) $plan->price,
+                'currency' => strtoupper($validated['currency'] ?? 'INR'),
+                'order_id' => $orderId,
+                'checkout' => $orderData['data'],
+                'payment_expires_at' => time() + 900,
+                'updated_at' => time(),
+            ]);
+
+            return $orderResponse;
+        } catch (\Throwable $e) {
+            Log::error('QR subscription payment start failed', [
+                'token' => $request->token ?? null,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'status' => 'error',
+                'message' => config('app.debug') ? $e->getMessage() : 'Failed to start subscription payment',
+            ], 500);
+        }
+    }
+
+    public function completeSubscriptionPayment(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'token' => 'required|string|size:22',
+                'plan_id' => 'required|integer|exists:n_plans,id',
+                'razorpay_order_id' => 'required|string|max:255',
+                'razorpay_payment_id' => 'required|string|max:255',
+                'razorpay_signature' => 'required|string|max:255',
+                'currency' => 'nullable|string|size:3',
+            ]);
+
+            $userId = (string) $request->input('auth_user_id', '');
+            if ($userId === '') {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Authenticated user is required',
+                ], 401);
+            }
+
+            $ref = $this->database->getReference('qr_sessions/' . $validated['token']);
+            $session = $ref->getValue();
+            $sessionError = $this->validateSubscriptionPaymentSession($session, $userId, false);
+            if ($sessionError) {
+                return $sessionError;
+            }
+
+            if (
+                (string) ($session['order_id'] ?? '') !== $validated['razorpay_order_id'] ||
+                (int) ($session['plan_id'] ?? 0) !== (int) $validated['plan_id']
+            ) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Payment does not match this QR session',
+                ], 403);
+            }
+
+            if (isset($session['payment_expires_at']) && time() > (int) $session['payment_expires_at']) {
+                $this->updateFirebaseError($ref, 'Payment session expired');
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Payment session expired',
+                ], 400);
+            }
+
+            $plan = $this->resolveQrSubscriptionPlan($validated['plan_id'], $session);
+            if (!$plan) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'The selected plan is not available for this QR device',
+                ], 422);
+            }
+
+            $verifyRequest = new Request(array_merge($validated, [
+                'auth_user_id' => $userId,
+                'target_device_token' => $session['device_id'] ?? $session['device_token'] ?? null,
+            ]));
+            $verifyRequest->headers->set('X-RZ-Env', $request->header('X-RZ-Env', ''));
+            $verifyResponse = app(PaymentController::class)
+                ->verifyRazorpaySubscriptionPayment($verifyRequest);
+            $verifyData = $verifyResponse->getData(true);
+
+            if (!$verifyResponse->isSuccessful() || ($verifyData['status'] ?? '') !== 'success') {
+                return $verifyResponse;
+            }
+
+            $this->updateFirebaseSuccess($ref, [
+                'uid' => $userId,
+                'plan_id' => $plan->id,
+                'order_id' => $validated['razorpay_order_id'],
+                'payment_id' => $validated['razorpay_payment_id'],
+                'subscription' => $verifyData['data'] ?? null,
+            ]);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Payment verified and subscription activated',
+                'type' => 'payment',
+                'data' => $verifyData['data'] ?? null,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('QR subscription payment completion failed', [
+                'token' => $request->token ?? null,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'status' => 'error',
+                'message' => config('app.debug') ? $e->getMessage() : 'Failed to complete subscription payment',
+            ], 500);
+        }
+    }
+
+    private function validateSubscriptionPaymentSession($session, string $userId, bool $checkQrExpiry)
+    {
+        if (!$session) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'QR session not found',
+            ], 404);
+        }
+
+        $paymentType = strtolower(trim((string) ($session['app_payment_type'] ?? 'subscription')));
+        if (($session['type'] ?? '') !== 'payment' || $paymentType !== 'subscription') {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'This QR is not a subscription payment request',
+            ], 422);
+        }
+
+        if ((string) ($session['user_id'] ?? '') !== $userId) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'This QR belongs to another account',
+            ], 403);
+        }
+
+        $paymentStillInProgress =
+            ($session['status'] ?? '') === 'payment_started' &&
+            isset($session['payment_expires_at']) &&
+            time() <= (int) $session['payment_expires_at'];
+
+        if (
+            $checkQrExpiry &&
+            isset($session['expires_at']) &&
+            time() > (int) $session['expires_at'] &&
+            !$paymentStillInProgress
+        ) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'QR session expired',
+            ], 400);
+        }
+
+        return null;
+    }
+
+    private function resolveQrSubscriptionPlan($planId, array $session)
+    {
+        $fixedPlanId = (int) ($session['plan_id'] ?? 0);
+        if ($fixedPlanId > 0 && $fixedPlanId !== (int) $planId) {
+            return null;
+        }
+
+        $deviceType = $this->normalizeLoginDeviceType($session['device_type'] ?? 'browser');
+
+        return Plan::where('id', $planId)
+            ->where('is_active', true)
+            ->where('device_type', $deviceType)
+            ->first();
+    }
+
+    private function resolveQrTargetDevice(string $userId, Plan $plan, array $session)
+    {
+        $deviceToken = $session['device_id'] ?? $session['device_token'] ?? null;
+        if (!$deviceToken) {
+            return null;
+        }
+
+        return Devices::where('user_id', $userId)
+            ->where('device_type', $plan->device_type)
+            ->where('device_token', $deviceToken)
+            ->first();
     }
 
     private function getAdminQrAllowedUserIds()

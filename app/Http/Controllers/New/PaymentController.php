@@ -298,6 +298,7 @@ class PaymentController extends Controller
             'razorpay_payment_id' => 'required|string|max:255',
             'razorpay_signature' => 'required|string|max:255',
             'currency' => 'nullable|string|size:3',
+            'target_device_token' => 'nullable|string|max:255',
         ]);
 
         $authUserId = (string) $request->input('auth_user_id', '');
@@ -392,6 +393,7 @@ class PaymentController extends Controller
             'transaction_id' => $validated['razorpay_order_id'],
             'payment_type' => 'new',
             'status' => 'success',
+            'target_device_token' => $validated['target_device_token'] ?? null,
         ]);
 
         $subscriptionResponse = $this->subscriptionController
