@@ -70,6 +70,7 @@ class PaymentController extends Controller
 
         $successCount = 0;
         $failureCount = 0;
+        $pendingCount = 0;
 
         foreach ($pendingPayments as $payment) {
 
@@ -103,6 +104,11 @@ class PaymentController extends Controller
                     (isset($paymentResponse['success']) && $paymentResponse['success'] === true)
                     || (isset($paymentResponse['code']) && $paymentResponse['code'] === 'PAYMENT_SUCCESS')
                     || (isset($paymentResponse['data']['state']) && $paymentResponse['data']['state'] === 'COMPLETED');
+
+                $gatewayState = strtoupper((string) ($paymentResponse['data']['state'] ?? ''));
+                $gatewayCode = strtoupper((string) ($paymentResponse['code'] ?? ''));
+                $paymentPending = in_array($gatewayState, ['PENDING', 'CREATED', 'ATTEMPTED'], true)
+                    || in_array($gatewayCode, ['PENDING', 'CREATED', 'ATTEMPTED'], true);
 
                 if ($paymentSuccess) {
 
@@ -181,6 +187,13 @@ class PaymentController extends Controller
                     $successCount++;
 
                     DB::commit();
+                } elseif ($paymentPending) {
+
+                    // Razorpay can report pending briefly after its success callback.
+                    // Keep the record retryable instead of turning a valid payment into failed.
+                    DB::commit();
+                    $pendingCount++;
+
                 } else {
 
                     $payment->update(['status' => 'failed']);
@@ -202,11 +215,11 @@ class PaymentController extends Controller
             }
         }
 
-        $status = $successCount > 0 ? 'success' : 'error';
+        $status = $successCount > 0 ? 'success' : ($pendingCount > 0 ? 'pending' : 'error');
 
         return response()->json([
             'status' => $status,
-            'message' => "Processed payments. Success: $successCount, Failures: $failureCount",
+            'message' => "Processed payments. Success: $successCount, Pending: $pendingCount, Failures: $failureCount",
         ], 200);
     }
 

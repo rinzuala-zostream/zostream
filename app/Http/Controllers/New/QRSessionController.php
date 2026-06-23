@@ -165,6 +165,74 @@ class QRSessionController extends Controller
         ]);
     }
 
+    public function updateSelection(Request $request, string $token)
+    {
+        $validated = $request->validate([
+            'user_id' => 'required|string',
+            'plan_id' => 'nullable|string',
+            'movie_id' => 'nullable|string',
+            'amount' => 'required|numeric|min:0',
+        ]);
+
+        $ref = $this->database->getReference('qr_sessions/' . $token);
+        $session = $ref->getValue();
+
+        if (!$session) {
+            return response()->json(['status' => 'error', 'message' => 'Session not found'], 404);
+        }
+
+        if (($session['type'] ?? '') !== 'payment') {
+            return response()->json(['status' => 'error', 'message' => 'QR session is not a payment request'], 422);
+        }
+
+        if (isset($session['expires_at']) && time() > $session['expires_at']) {
+            return response()->json(['status' => 'error', 'message' => 'Session expired'], 400);
+        }
+
+        if (($session['user_id'] ?? '') !== $validated['user_id']) {
+            return response()->json(['status' => 'error', 'message' => 'Session belongs to another user'], 403);
+        }
+
+        $updates = ['amount' => (float) $validated['amount']];
+        if (!empty($validated['plan_id'])) {
+            $updates['plan_id'] = $validated['plan_id'];
+        }
+        if (!empty($validated['movie_id'])) {
+            $updates['movie_id'] = $validated['movie_id'];
+        }
+
+        $ref->update($updates);
+
+        return response()->json(['status' => 'success', 'message' => 'QR payment selection updated']);
+    }
+
+    public function updatePaymentStatus(Request $request, string $token)
+    {
+        $validated = $request->validate([
+            'user_id' => 'required|string',
+            'status' => 'required|string|in:payment_completed,failed',
+        ]);
+
+        $ref = $this->database->getReference('qr_sessions/' . $token);
+        $session = $ref->getValue();
+
+        if (!$session) {
+            return response()->json(['status' => 'error', 'message' => 'Session not found'], 404);
+        }
+
+        if (($session['type'] ?? '') !== 'payment') {
+            return response()->json(['status' => 'error', 'message' => 'QR session is not a payment request'], 422);
+        }
+
+        if (($session['user_id'] ?? '') !== $validated['user_id']) {
+            return response()->json(['status' => 'error', 'message' => 'Session belongs to another user'], 403);
+        }
+
+        $ref->update(['status' => $validated['status'], 'updated_at' => time()]);
+
+        return response()->json(['status' => 'success', 'message' => 'QR payment status updated']);
+    }
+
     public function verify(Request $request)
     {
         try {
@@ -177,7 +245,6 @@ class QRSessionController extends Controller
                 'device_token' => 'nullable|string',
                 'device_type' => 'nullable|string',
                 'fcm_token' => 'nullable|string',
-                'token' => 'nullable|string',
             ]);
 
             $userId = $request->user_id;
@@ -204,7 +271,7 @@ class QRSessionController extends Controller
             $deviceName = $request->device_name ?? $session['device_name'] ?? 'Unknown Device';
             $deviceId = $request->device_id ?? $request->device_token ?? $session['device_id'] ?? $session['device_token'] ?? null;
             $deviceType = $this->normalizeLoginDeviceType($request->device_type ?? $session['device_type'] ?? 'mobile');
-            $fcmToken = $request->fcm_token ?: $request->token;
+            $fcmToken = $request->fcm_token ?? $session['fcm_token'] ?? null;
             $type = $session['type'] ?? 'login';
 
             //base on $ref type(login, payment) call controller to process login or payment approval
@@ -398,6 +465,7 @@ class QRSessionController extends Controller
                         'status' => 'success',
                         'message' => $order['id'],
                         'type' => 'payment',
+                        'key_id' => $razorpayData['key_id'] ?? null,
                     ]);
 
                     break;
