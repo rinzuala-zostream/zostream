@@ -282,6 +282,7 @@ Route::prefix('v3.0')->group(function () {
 
         Route::prefix('subscriptions')->group(function () {
             Route::get('/', [\App\Http\Controllers\New\SubscriptionController::class, 'index'])->name('subscriptions.index');
+            Route::get('/search', [\App\Http\Controllers\New\SubscriptionController::class, 'searchSubscribers'])->name('subscriptions.search');
             Route::get('/plans/by-device/{device_type}', [\App\Http\Controllers\New\SubscriptionController::class, 'getByDeviceType']);
             Route::get('/plans', [\App\Http\Controllers\New\PlanController::class, 'index'])->name('plans.index');
             Route::post('/plans', [\App\Http\Controllers\New\PlanController::class, 'store'])->name('plans.store');
