@@ -92,7 +92,11 @@ class VerifyOTPController extends Controller
                     $request->device_id
                 );
 
-                if (!$tokens || !isset($tokens['access_token'])) {
+                if (
+                    !$tokens ||
+                    empty($tokens['access_token']) ||
+                    empty($tokens['refresh_token'])
+                ) {
                     throw new Exception('Token generation failed');
                 }
             } catch (Exception $e) {

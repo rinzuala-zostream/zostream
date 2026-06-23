@@ -457,6 +457,7 @@ class SubscriptionController extends Controller
                 'transaction_id' => 'nullable|string|max:255',
                 'payment_type' => 'nullable|string|in:new,renew,upgrade,downgrade',
                 'status' => 'nullable|string|in:pending,success,failed,refunded',
+                'target_device_token' => 'nullable|string|max:255',
             ]);
 
             $resolvedUserId = $this->resolveUserIdFromUidOrPhone($validated['user_id']);
@@ -483,11 +484,16 @@ class SubscriptionController extends Controller
                 ], 404);
             }
 
-            $device = Devices::where('user_id', $resolvedUserId)
-                ->where('device_type', $plan->device_type)
-                ->where('is_owner_device', 1)
-                ->lockForUpdate()
-                ->first();
+            $deviceQuery = Devices::where('user_id', $resolvedUserId)
+                ->where('device_type', $plan->device_type);
+
+            if (!empty($validated['target_device_token'])) {
+                $deviceQuery->where('device_token', $validated['target_device_token']);
+            } else {
+                $deviceQuery->where('is_owner_device', 1);
+            }
+
+            $device = $deviceQuery->lockForUpdate()->first();
 
             if (!$device) {
                 DB::rollBack();
@@ -551,6 +557,7 @@ class SubscriptionController extends Controller
                 'expiry_date' => $endAt,
                 'meta' => [
                     'identifier' => 'Manual subscription entry',
+                    'device_token' => $device->device_token,
                 ],
             ]);
 

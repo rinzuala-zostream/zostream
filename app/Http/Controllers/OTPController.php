@@ -182,7 +182,8 @@ class OTPController extends Controller
         try {
             $request->validate([
                 'user_id' => 'nullable|string',
-                'phone_number' => 'required|string',
+                'country_code' => ['required', 'string', 'max:10', 'regex:/^\+?\d{1,4}$/'],
+                'phone_number' => ['required', 'string', 'regex:/^\d{3,15}$/'],
                 'device_name' => 'nullable|string',
                 'device_id' => 'nullable|string',
                 'device_token' => 'nullable|string',
@@ -196,12 +197,22 @@ class OTPController extends Controller
                 $userId = (string) Str::uuid();
             }
 
+            $countryCode = $this->normalizeCountryCode($request->country_code);
             $phoneRequest = $this->digitsOnly($request->phone_number);
+            $otpPhone = $this->digitsOnly($countryCode) . $phoneRequest;
+
+            if (strlen($otpPhone) > 15) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Country code and phone number cannot exceed 15 digits',
+                ], 422);
+            }
+
             $deviceId = $request->device_id ?: $request->device_token;
             $deviceName = $request->device_name ?: 'Unknown Device';
             $fcmToken = $request->fcm_token ?: $request->token;
 
-            $user = $this->findUserForPhoneLogin($phoneRequest);
+            $user = $this->findUserForPhoneLogin($phoneRequest, $countryCode);
 
             if ($phoneRequest === '8837076347') {
                 if (!$user) {
@@ -243,15 +254,18 @@ class OTPController extends Controller
                     'img' => $request->img,
                     'khua' => $request->khua,
                     'lastLogin' => $request->lastLogin,
+                    'country_code' => $countryCode,
                     'mail' => $request->mail,
                     'name' => $request->name,
                     'veng' => $request->veng,
                     'token' => $fcmToken,
                     'is_auth_phone_active' => true,
                 ]);
+            } elseif ($countryCode && $user->country_code !== $countryCode) {
+                $user->country_code = $countryCode;
+                $user->save();
             }
 
-            $otpPhone = $user->auth_phone ?? $phoneRequest;
             if (!$otpPhone) {
                 return response()->json(['status' => 'error', 'message' => 'No phone available to send OTP']);
             }
@@ -366,7 +380,11 @@ class OTPController extends Controller
                     $deviceName,
                     $deviceId
                 );
-                if (!$tokens || !isset($tokens['access_token'])) {
+                if (
+                    !$tokens ||
+                    empty($tokens['access_token']) ||
+                    empty($tokens['refresh_token'])
+                ) {
                     throw new \Exception('Token generation failed');
                 }
             } catch (\Exception $e) {
@@ -549,13 +567,17 @@ class OTPController extends Controller
         }
     }
 
-    private function findUserForPhoneLogin(string $phoneRequest): ?UserModel
+    private function findUserForPhoneLogin(string $phoneRequest, ?string $countryCode): ?UserModel
     {
         if ($phoneRequest === '') {
             return null;
         }
 
-        $suffixes = $this->phoneSuffixCandidates($phoneRequest, 4);
+        $fullPhone = $this->digitsOnly($countryCode) . $phoneRequest;
+        $suffixes = array_values(array_unique(array_merge(
+            $this->phoneSuffixCandidates($phoneRequest, 4),
+            $this->phoneSuffixCandidates($fullPhone, 4)
+        )));
         if (empty($suffixes)) {
             return null;
         }
@@ -576,7 +598,15 @@ class OTPController extends Controller
         $bestUserNum = 0;
 
         foreach ($users as $user) {
-            $score = $this->phoneLoginMatchScore($phoneRequest, $user);
+            $storedCountryCode = $this->normalizeCountryCode($user->country_code);
+            if ($storedCountryCode && $countryCode && $storedCountryCode !== $countryCode) {
+                continue;
+            }
+
+            $score = max(
+                $this->phoneLoginMatchScore($phoneRequest, $user),
+                $this->phoneLoginMatchScore($fullPhone, $user)
+            );
             $userNum = (int) $user->num;
 
             if ($score > $bestScore || ($score === $bestScore && $score > 0 && $userNum > $bestUserNum)) {
