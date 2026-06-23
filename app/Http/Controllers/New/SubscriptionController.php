@@ -577,6 +577,8 @@ class SubscriptionController extends Controller
                 'payment_type' => 'nullable|string|in:new,renew,upgrade,downgrade',
                 'status' => 'nullable|string|in:pending,success,failed,refunded',
                 'target_device_token' => 'nullable|string|max:255',
+                'start_at' => 'nullable|date_format:Y-m-d',
+                'end_at' => 'nullable|date_format:Y-m-d',
             ]);
 
             $resolvedUserId = $this->resolveUserIdFromUidOrPhone($validated['user_id']);
@@ -625,15 +627,34 @@ class SubscriptionController extends Controller
 
             $paymentStatus = $validated['status'] ?? 'success';
             $isActive = $paymentStatus === 'success';
-            $startAt = now();
+            $manualStartAt = !empty($validated['start_at'])
+                ? Carbon::createFromFormat('Y-m-d', $validated['start_at'])->startOfDay()
+                : null;
+            $manualEndAt = !empty($validated['end_at'])
+                ? Carbon::createFromFormat('Y-m-d', $validated['end_at'])->endOfDay()
+                : null;
+            $startAt = $manualStartAt ?? now();
+
+            if ($manualEndAt && $manualEndAt->lt($startAt)) {
+                DB::rollBack();
+
+                return $this->respond([
+                    'status' => 'error',
+                    'message' => 'End date cannot be earlier than start date'
+                ], 422);
+            }
+
             $subscription = $isActive
                 ? Subscription::activeForUserAndDeviceType($resolvedUserId, $plan->device_type)
                     ->lockForUpdate()
                     ->first()
                 : null;
-            $endAt = $subscription && $subscription->end_at && $subscription->end_at->isFuture()
-                ? $subscription->end_at->copy()->addDays($plan->duration_days)
-                : $startAt->copy()->addDays($plan->duration_days);
+            $endAt = $manualEndAt
+                ?? ($manualStartAt
+                    ? $manualStartAt->copy()->addDays($plan->duration_days)
+                    : ($subscription && $subscription->end_at && $subscription->end_at->isFuture()
+                        ? $subscription->end_at->copy()->addDays($plan->duration_days)
+                        : $startAt->copy()->addDays($plan->duration_days)));
 
             if ($subscription) {
                 $updates = [
@@ -643,7 +664,7 @@ class SubscriptionController extends Controller
                     'renewed_by' => null,
                 ];
 
-                if (!$subscription->end_at || $subscription->end_at->isPast()) {
+                if ($manualStartAt || !$subscription->end_at || $subscription->end_at->isPast()) {
                     $updates['start_at'] = $startAt;
                 }
 
