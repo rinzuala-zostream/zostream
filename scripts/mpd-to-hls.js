@@ -312,7 +312,7 @@ function deriveBaseFromInput(input) {
             res: (rep.width && rep.height) ? `${rep.width}x${rep.height}` : null,
             codecs: rep.codecs || (isAudio ? 'mp4a.40.2' : 'avc1.640028'),
             uri: m3u8Name,               // use sanitized filename in master
-            groupId: isAudio ? `audio-${as.lang || 'und'}` : null,
+            groupId: isAudio ? 'audio' : null,
             lang: as.lang || 'und',
           });
 
@@ -328,10 +328,10 @@ function deriveBaseFromInput(input) {
 
     let master = ['#EXTM3U', '#EXT-X-VERSION:7'];
 
-    // Group audio by language to avoid clobbering
+    // Keep alternatives in one HLS group so AVPlayer exposes them as selectable audio tracks.
     const audioByLang = {};
     for (const a of audioVariants) {
-      const g = a.groupId || `audio-${a.lang}`;
+      const g = a.groupId || 'audio';
       audioByLang[g] = audioByLang[g] || [];
       audioByLang[g].push(a);
     }
@@ -340,8 +340,10 @@ function deriveBaseFromInput(input) {
     for (const [groupId, list] of Object.entries(audioByLang)) {
       // Mark the first entry in each group as DEFAULT
       list.forEach((a, idx) => {
+        const duplicateCount = list.slice(0, idx).filter(item => item.lang === a.lang).length;
+        const name = duplicateCount > 0 ? `${a.lang} ${duplicateCount + 1}` : a.lang;
         master.push(
-          `#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="${groupId}",NAME="${a.lang}",LANGUAGE="${a.lang}",AUTOSELECT=YES,DEFAULT=${idx === 0 ? 'YES' : 'NO'},URI="${a.uri}"`
+          `#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="${groupId}",NAME="${name}",LANGUAGE="${a.lang}",AUTOSELECT=YES,DEFAULT=${idx === 0 ? 'YES' : 'NO'},URI="${a.uri}"`
         );
       });
     }

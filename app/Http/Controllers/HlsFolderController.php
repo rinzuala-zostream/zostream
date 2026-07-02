@@ -10,7 +10,7 @@ class HlsFolderController extends Controller
 {
     public function check(Request $request)
     {
-        $raw = (string) $request->query('url', '');
+        $raw = (string) $request->input('url', '');
         $force = (bool) $request->boolean('force', false);
 
         if ($raw === '') {

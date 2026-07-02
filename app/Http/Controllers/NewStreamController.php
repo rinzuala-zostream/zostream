@@ -49,7 +49,7 @@ class NewStreamController extends Controller
         $contentType = $movieType ? strtolower(trim((string) $movieType)) : null;
         $contentId = filled($movieId) && is_numeric($movieId) ? (int) $movieId : null;
         $userId = $request->input('user_id');
-        $platform = $request->input('platform');
+        $platform = strtolower(trim((string) $request->input('platform')));
 
         $isPPV = false;
         $requiresSubscription = false;
@@ -478,13 +478,16 @@ class NewStreamController extends Controller
 
                 if ($url) {
                     if ($platform === 'ios') {
-                        $fakeReq = new Request();
-                        $fakeReq->merge(['url' => $url]);
+                        $streamUrl = str_contains(strtolower($url), 'm3u8') ? $url : null;
 
-                        $hlsResponse = $this->hlsFolderController->check($fakeReq);
-                        $hlsData = $hlsResponse->getData(true);
+                        if (!$streamUrl) {
+                            $fakeReq = Request::create('', 'GET', ['url' => $url]);
 
-                        $streamUrl = $hlsData['data']['stream_url'] ?? null;
+                            $hlsResponse = $this->hlsFolderController->check($fakeReq);
+                            $hlsData = $hlsResponse->getData(true);
+
+                            $streamUrl = $hlsData['data']['stream_url'] ?? null;
+                        }
 
                         if ($streamUrl) {
                             $movieLinks = [
