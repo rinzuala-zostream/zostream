@@ -200,6 +200,51 @@ function repIsAudio(as, rep) {
     (rep.mimeType && rep.mimeType.startsWith('audio/'));
 }
 
+const languageMap = new Map([
+  ['und', { code: 'und', name: 'Original' }],
+  ['unknown', { code: 'und', name: 'Original' }],
+  ['original', { code: 'und', name: 'Original' }],
+  ['miz', { code: 'miz', name: 'Mizo' }],
+  ['mizo', { code: 'miz', name: 'Mizo' }],
+  ['lus', { code: 'lus', name: 'Mizo' }],
+  ['hi', { code: 'hi', name: 'Hindi' }],
+  ['hin', { code: 'hi', name: 'Hindi' }],
+  ['hindi', { code: 'hi', name: 'Hindi' }],
+  ['en', { code: 'en', name: 'English' }],
+  ['eng', { code: 'en', name: 'English' }],
+  ['english', { code: 'en', name: 'English' }],
+  ['bn', { code: 'bn', name: 'Bengali' }],
+  ['ben', { code: 'bn', name: 'Bengali' }],
+  ['bengali', { code: 'bn', name: 'Bengali' }],
+  ['ta', { code: 'ta', name: 'Tamil' }],
+  ['tam', { code: 'ta', name: 'Tamil' }],
+  ['tamil', { code: 'ta', name: 'Tamil' }],
+  ['te', { code: 'te', name: 'Telugu' }],
+  ['tel', { code: 'te', name: 'Telugu' }],
+  ['telugu', { code: 'te', name: 'Telugu' }],
+  ['ml', { code: 'ml', name: 'Malayalam' }],
+  ['mal', { code: 'ml', name: 'Malayalam' }],
+  ['malayalam', { code: 'ml', name: 'Malayalam' }],
+  ['kn', { code: 'kn', name: 'Kannada' }],
+  ['kan', { code: 'kn', name: 'Kannada' }],
+  ['kannada', { code: 'kn', name: 'Kannada' }],
+]);
+
+function normalizeLanguage(value) {
+  const raw = String(value || 'und').trim();
+  const normalized = raw.toLowerCase().replace(/_/g, '-');
+  const base = normalized.split('-')[0];
+  const mapped = languageMap.get(normalized) || languageMap.get(base);
+
+  if (mapped) return mapped;
+
+  if (/^[a-z]{2,3}(?:-[a-z0-9]+)*$/i.test(normalized)) {
+    return { code: normalized, name: raw };
+  }
+
+  return { code: 'und', name: raw || 'Original' };
+}
+
 // ---------- Load MPD (local or URL) ----------
 async function loadMpdText(src) {
   if (isHttpUrl(src)) {
@@ -305,6 +350,8 @@ function deriveBaseFromInput(input) {
 
           fs.writeFileSync(outPath, playlistText, 'utf-8');
 
+          const language = normalizeLanguage(as.lang);
+
           variants.push({
             type: isAudio ? 'audio' : 'video',
             id: repId,
@@ -313,7 +360,8 @@ function deriveBaseFromInput(input) {
             codecs: rep.codecs || (isAudio ? 'mp4a.40.2' : 'avc1.640028'),
             uri: m3u8Name,               // use sanitized filename in master
             groupId: isAudio ? 'audio' : null,
-            lang: as.lang || 'und',
+            lang: language.code,
+            name: language.name,
           });
 
           console.log(`Wrote ${m3u8Name} (${items.length} segments)`);
@@ -340,8 +388,8 @@ function deriveBaseFromInput(input) {
     for (const [groupId, list] of Object.entries(audioByLang)) {
       // Mark the first entry in each group as DEFAULT
       list.forEach((a, idx) => {
-        const duplicateCount = list.slice(0, idx).filter(item => item.lang === a.lang).length;
-        const name = duplicateCount > 0 ? `${a.lang} ${duplicateCount + 1}` : a.lang;
+        const duplicateCount = list.slice(0, idx).filter(item => item.name === a.name).length;
+        const name = duplicateCount > 0 ? `${a.name} ${duplicateCount + 1}` : a.name;
         master.push(
           `#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="${groupId}",NAME="${name}",LANGUAGE="${a.lang}",AUTOSELECT=YES,DEFAULT=${idx === 0 ? 'YES' : 'NO'},URI="${a.uri}"`
         );
