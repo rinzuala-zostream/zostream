@@ -337,7 +337,8 @@
   },
   {
     "code": "kor",
-    "name": "Korean"
+    "name": "Korean",
+    "aliases": ["ko"]
   },
   {
     "code": "kau",
@@ -414,12 +415,14 @@
   {
     "code": "lus",
     "name": "Mizo",
-    "default_audio": true
+    "default_audio": true,
+    "aliases": ["mizo"]
   },
   {
     "code": "miz",
     "name": "Mizo",
-    "default_audio": true
+    "default_audio": true,
+    "aliases": ["mizo"]
   },
   {
     "code": "mkd",

@@ -218,6 +218,7 @@ function loadLanguageCatalog() {
         code: entry.code || entry.iso639_3 || Object.keys(raw)[index],
         name: entry.name,
         default_audio: entry.default_audio,
+        aliases: entry.aliases,
       }));
     const lookup = new Map(fallback);
 
@@ -235,6 +236,9 @@ function loadLanguageCatalog() {
       lookup.set(code, normalized);
       lookup.set(name.toLowerCase(), normalized);
       if (entry.iso639_1) lookup.set(String(entry.iso639_1).trim().toLowerCase(), normalized);
+      for (const alias of arr(entry.aliases)) {
+        lookup.set(String(alias).trim().toLowerCase(), normalized);
+      }
     }
 
     return lookup;
