@@ -200,41 +200,55 @@ function repIsAudio(as, rep) {
     (rep.mimeType && rep.mimeType.startsWith('audio/'));
 }
 
-const languageMap = new Map([
-  ['und', { code: 'und', name: 'Original' }],
-  ['unknown', { code: 'und', name: 'Original' }],
-  ['original', { code: 'und', name: 'Original' }],
-  ['miz', { code: 'miz', name: 'Mizo' }],
-  ['mizo', { code: 'miz', name: 'Mizo' }],
-  ['lus', { code: 'lus', name: 'Mizo' }],
-  ['hi', { code: 'hi', name: 'Hindi' }],
-  ['hin', { code: 'hi', name: 'Hindi' }],
-  ['hindi', { code: 'hi', name: 'Hindi' }],
-  ['en', { code: 'en', name: 'English' }],
-  ['eng', { code: 'en', name: 'English' }],
-  ['english', { code: 'en', name: 'English' }],
-  ['bn', { code: 'bn', name: 'Bengali' }],
-  ['ben', { code: 'bn', name: 'Bengali' }],
-  ['bengali', { code: 'bn', name: 'Bengali' }],
-  ['ta', { code: 'ta', name: 'Tamil' }],
-  ['tam', { code: 'ta', name: 'Tamil' }],
-  ['tamil', { code: 'ta', name: 'Tamil' }],
-  ['te', { code: 'te', name: 'Telugu' }],
-  ['tel', { code: 'te', name: 'Telugu' }],
-  ['telugu', { code: 'te', name: 'Telugu' }],
-  ['ml', { code: 'ml', name: 'Malayalam' }],
-  ['mal', { code: 'ml', name: 'Malayalam' }],
-  ['malayalam', { code: 'ml', name: 'Malayalam' }],
-  ['kn', { code: 'kn', name: 'Kannada' }],
-  ['kan', { code: 'kn', name: 'Kannada' }],
-  ['kannada', { code: 'kn', name: 'Kannada' }],
-]);
+const languageCatalog = loadLanguageCatalog();
+
+function loadLanguageCatalog() {
+  const filePath = path.join(__dirname, '..', 'ISO-639-3-language.json');
+  const fallback = new Map([
+    ['und', { code: 'und', name: 'Original' }],
+  ]);
+
+  if (!fs.existsSync(filePath)) return fallback;
+
+  try {
+    const raw = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    const entries = Array.isArray(raw)
+      ? raw
+      : Object.values(raw).map((entry, index) => ({
+        code: entry.code || entry.iso639_3 || Object.keys(raw)[index],
+        name: entry.name,
+        default_audio: entry.default_audio,
+      }));
+    const lookup = new Map(fallback);
+
+    for (const entry of entries) {
+      const code = String(entry.code || entry.iso639_3 || '').trim().toLowerCase();
+      const name = String(entry.name || code).trim();
+      if (!code || !name) continue;
+
+      const normalized = {
+        code,
+        name,
+        defaultAudio: Boolean(entry.default_audio),
+      };
+
+      lookup.set(code, normalized);
+      lookup.set(name.toLowerCase(), normalized);
+      if (entry.iso639_1) lookup.set(String(entry.iso639_1).trim().toLowerCase(), normalized);
+    }
+
+    return lookup;
+  } catch (error) {
+    console.warn(`Language catalog unavailable: ${error.message}`);
+    return fallback;
+  }
+}
 
 function normalizeLanguage(value) {
   const raw = String(value || 'und').trim();
   const normalized = raw.toLowerCase().replace(/_/g, '-');
   const base = normalized.split('-')[0];
-  const mapped = languageMap.get(normalized) || languageMap.get(base);
+  const mapped = languageCatalog.get(normalized) || languageCatalog.get(base);
 
   if (mapped) return mapped;
 
@@ -243,6 +257,11 @@ function normalizeLanguage(value) {
   }
 
   return { code: 'und', name: raw || 'Original' };
+}
+
+function isDefaultAudioLanguage(code) {
+  const normalized = String(code || '').trim().toLowerCase();
+  return Boolean(languageCatalog.get(normalized)?.defaultAudio);
 }
 
 // ---------- Load MPD (local or URL) ----------
@@ -386,12 +405,14 @@ function deriveBaseFromInput(input) {
 
     // Emit #EXT-X-MEDIA for each audio rendition
     for (const [groupId, list] of Object.entries(audioByLang)) {
-      // Mark the first entry in each group as DEFAULT
+      const defaultIndex = list.findIndex(a => isDefaultAudioLanguage(a.lang));
+      const selectedDefaultIndex = defaultIndex >= 0 ? defaultIndex : 0;
+
       list.forEach((a, idx) => {
         const duplicateCount = list.slice(0, idx).filter(item => item.name === a.name).length;
         const name = duplicateCount > 0 ? `${a.name} ${duplicateCount + 1}` : a.name;
         master.push(
-          `#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="${groupId}",NAME="${name}",LANGUAGE="${a.lang}",AUTOSELECT=YES,DEFAULT=${idx === 0 ? 'YES' : 'NO'},URI="${a.uri}"`
+          `#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="${groupId}",NAME="${name}",LANGUAGE="${a.lang}",AUTOSELECT=YES,DEFAULT=${idx === selectedDefaultIndex ? 'YES' : 'NO'},URI="${a.uri}"`
         );
       });
     }
