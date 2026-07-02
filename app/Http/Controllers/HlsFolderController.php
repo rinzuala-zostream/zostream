@@ -107,7 +107,7 @@ class HlsFolderController extends Controller
 
         // 5) Build/generate if needed
         $masterPath = rtrim($fullPath, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'master.m3u8';
-        $needsBuild = $force || !is_file($masterPath);
+        $needsBuild = $force || !is_file($masterPath) || $this->isHlsBuildStale($masterPath);
 
         $stdout = '';
         $stderr = '';
@@ -164,6 +164,27 @@ class HlsFolderController extends Controller
         } catch (\Throwable $e) {
             return [false, '', 'Exception: ' . $e->getMessage()];
         }
+    }
+
+    private function isHlsBuildStale(string $masterPath): bool
+    {
+        if (!is_file($masterPath)) {
+            return true;
+        }
+
+        $masterTime = filemtime($masterPath) ?: 0;
+        $dependencies = [
+            config('streaming.mpd2hls_script', env('MPD2HLS_SCRIPT', base_path('scripts/mpd-to-hls.js'))),
+            base_path('ISO-639-3-language.json'),
+        ];
+
+        foreach ($dependencies as $dependency) {
+            if (is_file($dependency) && (filemtime($dependency) ?: 0) > $masterTime) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function error(string $message, int $status = 400)

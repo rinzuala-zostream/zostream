@@ -95,6 +95,25 @@ function normalizeToArray(objOrArray) {
   return Array.isArray(objOrArray) ? objOrArray : [objOrArray];
 }
 
+function textValue(value) {
+  if (value == null) return '';
+  if (typeof value === 'string' || typeof value === 'number') return String(value).trim();
+  if (typeof value === 'object') {
+    if (value['#text'] != null) return String(value['#text']).trim();
+    if (value.value != null) return String(value.value).trim();
+  }
+  return '';
+}
+
+function firstTextValue(...values) {
+  for (const value of values) {
+    const candidate = Array.isArray(value) ? value.map(textValue).find(Boolean) : textValue(value);
+    if (candidate) return candidate;
+  }
+
+  return '';
+}
+
 // Build segments for either $Number$ or $Time$ pattern
 function buildSegmentsFromTemplate({ tpl, mpdDurationSec, timescaleDefault = 1 }) {
   const timescale = Number(tpl.timescale || timescaleDefault || 1);
@@ -374,6 +393,7 @@ function deriveBaseFromInput(input) {
           fs.writeFileSync(outPath, playlistText, 'utf-8');
 
           const language = normalizeLanguage(as.lang);
+          const manifestLabel = firstTextValue(rep.Label, as.Label, rep.label, as.label);
 
           variants.push({
             type: isAudio ? 'audio' : 'video',
@@ -384,7 +404,7 @@ function deriveBaseFromInput(input) {
             uri: m3u8Name,               // use sanitized filename in master
             groupId: isAudio ? 'audio' : null,
             lang: language.code,
-            name: language.name,
+            name: manifestLabel || language.name,
           });
 
           console.log(`Wrote ${m3u8Name} (${items.length} segments)`);
