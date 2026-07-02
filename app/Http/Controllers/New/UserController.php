@@ -295,6 +295,7 @@ class UserController extends Controller
                 'mail' => 'nullable|string|max:180',
                 'name' => 'nullable|string|max:180',
                 'call' => 'nullable|string|max:40',
+                'country_code' => 'nullable|string|max:10',
                 'auth_phone' => 'nullable|string|max:40',
                 'is_auth_phone_active' => 'sometimes|boolean',
                 'img' => 'nullable|string|max:2048',

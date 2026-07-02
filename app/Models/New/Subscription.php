@@ -2,6 +2,7 @@
 
 namespace App\Models\New;
 
+use App\Models\UserModel;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -37,6 +38,11 @@ class Subscription extends Model
     public function plan()
     {
         return $this->belongsTo(Plan::class, 'plan_id');
+    }
+
+    public function user()
+    {
+        return $this->belongsTo(UserModel::class, 'user_id', 'uid');
     }
 
     public function devices()

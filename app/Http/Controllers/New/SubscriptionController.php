@@ -103,6 +103,125 @@ class SubscriptionController extends Controller
         }
     }
 
+    /**
+     * Search subscriptions through both subscription data and the linked user.
+     */
+    public function searchSubscribers(Request $request)
+    {
+        try {
+            $search = trim((string) $request->get('search', $request->get('q', '')));
+
+            if ($search === '') {
+                return $this->respond([
+                    'status' => 'error',
+                    'message' => 'Search query is required'
+                ], 422);
+            }
+
+            if (mb_strlen($search) > 120) {
+                return $this->respond([
+                    'status' => 'error',
+                    'message' => 'Search query may not be greater than 120 characters'
+                ], 422);
+            }
+
+            $perPage = (int) $request->get('per_page', 15);
+            $perPage = $perPage > 0 ? min($perPage, 100) : 15;
+            $deviceType = strtolower(trim((string) $request->get('device_type', '')));
+            $sortBy = (string) $request->get('sort_by', 'created_at');
+            $sortDirection = strtolower((string) $request->get('sort_direction', 'desc')) === 'asc'
+                ? 'asc'
+                : 'desc';
+            $allowedSorts = ['id', 'user_id', 'plan_id', 'start_at', 'end_at', 'created_at'];
+
+            if (!in_array($sortBy, $allowedSorts, true)) {
+                $sortBy = 'created_at';
+            }
+
+            if ($deviceType !== '' && !in_array($deviceType, ['mobile', 'browser', 'tv'], true)) {
+                return $this->respond([
+                    'status' => 'error',
+                    'message' => 'Invalid device type. Allowed: mobile, browser, tv'
+                ], 422);
+            }
+
+            $phone = preg_match('/^[\d\s()+-]+$/', $search)
+                ? (preg_replace('/\D+/', '', $search) ?: '')
+                : '';
+            if (strlen($phone) >= 5) {
+                $phone = substr($phone, -10);
+            } else {
+                $phone = '';
+            }
+
+            $query = Subscription::with([
+                'plan',
+                'devices',
+                'user:num,uid,name,mail,call,auth_phone',
+            ])->where(function ($subscriptionQuery) use ($search, $phone) {
+                $subscriptionQuery
+                    ->where('user_id', 'like', '%' . $search . '%')
+                    ->orWhereHas('plan', function ($planQuery) use ($search) {
+                        $planQuery->where('name', 'like', '%' . $search . '%');
+                    })
+                    ->orWhereHas('user', function ($userQuery) use ($search, $phone) {
+                        $userQuery->where(function ($userSearch) use ($search, $phone) {
+                            $userSearch->where('uid', 'like', '%' . $search . '%')
+                                ->orWhere('name', 'like', '%' . $search . '%')
+                                ->orWhere('mail', 'like', '%' . $search . '%')
+                                ->orWhere('call', 'like', '%' . $search . '%')
+                                ->orWhere('auth_phone', 'like', '%' . $search . '%');
+
+                            if ($phone !== '') {
+                                $normalizedCall = "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(`call`, ''), ' ', ''), '-', ''), '(', ''), ')', ''), '+', '')";
+                                $normalizedAuthPhone = "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(`auth_phone`, ''), ' ', ''), '-', ''), '(', ''), ')', ''), '+', '')";
+
+                                $userSearch->orWhereRaw("{$normalizedCall} LIKE ?", ['%' . $phone . '%'])
+                                    ->orWhereRaw("{$normalizedAuthPhone} LIKE ?", ['%' . $phone . '%']);
+                            }
+                        });
+                    });
+
+                if (ctype_digit($search)) {
+                    $subscriptionQuery->orWhere('id', $search)
+                        ->orWhere('plan_id', $search);
+                }
+            });
+
+            if ($request->filled('is_active')) {
+                $query->where('is_active', filter_var(
+                    $request->get('is_active'),
+                    FILTER_VALIDATE_BOOLEAN,
+                    FILTER_NULL_ON_FAILURE
+                ) ?? false);
+            }
+
+            if ($deviceType !== '') {
+                $query->whereHas('plan', function ($planQuery) use ($deviceType) {
+                    $planQuery->where('device_type', $deviceType);
+                });
+            }
+
+            return $this->respond([
+                'status' => 'success',
+                'data' => $query
+                    ->orderBy($sortBy, $sortDirection)
+                    ->paginate($perPage)
+                    ->appends($request->query())
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Subscriber search error', [
+                'payload' => $request->all(),
+                'error' => $e->getMessage()
+            ]);
+
+            return $this->respond([
+                'status' => 'error',
+                'message' => 'Failed to search subscribers'
+            ], 500);
+        }
+    }
+
     public function getByDeviceType($device_type)
     {
         try {
@@ -458,6 +577,8 @@ class SubscriptionController extends Controller
                 'payment_type' => 'nullable|string|in:new,renew,upgrade,downgrade',
                 'status' => 'nullable|string|in:pending,success,failed,refunded',
                 'target_device_token' => 'nullable|string|max:255',
+                'start_at' => 'nullable|date_format:Y-m-d',
+                'end_at' => 'nullable|date_format:Y-m-d',
             ]);
 
             $resolvedUserId = $this->resolveUserIdFromUidOrPhone($validated['user_id']);
@@ -506,15 +627,34 @@ class SubscriptionController extends Controller
 
             $paymentStatus = $validated['status'] ?? 'success';
             $isActive = $paymentStatus === 'success';
-            $startAt = now();
+            $manualStartAt = !empty($validated['start_at'])
+                ? Carbon::createFromFormat('Y-m-d', $validated['start_at'])->startOfDay()
+                : null;
+            $manualEndAt = !empty($validated['end_at'])
+                ? Carbon::createFromFormat('Y-m-d', $validated['end_at'])->endOfDay()
+                : null;
+            $startAt = $manualStartAt ?? now();
+
+            if ($manualEndAt && $manualEndAt->lt($startAt)) {
+                DB::rollBack();
+
+                return $this->respond([
+                    'status' => 'error',
+                    'message' => 'End date cannot be earlier than start date'
+                ], 422);
+            }
+
             $subscription = $isActive
                 ? Subscription::activeForUserAndDeviceType($resolvedUserId, $plan->device_type)
                     ->lockForUpdate()
                     ->first()
                 : null;
-            $endAt = $subscription && $subscription->end_at && $subscription->end_at->isFuture()
-                ? $subscription->end_at->copy()->addDays($plan->duration_days)
-                : $startAt->copy()->addDays($plan->duration_days);
+            $endAt = $manualEndAt
+                ?? ($manualStartAt
+                    ? $manualStartAt->copy()->addDays($plan->duration_days)
+                    : ($subscription && $subscription->end_at && $subscription->end_at->isFuture()
+                        ? $subscription->end_at->copy()->addDays($plan->duration_days)
+                        : $startAt->copy()->addDays($plan->duration_days)));
 
             if ($subscription) {
                 $updates = [
@@ -524,7 +664,7 @@ class SubscriptionController extends Controller
                     'renewed_by' => null,
                 ];
 
-                if (!$subscription->end_at || $subscription->end_at->isPast()) {
+                if ($manualStartAt || !$subscription->end_at || $subscription->end_at->isPast()) {
                     $updates['start_at'] = $startAt;
                 }
 
