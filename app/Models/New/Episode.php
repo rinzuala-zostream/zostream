@@ -25,11 +25,13 @@ class Episode extends Model
         'duration',
         'release_date',
         'is_active',
-        'status'
+        'status',
+        'view'
     ];
 
     protected $casts = [
         'episode_number' => 'integer',
+        'view' => 'integer',
         'isPremium' => 'boolean',
         'duration' => 'integer',
         'amount' => 'decimal:2',

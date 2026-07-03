@@ -442,8 +442,6 @@ class NewStreamController extends Controller
             ], 500);
         }
 
-        $this->incrementContentViews($contentType, $movieId);
-
         // 🔟 Movie links (UNCHANGED)
         $movieLinks = null;
         $watchPosition = 0;
@@ -722,6 +720,8 @@ class NewStreamController extends Controller
                 'status' => 'stopped',
                 'last_ping' => now()
             ]);
+
+            $this->incrementContentViews($contentType, $movieId);
 
             // ✅ Call watch position safely
             $watchData = [];
