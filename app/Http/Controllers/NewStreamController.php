@@ -715,13 +715,19 @@ class NewStreamController extends Controller
                 ], 404);
             }
 
+            $shouldIncrementViews = strtolower((string) $stream->status) !== 'stopped';
+            $incrementContentType = $stream->content_type ?: $contentType;
+            $incrementContentId = $stream->content_id ?: $movieId;
+
             // ✅ Update safely
             $stream->update([
                 'status' => 'stopped',
                 'last_ping' => now()
             ]);
 
-            $this->incrementContentViews($contentType, $movieId);
+            if ($shouldIncrementViews) {
+                $this->incrementContentViews($incrementContentType, $incrementContentId);
+            }
 
             // ✅ Call watch position safely
             $watchData = [];
@@ -960,9 +966,19 @@ class NewStreamController extends Controller
                 return;
             }
 
-            $modelClass::where('id', $contentId)->increment('views', 1);
+            $primaryKey = $model->getKeyName();
+
+            $updated = $modelClass::query()
+                ->where('id', $contentId)
+                ->increment('views', 1);
+
+            if (!$updated && $primaryKey && $primaryKey !== 'id') {
+                $modelClass::query()
+                    ->where($primaryKey, $contentId)
+                    ->increment('views', 1);
+            }
         } catch (\Throwable $e) {
-            Log::warning('Start stream view increment failed', [
+            Log::warning('Stream view increment failed', [
                 'content_type' => $contentType,
                 'content_id' => $contentId,
                 'error' => $e->getMessage(),
