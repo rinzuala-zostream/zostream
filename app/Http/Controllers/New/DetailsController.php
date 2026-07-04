@@ -90,10 +90,10 @@ class DetailsController extends Controller
             // Call sub-controllers and decode JSON responses
             $paymentData = [
                 'status' => 'skipped',
-                'message' => 'Device ID not provided',
+                'message' => 'Payment status is checked separately',
             ];
 
-            if (!empty($deviceId)) {
+            if ($request->boolean('include_payment_status') && !empty($deviceId)) {
                 $paymentRequest = new Request(['user_id' => $userId, 'device_id' => $deviceId, 'device_type' => $deviceType]);
                 $paymentRequest->headers->set('X-Api-Key', $apiKey);
                 $paymentResponse = $this->paymentStatusController->processUserPayments($paymentRequest);

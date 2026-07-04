@@ -416,6 +416,8 @@ class OTPController extends Controller
                 'data' => array_merge([
                     'uid' => $userId,
                     'is_owner_device' => $isOwnerDevice ?? false,
+                    'device_id' => $deviceId,
+                    'device_name' => $deviceName,
                 ], $tokens)
             ]);
 
