@@ -371,9 +371,7 @@ class PaymentController extends Controller
         $subscription = Subscription::activeForUserAndDeviceType($uid, $plan->device_type)
             ->lockForUpdate()
             ->first();
-        $endAt = $subscription && $subscription->end_at && $subscription->end_at->isFuture()
-            ? $subscription->end_at->copy()->addDays($plan->duration_days)
-            : $startAt->copy()->addDays($plan->duration_days);
+        $endAt = $startAt->copy()->addDays($plan->duration_days);
 
         if ($subscription) {
             $updates = [
@@ -620,6 +618,7 @@ class PaymentController extends Controller
             'user_id' => $authUserId,
             'plan_id' => $plan->id,
             'amount' => $plan->price,
+            'start_at' => now()->toDateString(),
             'currency' => strtoupper($validated['currency'] ?? 'INR'),
             'payment_method' => 'checkout',
             'payment_gateway' => 'razorpay',

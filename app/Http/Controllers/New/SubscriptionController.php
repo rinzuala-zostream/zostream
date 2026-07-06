@@ -469,11 +469,14 @@ class SubscriptionController extends Controller
                     'payment_type' => 'new',
                     'created_at' => now(),
                     'expiry_date' => $endAt,
-                    'meta' => [
-                        'device_token' => $deviceToken,
-                        'device_id' => $device?->id,
-                        'device_type' => $deviceType,
-                    ],
+                    'meta' => array_merge(
+                        is_array($request->meta) ? $request->meta : [],
+                        [
+                            'device_token' => $deviceToken,
+                            'device_id' => $device?->id,
+                            'device_type' => $deviceType,
+                        ]
+                    ),
                 ]);
 
                 DB::commit();
@@ -505,6 +508,15 @@ class SubscriptionController extends Controller
             $startAt = now();
             $endAt = $startAt->copy()->addDays($plan->duration_days);
 
+            $deviceToken = $request->device_id ?: $request->device_token;
+            $deviceType = strtolower(trim((string) ($request->device_type ?? $plan->device_type)));
+            $device = $deviceToken
+                ? Devices::where('user_id', $request->user_id)
+                    ->where('device_token', $deviceToken)
+                    ->where('device_type', $deviceType)
+                    ->first()
+                : null;
+
             PaymentHistory::create([
 
                 'user_id' => $request->user_id,
@@ -520,7 +532,14 @@ class SubscriptionController extends Controller
                 'payment_type' => 'new',
                 'payment_date' => now(),
                 'expiry_date' => $endAt,
-                'meta' => null,
+                'meta' => array_merge(
+                    is_array($request->meta) ? $request->meta : [],
+                    [
+                        'device_token' => $deviceToken,
+                        'device_id' => $device?->id,
+                        'device_type' => $deviceType,
+                    ]
+                ),
             ]);
 
             DB::commit();
@@ -577,8 +596,8 @@ class SubscriptionController extends Controller
                 'payment_type' => 'nullable|string|in:new,renew,upgrade,downgrade',
                 'status' => 'nullable|string|in:pending,success,failed,refunded',
                 'target_device_token' => 'nullable|string|max:255',
-                'start_at' => 'nullable|date_format:Y-m-d',
-                'end_at' => 'nullable|date_format:Y-m-d',
+                'start_at' => 'nullable',
+                'end_at' => 'nullable',
             ]);
 
             $resolvedUserId = $this->resolveUserIdFromUidOrPhone($validated['user_id']);
@@ -628,10 +647,10 @@ class SubscriptionController extends Controller
             $paymentStatus = $validated['status'] ?? 'success';
             $isActive = $paymentStatus === 'success';
             $manualStartAt = !empty($validated['start_at'])
-                ? Carbon::createFromFormat('Y-m-d', $validated['start_at'])->startOfDay()
+                ? Carbon::parse($validated['start_at'])->startOfDay()
                 : null;
             $manualEndAt = !empty($validated['end_at'])
-                ? Carbon::createFromFormat('Y-m-d', $validated['end_at'])->endOfDay()
+                ? Carbon::parse($validated['end_at'])->endOfDay()
                 : null;
             $startAt = $manualStartAt ?? now();
 
@@ -698,6 +717,8 @@ class SubscriptionController extends Controller
                 'meta' => [
                     'identifier' => 'Manual subscription entry',
                     'device_token' => $device->device_token,
+                    'device_id' => $device->id,
+                    'device_type' => $plan->device_type,
                 ],
             ]);
 
