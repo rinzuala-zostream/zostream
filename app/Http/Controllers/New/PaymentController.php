@@ -8,6 +8,7 @@ use App\Http\Controllers\NewStreamController;
 use App\Http\Controllers\PhonePeSdkV2Controller;
 use App\Http\Controllers\RazorpayController;
 use App\Http\Controllers\SubscriptionController as LegacySubscriptionController;
+use App\Models\New\Devices;
 use App\Models\New\Plan;
 use App\Models\New\Subscription;
 use App\Models\PPVPaymentModel;
@@ -15,7 +16,9 @@ use App\Models\New\PaymentHistory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
+use Kreait\Firebase\Factory;
 
 class PaymentController extends Controller
 {
@@ -27,6 +30,7 @@ class PaymentController extends Controller
     protected $PhonepePaymentController;
     protected $razorpayController;
     protected $streamEventController;
+    private $firebaseDatabase;
 
     public function __construct(
         SubscriptionController $subscriptionController,
@@ -221,6 +225,349 @@ class PaymentController extends Controller
             'status' => $status,
             'message' => "Processed payments. Success: $successCount, Pending: $pendingCount, Failures: $failureCount",
         ], 200);
+    }
+
+    public function razorpayWebhook(Request $request)
+    {
+        $secret = (string) config('razorpay.webhook_secret', '');
+
+        if ($secret === '') {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Razorpay webhook secret is not configured',
+            ], 500);
+        }
+
+        $payload = $request->getContent();
+        $signature = (string) $request->header('X-Razorpay-Signature', '');
+        $expectedSignature = hash_hmac('sha256', $payload, $secret);
+
+        if ($signature === '' || !hash_equals($expectedSignature, $signature)) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Invalid Razorpay webhook signature',
+            ], 400);
+        }
+
+        $event = (string) $request->input('event', '');
+        $successEvents = ['payment.captured', 'order.paid'];
+        $failedEvents = ['payment.failed'];
+
+        if (!in_array($event, array_merge($successEvents, $failedEvents), true)) {
+            return response()->json([
+                'status' => 'ignored',
+                'message' => 'Razorpay event ignored',
+                'event' => $event,
+            ]);
+        }
+
+        $orderId = $this->razorpayWebhookOrderId($request);
+
+        if (!$orderId) {
+            return response()->json([
+                'status' => 'ignored',
+                'message' => 'Razorpay order id missing in webhook payload',
+                'event' => $event,
+            ]);
+        }
+
+        $payment = PaymentHistory::where('transaction_id', $orderId)
+            ->where('payment_gateway', 'razorpay')
+            ->latest()
+            ->first();
+
+        if (!$payment) {
+            Log::info('Razorpay webhook payment record not found', [
+                'event' => $event,
+                'order_id' => $orderId,
+            ]);
+
+            return response()->json([
+                'status' => 'ignored',
+                'message' => 'Payment record not found',
+                'order_id' => $orderId,
+            ]);
+        }
+
+        $successful = in_array($event, $successEvents, true);
+
+        try {
+            $result = $this->processRazorpayWebhookPayment($payment, $successful);
+            $qrResult = $this->updateQrSessionFromRazorpayWebhook(
+                $request,
+                $successful ? 'payment_completed' : 'failed',
+                $orderId
+            );
+
+            return response()->json(array_merge([
+                'status' => $successful ? 'success' : 'failed',
+                'event' => $event,
+                'order_id' => $orderId,
+            ], $result, $qrResult));
+        } catch (\Throwable $e) {
+            Log::error('Razorpay webhook processing failed', [
+                'event' => $event,
+                'order_id' => $orderId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Webhook payment processing failed',
+            ], 500);
+        }
+    }
+
+    private function processRazorpayWebhookPayment(PaymentHistory $payment, bool $successful): array
+    {
+        DB::beginTransaction();
+
+        try {
+            $payment = PaymentHistory::whereKey($payment->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ($payment->status === 'success') {
+                DB::commit();
+
+                return [
+                    'message' => 'Payment already processed',
+                    'already_processed' => true,
+                ];
+            }
+
+            if (!$successful) {
+                $payment->update(['status' => 'failed']);
+                DB::commit();
+
+                return [
+                    'message' => 'Payment failed and history updated',
+                    'already_processed' => false,
+                ];
+            }
+
+            $uid = (string) $payment->user_id;
+            $meta = is_array($payment->meta) ? $payment->meta : [];
+            $deviceId = $meta['device_token'] ?? $meta['device_id'] ?? null;
+            $deviceType = $meta['device_type'] ?? $payment->device_type ?? null;
+
+            if ($payment->movie_id === null) {
+                $plan = Plan::find($payment->plan_id);
+
+                if (!$plan) {
+                    throw new \RuntimeException('Invalid plan ID');
+                }
+
+                $startAt = now();
+                $subscription = Subscription::activeForUserAndDeviceType($uid, $plan->device_type)
+                    ->lockForUpdate()
+                    ->first();
+                $endAt = $subscription && $subscription->end_at && $subscription->end_at->isFuture()
+                    ? $subscription->end_at->copy()->addDays($plan->duration_days)
+                    : $startAt->copy()->addDays($plan->duration_days);
+
+                if ($subscription) {
+                    $updates = [
+                        'plan_id' => $plan->id,
+                        'end_at' => $endAt,
+                        'is_active' => true,
+                    ];
+
+                    if (!$subscription->end_at || $subscription->end_at->isPast()) {
+                        $updates['start_at'] = $startAt;
+                    }
+
+                    $subscription->update($updates);
+                } else {
+                    $subscription = Subscription::create([
+                        'user_id' => $uid,
+                        'plan_id' => $plan->id,
+                        'start_at' => $startAt,
+                        'end_at' => $endAt,
+                        'is_active' => true,
+                    ]);
+                }
+
+                $payment->update([
+                    'subscription_id' => $subscription->id,
+                    'status' => 'success',
+                    'payment_date' => now(),
+                    'expiry_date' => $endAt,
+                ]);
+
+                $renewDevice = $this->resolveRenewDevice($uid, $plan->device_type, $deviceId);
+                $renewDeviceId = $renewDevice?->device_token ?? $deviceId;
+                $renewDeviceType = $renewDevice?->device_type ?? $deviceType ?? $plan->device_type;
+
+                if ($renewDeviceId) {
+                    $fakeRequest = new Request([
+                        'user_id' => $uid,
+                        'device_id' => $renewDeviceId,
+                        'subscription_id' => $subscription->id,
+                        'device_type' => $renewDeviceType,
+                    ]);
+
+                    $this->streamEventController->renew($fakeRequest);
+                }
+
+                DB::commit();
+
+                return [
+                    'message' => 'Subscription payment processed successfully',
+                    'already_processed' => false,
+                    'subscription_id' => $subscription->id,
+                ];
+            }
+
+            $meta['device_token'] = $meta['device_token'] ?? $deviceId;
+            $meta['device_type'] = $meta['device_type'] ?? strtolower(trim((string) ($deviceType ?? 'mobile')));
+
+            $payment->update([
+                'status' => 'success',
+                'payment_date' => now(),
+                'expiry_date' => Carbon::now()->addDays(7),
+                'meta' => $meta,
+            ]);
+
+            DB::commit();
+
+            return [
+                'message' => 'PPV payment processed successfully',
+                'already_processed' => false,
+            ];
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            throw $e;
+        }
+    }
+
+    private function resolveRenewDevice(string $userId, string $deviceType, ?string $deviceToken = null): ?Devices
+    {
+        $query = Devices::where('user_id', $userId)
+            ->where('device_type', strtolower(trim($deviceType)));
+
+        if ($deviceToken) {
+            $device = (clone $query)
+                ->where('device_token', $deviceToken)
+                ->first();
+
+            if ($device) {
+                return $device;
+            }
+        }
+
+        return $query
+            ->where('is_owner_device', true)
+            ->first();
+    }
+
+    private function updateQrSessionFromRazorpayWebhook(Request $request, string $status, string $orderId): array
+    {
+        try {
+            $database = $this->firebaseDatabase();
+            $token = $this->razorpayWebhookQrToken($request)
+                ?? $this->findQrTokenByOrderId($database, $orderId);
+
+            if (!$token) {
+                Log::info('Razorpay webhook QR token not found', [
+                    'order_id' => $orderId,
+                    'status' => $status,
+                ]);
+
+                return [
+                    'qr_updated' => false,
+                    'qr_message' => 'QR session not found for webhook',
+                ];
+            }
+
+            $database->getReference('qr_sessions/' . $token)->update([
+                'status' => $status,
+                'webhook_order_id' => $orderId,
+                'webhook_processed_at' => time(),
+                'updated_at' => time(),
+            ]);
+
+            return [
+                'qr_updated' => true,
+                'qr_token' => $token,
+            ];
+        } catch (\Throwable $e) {
+            Log::error('Razorpay webhook QR session update failed', [
+                'order_id' => $orderId,
+                'status' => $status,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [
+                'qr_updated' => false,
+                'qr_message' => 'QR session update failed',
+            ];
+        }
+    }
+
+    private function razorpayWebhookQrToken(Request $request): ?string
+    {
+        $token = $request->input('payload.payment.entity.notes.token')
+            ?: $request->input('payload.order.entity.notes.token')
+            ?: $request->input('payload.payment.entity.notes.qr_token')
+            ?: $request->input('payload.order.entity.notes.qr_token');
+
+        $token = is_string($token) ? trim($token) : '';
+
+        return preg_match('/^[A-Za-z0-9]{22}$/', $token) ? $token : null;
+    }
+
+    private function findQrTokenByOrderId($database, string $orderId): ?string
+    {
+        $sessions = $database
+            ->getReference('qr_sessions')
+            ->orderByChild('order_id')
+            ->equalTo($orderId)
+            ->getValue();
+
+        if (!is_array($sessions) || empty($sessions)) {
+            return null;
+        }
+
+        $token = array_key_first($sessions);
+
+        return is_string($token) && preg_match('/^[A-Za-z0-9]{22}$/', $token) ? $token : null;
+    }
+
+    private function firebaseDatabase()
+    {
+        if ($this->firebaseDatabase) {
+            return $this->firebaseDatabase;
+        }
+
+        $databaseUrl = config('firebase.database_url');
+        $credentials = config('firebase.credentials');
+
+        if (empty($databaseUrl)) {
+            throw new \RuntimeException('FIREBASE_DATABASE_URL is missing in .env');
+        }
+
+        if (!file_exists($credentials)) {
+            throw new \RuntimeException('Firebase credentials file not found: ' . $credentials);
+        }
+
+        $firebase = (new Factory)
+            ->withServiceAccount($credentials)
+            ->withDatabaseUri($databaseUrl);
+
+        $this->firebaseDatabase = $firebase->createDatabase();
+
+        return $this->firebaseDatabase;
+    }
+
+    private function razorpayWebhookOrderId(Request $request): ?string
+    {
+        $orderId = $request->input('payload.payment.entity.order_id')
+            ?: $request->input('payload.order.entity.id');
+
+        $orderId = is_string($orderId) ? trim($orderId) : '';
+
+        return $orderId !== '' ? $orderId : null;
     }
 
     public function createRazorpaySubscriptionOrder(Request $request)

@@ -496,6 +496,14 @@ class SubscriptionController extends Controller
 
             $startAt = now();
             $endAt = $startAt->copy()->addDays($plan->duration_days);
+            $deviceToken = $request->device_id ?: $request->device_token;
+            $deviceType = strtolower(trim((string) ($request->device_type ?? $plan->device_type)));
+            $device = $deviceToken
+                ? Devices::where('user_id', $request->user_id)
+                    ->where('device_token', $deviceToken)
+                    ->where('device_type', $deviceType)
+                    ->first()
+                : null;
 
             PaymentHistory::create([
 
@@ -512,7 +520,14 @@ class SubscriptionController extends Controller
                 'payment_type' => 'new',
                 'payment_date' => now(),
                 'expiry_date' => $endAt,
-                'meta' => null,
+                'meta' => array_merge(
+                    is_array($request->meta) ? $request->meta : [],
+                    [
+                        'device_token' => $deviceToken,
+                        'device_id' => $device?->id,
+                        'device_type' => $deviceType,
+                    ]
+                ),
             ]);
 
             DB::commit();
