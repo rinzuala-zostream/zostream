@@ -323,8 +323,6 @@ Route::prefix('v3.0')->group(function () {
         Route::post('/update-phone', [WhatsAppPhoneController::class, 'updatePhone']);
     }); // Close auth.token middleware group
 
-    Route::post('/payments/razorpay/webhook', [PaymentController::class, 'razorpayWebhook']);
-
     // Public routes (no auth required)
     Route::prefix('movies')->group(function () {
         Route::get('/alsolike', [\App\Http\Controllers\New\AlsoLikeController::class, 'alsoLike']);
@@ -437,7 +435,7 @@ Route::prefix('v3.0')->group(function () {
         Route::post('/qcreate', [QRSessionController::class, 'create']);
         Route::post('/admin/qcreate', [QRSessionController::class, 'createAdmin']);
         Route::get('/status/{token}', [QRSessionController::class, 'status']);
-        Route::post('/selection/{token}', [QRSessionController::class, 'updateSelection']);
+        Route::post('/payment-status/{token}', [QRSessionController::class, 'updatePaymentStatus']);
         Route::post('/verify', [QRSessionController::class, 'verify']);
     });
 }); // Close v3.0 prefix group

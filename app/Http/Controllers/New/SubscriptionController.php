@@ -445,20 +445,12 @@ class SubscriptionController extends Controller
 
                 $startAt = now();
                 $endAt = $startAt->copy()->addDays(7); // default 7-day PPV
-                $deviceToken = $request->device_id ?: $request->device_token;
-                $deviceType = strtolower(trim((string) ($request->device_type ?? 'mobile')));
-                $device = $deviceToken
-                    ? Devices::where('user_id', $request->user_id)
-                        ->where('device_token', $deviceToken)
-                        ->where('device_type', $deviceType)
-                        ->first()
-                    : null;
 
                 $payment = PaymentHistory::create([
                     'subscription_id' => null,
                     'user_id' => $request->user_id,
                     'movie_id' => $request->movie_id, // 🔥 important
-                    'device_type' => $deviceType,
+                    'device_type' => $request->device_type ?? 'mobile',
                     'app_payment_type' => 'ppv',
                     'amount' => $request->amount ?? 0,
                     'currency' => $request->currency ?? 'INR',
@@ -469,14 +461,11 @@ class SubscriptionController extends Controller
                     'payment_type' => 'new',
                     'created_at' => now(),
                     'expiry_date' => $endAt,
-                    'meta' => array_merge(
-                        is_array($request->meta) ? $request->meta : [],
-                        [
-                            'device_token' => $deviceToken,
-                            'device_id' => $device?->id,
-                            'device_type' => $deviceType,
-                        ]
-                    ),
+                    'meta' => [
+                        'device_token' => $request->device_id ?: $request->device_token,
+                        'device_id' => null,
+                        'device_type' => $request->device_type ?? 'mobile',
+                    ],
                 ]);
 
                 DB::commit();
@@ -508,15 +497,6 @@ class SubscriptionController extends Controller
             $startAt = now();
             $endAt = $startAt->copy()->addDays($plan->duration_days);
 
-            $deviceToken = $request->device_id ?: $request->device_token;
-            $deviceType = strtolower(trim((string) ($request->device_type ?? $plan->device_type)));
-            $device = $deviceToken
-                ? Devices::where('user_id', $request->user_id)
-                    ->where('device_token', $deviceToken)
-                    ->where('device_type', $deviceType)
-                    ->first()
-                : null;
-
             PaymentHistory::create([
 
                 'user_id' => $request->user_id,
@@ -532,14 +512,7 @@ class SubscriptionController extends Controller
                 'payment_type' => 'new',
                 'payment_date' => now(),
                 'expiry_date' => $endAt,
-                'meta' => array_merge(
-                    is_array($request->meta) ? $request->meta : [],
-                    [
-                        'device_token' => $deviceToken,
-                        'device_id' => $device?->id,
-                        'device_type' => $deviceType,
-                    ]
-                ),
+                'meta' => null,
             ]);
 
             DB::commit();
@@ -717,8 +690,6 @@ class SubscriptionController extends Controller
                 'meta' => [
                     'identifier' => 'Manual subscription entry',
                     'device_token' => $device->device_token,
-                    'device_id' => $device->id,
-                    'device_type' => $plan->device_type,
                 ],
             ]);
 
