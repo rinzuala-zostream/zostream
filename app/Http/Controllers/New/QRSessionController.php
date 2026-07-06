@@ -209,6 +209,94 @@ class QRSessionController extends Controller
         ]);
     }
 
+    public function updateSelection(Request $request, $token)
+    {
+        try {
+            $validated = $request->validate([
+                'user_id' => 'required|string',
+                'plan_id' => 'nullable|integer|exists:n_plans,id',
+                'movie_id' => 'nullable|string|max:225',
+                'amount' => 'required|numeric|min:0',
+                'currency' => 'nullable|string|size:3',
+            ]);
+
+            if (empty($validated['plan_id']) && empty($validated['movie_id'])) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Select a plan or PPV content before payment',
+                ], 422);
+            }
+
+            $ref = $this->database->getReference('qr_sessions/' . $token);
+            $session = $ref->getValue();
+
+            if (!$session) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Session not found',
+                ], 404);
+            }
+
+            if (($session['type'] ?? null) !== 'payment') {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'This QR session is not a payment session',
+                ], 422);
+            }
+
+            if (isset($session['expires_at']) && time() > (int) $session['expires_at']) {
+                $this->updateFirebaseError($ref, 'Session expired');
+
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Session expired',
+                ], 400);
+            }
+
+            if (
+                !empty($session['user_id']) &&
+                (string) $session['user_id'] !== (string) $validated['user_id']
+            ) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Session belongs to another user',
+                ], 403);
+            }
+
+            $appPaymentType = !empty($validated['plan_id']) ? 'subscription' : 'ppv';
+            $updates = [
+                'user_id' => (string) $validated['user_id'],
+                'plan_id' => $validated['plan_id'] ?? null,
+                'movie_id' => $validated['movie_id'] ?? null,
+                'amount' => (float) $validated['amount'],
+                'currency' => strtoupper($validated['currency'] ?? ($session['currency'] ?? 'INR')),
+                'app_payment_type' => $appPaymentType,
+                'payment_method' => $session['payment_method'] ?? 'qr',
+                'payment_gateway' => $session['payment_gateway'] ?? 'razorpay',
+                'status' => 'selection_updated',
+                'updated_at' => time(),
+            ];
+
+            $ref->update($updates);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'QR payment selection updated',
+                'data' => array_merge($session, $updates),
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('QR selection update failed', [
+                'token' => $token,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'status' => 'error',
+                'message' => config('app.debug') ? $e->getMessage() : 'Failed to update QR payment selection',
+            ], 500);
+        }
+    }
+
     public function verify(Request $request)
     {
         try {
