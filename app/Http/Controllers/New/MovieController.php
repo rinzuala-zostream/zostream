@@ -422,7 +422,7 @@ class MovieController extends Controller
                 'payment_movie_id' => $episode->id,
                 'payment_options' => [
                     'episode' => $this->makePpvPaymentOption($episode->id, $episode->amount ?? 0, $discountPercent),
-                    'season' => $episode->season
+                    'season' => ($episode->season && (bool) $episode->season->isPayPerView)
                         ? $this->makeSeasonPpvPaymentOption($episode->season, $discountPercent)
                         : null,
                 ],

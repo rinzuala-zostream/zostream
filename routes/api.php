@@ -323,6 +323,8 @@ Route::prefix('v3.0')->group(function () {
         Route::post('/update-phone', [WhatsAppPhoneController::class, 'updatePhone']);
     }); // Close auth.token middleware group
 
+    Route::post('/payments/razorpay/webhook', [PaymentController::class, 'razorpayWebhook']);
+
     // Public routes (no auth required)
     Route::prefix('movies')->group(function () {
         Route::get('/alsolike', [\App\Http\Controllers\New\AlsoLikeController::class, 'alsoLike']);

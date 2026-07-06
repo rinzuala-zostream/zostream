@@ -16,4 +16,6 @@ return [
 
     // Razorpay uses the same API base for test & live (keys decide the mode).
     'base_url' => 'https://api.razorpay.com/v1',
+
+    'webhook_secret' => env('RAZORPAY_WEBHOOK_SECRET', ''),
 ];
