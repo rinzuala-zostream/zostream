@@ -164,14 +164,20 @@ class PaymentController extends Controller
                             'status' => 'success',
                         ]);
 
-                        $fakeRequest = new Request([
-                            'user_id' => $uid,
-                            'device_id' => $deviceId,
-                            'subscription_id' => $subscription->id,
-                            'device_type' => $deviceType
-                        ]);
+                        $renewDevice = $this->resolveRenewDevice($uid, $plan->device_type, $deviceId);
+                        $renewDeviceId = $renewDevice?->device_token ?? $deviceId;
+                        $renewDeviceType = $renewDevice?->device_type ?? $deviceType ?? $plan->device_type;
 
-                        $this->streamEventController->renew($fakeRequest);
+                        if ($renewDeviceId) {
+                            $fakeRequest = new Request([
+                                'user_id' => $uid,
+                                'device_id' => $renewDeviceId,
+                                'subscription_id' => $subscription->id,
+                                'device_type' => $renewDeviceType,
+                            ]);
+
+                            $this->streamEventController->renew($fakeRequest);
+                        }
                     }
 
                     // 🔹 If PPV → grant access
@@ -446,6 +452,14 @@ class PaymentController extends Controller
         $query = Devices::where('user_id', $userId)
             ->where('device_type', strtolower(trim($deviceType)));
 
+        $ownerDevice = (clone $query)
+            ->where('is_owner_device', true)
+            ->first();
+
+        if ($ownerDevice) {
+            return $ownerDevice;
+        }
+
         if ($deviceToken) {
             $device = (clone $query)
                 ->where('device_token', $deviceToken)
@@ -456,9 +470,7 @@ class PaymentController extends Controller
             }
         }
 
-        return $query
-            ->where('is_owner_device', true)
-            ->first();
+        return null;
     }
 
     private function updateQrSessionFromRazorpayWebhook(Request $request, string $status, string $orderId): array

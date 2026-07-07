@@ -372,13 +372,13 @@ class NewStreamController extends Controller
                 }
 
                 if ($dbStatus === 'blocked') {
-                    $device->update([
-                        'status' => 'inactive',
-                        'subscription_id' => $subscriptionId,
-                        'last_activity' => now(),
-                    ]);
-                    $device->refresh();
-                    $dbStatus = 'inactive';
+                    DB::rollBack();
+
+                    return response()->json([
+                        'status' => 'error',
+                        'title' => 'Device Blocked',
+                        'message' => 'This device is blocked for this subscription. Please use the owner device or contact support.'
+                    ], 403);
                 }
 
                 // 7️⃣ Enforce device limit
@@ -588,11 +588,11 @@ class NewStreamController extends Controller
         }
 
         if ($device->status === 'blocked') {
-            $device->update([
-                'status' => 'active',
-                'last_activity' => now(),
-            ]);
-            $device->refresh();
+            return response()->json([
+                'status' => 'error',
+                'title' => 'Device Blocked',
+                'message' => 'This device is blocked for this subscription. Please use the owner device or contact support.'
+            ], 403);
         }
 
         // 🔹 Subscription check ONLY for premium
@@ -872,11 +872,8 @@ class NewStreamController extends Controller
             foreach ($devices as $device) {
 
                 $deviceId = $device->id;
-                $nextStatus = (int) $deviceId === $currentDeviceId
-                    ? 'active'
-                    : (strtolower(trim((string) $device->status)) === 'blocked'
-                        ? 'inactive'
-                        : ($device->status ?: 'inactive'));
+                $isCurrentOwnerDevice = (int) $deviceId === $currentDeviceId;
+                $nextStatus = $isCurrentOwnerDevice ? 'active' : 'blocked';
 
                 // ensure device linked to subscription
                 $device->update([
@@ -887,9 +884,18 @@ class NewStreamController extends Controller
 
                 if ($nextStatus === 'active') {
                     $kept[] = $deviceId;
-                } elseif (strtolower(trim((string) $device->status)) === 'blocked') {
+                } else {
                     $reset[] = $deviceId;
                 }
+            }
+
+            if (!empty($reset)) {
+                ActiveStream::whereIn('device_id', $reset)
+                    ->where('status', 'active')
+                    ->update([
+                        'status' => 'stopped',
+                        'last_ping' => now(),
+                    ]);
             }
 
             DB::commit();
