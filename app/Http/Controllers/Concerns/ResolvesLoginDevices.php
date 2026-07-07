@@ -62,6 +62,7 @@ trait ResolvesLoginDevices
 
             $updates = [];
             $isOwnerDevice = $ownerDevice === null || (int) $ownerDevice->id === (int) $device->id;
+            $targetStatus = $isOwnerDevice ? 'active' : 'inactive';
 
             if ($device->user_id !== $user->uid) {
                 $updates['user_id'] = $user->uid;
@@ -83,17 +84,18 @@ trait ResolvesLoginDevices
                 $updates['is_owner_device'] = $isOwnerDevice;
             }
 
-            $message = 'Device already exists with status: ' . $device->status . ($subscription ? '' : ' without subscription');
-
-            if ($device->status === 'blocked' && !$isOwnerDevice) {
-                $updates['status'] = 'inactive';
-                $message = 'Blocked device reset to inactive';
+            if ($device->status !== $targetStatus) {
+                $updates['status'] = $targetStatus;
             }
 
             if (!empty($updates)) {
                 $device->update($updates);
                 $device->refresh();
             }
+
+            $message = $isOwnerDevice
+                ? ucfirst($deviceType) . ' owner device active'
+                : 'Device stored and set as inactive' . ($subscription ? '' : ' without subscription');
 
             return [
                 'device' => $device,
