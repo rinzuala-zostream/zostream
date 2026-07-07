@@ -333,7 +333,7 @@ class NewStreamController extends Controller
                     $device->refresh();
                 }
 
-                // 5️⃣ Count actual streaming seats, not remembered login devices.
+                // 5️⃣ Count active streams for response and active devices for plan limit.
                 $activeDeviceIds = ActiveStream::where('subscription_id', $subscriptionId)
                     ->where('device_type', $type)
                     ->where('status', 'active')
@@ -346,6 +346,13 @@ class NewStreamController extends Controller
 
                 $dbActiveCount = $activeDeviceIds->count();
                 $currentDeviceHasActiveStream = $activeDeviceIds->contains((int) $device->id);
+                $activeDeviceCount = Devices::where('subscription_id', $subscriptionId)
+                    ->where('user_id', $subscription->user_id)
+                    ->where('device_type', $type)
+                    ->where('status', 'active')
+                    ->lockForUpdate()
+                    ->count();
+                $currentDeviceIsActive = strtolower(trim((string) $device->status)) === 'active';
 
                 // 6️⃣ Device status
                 $dbStatus = strtolower(trim((string) $device->status));
@@ -375,7 +382,7 @@ class NewStreamController extends Controller
                 }
 
                 // 7️⃣ Enforce device limit
-                if (!$currentDeviceHasActiveStream && $dbActiveCount >= $limit) {
+                if (!$currentDeviceIsActive && $activeDeviceCount >= $limit) {
                     DB::rollBack();
 
                     return response()->json([
@@ -388,6 +395,7 @@ class NewStreamController extends Controller
                 // 8️⃣ Claim seat
                 if ($dbStatus === 'inactive') {
                     $device->update(['status' => 'active']);
+                    $activeDeviceCount++;
                 }
 
                 if (!$currentDeviceHasActiveStream) {
