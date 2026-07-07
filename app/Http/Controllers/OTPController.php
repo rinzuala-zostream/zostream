@@ -62,13 +62,21 @@ class OTPController extends Controller
             }
             $countryCode = $this->normalizeCountryCode($request->country_code);
             $phoneRequest = $this->digitsOnly($request->phone_number);
+            $phoneWithoutCountryCode = $this->phoneWithoutCountryCode($phoneRequest, $countryCode);
+            $authPhoneForNewUser = $this->fullPhoneNumber($phoneWithoutCountryCode ?: $phoneRequest, $countryCode);
             $deviceId = $request->device_id ?: $request->device_token;
             $deviceName = $request->device_name ?: 'Unknown Device';
             $fcmToken = $request->fcm_token ?: $request->token;
 
             $user = $this->findUserForOtpRequest($phoneRequest, $countryCode);
 
-            if ($phoneRequest === '8837076347') {
+            if ($phoneWithoutCountryCode === '8837076347') {
+                if (!$user) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'Test user not found'
+                    ], 404);
+                }
 
                 return response()->json([
                     'status' => 'success',
@@ -91,7 +99,7 @@ class OTPController extends Controller
                 $createdDate = $request->created_date ?: Carbon::now()->format('M d, Y h:i:s a');
                 $user = UserModel::create([
                     'uid' => $userId,
-                    'auth_phone' => $phoneRequest,
+                    'auth_phone' => $authPhoneForNewUser,
                     'created_date' => $createdDate,
                     'device_name' => $deviceName,
                     'isACActive' => $request->isACActive ?? true,
@@ -627,13 +635,79 @@ class OTPController extends Controller
             return null;
         }
 
+        $phoneWithoutCountryCode = $this->phoneWithoutCountryCode($phoneRequest, $countryCode);
         $fullPhone = $this->fullPhoneNumber($phoneRequest, $countryCode);
+        $phoneCandidates = array_values(array_unique(array_filter([
+            $phoneWithoutCountryCode,
+            $phoneRequest,
+            $fullPhone,
+        ])));
 
-        return UserModel::where('auth_phone', $phoneRequest)
-            ->when($fullPhone !== $phoneRequest, function ($query) use ($fullPhone) {
-                $query->orWhere('auth_phone', $fullPhone);
-            })
-            ->first();
+        $users = UserModel::whereIn('auth_phone', $phoneCandidates)
+            ->orderByDesc('num')
+            ->limit(10)
+            ->get();
+
+        $bestUser = null;
+        $bestScore = -1;
+        $bestUserNum = 0;
+
+        foreach ($users as $user) {
+            $score = $this->otpRequestMatchScore(
+                $this->digitsOnly($user->auth_phone),
+                $this->normalizeCountryCode($user->country_code),
+                $phoneRequest,
+                $phoneWithoutCountryCode,
+                $fullPhone,
+                $countryCode
+            );
+            $userNum = (int) $user->num;
+
+            if ($score > $bestScore || ($score === $bestScore && $userNum > $bestUserNum)) {
+                $bestUser = $user;
+                $bestScore = $score;
+                $bestUserNum = $userNum;
+            }
+        }
+
+        return $bestScore > 0 ? $bestUser : null;
+    }
+
+    private function otpRequestMatchScore(
+        string $storedPhone,
+        ?string $storedCountryCode,
+        string $phoneRequest,
+        string $phoneWithoutCountryCode,
+        string $fullPhone,
+        ?string $countryCode
+    ): int {
+        if ($storedPhone === '') {
+            return 0;
+        }
+
+        $score = 0;
+        if ($countryCode && $storedCountryCode) {
+            if ($storedCountryCode !== $countryCode) {
+                return 0;
+            }
+            $score += 100;
+        } elseif (!$storedCountryCode) {
+            $score += 10;
+        }
+
+        if ($phoneWithoutCountryCode !== '' && $storedPhone === $phoneWithoutCountryCode) {
+            return $score + 50;
+        }
+
+        if ($storedPhone === $phoneRequest) {
+            return $score + 40;
+        }
+
+        if ($storedPhone === $fullPhone) {
+            return $score + 30;
+        }
+
+        return 0;
     }
 
     private function fullPhoneNumber(string $phone, ?string $countryCode): string
@@ -646,6 +720,20 @@ class OTPController extends Controller
         }
 
         return $countryCodeDigits . $phone;
+    }
+
+    private function phoneWithoutCountryCode(string $phone, ?string $countryCode): string
+    {
+        $phone = $this->digitsOnly($phone);
+        $countryCodeDigits = $this->digitsOnly($countryCode);
+
+        if ($countryCodeDigits !== '' && str_starts_with($phone, $countryCodeDigits)) {
+            $withoutCountryCode = substr($phone, strlen($countryCodeDigits));
+
+            return $withoutCountryCode === '' ? $phone : $withoutCountryCode;
+        }
+
+        return $phone;
     }
 
     private function normalizeCountryCode($countryCode): ?string
