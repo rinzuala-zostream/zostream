@@ -67,6 +67,7 @@ class EpisodeController extends Controller
                 'release_date' => 'nullable|date',
                 'is_active' => 'nullable|boolean',
                 'status' => 'nullable|in:Draft,Published,Scheduled',
+                'views' => 'nullable|integer|min:0',
                 'url' => 'nullable|string',
                 'dash_url' => 'nullable|string',
                 'quality' => 'nullable|string',
@@ -90,7 +91,8 @@ class EpisodeController extends Controller
                 'thumbnail' => $thumbnail,
                 'release_date' => $validated['release_date'] ?? null,
                 'is_active' => $validated['is_active'] ?? true,
-                'status' => $validated['status'] ?? 'Draft'
+                'status' => $validated['status'] ?? 'Draft',
+                'views' => $validated['views'] ?? 0
             ]);
 
             if (!empty($videoUrl)) {
