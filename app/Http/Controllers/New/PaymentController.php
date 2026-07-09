@@ -662,6 +662,85 @@ class PaymentController extends Controller
         ], 201);
     }
 
+    public function processAppleIapSubscription(Request $request)
+    {
+        $validated = $request->validate([
+            'user_id' => 'required|string|max:225',
+            'plan_id' => 'required|integer|exists:n_plans,id',
+            'transaction_id' => 'required|string|max:255',
+            'product_id' => 'nullable|string|max:255',
+            'device_id' => 'nullable|string|max:255',
+            'amount' => 'nullable|numeric|min:0',
+            'currency' => 'nullable|string|size:3',
+        ]);
+
+        if (!$this->isAppleIapAllowedUser($validated['user_id'])) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Apple in-app purchase is not enabled for this account',
+            ], 403);
+        }
+
+        $existingPayment = PaymentHistory::where('transaction_id', $validated['transaction_id'])
+            ->where('payment_gateway', 'apple_iap')
+            ->where('status', 'success')
+            ->first();
+
+        if ($existingPayment) {
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Apple in-app purchase already processed',
+                'data' => [
+                    'payment_history' => $existingPayment,
+                    'subscription' => $existingPayment->subscription,
+                ],
+            ], 200);
+        }
+
+        $plan = Plan::where('id', $validated['plan_id'])
+            ->where('is_active', true)
+            ->first();
+
+        if (!$plan) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Invalid or inactive plan selected',
+            ], 404);
+        }
+
+        $subscriptionRequest = new Request([
+            'user_id' => $validated['user_id'],
+            'plan_id' => $plan->id,
+            'amount' => $validated['amount'] ?? $plan->price,
+            'start_at' => now()->toDateString(),
+            'currency' => strtoupper($validated['currency'] ?? 'INR'),
+            'payment_method' => 'iap',
+            'payment_gateway' => 'apple_iap',
+            'transaction_id' => $validated['transaction_id'],
+            'payment_type' => 'new',
+            'status' => 'success',
+            'target_device_token' => $validated['device_id'] ?? null,
+        ]);
+
+        $subscriptionResponse = $this->subscriptionController
+            ->createSubscriptionWithPayment($subscriptionRequest);
+        $subscriptionData = json_decode($subscriptionResponse->getContent(), true);
+
+        if (!$subscriptionResponse->isSuccessful() || ($subscriptionData['status'] ?? '') !== 'success') {
+            return response()->json([
+                'status' => 'error',
+                'message' => $subscriptionData['message'] ?? 'Failed to activate Apple in-app purchase',
+                'error' => $subscriptionData,
+            ], $subscriptionResponse->getStatusCode() >= 400 ? $subscriptionResponse->getStatusCode() : 500);
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Apple in-app purchase activated',
+            'data' => $subscriptionData['data'] ?? null,
+        ], 200);
+    }
+
     public function verifyRazorpaySubscriptionPayment(Request $request)
     {
         $validated = $request->validate([
@@ -811,6 +890,16 @@ class PaymentController extends Controller
         return in_array($configured, ['PRODUCTION', 'SANDBOX'], true)
             ? $configured
             : 'PRODUCTION';
+    }
+
+    private function isAppleIapAllowedUser(string $userId): bool
+    {
+        $allowed = array_filter(array_map(
+            static fn ($value) => trim((string) $value),
+            explode(',', (string) env('APPLE_IAP_USER_IDS', 'AW7ovVnTdgWuvE1Uke7QTQ5OEQt1'))
+        ));
+
+        return in_array(trim($userId), $allowed, true);
     }
 
     private function razorpayKeyId(Request $request): string
