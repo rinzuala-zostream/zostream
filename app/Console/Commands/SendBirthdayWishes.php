@@ -110,11 +110,35 @@ class SendBirthdayWishes extends Command
     protected function resolvePhone(BirthdayQueue $user): string
     {
         $phone = $user->auth_phone ?? null;
+        $countryCode = $user->country_code ?? null;
 
-        if (empty($phone)) {
-            $phone = UserModel::where('uid', $user->user_id)->value('auth_phone');
+        if (empty($phone) || empty($countryCode)) {
+            $sourceUser = UserModel::where('uid', $user->user_id)
+                ->select(['auth_phone', 'country_code'])
+                ->first();
+
+            if (empty($phone)) {
+                $phone = $sourceUser?->auth_phone;
+            }
+
+            if (empty($countryCode)) {
+                $countryCode = $sourceUser?->country_code;
+            }
         }
 
-        return preg_replace('/\D+/', '', trim((string) $phone));
+        $phone = preg_replace('/\D+/', '', trim((string) $phone)) ?? '';
+        $countryCode = preg_replace('/\D+/', '', trim((string) $countryCode)) ?? '';
+
+        if ($phone === '') {
+            return '';
+        }
+
+        if ($countryCode === '') {
+            return $phone;
+        }
+
+        $hasCountryCode = str_starts_with($phone, $countryCode) && strlen($phone) > 10;
+
+        return $hasCountryCode ? $phone : $countryCode . $phone;
     }
 }

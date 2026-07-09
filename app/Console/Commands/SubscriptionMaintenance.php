@@ -96,9 +96,14 @@ class SubscriptionMaintenance extends Command
             ->where('uid', $subscription->user_id)
             ->first();
 
-        $phone = $this->normalizePhone((string) ($user?->auth_phone));
+        if (!$user) {
+            $this->warn("Skipped reminder for subscription #{$subscription->id}: user phone not found.");
+            return;
+        }
 
-        if (!$user || $phone === '') {
+        $phone = $this->resolvePhone($user);
+
+        if ($phone === '') {
             $this->warn("Skipped reminder for subscription #{$subscription->id}: user phone not found.");
             return;
         }
@@ -150,6 +155,24 @@ class SubscriptionMaintenance extends Command
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    protected function resolvePhone(UserModel $user): string
+    {
+        $phone = $this->normalizePhone((string) $user->auth_phone);
+        $countryCode = $this->normalizePhone((string) $user->country_code);
+
+        if ($phone === '') {
+            return '';
+        }
+
+        if ($countryCode === '') {
+            return $phone;
+        }
+
+        $hasCountryCode = str_starts_with($phone, $countryCode) && strlen($phone) > 10;
+
+        return $hasCountryCode ? $phone : $countryCode . $phone;
     }
 
     protected function normalizePhone(string $phone): string
