@@ -1100,6 +1100,140 @@ class MovieController extends Controller
         }
     }
 
+    public function genre(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'genre' => 'nullable|string|max:255',
+                'genres' => 'nullable',
+                'match' => 'nullable|string|in:any,all',
+                'range' => ['nullable', 'regex:/^\d+\-\d+$/'],
+                'per_page' => 'nullable|integer|min:1|max:100',
+                'page' => 'nullable|integer|min:1',
+                'age_restriction' => 'nullable|string|in:true,false',
+                'isChildMode' => 'nullable|string|in:true,false',
+                'is_enable' => 'nullable|boolean',
+                'status' => 'nullable|string|max:50',
+                'sort_by' => 'nullable|string|in:num,title,views,create_date,release_on',
+                'sort_dir' => 'nullable|string|in:asc,desc',
+            ]);
+
+            $requestedGenres = $this->normalizeRequestedGenres($request);
+
+            if (empty($requestedGenres)) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'At least one genre is required.',
+                ], 422);
+            }
+
+            $userId = $request->header('X-User-Id') ?? $request->query('user_id', '');
+            $onlyMizoUser = empty($userId) || $userId === 'AW7ovVnTdgWuvE1Uke7QTQ5OEQt1';
+            $includeAgeRestricted = ($request->query('age_restriction') ?? 'false') === 'true';
+            $isKidsMode = strtolower($request->header('X-Mode', '')) === 'kids'
+                || ($request->query('isChildMode') ?? 'false') === 'true';
+            $matchMode = strtolower($validated['match'] ?? 'any');
+            $sortBy = $validated['sort_by'] ?? 'num';
+            $sortDir = $validated['sort_dir'] ?? 'desc';
+
+            $query = MovieModel::query()
+                ->where('isEnable', $request->filled('is_enable') ? (int) $request->boolean('is_enable') : 1)
+                ->where('status', $validated['status'] ?? 'Published')
+                ->whereNotNull('genre')
+                ->where(function ($query) use ($requestedGenres) {
+                    foreach ($requestedGenres as $genre) {
+                        $query->orWhere('genre', 'LIKE', "%{$genre}%");
+                    }
+                });
+
+            if ($onlyMizoUser) {
+                $query->where('isMizo', 1);
+            }
+
+            if ($isKidsMode) {
+                $query->where('isChildMode', 1)
+                    ->where('isAgeRestricted', 0);
+            } elseif (!$includeAgeRestricted) {
+                $query->where('isAgeRestricted', 0);
+            }
+
+            if (in_array($sortBy, ['create_date', 'release_on'], true)) {
+                $query->orderByRaw("STR_TO_DATE({$sortBy}, '%M %e, %Y') {$sortDir}");
+            } else {
+                $query->orderBy($sortBy, $sortDir);
+            }
+
+            $matchedMovies = $query
+                ->get()
+                ->filter(function ($movie) use ($matchMode, $requestedGenres) {
+                    $movieGenres = $this->parseMovieGenreTokens($movie->genre);
+
+                    if (empty($movieGenres)) {
+                        return false;
+                    }
+
+                    $matches = array_intersect($requestedGenres, $movieGenres);
+
+                    return $matchMode === 'all'
+                        ? count($matches) === count($requestedGenres)
+                        : count($matches) > 0;
+                })
+                ->values();
+
+            if (!empty($validated['range'])) {
+                [$offset, $limit] = $this->parseMovieRange($validated['range']);
+                $movies = $matchedMovies->slice($offset, $limit)->values();
+
+                return response()->json([
+                    'status' => 'success',
+                    'filters' => [
+                        'genres' => $requestedGenres,
+                        'match' => $matchMode,
+                    ],
+                    'data' => $movies->map(fn($movie) => $this->transformMovie($movie))->values(),
+                    'total' => $matchedMovies->count(),
+                ]);
+            }
+
+            $perPage = (int) ($validated['per_page'] ?? 15);
+            $currentPage = max((int) ($validated['page'] ?? 1), 1);
+            $total = $matchedMovies->count();
+            $lastPage = max((int) ceil($total / $perPage), 1);
+            $movies = $matchedMovies
+                ->slice(($currentPage - 1) * $perPage, $perPage)
+                ->values();
+
+            return response()->json([
+                'status' => 'success',
+                'filters' => [
+                    'genres' => $requestedGenres,
+                    'match' => $matchMode,
+                ],
+                'data' => $movies->map(fn($movie) => $this->transformMovie($movie))->values(),
+                'pagination' => [
+                    'current_page' => $currentPage,
+                    'per_page' => $perPage,
+                    'total' => $total,
+                    'last_page' => $lastPage,
+                    'next_page_url' => $currentPage < $lastPage ? $request->fullUrlWithQuery(['page' => $currentPage + 1]) : null,
+                ],
+            ]);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Validation failed',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (Exception $e) {
+            Log::error('Movie genre error', [
+                'query' => $request->query(),
+                'error' => $e->getMessage(),
+            ]);
+
+            return $this->errorResponse('Failed to fetch movies by genre', $e);
+        }
+    }
+
     private function applyFilterCategory($query, string $column, string $category): void
     {
         if ($column === 'genre') {
@@ -1148,6 +1282,56 @@ class MovieController extends Controller
         $to = max($to, $from);
 
         return [$from - 1, min(($to - $from) + 1, 100)];
+    }
+
+    private function normalizeRequestedGenres(Request $request): array
+    {
+        $rawGenres = [];
+
+        if ($request->filled('genre')) {
+            $rawGenres[] = $request->query('genre');
+        }
+
+        if ($request->filled('genres')) {
+            $genres = $request->query('genres');
+            $rawGenres = array_merge($rawGenres, is_array($genres) ? $genres : [$genres]);
+        }
+
+        return collect($rawGenres)
+            ->flatMap(fn($value) => $this->parseMovieGenreTokens($value))
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    private function parseMovieGenreTokens($value): array
+    {
+        if (is_array($value)) {
+            return collect($value)
+                ->flatMap(fn($item) => $this->parseMovieGenreTokens($item))
+                ->unique()
+                ->values()
+                ->all();
+        }
+
+        $genreText = trim((string) $value);
+
+        if ($genreText === '') {
+            return [];
+        }
+
+        $decoded = json_decode($genreText, true);
+
+        if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+            return $this->parseMovieGenreTokens($decoded);
+        }
+
+        return collect(preg_split('/[|,\/]+/', $genreText) ?: [])
+            ->map(fn($genre) => strtolower(trim((string) $genre)))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
     }
 
     private function transformMovie($movie)
