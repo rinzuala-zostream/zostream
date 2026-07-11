@@ -21,7 +21,6 @@ use Log;
 class NewStreamController extends Controller
 {
     protected $streamTimeout = 500; // 8 minutes 20 seconds
-    protected $viewCountThreshold = 30; // seconds of playback before counting a view
     protected $lockTTL = 30000; // milliseconds
 
     public $movieController;
@@ -428,7 +427,6 @@ class NewStreamController extends Controller
                 'stream_token' => $streamToken,
                 'started_at' => now(),
                 'last_ping' => now(),
-                'viewed_at' => null,
                 'status' => 'active'
             ];
 
@@ -439,6 +437,10 @@ class NewStreamController extends Controller
             }
 
             DB::commit();
+
+            // Every successful start request represents a new playback attempt.
+            // Count it immediately, including repeat watches by the same user.
+            $this->incrementContentViews($contentType, $contentId);
 
         } catch (\Exception $e) {
 
@@ -683,25 +685,6 @@ class NewStreamController extends Controller
         }
 
         $stream->update(['last_ping' => now()]);
-
-        // Count one view per playback attempt, only after the player has stayed
-        // active long enough. The conditional update makes concurrent pings safe.
-        if (
-            !$stream->viewed_at
-            && $stream->started_at
-            && $stream->started_at->diffInSeconds(now()) >= $this->viewCountThreshold
-        ) {
-            $markedAsViewed = ActiveStream::where('id', $stream->id)
-                ->whereNull('viewed_at')
-                ->update(['viewed_at' => now()]);
-
-            if ($markedAsViewed) {
-                $this->incrementContentViews(
-                    $stream->content_type ?: $contentType,
-                    $stream->content_id ?: $contentId
-                );
-            }
-        }
 
         return response()->json([
             'status' => 'success',
