@@ -21,6 +21,7 @@ use Log;
 class NewStreamController extends Controller
 {
     protected $streamTimeout = 500; // 8 minutes 20 seconds
+    protected $viewCountThreshold = 30; // seconds of playback before counting a view
     protected $lockTTL = 30000; // milliseconds
 
     public $movieController;
@@ -427,6 +428,7 @@ class NewStreamController extends Controller
                 'stream_token' => $streamToken,
                 'started_at' => now(),
                 'last_ping' => now(),
+                'viewed_at' => null,
                 'status' => 'active'
             ];
 
@@ -680,9 +682,26 @@ class NewStreamController extends Controller
             ], 403);
         }
 
-        $stream->update([
-            'last_ping' => now()
-        ]);
+        $stream->update(['last_ping' => now()]);
+
+        // Count one view per playback attempt, only after the player has stayed
+        // active long enough. The conditional update makes concurrent pings safe.
+        if (
+            !$stream->viewed_at
+            && $stream->started_at
+            && $stream->started_at->diffInSeconds(now()) >= $this->viewCountThreshold
+        ) {
+            $markedAsViewed = ActiveStream::where('id', $stream->id)
+                ->whereNull('viewed_at')
+                ->update(['viewed_at' => now()]);
+
+            if ($markedAsViewed) {
+                $this->incrementContentViews(
+                    $stream->content_type ?: $contentType,
+                    $stream->content_id ?: $contentId
+                );
+            }
+        }
 
         return response()->json([
             'status' => 'success',
@@ -723,19 +742,11 @@ class NewStreamController extends Controller
                 ], 404);
             }
 
-            $shouldIncrementViews = strtolower((string) $stream->status) !== 'stopped';
-            $incrementContentType = $stream->content_type ?: $contentType;
-            $incrementContentId = $stream->content_id ?: $movieId;
-
             // ✅ Update safely
             $stream->update([
                 'status' => 'stopped',
                 'last_ping' => now()
             ]);
-
-            if ($shouldIncrementViews) {
-                $this->incrementContentViews($incrementContentType, $incrementContentId);
-            }
 
             // ✅ Call watch position safely
             $watchData = [];

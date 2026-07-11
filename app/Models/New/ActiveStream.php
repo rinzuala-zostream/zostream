@@ -22,12 +22,14 @@ class ActiveStream extends Model
         'stream_token',
         'started_at',
         'last_ping',
+        'viewed_at',
         'status',
     ];
 
     protected $casts = [
         'started_at' => 'datetime',
         'last_ping' => 'datetime',
+        'viewed_at' => 'datetime',
     ];
 
     public function subscription()
