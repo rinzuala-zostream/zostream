@@ -995,12 +995,12 @@ class NewStreamController extends Controller
 
             $updated = $modelClass::query()
                 ->where('id', $contentId)
-                ->increment('views', 1);
+                ->update(['views' => DB::raw('COALESCE(views, 0) + 1')]);
 
             if (!$updated && $primaryKey && $primaryKey !== 'id') {
                 $modelClass::query()
                     ->where($primaryKey, $contentId)
-                    ->increment('views', 1);
+                    ->update(['views' => DB::raw('COALESCE(views, 0) + 1')]);
             }
         } catch (\Throwable $e) {
             Log::warning('Stream view increment failed', [
