@@ -440,7 +440,9 @@ class NewStreamController extends Controller
 
             // Every successful start request represents a new playback attempt.
             // Count it immediately, including repeat watches by the same user.
-            $this->incrementContentViews($contentType, $contentId);
+            // Use the original movie ID here because content IDs may be UUIDs or
+            // other strings that cannot be stored in n_active_streams.content_id.
+            $this->incrementContentViews($contentType, $movieId);
 
         } catch (\Exception $e) {
 
