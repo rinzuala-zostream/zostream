@@ -272,6 +272,7 @@ Route::prefix('v3.0')->group(function () {
 
         Route::prefix('devices')->group(function () {
             Route::get('/list', [DeviceController::class, 'index'])->name('index');
+            Route::get('/search', [DeviceController::class, 'search'])->name('search');
             Route::get('/user/{userId}', [DeviceController::class, 'getByUser'])->name('byUser');
             Route::post('/clear', [DeviceController::class, 'clear'])->name('clear');
             Route::post('/store', [DeviceController::class, 'store'])->name('store');

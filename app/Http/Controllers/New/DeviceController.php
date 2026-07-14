@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\New\Devices;
 use App\Models\New\ActiveStream;
+use App\Models\UserModel;
 use Illuminate\Support\Facades\DB;
 
 class DeviceController extends Controller
@@ -21,6 +22,52 @@ class DeviceController extends Controller
         return response()->json([
             'status' => 'success',
             'data' => $devices
+        ]);
+    }
+
+    // Search users and return only devices linked to the matching users
+    public function search(Request $request)
+    {
+        $request->validate([
+            'q' => 'required|string|min:2|max:180',
+            'per_page' => 'nullable|integer|min:1|max:100',
+        ]);
+
+        $term = trim((string) $request->query('q'));
+        $perPage = max(1, min((int) $request->query('per_page', 15), 100));
+        $digits = preg_replace('/\D+/', '', $term);
+        $phoneNeedle = strlen($digits) > 10 ? substr($digits, -10) : $digits;
+
+        $matchedUserIds = UserModel::query()
+            ->where(function ($query) use ($term, $phoneNeedle) {
+                $query->where('uid', 'like', '%' . $term . '%')
+                    ->orWhere('mail', 'like', '%' . $term . '%')
+                    ->orWhere('name', 'like', '%' . $term . '%')
+                    ->orWhere('call', 'like', '%' . $term . '%')
+                    ->orWhere('auth_phone', 'like', '%' . $term . '%');
+
+                if ($phoneNeedle !== '') {
+                    $normalizedCall = "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(`call`, ''), ' ', ''), '-', ''), '(', ''), ')', ''), '+', '')";
+                    $normalizedAuthPhone = "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(`auth_phone`, ''), ' ', ''), '-', ''), '(', ''), ')', ''), '+', '')";
+
+                    $query->orWhereRaw("{$normalizedCall} LIKE ?", ['%' . $phoneNeedle . '%'])
+                        ->orWhereRaw("{$normalizedAuthPhone} LIKE ?", ['%' . $phoneNeedle . '%']);
+                }
+            })
+            ->select('uid');
+
+        $devices = Devices::query()
+            ->where(function ($query) use ($matchedUserIds) {
+                $query->whereIn('user_id', (clone $matchedUserIds))
+                    ->orWhereIn('shared_to_user_id', (clone $matchedUserIds));
+            })
+            ->orderBy('created_at', 'desc')
+            ->paginate($perPage)
+            ->appends($request->query());
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $devices,
         ]);
     }
 
