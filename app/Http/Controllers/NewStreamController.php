@@ -150,14 +150,10 @@ class NewStreamController extends Controller
                 ->first();
 
             if ($existingDevice) {
-                $nextStatus = strtolower(trim((string) $existingDevice->status)) === 'blocked'
-                    ? 'inactive'
-                    : ($existingDevice->status ?: 'inactive');
-
                 $existingDevice->update([
                     'subscription_id' => $subscriptionId,
                     'last_activity' => now(),
-                    'status' => $nextStatus,
+                    'status' => $existingDevice->status ?: 'inactive',
                 ]);
 
                 $device = $existingDevice->fresh();
@@ -181,8 +177,8 @@ class NewStreamController extends Controller
 
             return response()->json([
                 'status' => 'error',
-                'title' => 'Device Not Recognized',
-                'message' => 'We couldn’t verify this device or your device has no subscription. Please sign in again or contact support if the issue continues.'
+                'title' => 'Device Access Changed',
+                'message' => 'This device is no longer linked to your current plan. Please sign in again on this device to continue watching.'
             ], 404);
         }
 
@@ -376,8 +372,8 @@ class NewStreamController extends Controller
 
                     return response()->json([
                         'status' => 'error',
-                        'title' => 'Device Blocked',
-                        'message' => 'This device is blocked for this subscription. Please use the owner device or contact support.'
+                        'title' => 'Device Access Changed',
+                        'message' => 'This device was removed from your current plan after renewal. Please sign in again on this device to continue watching.'
                     ], 403);
                 }
 
@@ -588,16 +584,16 @@ class NewStreamController extends Controller
         if (!$device) {
             return response()->json([
                 'status' => 'error',
-                'title' => 'Device Not Recognized',
-                'message' => 'We couldn’t verify this device or your device has no subscription. Please sign in again or contact support if the issue continues.'
+                'title' => 'Device Access Changed',
+                'message' => 'This device is no longer linked to your current plan. Please sign in again on this device to continue watching.'
             ], 404);
         }
 
         if ($device->status === 'blocked') {
             return response()->json([
                 'status' => 'error',
-                'title' => 'Device Blocked',
-                'message' => 'This device is blocked for this subscription. Please use the owner device or contact support.'
+                'title' => 'Device Access Changed',
+                'message' => 'This device was removed from your current plan after renewal. Please sign in again on this device to continue watching.'
             ], 403);
         }
 
@@ -857,41 +853,34 @@ class NewStreamController extends Controller
         try {
 
             $kept = [];
-            $reset = [];
+            $deleted = [];
             $currentDeviceId = (int) $currentDevice->id;
 
-            // Devices for this user + type
-            $devices = Devices::where('device_type', $deviceType)
+            $currentDevice->update([
+                'subscription_id' => $subId,
+                'status' => 'active',
+                'last_activity' => now(),
+            ]);
+
+            $kept[] = $currentDeviceId;
+
+            // Remove old devices for this user + type. They can sign in again if needed.
+            $oldDevices = Devices::where('device_type', $deviceType)
                 ->where('user_id', $userId)
+                ->where('id', '!=', $currentDeviceId)
                 ->get();
 
-            foreach ($devices as $device) {
+            $deleted = $oldDevices->pluck('id')->map(fn ($id) => (int) $id)->all();
 
-                $deviceId = $device->id;
-                $isCurrentOwnerDevice = (int) $deviceId === $currentDeviceId;
-                $nextStatus = $isCurrentOwnerDevice ? 'active' : 'blocked';
-
-                // ensure device linked to subscription
-                $device->update([
-                    'subscription_id' => $subId,
-                    'status' => $nextStatus,
-                    'last_activity' => now(),
-                ]);
-
-                if ($nextStatus === 'active') {
-                    $kept[] = $deviceId;
-                } else {
-                    $reset[] = $deviceId;
-                }
-            }
-
-            if (!empty($reset)) {
-                ActiveStream::whereIn('device_id', $reset)
+            if (!empty($deleted)) {
+                ActiveStream::whereIn('device_id', $deleted)
                     ->where('status', 'active')
                     ->update([
                         'status' => 'stopped',
                         'last_ping' => now(),
                     ]);
+
+                Devices::whereIn('id', $deleted)->delete();
             }
 
             DB::commit();
@@ -908,7 +897,7 @@ class NewStreamController extends Controller
             'event_data' => [
                 'device_type' => $deviceType,
                 'owner' => $kept,
-                'reset' => $reset
+                'deleted' => $deleted
             ],
         ]);
 
@@ -917,7 +906,7 @@ class NewStreamController extends Controller
             'message' => 'Your subscription has been renewed successfully.',
             'device_type' => $deviceType,
             'owner_device' => $kept,
-            'reset_devices' => $reset
+            'deleted_devices' => $deleted
         ]);
     }
 
