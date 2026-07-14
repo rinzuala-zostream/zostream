@@ -18,7 +18,6 @@ class Devices extends Model
         'device_type',
         'device_token',
         'is_owner_device',
-        'shared_to_user_id',
         'last_activity',
         'status',
     ];

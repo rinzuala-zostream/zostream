@@ -57,10 +57,7 @@ class DeviceController extends Controller
             ->select('uid');
 
         $devices = Devices::query()
-            ->where(function ($query) use ($matchedUserIds) {
-                $query->whereIn('user_id', (clone $matchedUserIds))
-                    ->orWhereIn('shared_to_user_id', (clone $matchedUserIds));
-            })
+            ->whereIn('user_id', $matchedUserIds)
             ->orderBy('created_at', 'desc')
             ->paginate($perPage)
             ->appends($request->query());
@@ -82,15 +79,12 @@ class DeviceController extends Controller
         return response()->json(['status' => 'success', 'data' => $device]);
     }
 
-    // Get all devices for a user (owner + shared)
+    // Get all logged-in devices for a user
     public function getByUser(Request $request, $userId)
     {
         $perPage = $request->get('per_page', 15);
 
-        $devices = Devices::where(function ($query) use ($userId) {
-                $query->where('user_id', $userId)
-                    ->orWhere('shared_to_user_id', $userId);
-            })
+        $devices = Devices::where('user_id', $userId)
             ->orderBy('created_at', 'desc')
             ->paginate($perPage);
 
@@ -159,7 +153,6 @@ class DeviceController extends Controller
             'device_type' => 'required|string',
             'status' => 'nullable|string|in:active,inactive,blocked',
             'is_owner_device' => 'nullable|boolean',
-            'shared_to_user_id' => 'nullable|string|max:225',
         ]);
 
         $device = Devices::create($request->all());
