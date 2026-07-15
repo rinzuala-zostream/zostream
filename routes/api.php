@@ -17,6 +17,7 @@ use App\Http\Controllers\LinkController;
 use App\Http\Controllers\MovieController;
 use App\Http\Controllers\MovieSearchController;
 use App\Http\Controllers\New\AdminWhatsAppController;
+use App\Http\Controllers\New\AppUpdateController;
 use App\Http\Controllers\New\BannerController;
 use App\Http\Controllers\New\DashboardController;
 use App\Http\Controllers\New\DeviceController;
@@ -260,8 +261,13 @@ Route::prefix('v3.0')->group(function () {
     Route::post('/admin/whatsapp/request-otp', [AdminWhatsAppController::class, 'requestOtp']);
     Route::post('/admin/whatsapp/send', [AdminWhatsAppController::class, 'send'])->middleware('auth.token');
 
+    Route::get('/app-updates', [AppUpdateController::class, 'index']);
+    Route::get('/app-updates/{platform}', [AppUpdateController::class, 'show']);
+
     // ✅ Protected routes
     Route::middleware('auth.token')->group(function () {
+        Route::put('/app-updates/{platform}', [AppUpdateController::class, 'update']);
+
         Route::prefix('stream')->group(function () {
             Route::post('start', [NewStreamController::class, 'start']); // Start streaming
             Route::post('ping', [NewStreamController::class, 'ping']);   // Heartbeat ping
