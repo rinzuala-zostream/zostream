@@ -429,7 +429,9 @@ class MovieController extends Controller
                 'movie_id' => $episode->season?->movie_id,
                 'episode_id' => $episode->id,
                 'title' => $episode->title,
-                'poster' => $episode->thumbnail,
+                'poster' => $episode->season?->movie?->poster
+                    ?? $episode->season?->poster
+                    ?? $episode->thumbnail,
                 'isPayPerView' => (bool) $episode->isPayPerView,
                 'ppv_amount' => $episode->amount ?? 0,
                 'discount_percent' => $discountPercent,

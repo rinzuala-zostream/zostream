@@ -258,6 +258,9 @@ Route::prefix('v3.0')->group(function () {
 
     Route::post('/token/refresh', [TokenController::class, 'refresh']);
     Route::post('/token/revoke', [TokenController::class, 'revoke']);
+    Route::post('/external/subscription-history', [\App\Http\Controllers\New\SubscriptionController::class, 'storeExternalHistory'])
+        ->middleware('api.key')
+        ->name('external.subscription-history.store');
     Route::post('/admin/whatsapp/request-otp', [AdminWhatsAppController::class, 'requestOtp']);
     Route::post('/admin/whatsapp/send', [AdminWhatsAppController::class, 'send'])->middleware('auth.token');
 

@@ -14,6 +14,7 @@ use App\Models\New\Subscription;
 use App\Models\New\Plan;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Exception;
 
 class SubscriptionController extends Controller
@@ -763,6 +764,182 @@ class SubscriptionController extends Controller
             ]);
 
             return $this->errorResponse('Failed to create subscription with payment history', $e);
+        }
+    }
+
+    /**
+     * Create mobile and TV Razorpay orders for an external subscription request.
+     *
+     * Plan 22 is stored as mobile and plan 24 as TV. Both payment-history
+     * records share one Razorpay order created from the requested amount.
+     */
+    public function storeExternalHistory(Request $request)
+    {
+        $validated = $request->validate([
+            'phone_number' => 'required|string|max:30',
+            'amount' => 'required|numeric|min:1',
+            'currency' => 'nullable|string|size:3',
+            'env' => 'nullable|string|in:SANDBOX,PRODUCTION',
+            'meta' => 'nullable|array',
+        ]);
+
+        try {
+            $phoneNumber = preg_replace('/\D+/', '', $validated['phone_number']) ?: '';
+            $phoneSuffix = substr($phoneNumber, -10);
+
+            if (strlen($phoneSuffix) !== 10) {
+                return $this->respond([
+                    'status' => 'error',
+                    'message' => 'A valid 10-digit phone number is required',
+                ], 422);
+            }
+
+            $user = UserModel::where('auth_phone', $phoneSuffix)
+                ->orderByDesc('num')
+                ->first();
+
+            $userCreated = false;
+
+            if (!$user) {
+                $user = UserModel::create([
+                    'uid' => (string) Str::uuid(),
+                    'auth_phone' => $phoneSuffix,
+                    'created_date' => Carbon::now()->format('M d, Y h:i:s a'),
+                    'device_name' => 'External Subscription API',
+                    'isACActive' => true,
+                    'isAccountComplete' => false,
+                    'is_auth_phone_active' => true,
+                ]);
+
+                $userCreated = true;
+            }
+
+            $resolvedUserId = (string) $user->uid;
+            $planDeviceTypes = [
+                22 => 'mobile',
+                24 => 'tv',
+            ];
+            $plans = Plan::whereIn('id', array_keys($planDeviceTypes))
+                ->get()
+                ->keyBy('id');
+
+            $missingPlanIds = collect(array_keys($planDeviceTypes))
+                ->reject(fn ($planId) => $plans->has($planId))
+                ->values();
+
+            if ($missingPlanIds->isNotEmpty()) {
+                return $this->respond([
+                    'status' => 'error',
+                    'message' => 'Required subscription plans were not found',
+                    'missing_plan_ids' => $missingPlanIds,
+                ], 404);
+            }
+
+            $currency = strtoupper($validated['currency'] ?? 'INR');
+            $expiryDate = now()->addDays(30);
+            $receipt = substr(sprintf(
+                'ext_sub_%s_%s',
+                $phoneSuffix,
+                now()->format('YmdHisv')
+            ), 0, 64);
+            $orderPayload = [
+                'amount' => (float) $validated['amount'],
+                'currency' => $currency,
+                'receipt' => $receipt,
+                'notes' => [
+                    'source' => 'external_subscription_api',
+                    'user_id' => $resolvedUserId,
+                    'phone_number' => $phoneSuffix,
+                    'plan_ids' => '22,24',
+                    'device_types' => 'mobile,tv',
+                ],
+            ];
+
+            if (!empty($validated['env'])) {
+                $orderPayload['env'] = $validated['env'];
+            }
+
+            $orderRequest = new Request($orderPayload);
+
+            if ($request->hasHeader('X-RZ-Env')) {
+                $orderRequest->headers->set('X-RZ-Env', $request->header('X-RZ-Env'));
+            }
+
+            $razorpayResponse = $this->razorpayController->createOrder($orderRequest);
+            $razorpayData = $razorpayResponse->getData(true);
+
+            if (
+                empty($razorpayData['ok'])
+                || empty($razorpayData['order']['id'])
+            ) {
+                Log::error('External subscription Razorpay order creation failed', [
+                    'user_id' => $resolvedUserId,
+                    'phone_number' => $phoneSuffix,
+                    'response' => $razorpayData,
+                ]);
+
+                return $this->respond([
+                    'status' => 'error',
+                    'message' => 'Failed to create Razorpay order',
+                    'razorpay' => $razorpayData,
+                ], 502);
+            }
+
+            $order = $razorpayData['order'];
+            $payments = DB::transaction(function () use (
+                $validated,
+                $resolvedUserId,
+                $phoneSuffix,
+                $currency,
+                $expiryDate,
+                $planDeviceTypes,
+                $order
+            ) {
+                $created = [];
+
+                foreach ($planDeviceTypes as $planId => $deviceType) {
+                    $created[] = PaymentHistory::create([
+                        'subscription_id' => null,
+                        'user_id' => $resolvedUserId,
+                        'plan_id' => $planId,
+                        'device_type' => $deviceType,
+                        'app_payment_type' => 'subscription',
+                        'amount' => $validated['amount'],
+                        'currency' => $currency,
+                        'payment_method' => 'razorpay',
+                        'payment_gateway' => 'razorpay',
+                        'transaction_id' => $order['id'],
+                        'status' => 'pending',
+                        'payment_type' => 'new',
+                        'payment_date' => now(),
+                        'expiry_date' => $expiryDate,
+                        'meta' => array_merge($validated['meta'] ?? [], [
+                            'source' => 'external_api',
+                            'phone_number' => $phoneSuffix,
+                            'razorpay_order' => $order,
+                        ]),
+                    ]);
+                }
+
+                return $created;
+            });
+
+            return $this->respond([
+                'status' => 'success',
+                'message' => 'Mobile and TV subscription histories created successfully.',
+                'user_id' => $resolvedUserId,
+                'user_created' => $userCreated,
+                'razorpay_key_id' => $razorpayData['key_id'] ?? null,
+                'razorpay_order' => $order,
+                'data' => $payments,
+            ], 201);
+        } catch (Exception $e) {
+            Log::error('External subscription history store error', [
+                'payload' => $request->except(['api_key']),
+                'error' => $e->getMessage(),
+            ]);
+
+            return $this->errorResponse('Failed to store subscription history', $e);
         }
     }
 
