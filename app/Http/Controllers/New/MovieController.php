@@ -8,15 +8,20 @@ use App\Models\New\PaymentHistory;
 use App\Models\New\PlanFeature;
 use App\Models\New\Subscription;
 use App\Models\New\VideoUrl;
+use App\Support\WebpImageUploader;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use App\Models\MovieModel;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Exception;
 
 class MovieController extends Controller
 {
+    public function __construct(private readonly WebpImageUploader $imageUploader) {}
+
     /**
      * 📋 List all movies with pagination
      */
@@ -34,6 +39,163 @@ class MovieController extends Controller
             Log::error('Movie index error', ['error' => $e->getMessage()]);
             return $this->errorResponse('Failed to fetch movies', $e);
         }
+    }
+
+    /**
+     * Create a movie. Uploaded poster/cover images are always stored as WebP
+     * and are limited to 500 KiB after processing.
+     */
+    public function store(Request $request)
+    {
+        try {
+            $validated = $request->validate($this->movieRules($request, true));
+            $movieData = $this->prepareMovieData($request, $validated);
+            $movieData['id'] = Str::random(10);
+            $movieData['create_date'] = ! empty($movieData['create_date'])
+                ? Carbon::parse($movieData['create_date'])->format('F j, Y')
+                : now()->format('F j, Y');
+            $movieData['trailer'] = $movieData['trailer'] ?? '';
+
+            if (! empty($movieData['release_on'])) {
+                $movieData['release_on'] = Carbon::parse($movieData['release_on'])->format('F j, Y');
+            }
+
+            $movie = MovieModel::create($movieData);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Movie inserted successfully',
+                'data' => $movie,
+            ], 201);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Validation failed',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (Exception $e) {
+            Log::error('Movie create error', ['error' => $e->getMessage()]);
+
+            return $this->errorResponse('Failed to create movie', $e);
+        }
+    }
+
+    /**
+     * Update a movie and process newly uploaded poster/cover images.
+     */
+    public function update(Request $request, $id)
+    {
+        try {
+            $movie = MovieModel::where('id', $id)->first();
+
+            if (! $movie) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Movie not found',
+                ], 404);
+            }
+
+            $validated = $request->validate($this->movieRules($request));
+            $movieData = $this->prepareMovieData($request, $validated);
+
+            if (! empty($movieData['release_on'])) {
+                $movieData['release_on'] = Carbon::parse($movieData['release_on'])->format('F j, Y');
+            }
+
+            $movie->update($movieData);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Movie updated successfully',
+                'data' => $movie->fresh(),
+            ]);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Validation failed',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (Exception $e) {
+            Log::error('Movie update error', [
+                'id' => $id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return $this->errorResponse('Failed to update movie', $e);
+        }
+    }
+
+    private function movieRules(Request $request, bool $creating = false): array
+    {
+        $imageOrUrl = static fn (string $field): array => $request->hasFile($field)
+            ? ['nullable', 'image', 'max:10240']
+            : ['nullable', 'string'];
+
+        return [
+            'title' => [$creating ? 'required' : 'nullable', 'string', 'max:255'],
+            'description' => 'nullable|string',
+            'genre' => 'nullable|string',
+            'age_rating' => 'nullable|string',
+            'director' => 'nullable|string',
+            'duration' => 'nullable|string',
+            'release_on' => 'nullable|string',
+            'cover' => $imageOrUrl('cover'),
+            'cover_img' => $imageOrUrl('cover_img'),
+            'poster' => $imageOrUrl('poster'),
+            'title_img' => 'nullable|string',
+            'url' => 'nullable|string',
+            'dash_url' => 'nullable|string',
+            'hls_url' => 'nullable|string',
+            'trailer' => 'nullable|string',
+            'subtitle' => 'nullable|string',
+            'token' => 'nullable|string',
+            'views' => 'nullable|integer|min:0',
+            'status' => 'nullable|string|in:Published,Draft,Scheduled',
+            'create_date' => 'nullable|string',
+            'ppv_amount' => 'nullable|numeric|min:0',
+            'isProtected' => 'nullable|boolean',
+            'isBollywood' => 'nullable|boolean',
+            'isCompleted' => 'nullable|boolean',
+            'isDocumentary' => 'nullable|boolean',
+            'isAgeRestricted' => 'nullable|boolean',
+            'isDubbed' => 'nullable|boolean',
+            'isEnable' => 'nullable|boolean',
+            'isHollywood' => 'nullable|boolean',
+            'isKorean' => 'nullable|boolean',
+            'isMizo' => 'nullable|boolean',
+            'isPayPerView' => 'nullable|boolean',
+            'isPremium' => 'nullable|boolean',
+            'isSeason' => 'nullable|boolean',
+            'isSubtitle' => 'nullable|boolean',
+            'isChildMode' => 'nullable|boolean',
+        ];
+    }
+
+    private function prepareMovieData(Request $request, array $validated): array
+    {
+        $movieData = $validated;
+
+        if ($request->hasFile('poster')) {
+            $movieData['poster'] = $this->imageUploader->upload(
+                $request->file('poster'),
+                'thumbnail/movie/poster'
+            );
+        }
+
+        $coverField = $request->hasFile('cover_img') ? 'cover_img' : 'cover';
+
+        if ($request->hasFile($coverField)) {
+            $movieData['cover_img'] = $this->imageUploader->upload(
+                $request->file($coverField),
+                'thumbnail/movie/cover'
+            );
+        } elseif (array_key_exists('cover', $validated)) {
+            $movieData['cover_img'] = $validated['cover'];
+        }
+
+        unset($movieData['cover']);
+
+        return $movieData;
     }
 
     /**

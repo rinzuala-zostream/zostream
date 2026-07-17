@@ -3,16 +3,18 @@
 namespace App\Jobs;
 
 use App\Models\New\Episode;
+use App\Support\WebpImageUploader;
 use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
 use Symfony\Component\Process\Process;
 
 class ExtractEpisodeThumbnail
 {
     use Dispatchable;
+
+    private const MAX_THUMBNAIL_BYTES = 100 * 1024;
 
     public function __construct(
         private readonly string $episodeId,
@@ -21,7 +23,7 @@ class ExtractEpisodeThumbnail
     ) {
     }
 
-    public function handle(): void
+    public function handle(WebpImageUploader $imageUploader): void
     {
         $episode = Episode::where('id', $this->episodeId)->first();
 
@@ -29,14 +31,18 @@ class ExtractEpisodeThumbnail
             return;
         }
 
-        $thumbnail = $this->extractThumbnailFromMpd($this->videoUrl, $episode->id);
+        $thumbnail = $this->extractThumbnailFromMpd($this->videoUrl, $episode->id, $imageUploader);
 
         if ($thumbnail) {
             $episode->update(['thumbnail' => $thumbnail]);
         }
     }
 
-    private function extractThumbnailFromMpd(string $rawUrl, string $episodeId): ?string
+    private function extractThumbnailFromMpd(
+        string $rawUrl,
+        string $episodeId,
+        WebpImageUploader $imageUploader
+    ): ?string
     {
         $outputPath = null;
 
@@ -72,7 +78,11 @@ class ExtractEpisodeThumbnail
                 throw new \RuntimeException(trim($process->getErrorOutput()) ?: 'ffmpeg thumbnail extraction failed');
             }
 
-            return $this->uploadEpisodeThumbnailToR2($outputPath);
+            return $imageUploader->upload(
+                new UploadedFile($outputPath, basename($outputPath), 'image/webp', null, true),
+                'thumbnail/episode',
+                self::MAX_THUMBNAIL_BYTES
+            );
         } catch (\Throwable $e) {
             Log::warning('Episode thumbnail extraction failed', [
                 'episode_id' => $episodeId,
@@ -87,27 +97,6 @@ class ExtractEpisodeThumbnail
                 @unlink($outputPath);
             }
         }
-    }
-
-    private function uploadEpisodeThumbnailToR2(string $localPath): string
-    {
-        $r2Path = 'thumbnail/episode/' . Str::uuid() . '.webp';
-        $stream = fopen($localPath, 'r');
-
-        if ($stream === false) {
-            throw new \RuntimeException("Unable to read thumbnail file: {$localPath}");
-        }
-
-        try {
-            Storage::disk('r2')->put($r2Path, $stream, [
-                'visibility' => 'public',
-                'ContentType' => 'image/webp',
-            ]);
-        } finally {
-            fclose($stream);
-        }
-
-        return rtrim(config('filesystems.disks.r2.url'), '/') . '/' . $this->encodeR2Path($r2Path);
     }
 
     private function randomThumbnailSeekTime(string $mpdUrl): string
@@ -182,11 +171,6 @@ class ExtractEpisodeThumbnail
             intdiv($seconds % 3600, 60),
             $seconds % 60
         );
-    }
-
-    private function encodeR2Path(string $path): string
-    {
-        return implode('/', array_map('rawurlencode', explode('/', $path)));
     }
 
     private function debugUrlType(string $url): string

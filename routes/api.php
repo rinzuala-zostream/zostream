@@ -349,6 +349,8 @@ Route::prefix('v3.0')->group(function () {
         Route::get('/latest-updates', [\App\Http\Controllers\New\MovieController::class, 'latestUpdates']);
         Route::get('/{movieId}/seasons', [SeasonController::class, 'index']);
         Route::get('/', [\App\Http\Controllers\New\MovieController::class, 'index'])->name('movies.index');
+        Route::post('/', [\App\Http\Controllers\New\MovieController::class, 'store'])->name('movies.store');
+        Route::put('/{id}', [\App\Http\Controllers\New\MovieController::class, 'update'])->name('movies.update');
         Route::get('/{id}', [\App\Http\Controllers\New\MovieController::class, 'getById'])->name('movies.show');
         Route::get('/{id}/admin-links', [\App\Http\Controllers\New\MovieController::class, 'adminGetLink'])->name('movies.admin-links');
         Route::get('/{id}/links', [\App\Http\Controllers\New\MovieController::class, 'getLink'])->name('movies.links');

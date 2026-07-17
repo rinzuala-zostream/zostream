@@ -7,14 +7,16 @@ use App\Models\New\Episode;
 use App\Models\New\Season;
 use App\Models\New\VideoUrl;
 use App\Jobs\ExtractEpisodeThumbnail;
+use App\Support\WebpImageUploader;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class EpisodeController extends Controller
 {
+    public function __construct(private readonly WebpImageUploader $imageUploader) {}
+
     // Get all episodes of a season
     public function index($seasonId)
     {
@@ -62,7 +64,9 @@ class EpisodeController extends Controller
                 'isPremium' => 'nullable|boolean',
                 'title' => 'nullable|string',
                 'description' => 'nullable|string',
-                'thumbnail' => 'nullable|string',
+                'thumbnail' => $request->hasFile('thumbnail')
+                    ? 'nullable|image|max:10240'
+                    : 'nullable|string',
                 'image' => 'nullable|image|max:10240',
                 'release_date' => 'nullable|date',
                 'is_active' => 'nullable|boolean',
@@ -187,7 +191,9 @@ class EpisodeController extends Controller
                 'episode_number' => 'nullable|integer',
                 'title' => 'nullable|string',
                 'description' => 'nullable|string',
-                'thumbnail' => 'nullable|string',
+                'thumbnail' => $request->hasFile('thumbnail')
+                    ? 'nullable|image|max:10240'
+                    : 'nullable|string',
                 'image' => 'nullable|image|max:10240',
                 'release_date' => 'nullable|date',
                 'is_active' => 'nullable|boolean',
@@ -448,21 +454,13 @@ class EpisodeController extends Controller
 
     private function uploadEpisodeThumbnailImage(Request $request): ?string
     {
-        if (!$request->hasFile('image') || !$request->file('image')->isValid()) {
+        $field = $request->hasFile('image') ? 'image' : 'thumbnail';
+
+        if (!$request->hasFile($field) || !$request->file($field)->isValid()) {
             return null;
         }
 
-        $image = $request->file('image');
-        $path = Storage::disk('r2')->putFile(
-            'thumbnail/episode',
-            $image,
-            [
-                'visibility' => 'public',
-                'ContentType' => $image->getMimeType(),
-            ]
-        );
-
-        return rtrim(config('filesystems.disks.r2.url'), '/') . '/' . $path;
+        return $this->imageUploader->upload($request->file($field), 'thumbnail/episode');
     }
 
     private function setEpisodeThumbnailFromMpd(string $episodeId, string $url): void
