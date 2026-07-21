@@ -1089,6 +1089,36 @@ class MovieController extends Controller
 
             $data = [];
             $fetchSize = $isKidsMode ? 50 : 10;
+            $watchList = collect();
+
+            if (!empty($userId)) {
+                $watchListBuilder = MovieModel::query()
+                    ->join('wist_list', 'wist_list.movie_id', '=', 'movie.id')
+                    ->where('wist_list.uid', $userId)
+                    ->where('movie.isEnable', 1)
+                    ->where('movie.status', 'Published')
+                    ->select('movie.*')
+                    ->orderByDesc('wist_list.created_at')
+                    ->limit($fetchSize);
+
+                if ($isKidsMode) {
+                    $watchListBuilder->where('movie.isChildMode', 1);
+                }
+                if ($onlyMizoUser) {
+                    $watchListBuilder->where('movie.isMizo', 1);
+                }
+                if (!$ageRestriction) {
+                    $watchListBuilder->where('movie.isAgeRestricted', 0);
+                }
+
+                $watchList = $watchListBuilder->get();
+
+                if ($isKidsMode && !$onlyMizoUser) {
+                    $watchList = $watchList->reject($shouldSkip)->values();
+                }
+
+                $watchList = $watchList->take(10);
+            }
 
             foreach ($categories as $name => $clause) {
                 if ($name === "18+" && !$ageRestriction)
@@ -1124,6 +1154,12 @@ class MovieController extends Controller
 
                 if (!$list->isEmpty()) {
                     $data[$name] = $list->map(fn($m) => $this->transformMovie($m));
+                }
+
+                if ($name === "Latest Update" && !$watchList->isEmpty()) {
+                    $data["Watch List"] = $watchList->map(
+                        fn($movie) => $this->transformMovie($movie)
+                    );
                 }
             }
 
