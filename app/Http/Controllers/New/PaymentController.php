@@ -283,16 +283,16 @@ class PaymentController extends Controller
             ->first();
 
         if (!$payment) {
-            Log::info('Razorpay webhook payment record not found', [
+            Log::warning('Razorpay webhook payment record not found; requesting retry', [
                 'event' => $event,
                 'order_id' => $orderId,
             ]);
 
             return response()->json([
-                'status' => 'ignored',
-                'message' => 'Payment record not found',
+                'status' => 'error',
+                'message' => 'Payment record is not ready; retry webhook',
                 'order_id' => $orderId,
-            ]);
+            ], 503);
         }
 
         $successful = in_array($event, $successEvents, true);
@@ -452,14 +452,6 @@ class PaymentController extends Controller
         $query = Devices::where('user_id', $userId)
             ->where('device_type', strtolower(trim($deviceType)));
 
-        $ownerDevice = (clone $query)
-            ->where('is_owner_device', true)
-            ->first();
-
-        if ($ownerDevice) {
-            return $ownerDevice;
-        }
-
         if ($deviceToken) {
             $device = (clone $query)
                 ->where('device_token', $deviceToken)
@@ -470,7 +462,9 @@ class PaymentController extends Controller
             }
         }
 
-        return null;
+        return (clone $query)
+            ->where('is_owner_device', true)
+            ->first();
     }
 
     private function updateQrSessionFromRazorpayWebhook(Request $request, string $status, string $orderId): array
@@ -587,6 +581,7 @@ class PaymentController extends Controller
         $validated = $request->validate([
             'plan_id' => 'required|integer|exists:n_plans,id',
             'currency' => 'nullable|string|size:3',
+            'target_device_token' => 'nullable|string|max:255',
         ]);
 
         $authUserId = (string) $request->input('auth_user_id', '');
@@ -644,6 +639,51 @@ class PaymentController extends Controller
                 'message' => $razorpayData['message'] ?? 'Failed to create Razorpay order',
                 'error' => $razorpayData,
             ], $razorpayResponse->getStatusCode() >= 400 ? $razorpayResponse->getStatusCode() : 400);
+        }
+
+        $orderId = trim((string) ($razorpayData['order']['id'] ?? ''));
+        if ($orderId === '') {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Razorpay did not return an order id',
+            ], 502);
+        }
+
+        try {
+            PaymentHistory::updateOrCreate(
+                [
+                    'transaction_id' => $orderId,
+                    'payment_gateway' => 'razorpay',
+                ],
+                [
+                    'user_id' => $authUserId,
+                    'plan_id' => $plan->id,
+                    'device_type' => $plan->device_type,
+                    'app_payment_type' => 'subscription',
+                    'amount' => $amount,
+                    'currency' => $currency,
+                    'payment_method' => 'checkout',
+                    'status' => 'pending',
+                    'payment_type' => 'new',
+                    'meta' => [
+                        'device_token' => $validated['target_device_token'] ?? null,
+                        'device_type' => $plan->device_type,
+                        'razorpay_order' => $razorpayData['order'],
+                    ],
+                ]
+            );
+        } catch (\Throwable $e) {
+            Log::error('Failed to persist pending Razorpay subscription order', [
+                'order_id' => $orderId,
+                'user_id' => $authUserId,
+                'plan_id' => $plan->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Payment order could not be saved. Please try again.',
+            ], 500);
         }
 
         return response()->json([
@@ -761,7 +801,7 @@ class PaymentController extends Controller
         }
 
         $existingPayment = PaymentHistory::where('transaction_id', $validated['razorpay_order_id'])
-            ->where('status', 'success')
+            ->where('payment_gateway', 'razorpay')
             ->first();
 
         if ($existingPayment) {
@@ -775,14 +815,16 @@ class PaymentController extends Controller
                 ], 403);
             }
 
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Payment already verified',
-                'data' => [
-                    'payment_history' => $existingPayment,
-                    'subscription' => $existingPayment->subscription,
-                ],
-            ], 200);
+            if ($existingPayment->status === 'success') {
+                return response()->json([
+                    'status' => 'success',
+                    'message' => 'Payment already verified',
+                    'data' => [
+                        'payment_history' => $existingPayment,
+                        'subscription' => $existingPayment->subscription,
+                    ],
+                ], 200);
+            }
         }
 
         $keySecret = $this->razorpayKeySecret($request);
@@ -832,6 +874,27 @@ class PaymentController extends Controller
                 'status' => 'error',
                 'message' => 'Invalid or inactive plan selected',
             ], 404);
+        }
+
+        if ($existingPayment) {
+            $meta = is_array($existingPayment->meta) ? $existingPayment->meta : [];
+            if (!empty($validated['target_device_token'])) {
+                $meta['device_token'] = $validated['target_device_token'];
+            }
+            $meta['device_type'] = $plan->device_type;
+            $existingPayment->update(['meta' => $meta]);
+
+            $result = $this->processRazorpayWebhookPayment($existingPayment, true);
+            $completedPayment = $existingPayment->fresh('subscription');
+
+            return response()->json([
+                'status' => 'success',
+                'message' => $result['message'] ?? 'Payment verified and subscription activated',
+                'data' => [
+                    'payment_history' => $completedPayment,
+                    'subscription' => $completedPayment?->subscription,
+                ],
+            ], 200);
         }
 
         $subscriptionRequest = new Request([

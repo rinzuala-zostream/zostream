@@ -707,6 +707,7 @@ class QRSessionController extends Controller
                 'auth_user_id' => $userId,
                 'plan_id' => $plan->id,
                 'currency' => strtoupper($validated['currency'] ?? 'INR'),
+                'target_device_token' => $session['device_id'] ?? $session['device_token'] ?? null,
             ]);
             $orderRequest->headers->set('X-RZ-Env', $request->header('X-RZ-Env', ''));
             $orderResponse = app(PaymentController::class)
