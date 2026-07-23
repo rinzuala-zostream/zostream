@@ -38,9 +38,9 @@ class TokenController extends Controller
 
         return [
             'access_token' => $accessToken,
-            'access_expires_at' => $accessExp->toDateTimeString(),
+            'access_expires_at' => $accessExp->toIso8601String(),
             'refresh_token' => $refreshToken,
-            'refresh_expires_at' => $refreshExp->toDateTimeString(),
+            'refresh_expires_at' => $refreshExp->toIso8601String(),
             'token_type' => 'bearer',
             'device_name' => $deviceName,
             'device_id' => $deviceId,
@@ -96,8 +96,8 @@ class TokenController extends Controller
             'message' => 'Access token refreshed successfully',
             'access_token' => $newAccessToken,
             'refresh_token' => $newRefreshToken,
-            'access_expires_at' => $newAccessExp->toDateTimeString(),
-            'refresh_expires_at' => $newRefreshExp->toDateTimeString(),
+            'access_expires_at' => $newAccessExp->toIso8601String(),
+            'refresh_expires_at' => $newRefreshExp->toIso8601String(),
             'token_type' => 'bearer'
         ]);
     }
