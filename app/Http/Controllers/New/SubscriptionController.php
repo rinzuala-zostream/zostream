@@ -715,32 +715,46 @@ class SubscriptionController extends Controller
                 'status' => $isActive ? 'active' : ($device->status ?: 'inactive'),
             ]);
 
-            $renewPayload = [
-                'user_id' => $resolvedUserId,
-                'device_id' => $device->device_token,
-                'subscription_id' => $subscription->id,
-                'device_type' => $plan->device_type
-            ];
-
-            Log::info('Subscription createSubscriptionWithPayment renew request', [
-                'payload' => $renewPayload,
-                'actual_device_id' => $device->id,
-            ]);
-
-            $fakeRequest = new Request($renewPayload);
-            $renewResponse = $this->streamEventController->renew($fakeRequest);
             $renewData = [];
 
-            if ($renewResponse && method_exists($renewResponse, 'getContent')) {
-                $renewData = json_decode($renewResponse->getContent(), true) ?? [];
-            }
+            if ($isActive) {
+                $renewPayload = [
+                    'user_id' => $resolvedUserId,
+                    'device_id' => $device->device_token,
+                    'subscription_id' => $subscription->id,
+                    'device_type' => $plan->device_type
+                ];
 
-            Log::info('Subscription createSubscriptionWithPayment renew response', [
-                'status_code' => method_exists($renewResponse, 'getStatusCode')
+                Log::info('Subscription createSubscriptionWithPayment renew request', [
+                    'payload' => $renewPayload,
+                    'actual_device_id' => $device->id,
+                ]);
+
+                $fakeRequest = new Request($renewPayload);
+                $renewResponse = $this->streamEventController->renew($fakeRequest);
+
+                if ($renewResponse && method_exists($renewResponse, 'getContent')) {
+                    $renewData = json_decode($renewResponse->getContent(), true) ?? [];
+                }
+
+                $renewStatusCode = $renewResponse && method_exists($renewResponse, 'getStatusCode')
                     ? $renewResponse->getStatusCode()
-                    : null,
-                'response' => $renewData,
-            ]);
+                    : 500;
+
+                Log::info('Subscription createSubscriptionWithPayment renew response', [
+                    'status_code' => $renewStatusCode,
+                    'response' => $renewData,
+                ]);
+
+                if (
+                    $renewStatusCode >= 400
+                    || strtolower((string) ($renewData['status'] ?? '')) === 'error'
+                ) {
+                    throw new Exception(
+                        (string) ($renewData['message'] ?? 'Subscription device reset failed')
+                    );
+                }
+            }
 
             DB::commit();
             return $this->respond([

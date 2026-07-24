@@ -62,7 +62,10 @@ trait ResolvesLoginDevices
 
             $updates = [];
             $isOwnerDevice = $ownerDevice === null || (int) $ownerDevice->id === (int) $device->id;
-            $targetStatus = $isOwnerDevice ? 'active' : 'inactive';
+            $sameUser = (string) $device->user_id === (string) $user->uid;
+            $targetStatus = $isOwnerDevice
+                ? 'active'
+                : ($sameUser ? ($device->status ?: 'inactive') : 'inactive');
 
             if ($device->user_id !== $user->uid) {
                 $updates['user_id'] = $user->uid;

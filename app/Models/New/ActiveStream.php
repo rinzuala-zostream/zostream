@@ -19,6 +19,7 @@ class ActiveStream extends Model
         'device_type',
         'content_type',
         'content_id',
+        'content_key',
         'stream_token',
         'started_at',
         'last_ping',

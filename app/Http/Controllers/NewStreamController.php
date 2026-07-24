@@ -45,8 +45,9 @@ class NewStreamController extends Controller
         $deviceToken = $request->header('Device-Token');
         $movieId = $request->input('movie_id');
         $seasonId = $request->input('season_id'); //This is optional and only used for rent whole episodes of season
-        $movieType = $request->input('type');
-        $contentType = $movieType ? strtolower(trim((string) $movieType)) : null;
+        $contentType = strtolower(trim((string) $request->input('type')));
+        $movieType = $contentType;
+        $contentKey = trim((string) $movieId);
         $contentId = filled($movieId) && is_numeric($movieId) ? (int) $movieId : null;
         $userId = $request->input('user_id');
         $platform = strtolower(trim((string) $request->input('platform')));
@@ -55,19 +56,27 @@ class NewStreamController extends Controller
         $requiresSubscription = false;
         $movie = null;
 
-        if ($movieId) {
-            if ($movieType === 'movie') {
-                $movie = MovieModel::where('id', $movieId)->first();
-            } elseif ($movieType === 'episode') {
-                $movie = Episode::where('id', $movieId)->first();
-            }
-
-            $isPPV = (bool) ($movie?->isPayPerView ?? false);
-            $requiresSubscription = (bool) ($movie?->isPremium ?? false) && !$isPPV;
-
+        if ($contentKey === '' || ! in_array($contentType, ['movie', 'episode'], true)) {
+            return response()->json([
+                'status' => 'error',
+                'title' => 'Invalid Content',
+                'message' => 'A valid movie or episode is required to start playback.',
+            ], 422);
         }
 
-        if (!$deviceToken || !$userId) {
+        $movie = $this->findContent($contentType, $contentKey);
+        if (! $movie) {
+            return response()->json([
+                'status' => 'error',
+                'title' => 'Content Not Found',
+                'message' => 'The requested movie or episode is unavailable.',
+            ], 404);
+        }
+
+        $isPPV = (bool) ($movie->isPayPerView ?? false);
+        $requiresSubscription = (bool) ($movie->isPremium ?? false) && ! $isPPV;
+
+        if (! $deviceToken || ! $userId) {
             return response()->json([
                 'status' => 'error',
                 'title' => 'Missing Information',
@@ -95,6 +104,14 @@ class NewStreamController extends Controller
                     'title' => 'Subscription Not Found',
                     'message' => 'We could not find an active subscription for your account. Please subscribe to continue watching.'
                 ], 404);
+            }
+
+            if (! hash_equals((string) $subscription->user_id, (string) $userId)) {
+                return response()->json([
+                    'status' => 'error',
+                    'title' => 'Subscription Access Denied',
+                    'message' => 'This subscription does not belong to your account.',
+                ], 403);
             }
 
             if (Carbon::parse($subscription->end_at)->isPast() || !$subscription->is_active) {
@@ -127,8 +144,18 @@ class NewStreamController extends Controller
                 ], 403);
             }
 
-            $limit = $plan->device_limit ?? 1;
+            $limit = max(1, (int) ($plan->device_limit ?? 1));
             $type = $planType;
+
+            Devices::where('subscription_id', $subscriptionId)
+                ->where('user_id', $subscription->user_id)
+                ->where('device_type', $type)
+                ->where('is_owner_device', true)
+                ->where('status', '!=', 'blocked')
+                ->update([
+                    'status' => 'active',
+                    'last_activity' => now(),
+                ]);
         }
 
         // 1️⃣ Device check
@@ -162,8 +189,7 @@ class NewStreamController extends Controller
 
         if (!$device) {
             Log::warning('Start stream device not recognized', [
-                'request' => $request->all(),
-                'device_token' => $deviceToken,
+                'device_token_hash' => hash('sha256', (string) $deviceToken),
                 'subscription_id' => $subscriptionId,
                 'requires_subscription' => $requiresSubscription,
                 'movie_id' => $movieId,
@@ -248,15 +274,49 @@ class NewStreamController extends Controller
         $streamToken = null;
         $currentActiveSeats = 0;
         $remainingSlots = 0;
+        $deviceActivatedByStart = false;
 
         DB::beginTransaction();
 
         try {
+            $device = Devices::whereKey($device->id)
+                ->where('user_id', $userId)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $device) {
+                DB::rollBack();
+
+                return response()->json([
+                    'status' => 'error',
+                    'title' => 'Device Access Changed',
+                    'message' => 'This device is no longer linked to your account.',
+                ], 403);
+            }
 
             // =========================
             // ✅ SUBSCRIPTION STREAM LOGIC ONLY
             // =========================
             if ($requiresSubscription) {
+                $subscription = Subscription::whereKey($subscriptionId)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (
+                    ! $subscription
+                    || ! hash_equals((string) $subscription->user_id, (string) $userId)
+                    || ! $subscription->is_active
+                    || ! $subscription->end_at
+                    || $subscription->end_at->isPast()
+                ) {
+                    DB::rollBack();
+
+                    return response()->json([
+                        'status' => 'error',
+                        'title' => 'Subscription Access Denied',
+                        'message' => 'Your subscription is unavailable or no longer active.',
+                    ], 403);
+                }
 
                 // 4️⃣ Cleanup stale streams
                 $timeout = now()->subSeconds($this->streamTimeout);
@@ -270,26 +330,6 @@ class NewStreamController extends Controller
                 foreach ($staleStreams as $stream) {
                     ActiveStream::where('id', $stream->id)
                         ->update(['status' => 'stopped']);
-                }
-
-                $staleDeviceIds = $staleStreams
-                    ->pluck('device_id')
-                    ->filter()
-                    ->unique()
-                    ->values();
-
-                if ($staleDeviceIds->isNotEmpty()) {
-                    Devices::whereIn('id', $staleDeviceIds)
-                        ->where('subscription_id', $subscriptionId)
-                        ->where('user_id', $subscription->user_id)
-                        ->where('device_type', $type)
-                        ->where('status', 'active')
-                        ->update([
-                            'status' => 'inactive',
-                            'last_activity' => now(),
-                        ]);
-
-                    $device->refresh();
                 }
 
                 $revokedDeviceIds = ActiveStream::query()
@@ -319,29 +359,13 @@ class NewStreamController extends Controller
                             'last_ping' => now(),
                         ]);
 
-                    Devices::whereIn('id', $revokedDeviceIds)
-                        ->where('status', 'active')
-                        ->update([
-                            'status' => 'inactive',
-                            'last_activity' => now(),
-                        ]);
-
-                    $device->refresh();
                 }
 
-                // 5️⃣ Count active streams for response and active devices for plan limit.
-                $activeDeviceIds = ActiveStream::where('subscription_id', $subscriptionId)
-                    ->where('device_type', $type)
-                    ->where('status', 'active')
-                    ->where('last_ping', '>=', $timeout)
-                    ->lockForUpdate()
-                    ->pluck('device_id')
-                    ->filter()
-                    ->unique()
-                    ->values();
+                // The account owner permanently occupies one device slot for
+                // this plan/device type. Playback stop or timeout must never
+                // deactivate an entitled device.
+                $device->refresh();
 
-                $dbActiveCount = $activeDeviceIds->count();
-                $currentDeviceHasActiveStream = $activeDeviceIds->contains((int) $device->id);
                 $activeDeviceCount = Devices::where('subscription_id', $subscriptionId)
                     ->where('user_id', $subscription->user_id)
                     ->where('device_type', $type)
@@ -349,6 +373,14 @@ class NewStreamController extends Controller
                     ->lockForUpdate()
                     ->count();
                 $currentDeviceIsActive = strtolower(trim((string) $device->status)) === 'active';
+
+                // Keep an active entitlement's activity timestamp current,
+                // without releasing it when playback later stops.
+                if ($currentDeviceIsActive) {
+                    $device->update([
+                        'last_activity' => now(),
+                    ]);
+                }
 
                 // 6️⃣ Device status
                 $dbStatus = strtolower(trim((string) $device->status));
@@ -392,14 +424,11 @@ class NewStreamController extends Controller
                 if ($dbStatus === 'inactive') {
                     $device->update(['status' => 'active']);
                     $activeDeviceCount++;
+                    $deviceActivatedByStart = ! $device->is_owner_device;
                 }
 
-                if (!$currentDeviceHasActiveStream) {
-                    $dbActiveCount++;
-                }
-
-                $currentActiveSeats = $dbActiveCount;
-                $remainingSlots = max(0, $limit - $currentActiveSeats);
+                $currentActiveSeats = $activeDeviceCount;
+                $remainingSlots = max(0, $limit - $activeDeviceCount);
             }
 
             // 9️⃣ Start stream (COMMON for both)
@@ -420,6 +449,7 @@ class NewStreamController extends Controller
                 'device_type' => $type,
                 'content_type' => $contentType,
                 'content_id' => $contentId,
+                'content_key' => $contentKey,
                 'stream_token' => $streamToken,
                 'started_at' => now(),
                 'last_ping' => now(),
@@ -443,12 +473,19 @@ class NewStreamController extends Controller
         } catch (\Exception $e) {
 
             DB::rollBack();
+            Log::error('Unable to start playback session', [
+                'user_id' => $userId,
+                'device_id' => $device?->id,
+                'subscription_id' => $subscriptionId,
+                'content_type' => $contentType,
+                'content_key' => $contentKey,
+                'error' => $e->getMessage(),
+            ]);
 
             return response()->json([
                 'status' => 'error',
                 'title' => 'Stream Error',
                 'message' => 'Unable to start stream. Please try again.',
-                'error' => $e->getMessage(),
             ], 500);
         }
 
@@ -533,6 +570,31 @@ class NewStreamController extends Controller
             }
         }
 
+        if (! $movieLinks) {
+            $failedStream = ActiveStream::where('stream_token', $streamToken)
+                ->where('device_id', $device->id)
+                ->first();
+
+            if ($failedStream) {
+                $failedStream->update([
+                    'status' => 'stopped',
+                    'last_ping' => now(),
+                ]);
+            }
+            if ($deviceActivatedByStart && ! $device->is_owner_device) {
+                $device->update([
+                    'status' => 'inactive',
+                    'last_activity' => now(),
+                ]);
+            }
+
+            return response()->json([
+                'status' => 'error',
+                'title' => 'Playback Unavailable',
+                'message' => 'A playable stream is not available for this content right now.',
+            ], 503);
+        }
+
         return response()->json([
             'status' => 'success',
             'stream_token' => $streamToken,
@@ -549,35 +611,33 @@ class NewStreamController extends Controller
     public function ping(Request $request)
     {
         $deviceToken = $request->header('Device-Token');
-        $streamToken = $request->input('stream_token');
-        $subscriptionId = $request->input('subscription_id');
+        $streamToken = trim((string) $request->input('stream_token'));
+        $rawSubscriptionId = $request->input('subscription_id');
+        $subscriptionId = filled($rawSubscriptionId) && (int) $rawSubscriptionId > 0
+            ? (int) $rawSubscriptionId
+            : null;
         $movieId = $request->input('movie_id');
-        $movieType = $request->input('type');
-        $contentType = $movieType ? strtolower(trim((string) $movieType)) : null;
+        $contentType = strtolower(trim((string) $request->input('type')));
+        $movieType = $contentType;
+        $contentKey = trim((string) $movieId);
         $contentId = filled($movieId) && is_numeric($movieId) ? (int) $movieId : null;
 
-        $isPPV = false;
-        $requiresSubscription = false;
-        $movie = null;
-
-        if ($movieId) {
-            if ($movieType === 'movie') {
-                $movie = MovieModel::where('id', $movieId)->first();
-            } elseif ($movieType === 'episode') {
-                $movie = Episode::where('id', $movieId)->first();
-            }
-
-            $isPPV = (bool) ($movie?->isPayPerView ?? false);
-            $requiresSubscription = (bool) ($movie?->isPremium ?? false) && !$isPPV;
+        if (
+            ! $deviceToken
+            || $streamToken === ''
+            || $contentKey === ''
+            || ! in_array($contentType, ['movie', 'episode'], true)
+        ) {
+            return response()->json([
+                'status' => 'error',
+                'title' => 'Invalid Heartbeat',
+                'message' => 'The playback session details are incomplete.',
+            ], 422);
         }
 
         // 1️⃣ Device check
         $deviceQuery = Devices::where('device_token', $deviceToken)
             ->where('user_id', $request->input('auth_user_id'));
-
-        if ($requiresSubscription) {
-            $deviceQuery->where('subscription_id', $subscriptionId);
-        }
 
         $device = $deviceQuery->first();
 
@@ -597,40 +657,25 @@ class NewStreamController extends Controller
             ], 403);
         }
 
-        // 🔹 Subscription check ONLY for premium
-
-        if ($requiresSubscription) {
-            $subscription = Subscription::find($subscriptionId);
-
-            if (!$subscription) {
-                return response()->json([
-                    'status' => 'error',
-                    'title' => 'Subscription Unavailable',
-                    'message' => 'We could not find an active subscription for your account. Please check your subscription status.',
-                    'device' => $device
-                ], 404);
-            }
-        }
-
         // 🔹 Stream check
         $streamQuery = ActiveStream::where('stream_token', $streamToken)
+            ->where('device_id', $device->id)
             ->where('status', 'active');
 
-        if ($requiresSubscription) {
-            $streamQuery->where('device_id', $device->id)
-                ->where('subscription_id', $subscriptionId);
-        }
-
         $stream = $streamQuery->first();
+        $timeout = now()->subSeconds($this->streamTimeout);
 
-        if (!$stream && $contentType && $contentId) {
+        if (! $stream) {
             // A superseded start response or delayed stop can leave the player with
-            // an old token. Recover only the authenticated device's same content.
+            // an old token. Recover only a fresh, still-active session belonging to
+            // the authenticated device and the exact same content.
             $recoveryQuery = ActiveStream::where('device_id', $device->id)
                 ->where('content_type', $contentType)
-                ->where('content_id', $contentId);
+                ->where('content_key', $contentKey)
+                ->where('status', 'active')
+                ->where('last_ping', '>=', $timeout);
 
-            if ($requiresSubscription) {
+            if ($subscriptionId) {
                 $recoveryQuery->where('subscription_id', $subscriptionId);
             }
 
@@ -638,13 +683,12 @@ class NewStreamController extends Controller
 
             if ($stream) {
                 $stream->update([
-                    'status' => 'active',
                     'last_ping' => now(),
                 ]);
 
                 Log::info('Stream ping session recovered', [
-                    'requested_stream_token' => $streamToken,
-                    'recovered_stream_token' => $stream->stream_token,
+                    'requested_stream_token_hash' => hash('sha256', $streamToken),
+                    'recovered_stream_token_hash' => hash('sha256', (string) $stream->stream_token),
                     'device_id' => $device->id,
                     'subscription_id' => $subscriptionId,
                     'content_type' => $contentType,
@@ -653,23 +697,24 @@ class NewStreamController extends Controller
             }
         }
 
-        if (!$stream) {
+        if (! $stream) {
             $activeDeviceStream = ActiveStream::where('device_id', $device->id)
                 ->where('status', 'active')
                 ->latest('last_ping')
                 ->first();
 
             Log::warning('Stream ping session expired', [
-                'stream_token' => $streamToken,
-                'device_token' => $deviceToken,
+                'stream_token_hash' => hash('sha256', $streamToken),
+                'device_token_hash' => hash('sha256', (string) $deviceToken),
                 'device_id' => $device->id,
                 'subscription_id' => $subscriptionId,
                 'movie_id' => $movieId,
                 'type' => $movieType,
                 'content_type' => $contentType,
                 'content_id' => $contentId,
-                'requires_subscription' => $requiresSubscription,
-                'active_device_stream_token' => $activeDeviceStream?->stream_token,
+                'active_device_stream_token_hash' => $activeDeviceStream
+                    ? hash('sha256', (string) $activeDeviceStream->stream_token)
+                    : null,
                 'active_device_stream_content_type' => $activeDeviceStream?->content_type,
                 'active_device_stream_content_id' => $activeDeviceStream?->content_id,
                 'active_device_stream_last_ping' => $activeDeviceStream?->last_ping,
@@ -682,7 +727,56 @@ class NewStreamController extends Controller
             ], 403);
         }
 
+        if ($stream->last_ping && $stream->last_ping->lt($timeout)) {
+            $stream->update([
+                'status' => 'expired',
+                'last_ping' => now(),
+            ]);
+
+            return response()->json([
+                'status' => 'error',
+                'title' => 'Session Expired',
+                'message' => 'Your streaming session expired. Please restart playback.',
+            ], 403);
+        }
+
+        if ($subscriptionId && (int) $stream->subscription_id !== $subscriptionId) {
+            return response()->json([
+                'status' => 'error',
+                'title' => 'Session Mismatch',
+                'message' => 'This heartbeat does not match the active subscription session.',
+            ], 403);
+        }
+
+        if ($stream->subscription_id) {
+            $subscription = Subscription::whereKey($stream->subscription_id)
+                ->where('user_id', $request->input('auth_user_id'))
+                ->where('is_active', true)
+                ->first();
+
+            if (! $subscription || ! $subscription->end_at || $subscription->end_at->isPast()) {
+                $stream->update([
+                    'status' => 'stopped',
+                    'last_ping' => now(),
+                ]);
+                return response()->json([
+                    'status' => 'error',
+                    'title' => 'Subscription Unavailable',
+                    'message' => 'Your subscription is no longer active.',
+                ], 403);
+            }
+        }
+
+        if (! $this->streamMatchesContent($stream, $contentType, $contentKey)) {
+            return response()->json([
+                'status' => 'error',
+                'title' => 'Session Mismatch',
+                'message' => 'This heartbeat does not match the active content.',
+            ], 403);
+        }
+
         $stream->update(['last_ping' => now()]);
+        $device->update(['last_activity' => now()]);
 
         return response()->json([
             'status' => 'success',
@@ -695,71 +789,107 @@ class NewStreamController extends Controller
     public function stop(Request $request)
     {
         try {
-            // ✅ Validate input first
             $validated = $request->validate([
-                'stream_token' => 'required|string',
+                'stream_token' => 'required|string|max:255',
                 'watch_position' => 'nullable|integer|min:0',
                 'content_type' => 'required|string|in:movie,episode',
-                'movie_id' => 'required',
-                'user_id' => 'required',
+                'movie_id' => 'required|string|max:225',
                 'duration' => 'nullable|integer|min:0',
             ]);
 
             $streamToken = $validated['stream_token'];
             $watchPosition = $validated['watch_position'] ?? 0;
             $contentType = $validated['content_type'];
-            $movieId = $validated['movie_id'];
-            $userId = $validated['user_id'];
+            $movieId = trim((string) $validated['movie_id']);
+            $userId = (string) $request->input('auth_user_id');
             $duration = $validated['duration'] ?? 0;
+            $deviceToken = trim((string) $request->header('Device-Token', ''));
 
-            // ✅ Find stream
-            $stream = ActiveStream::where('stream_token', $streamToken)->first();
+            $device = Devices::where('device_token', $deviceToken)
+                ->where('user_id', $userId)
+                ->first();
 
-            if (!$stream) {
+            if (! $device) {
+                return response()->json([
+                    'status' => 'error',
+                    'title' => 'Device Access Changed',
+                    'message' => 'This device is not linked to the authenticated account.',
+                ], 403);
+            }
+
+            DB::beginTransaction();
+
+            $stream = ActiveStream::where('stream_token', $streamToken)
+                ->where('device_id', $device->id)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $stream) {
+                DB::rollBack();
+
                 return response()->json([
                     'status' => 'error',
                     'title' => 'Session Not Found',
-                    'message' => 'This streaming session could not be found or has already ended.'
+                    'message' => 'This streaming session does not belong to this device or has been replaced.',
                 ], 404);
             }
 
-            // ✅ Update safely
-            $stream->update([
-                'status' => 'stopped',
-                'last_ping' => now()
-            ]);
+            if (! $this->streamMatchesContent($stream, $contentType, $movieId)) {
+                DB::rollBack();
 
-            // ✅ Call watch position safely
+                return response()->json([
+                    'status' => 'error',
+                    'title' => 'Session Mismatch',
+                    'message' => 'This stop request does not match the active content.',
+                ], 403);
+            }
+
+            $alreadyStopped = $stream->status !== 'active';
+
+            if (! $alreadyStopped) {
+                $stream->update([
+                    'status' => 'stopped',
+                    'last_ping' => now(),
+                ]);
+            }
+
+            $device->update(['last_activity' => now()]);
+
+            DB::commit();
+
             $watchData = [];
 
-            try {
-                $fakeRequest = Request::create('', 'POST', [
-                    'movie_id' => $movieId,
-                    'position' => $watchPosition,
-                    'user_id' => $userId,
-                    'duration' => $duration,
-                    'movie_type' => $contentType,
-                ]);
+            if (! $alreadyStopped) {
+                try {
+                    $fakeRequest = Request::create('', 'POST', [
+                        'movie_id' => $movieId,
+                        'position' => $watchPosition,
+                        'user_id' => $userId,
+                        'duration' => $duration,
+                        'movie_type' => $contentType,
+                    ]);
 
-                $watchResponse = $this->watchPositionController->save($fakeRequest);
+                    $watchResponse = $this->watchPositionController->save($fakeRequest);
 
-                if ($watchResponse && method_exists($watchResponse, 'getContent')) {
-                    $watchData = json_decode($watchResponse->getContent(), true) ?? [];
+                    if ($watchResponse && method_exists($watchResponse, 'getContent')) {
+                        $watchData = json_decode($watchResponse->getContent(), true) ?? [];
+                    }
+
+                } catch (\Throwable $e) {
+                    // Watch position failure must not keep a playback seat active.
+                    Log::warning('Watch position save failed', [
+                        'stream_token_hash' => hash('sha256', $streamToken),
+                        'error' => $e->getMessage(),
+                    ]);
                 }
-
-            } catch (\Throwable $e) {
-                // ❗ Watch position failed but do not break stop API
-                Log::warning('Watch position save failed', [
-                    'stream_token' => $streamToken,
-                    'error' => $e->getMessage()
-                ]);
             }
 
             $watchMessage = $watchData['message'] ?? '';
 
             return response()->json([
                 'status' => 'success',
-                'message' => 'Streaming stopped.' . ($watchMessage ? ' ' . $watchMessage : ''),
+                'message' => ($alreadyStopped ? 'Streaming was already stopped.' : 'Streaming stopped.')
+                    . ($watchMessage ? ' '.$watchMessage : ''),
                 'watch_position_response' => $watchData,
             ]);
 
@@ -772,10 +902,13 @@ class NewStreamController extends Controller
             ], 422);
 
         } catch (\Throwable $e) {
+            if (DB::transactionLevel() > 0) {
+                DB::rollBack();
+            }
 
             Log::error('Stop stream failed', [
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
 
             return response()->json([
@@ -818,6 +951,14 @@ class NewStreamController extends Controller
             ], 404);
         }
 
+        if (! hash_equals((string) $subscription->user_id, (string) $userId)) {
+            return response()->json([
+                'status' => 'error',
+                'title' => 'Subscription Access Denied',
+                'message' => 'This subscription does not belong to the selected user.',
+            ], 403);
+        }
+
         $plan = Plan::find($subscription->plan_id);
         if (!$plan) {
             return response()->json([
@@ -825,6 +966,14 @@ class NewStreamController extends Controller
                 'title' => 'Plan Information Unavailable',
                 'message' => 'We’re unable to retrieve your subscription plan right now. Please try again later.'
             ], 500);
+        }
+
+        if (strtolower(trim((string) $plan->device_type)) !== $deviceType) {
+            return response()->json([
+                'status' => 'error',
+                'title' => 'Invalid Device Type',
+                'message' => 'The selected subscription does not support this device type.',
+            ], 422);
         }
 
         // Verify owner device
@@ -864,15 +1013,18 @@ class NewStreamController extends Controller
 
             $kept[] = $currentDeviceId;
 
-            // Remove old devices for this user + type. They can sign in again if needed.
-            $oldDevices = Devices::where('device_type', $deviceType)
+            // A successful subscription renewal starts a fresh sharing cycle for
+            // this device type. Keep the owner, revoke all shared devices, and let
+            // the owner authorize them again by signing in on those devices.
+            $sharedDevices = Devices::where('device_type', $deviceType)
                 ->where('user_id', $userId)
                 ->where('id', '!=', $currentDeviceId)
+                ->lockForUpdate()
                 ->get();
 
-            $deleted = $oldDevices->pluck('id')->map(fn ($id) => (int) $id)->all();
+            $deleted = $sharedDevices->pluck('id')->map(fn ($id) => (int) $id)->all();
 
-            if (!empty($deleted)) {
+            if (! empty($deleted)) {
                 ActiveStream::whereIn('device_id', $deleted)
                     ->where('status', 'active')
                     ->update([
@@ -897,7 +1049,7 @@ class NewStreamController extends Controller
             'event_data' => [
                 'device_type' => $deviceType,
                 'owner' => $kept,
-                'deleted' => $deleted
+                'deleted' => $deleted,
             ],
         ]);
 
@@ -906,40 +1058,84 @@ class NewStreamController extends Controller
             'message' => 'Your subscription has been renewed successfully.',
             'device_type' => $deviceType,
             'owner_device' => $kept,
-            'deleted_devices' => $deleted
+            'deleted_devices' => $deleted,
         ]);
+    }
+
+    private function findContent(string $contentType, string $contentKey): MovieModel|Episode|null
+    {
+        $model = $contentType === 'movie' ? MovieModel::query() : Episode::query();
+
+        return $model
+            ->where('id', $contentKey)
+            ->when(
+                ctype_digit($contentKey),
+                fn ($query) => $query->orWhere('num', (int) $contentKey)
+            )
+            ->first();
+    }
+
+    private function streamMatchesContent(
+        ActiveStream $stream,
+        string $contentType,
+        string $contentKey
+    ): bool {
+        if (
+            $stream->content_type !== null
+            && ! hash_equals((string) $stream->content_type, $contentType)
+        ) {
+            return false;
+        }
+
+        if ($stream->content_key !== null && $stream->content_key !== '') {
+            return hash_equals((string) $stream->content_key, $contentKey);
+        }
+
+        // Compatibility for sessions created before content_key was introduced.
+        return $stream->content_id === null
+            || (string) $stream->content_id === $contentKey;
     }
 
     private function isPpvRentalAllowedOnDevice(PaymentHistory $rental, Devices $device, string $deviceToken): bool
     {
-        $meta = is_array($rental->meta) ? $rental->meta : [];
-        $rentalDeviceToken = trim((string) ($meta['device_token'] ?? ''));
-        $rentalDeviceId = isset($meta['device_id']) ? (int) $meta['device_id'] : null;
+        return DB::transaction(function () use ($rental, $device, $deviceToken) {
+            $lockedRental = PaymentHistory::whereKey($rental->getKey())
+                ->lockForUpdate()
+                ->first();
 
-        if ($rentalDeviceToken !== '') {
-            return hash_equals($rentalDeviceToken, $deviceToken);
-        }
+            if (! $lockedRental) {
+                return false;
+            }
 
-        if ($rentalDeviceId && (int) $device->id === $rentalDeviceId) {
-            return true;
-        }
+            $meta = is_array($lockedRental->meta) ? $lockedRental->meta : [];
+            $rentalDeviceToken = trim((string) ($meta['device_token'] ?? ''));
+            $rentalDeviceId = isset($meta['device_id']) ? (int) $meta['device_id'] : null;
 
-        // Older PPV rows were not device-bound. Let the owner device claim the
-        // rental once, then lock all future playback to this exact device.
-        if ($device->is_owner_device) {
-            $rental->update([
-                'meta' => array_merge($meta, [
-                    'device_token' => $deviceToken,
-                    'device_id' => $device->id,
-                    'device_type' => $device->device_type,
-                    'bound_at' => now()->toDateTimeString(),
-                ]),
-            ]);
+            if ($rentalDeviceToken !== '') {
+                return hash_equals($rentalDeviceToken, $deviceToken);
+            }
 
-            return true;
-        }
+            if ($rentalDeviceId && (int) $device->id === $rentalDeviceId) {
+                return true;
+            }
 
-        return false;
+            // Older PPV rows were not device-bound. Let the owner device claim
+            // the rental once, atomically, then lock it to this exact device.
+            if ($device->is_owner_device) {
+                $lockedRental->update([
+                    'meta' => array_merge($meta, [
+                        'device_token' => $deviceToken,
+                        'device_id' => $device->id,
+                        'device_type' => $device->device_type,
+                        'bound_at' => now()->toDateTimeString(),
+                    ]),
+                ]);
+
+                return true;
+            }
+
+            return false;
+        });
     }
 
     private function incrementContentViews(?string $contentType, $contentId): void

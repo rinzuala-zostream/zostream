@@ -148,7 +148,7 @@ class TokenController extends Controller
             $userId = $record?->user_id ?: $request->input('user_id');
 
             if ($userId && $deviceToken) {
-                $this->releaseDeviceSeat($userId, $deviceToken);
+                $this->stopDevicePlayback($userId, $deviceToken);
             }
 
             if ($record) {
@@ -159,7 +159,7 @@ class TokenController extends Controller
         return response()->json(['status' => 'success', 'message' => 'Logged out successfully']);
     }
 
-    private function releaseDeviceSeat($userId, string $deviceToken): void
+    private function stopDevicePlayback($userId, string $deviceToken): void
     {
         $device = Devices::where('user_id', $userId)
             ->where('device_token', $deviceToken)
@@ -177,11 +177,9 @@ class TokenController extends Controller
                 'last_ping' => now(),
             ]);
 
-        if ($device->status !== 'blocked') {
-            $device->update([
-                'status' => 'inactive',
-                'last_activity' => now(),
-            ]);
-        }
+        // Logout revokes authentication and stops the current stream, but it
+        // does not release the plan's persistent device entitlement. Entitled
+        // devices are reset only by subscription renewal/device management.
+        $device->update(['last_activity' => now()]);
     }
 }

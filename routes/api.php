@@ -5,12 +5,13 @@ use App\Http\Controllers\AdsController;
 use App\Http\Controllers\AlsoLikeController;
 use App\Http\Controllers\AxinomLicense;
 use App\Http\Controllers\BirthdayMailController;
+use App\Http\Controllers\CalculatePlan;
 use App\Http\Controllers\CashFreeController;
 use App\Http\Controllers\Channel\ChannelController;
-use App\Http\Controllers\EpisodeController;
-use App\Http\Controllers\CalculatePlan;
 use App\Http\Controllers\CheckDeviceAvailable;
 use App\Http\Controllers\DetailsController;
+use App\Http\Controllers\DeviceManagementController;
+use App\Http\Controllers\EpisodeController;
 use App\Http\Controllers\FCMNotificationController;
 use App\Http\Controllers\HlsFolderController;
 use App\Http\Controllers\LinkController;
@@ -53,12 +54,13 @@ use App\Http\Controllers\WatchPositionController;
 use App\Http\Controllers\WatchStatsController;
 use App\Http\Controllers\WhatsAppController;
 use App\Http\Controllers\WistListController;
-use App\Http\Controllers\ZostreamIspController;
 use App\Http\Controllers\ZonetController;
 use App\Http\Controllers\ZonetOperatorController;
+use App\Http\Controllers\ZostreamIspController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\DeviceManagementController;
+
+require __DIR__.'/api_v4.php';
 
 Route::get('/user', function (Request $request) {
     return $request->user();
@@ -93,7 +95,7 @@ Route::delete('/movies/{id}', [MovieController::class, 'destroy']);
 Route::get('/view', [MovieController::class, 'incrementView']);
 Route::post('/insert', [MovieController::class, 'insert']);
 
-//update device for new device or change device
+// update device for new device or change device
 Route::get('/device', [UpdateUserDevice::class, 'updateDevice']);
 
 Route::get('/payment-status', [PaymentStatusController::class, 'processUserPayments']);
@@ -114,12 +116,12 @@ Route::delete('/ads/{num}', [AdsController::class, 'destroy']);
 
 Route::get('/details', [DetailsController::class, 'getDetails']);
 
-//Subscription calculate
+// Subscription calculate
 Route::get('/calculate', [CalculatePlan::class, 'calculate']);
 
 Route::get('/ppv-price', [PPVPriceCalculate::class, 'getPPVPrice']);
 
-//Search
+// Search
 Route::get('/search', [MovieSearchController::class, 'search']);
 Route::get('/movies/search', [SearchController::class, 'searchMovies']);
 
@@ -165,7 +167,7 @@ Route::get('/preview', [AxinomLicense::class, 'previewMPD']);
 Route::post('/axinom', [AxinomLicense::class, 'invokeWidevineCommonEncryption']);
 Route::get('/generate-token', [MovieController::class, 'generateFromMpd']);
 
-//Zonet
+// Zonet
 Route::post('/zonet-users/insert', [ZonetController::class, 'insert']);
 Route::get('/zonet-users', [ZonetController::class, 'getAll']);
 Route::delete('/zonet-users/{id}', [ZonetController::class, 'delete']);
@@ -202,8 +204,8 @@ Route::prefix('quiz')->group(function () {
 });
 
 // Logging
-//Route::post('/watch/log-duration', [WatchStatsController::class, 'logDuration']);
-//Route::post('/watch/log-bandwidth', [WatchStatsController::class, 'logBandwidth']);
+// Route::post('/watch/log-duration', [WatchStatsController::class, 'logDuration']);
+// Route::post('/watch/log-bandwidth', [WatchStatsController::class, 'logBandwidth']);
 
 // Summary stats
 Route::get('/watch/{user_id}/stats', [WatchStatsController::class, 'stats']);
