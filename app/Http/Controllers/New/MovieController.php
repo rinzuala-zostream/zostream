@@ -317,6 +317,8 @@ class MovieController extends Controller
 
             $links = array_filter([
                 'url' => $movie->url,
+                'hls_url' => $movie->hls_url,
+                'dash_url' => $movie->dash_url,
             ], fn($value) => $value !== null && $value !== '');
 
             if (empty($links)) {

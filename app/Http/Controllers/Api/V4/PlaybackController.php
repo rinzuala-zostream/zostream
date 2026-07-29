@@ -40,7 +40,12 @@ class PlaybackController extends Controller
 
     private function prepare(Request $request): ?JsonResponse
     {
-        $deviceToken = trim((string) $request->header('Device-Token', ''));
+        $deviceToken = trim((string) (
+            $request->header('Device-Token')
+            ?: $request->input('device_token')
+            ?: $request->input('device_id')
+            ?: ''
+        ));
         if ($deviceToken === '') {
             return response()->json([
                 'status' => 'error',
@@ -48,6 +53,8 @@ class PlaybackController extends Controller
                 'message' => 'Device-Token is required for playback.',
             ], 422);
         }
+
+        $request->headers->set('Device-Token', $deviceToken);
 
         $authenticatedDevice = trim((string) $request->input('auth_device_id', ''));
         if (

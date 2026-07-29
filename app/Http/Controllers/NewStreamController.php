@@ -72,6 +72,7 @@ class NewStreamController extends Controller
                 'message' => 'The requested movie or episode is unavailable.',
             ], 404);
         }
+        $resolvedContentId = (string) $movie->id;
 
         $isPPV = (bool) ($movie->isPayPerView ?? false);
         $requiresSubscription = (bool) ($movie->isPremium ?? false) && ! $isPPV;
@@ -203,6 +204,7 @@ class NewStreamController extends Controller
 
             return response()->json([
                 'status' => 'error',
+                'code' => 'DEVICE_REVOKED',
                 'title' => 'Device Access Changed',
                 'message' => 'This device is no longer linked to your current plan. Please sign in again on this device to continue watching.'
             ], 404);
@@ -289,6 +291,7 @@ class NewStreamController extends Controller
 
                 return response()->json([
                     'status' => 'error',
+                    'code' => 'DEVICE_REVOKED',
                     'title' => 'Device Access Changed',
                     'message' => 'This device is no longer linked to your account.',
                 ], 403);
@@ -404,6 +407,7 @@ class NewStreamController extends Controller
 
                     return response()->json([
                         'status' => 'error',
+                        'code' => 'DEVICE_REVOKED',
                         'title' => 'Device Access Changed',
                         'message' => 'This device was removed from your current plan after renewal. Please sign in again on this device to continue watching.'
                     ], 403);
@@ -492,23 +496,37 @@ class NewStreamController extends Controller
         // 🔟 Movie links (UNCHANGED)
         $movieLinks = null;
         $watchPosition = 0;
+        $streamDebug = [];
 
         if ($movieId) {
             $req = new Request();
             $req->merge(['type' => $movieType]);
 
-            $movieResponse = $this->movieController->getLink($req, $movieId);
+            $movieResponse = $this->movieController->getLink($req, $resolvedContentId);
             $movieData = $movieResponse->getData(true);
+            $streamDebug = [
+                'requested_movie_id' => $movieId,
+                'resolved_content_id' => $resolvedContentId,
+                'content_type' => $movieType,
+                'platform' => $platform,
+                'get_link_status' => $movieData['status'] ?? null,
+                'get_link_message' => $movieData['message'] ?? null,
+            ];
 
             if (($movieData['status'] ?? null) === 'success') {
                 $links = $movieData['links'] ?? [];
                 $title = $movieData['title'] ?? null;
+                $streamDebug['link_keys'] = is_array($links) ? array_keys($links) : gettype($links);
 
                 $url = null;
 
                 // movie format: links => ['url' => '...']
-                if (isset($links['url']) && !empty($links['url'])) {
-                    $url = $links['url'];
+                if (isset($links['url']) || isset($links['hls_url']) || isset($links['dash_url'])) {
+                    if ($platform === 'ios') {
+                        $url = $links['hls_url'] ?? $links['url'] ?? $links['dash_url'] ?? null;
+                    } else {
+                        $url = $links['dash_url'] ?? $links['url'] ?? $links['hls_url'] ?? null;
+                    }
                 }
 
                 // episode format: links => [ ['url' => '...'], ... ]
@@ -522,16 +540,37 @@ class NewStreamController extends Controller
                 }
 
                 if ($url) {
+                    $streamDebug['selected_url_preview'] = mb_substr((string) $url, 0, 180);
                     if ($platform === 'ios') {
-                        $streamUrl = str_contains(strtolower($url), 'm3u8') ? $url : null;
+                        $normalizedUrl = strtolower($url);
+                        $streamUrl = str_contains($normalizedUrl, 'm3u8') ? $url : null;
+                        $streamDebug['selected_url_kind'] = str_contains($normalizedUrl, 'm3u8')
+                            ? 'hls'
+                            : (str_contains($normalizedUrl, '.mpd') ? 'mpd' : 'direct');
 
                         if (!$streamUrl) {
                             $fakeReq = Request::create('', 'GET', ['url' => $url]);
 
                             $hlsResponse = $this->hlsFolderController->check($fakeReq);
                             $hlsData = $hlsResponse->getData(true);
+                            $streamDebug['hls_status_code'] = $hlsResponse->getStatusCode();
+                            $streamDebug['hls_status'] = $hlsData['status'] ?? null;
+                            $streamDebug['hls_message'] = $hlsData['message'] ?? null;
+                            $streamDebug['hls_source'] = $hlsData['data']['source'] ?? null;
+                            $streamDebug['hls_full_path'] = $hlsData['data']['full_path'] ?? null;
+                            $streamDebug['hls_master_exists'] = (bool) ($hlsData['data']['master_m3u8'] ?? null);
+                            $streamDebug['hls_stdout_preview'] = mb_substr((string) ($hlsData['data']['log']['stdout'] ?? ''), 0, 300);
+                            $streamDebug['hls_stderr_preview'] = mb_substr((string) ($hlsData['data']['log']['stderr'] ?? ''), 0, 300);
 
                             $streamUrl = $hlsData['data']['stream_url'] ?? null;
+                        }
+
+                        // AVPlayer can handle HLS and normal progressive media URLs.
+                        // Do not fail every iOS playback just because a direct file has
+                        // not been mirrored into the HLS folder yet. DASH/MPD is still
+                        // excluded because native AVPlayer cannot play it directly.
+                        if (!$streamUrl && !str_contains($normalizedUrl, '.mpd')) {
+                            $streamUrl = $url;
                         }
 
                         if ($streamUrl) {
@@ -588,11 +627,17 @@ class NewStreamController extends Controller
                 ]);
             }
 
-            return response()->json([
+            $payload = [
                 'status' => 'error',
                 'title' => 'Playback Unavailable',
                 'message' => 'A playable stream is not available for this content right now.',
-            ], 503);
+            ];
+
+            if (config('app.debug')) {
+                $payload['debug'] = $streamDebug;
+            }
+
+            return response()->json($payload, 503);
         }
 
         return response()->json([
@@ -644,6 +689,7 @@ class NewStreamController extends Controller
         if (!$device) {
             return response()->json([
                 'status' => 'error',
+                'code' => 'DEVICE_REVOKED',
                 'title' => 'Device Access Changed',
                 'message' => 'This device is no longer linked to your current plan. Please sign in again on this device to continue watching.'
             ], 404);
@@ -652,6 +698,7 @@ class NewStreamController extends Controller
         if ($device->status === 'blocked') {
             return response()->json([
                 'status' => 'error',
+                'code' => 'DEVICE_REVOKED',
                 'title' => 'Device Access Changed',
                 'message' => 'This device was removed from your current plan after renewal. Please sign in again on this device to continue watching.'
             ], 403);
@@ -676,7 +723,10 @@ class NewStreamController extends Controller
                 ->where('last_ping', '>=', $timeout);
 
             if ($subscriptionId) {
-                $recoveryQuery->where('subscription_id', $subscriptionId);
+                $recoveryQuery->where(function ($query) use ($subscriptionId) {
+                    $query->where('subscription_id', $subscriptionId)
+                        ->orWhereNull('subscription_id');
+                });
             }
 
             $stream = $recoveryQuery->latest('last_ping')->first();
@@ -740,7 +790,7 @@ class NewStreamController extends Controller
             ], 403);
         }
 
-        if ($subscriptionId && (int) $stream->subscription_id !== $subscriptionId) {
+        if ($subscriptionId && $stream->subscription_id && (int) $stream->subscription_id !== $subscriptionId) {
             return response()->json([
                 'status' => 'error',
                 'title' => 'Session Mismatch',
@@ -812,6 +862,7 @@ class NewStreamController extends Controller
             if (! $device) {
                 return response()->json([
                     'status' => 'error',
+                    'code' => 'DEVICE_REVOKED',
                     'title' => 'Device Access Changed',
                     'message' => 'This device is not linked to the authenticated account.',
                 ], 403);

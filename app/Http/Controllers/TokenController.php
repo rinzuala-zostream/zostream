@@ -28,8 +28,8 @@ class TokenController extends Controller
         // Save to DB
         SessionTokenModel::create([
             'user_id' => $userId,
-            'access_token' => $accessToken,
-            'refresh_token' => $refreshToken,
+            'access_token' => SessionTokenModel::digest($accessToken),
+            'refresh_token' => SessionTokenModel::digest($refreshToken),
             'access_expires_at' => $accessExp,
             'refresh_expires_at' => $refreshExp,
             'device_name' => $deviceName,
@@ -58,7 +58,7 @@ class TokenController extends Controller
 
         $refreshToken = $request->refresh_token;
 
-        $record = SessionTokenModel::where('refresh_token', $refreshToken)->first();
+        $record = SessionTokenModel::findByRefreshToken($refreshToken);
 
         if (!$record) {
             return response()->json([
@@ -85,8 +85,8 @@ class TokenController extends Controller
         $newRefreshExp = Carbon::now()->addDays(30);
 
         $record->update([
-            'access_token' => $newAccessToken,
-            'refresh_token' => $newRefreshToken,
+            'access_token' => SessionTokenModel::digest($newAccessToken),
+            'refresh_token' => SessionTokenModel::digest($newRefreshToken),
             'access_expires_at' => $newAccessExp,
             'refresh_expires_at' => $newRefreshExp,
         ]);
@@ -107,7 +107,7 @@ class TokenController extends Controller
      */
     public static function validateToken($token)
     {
-        $record = SessionTokenModel::where('access_token', $token)->first();
+        $record = SessionTokenModel::findByAccessToken($token);
 
         if (!$record)
             return null;
@@ -128,24 +128,23 @@ class TokenController extends Controller
             'user_id' => 'nullable|string',
         ]);
 
-        if (!$request->filled('access_token') && (!$request->filled('device_token') || !$request->filled('user_id'))) {
+        if (!$request->filled('access_token')) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'access_token or user_id with device_token is required'
+                'message' => 'access_token is required'
             ], 422);
         }
 
         DB::transaction(function () use ($request) {
-            $record = $request->filled('access_token')
-                ? SessionTokenModel::where('access_token', $request->access_token)
-                    ->lockForUpdate()
-                    ->first()
+            $recordId = SessionTokenModel::findByAccessToken($request->access_token)?->getKey();
+            $record = $recordId
+                ? SessionTokenModel::whereKey($recordId)->lockForUpdate()->first()
                 : null;
 
             $deviceToken = $request->input('device_token')
                 ?: $request->header('Device-Token')
                 ?: $record?->device_id;
-            $userId = $record?->user_id ?: $request->input('user_id');
+            $userId = $record?->user_id;
 
             if ($userId && $deviceToken) {
                 $this->stopDevicePlayback($userId, $deviceToken);

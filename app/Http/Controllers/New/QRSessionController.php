@@ -532,6 +532,7 @@ class QRSessionController extends Controller
                     return response()->json([
                         'status' => 'success',
                         'message' => $order['id'],
+                        'key_id' => $razorpayData['key_id'] ?? null,
                         'type' => 'payment',
                     ]);
 

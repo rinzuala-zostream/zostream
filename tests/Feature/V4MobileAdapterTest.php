@@ -164,6 +164,22 @@ class V4MobileAdapterTest extends TestCase
         );
     }
 
+    public function test_public_qr_create_rejects_payment_sessions(): void
+    {
+        $legacy = Mockery::mock(LegacyQrSessionController::class);
+        $legacy->shouldNotReceive('create');
+        $controller = new QrSessionController($legacy);
+        $request = Request::create('/api/v4/qr-sessions', 'POST', [
+            'type' => 'payment',
+            'user_id' => 'user-a',
+            'amount' => 100,
+        ]);
+
+        $response = $controller->create($request);
+
+        $this->assertSame(403, $response->getStatusCode());
+    }
+
     public function test_no_subscriptions_is_a_successful_empty_mobile_collection(): void
     {
         $subscriptions = Mockery::mock(SubscriptionController::class);

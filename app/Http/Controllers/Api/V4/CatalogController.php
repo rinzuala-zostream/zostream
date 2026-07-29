@@ -7,7 +7,9 @@ use App\Http\Controllers\New\AlsoLikeController;
 use App\Http\Controllers\New\DetailsController;
 use App\Http\Controllers\New\MovieController;
 use App\Models\MovieModel;
+use App\Models\SessionTokenModel;
 use App\Support\Api\V4Response;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 
 class CatalogController extends Controller
@@ -51,7 +53,7 @@ class CatalogController extends Controller
     public function details(Request $request, string $contentId)
     {
         $request->query->set('movie_id', $contentId);
-        $request->query->set('user_id', (string) $request->input('auth_user_id'));
+        $request->query->set('user_id', $this->catalogUserId($request));
 
         return $this->details->getDetails($request);
     }
@@ -71,7 +73,7 @@ class CatalogController extends Controller
         }
 
         $request->query->set('movie_title', (string) $movie->title);
-        $request->query->set('user_id', (string) $request->input('auth_user_id'));
+        $request->query->set('user_id', $this->catalogUserId($request));
 
         return $this->recommendations->alsoLike($request);
     }
@@ -84,7 +86,7 @@ class CatalogController extends Controller
     public function ppvStatus(Request $request, string $contentId)
     {
         $request->query->set('content_id', $contentId);
-        $request->query->set('user_id', (string) $request->input('auth_user_id'));
+        $request->query->set('user_id', $this->catalogUserId($request));
 
         return $this->movies->checkPayPerViewRental($request);
     }
@@ -92,5 +94,29 @@ class CatalogController extends Controller
     public function latest(Request $request)
     {
         return $this->movies->latestUpdates($request);
+    }
+
+    private function catalogUserId(Request $request): string
+    {
+        $authUserId = trim((string) $request->input('auth_user_id', ''));
+
+        if ($authUserId !== '') {
+            return $authUserId;
+        }
+
+        $authHeader = (string) $request->header('Authorization', '');
+
+        if (str_starts_with($authHeader, 'Bearer ')) {
+            $token = trim(substr($authHeader, 7));
+            $record = $token !== '' ? SessionTokenModel::findByAccessToken($token) : null;
+
+            if ($record && ! Carbon::parse($record->access_expires_at)->isPast()) {
+                return (string) $record->user_id;
+            }
+        }
+
+        $queryUserId = trim((string) $request->query('user_id', ''));
+
+        return $queryUserId !== '' ? $queryUserId : 'guest';
     }
 }

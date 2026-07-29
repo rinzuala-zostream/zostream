@@ -81,4 +81,51 @@ class V4ApiTest extends TestCase
             $this->assertContains('auth.token', $route->gatherMiddleware(), $route->uri());
         }
     }
+
+    public function test_sensitive_legacy_notification_and_reel_mutations_are_authenticated(): void
+    {
+        $protectedUris = [
+            'api/send-fcm',
+            'api/v3.0/reels',
+            'api/v3.0/reels/{id}/comments',
+            'api/v3.0/reels/{id}/like',
+            'api/v3.0/reels/{id}/watch',
+            'api/v3.0/reels/generate-feed',
+        ];
+
+        $routes = collect(Route::getRoutes()->getRoutes())
+            ->filter(fn ($route) => in_array($route->uri(), $protectedUris, true))
+            ->filter(fn ($route) => count(array_intersect(
+                $route->methods(),
+                ['POST', 'PUT', 'PATCH', 'DELETE']
+            )) > 0);
+
+        $this->assertEqualsCanonicalizing(
+            $protectedUris,
+            $routes->map(fn ($route) => $route->uri())->unique()->values()->all(),
+        );
+
+        foreach ($routes as $route) {
+            $this->assertContains('auth.token', $route->gatherMiddleware(), $route->uri());
+        }
+
+        $notificationRoute = $routes->first(
+            fn ($route) => $route->uri() === 'api/send-fcm'
+        );
+        $this->assertNotNull($notificationRoute);
+        $this->assertContains('admin.token', $notificationRoute->gatherMiddleware());
+    }
+
+    public function test_razorpay_webhook_rejects_an_invalid_signature(): void
+    {
+        config(['razorpay.webhook_secret' => 'test-webhook-secret']);
+
+        $this->withHeader('X-Razorpay-Signature', 'invalid-signature')
+            ->postJson('/api/v4/webhooks/razorpay', [
+                'event' => 'payment.captured',
+            ])
+            ->assertBadRequest()
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('error.code', 'BAD_REQUEST');
+    }
 }

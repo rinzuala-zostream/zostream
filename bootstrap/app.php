@@ -4,6 +4,7 @@ use App\Http\Middleware\AdminTokenMiddleware;
 use App\Http\Middleware\ApiClientContext;
 use App\Http\Middleware\ApiKeyMiddleware;
 use App\Http\Middleware\AuthTokenMiddleware;
+use App\Http\Middleware\OwnerDeviceMiddleware;
 use App\Http\Middleware\V4ResponseEnvelope;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -21,6 +22,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'api.key' => ApiKeyMiddleware::class,
             'auth.token' => AuthTokenMiddleware::class,
+            'owner.device' => OwnerDeviceMiddleware::class,
             'admin.token' => AdminTokenMiddleware::class,
             'api.client' => ApiClientContext::class,
             'api.v4' => V4ResponseEnvelope::class,

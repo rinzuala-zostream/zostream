@@ -39,7 +39,7 @@ class ReelController extends Controller
                 'status' => 'nullable|string|in:active,inactive,draft',
             ]);
 
-            $userId = $request->input('user_id', $request->header('X-USER-ID'));
+            $userId = (string) $request->input('auth_user_id', '');
 
             if (!$userId) {
                 return response()->json([
@@ -172,7 +172,12 @@ class ReelController extends Controller
         $thumb = "{$outputDir}/thumb.jpg";
 
         // HLS
-        exec("ffmpeg -y -i {$tempPath} -preset veryfast -g 48 -sc_threshold 0 -map 0:v:0 -map 0:a? -c:v libx264 -c:a aac -f hls -hls_time 4 -hls_segment_filename {$segment} {$playlist} 2>&1");
+        exec(sprintf(
+            'ffmpeg -y -i %s -preset veryfast -g 48 -sc_threshold 0 -map 0:v:0 -map 0:a? -c:v libx264 -c:a aac -f hls -hls_time 4 -hls_segment_filename %s %s 2>&1',
+            escapeshellarg($tempPath),
+            escapeshellarg($segment),
+            escapeshellarg($playlist),
+        ));
 
         if (!file_exists($playlist)) {
             throw new \Exception('HLS generation failed');
@@ -258,7 +263,11 @@ class ReelController extends Controller
     }
     private function generateThumbnail($videoPath, $thumbPath)
     {
-        exec("ffmpeg -y -i {$videoPath} -ss 00:00:00.5 -vframes 1 {$thumbPath} 2>&1");
+        exec(sprintf(
+            'ffmpeg -y -i %s -ss 00:00:00.5 -vframes 1 %s 2>&1',
+            escapeshellarg($videoPath),
+            escapeshellarg($thumbPath),
+        ));
 
         return [
             'success' => file_exists($thumbPath)
@@ -267,7 +276,10 @@ class ReelController extends Controller
 
     private function getVideoDuration($filePath)
     {
-        $duration = shell_exec("ffprobe -v error -show_entries format=duration -of csv=p=0 {$filePath}");
+        $duration = shell_exec(sprintf(
+            'ffprobe -v error -show_entries format=duration -of csv=p=0 %s',
+            escapeshellarg($filePath),
+        ));
         return $duration ? (float) $duration : 0;
     }
 
@@ -317,7 +329,7 @@ class ReelController extends Controller
      */
     public function like(Request $request, $id)
     {
-        $userId = $request->header('X-USER-ID');
+        $userId = (string) $request->input('auth_user_id', '');
 
         $reel = Reel::find($id);
 
@@ -392,7 +404,7 @@ class ReelController extends Controller
                 ], 404);
             }
 
-            $userId = $request->input('user_id', $request->header('X-USER-ID'));
+            $userId = (string) $request->input('auth_user_id', '');
 
             if (!$userId) {
                 return response()->json([
@@ -419,10 +431,11 @@ class ReelController extends Controller
                 'errors' => $e->errors()
             ], 422);
         } catch (\Exception $e) {
+            report($e);
+
             return response()->json([
                 'status' => 'error',
                 'message' => 'Failed to add comment',
-                'error' => $e->getMessage()
             ], 500);
         }
     }
@@ -432,7 +445,12 @@ class ReelController extends Controller
      */
     public function watch(Request $request, $id)
     {
-        $userId = $request->header('X-USER-ID');
+        $request->validate([
+            'watch_time_ms' => 'required|integer|min:0|max:86400000',
+            'duration_ms' => 'required|integer|min:1|max:86400000',
+        ]);
+
+        $userId = (string) $request->input('auth_user_id', '');
         $reel = Reel::find($id);
 
         if (!$reel) {
@@ -478,7 +496,7 @@ class ReelController extends Controller
 
     public function generateFeed(Request $request)
     {
-        $userId = $request->header('X-USER-ID');
+        $userId = (string) $request->input('auth_user_id', '');
 
         if (!$userId) {
             return response()->json(['error' => 'Missing user id'], 400);

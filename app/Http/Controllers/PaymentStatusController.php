@@ -6,13 +6,11 @@ use App\Models\PPVPaymentModel;
 use App\Models\TempPaymentModel;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 
 class PaymentStatusController extends Controller
 {
-    private $merchantId = 'M221AEW7ARW15';
-    private $saltKey = '1d8c7b88-710d-4c48-a70a-cdd08c8cabac';
-
     private $validApiKey;
     protected $subscriptionController;
     protected $cashfreeController;
@@ -191,7 +189,14 @@ class PaymentStatusController extends Controller
                 'checked' => $tempDataList->count(),
             ]);
         } catch (\Exception $e) {
-            return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
+            Log::error('Legacy payment status processing failed', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Payment status processing failed',
+            ], 500);
         }
     }
 

@@ -159,7 +159,8 @@ Route::post('/cash-free-order', [CashFreeController::class, 'createOrder']);
 Route::get('/price-list', [PlanListController::class, 'getPriceList']);
 Route::get('/invoice/{num}', [SubscriptionController::class, 'generateInvoice']);
 
-Route::post('/send-fcm', [FCMNotificationController::class, 'send']);
+Route::post('/send-fcm', [FCMNotificationController::class, 'send'])
+    ->middleware(['auth.token', 'admin.token']);
 
 Route::get('/stream', [StreamController::class, 'stream']);
 
@@ -394,13 +395,13 @@ Route::prefix('v3.0')->group(function () {
     });
 
     Route::prefix('reels')->group(function () {
-        Route::post('/', [ReelController::class, 'store']);
+        Route::post('/', [ReelController::class, 'store'])->middleware('auth.token');
         Route::get('/feed', [ReelController::class, 'feed']);
         Route::get('/{id}/comments', [ReelController::class, 'comments']);
-        Route::post('/{id}/comments', [ReelController::class, 'comment']);
-        Route::post('/{id}/like', [ReelController::class, 'like']);
-        Route::post('/{id}/watch', [ReelController::class, 'watch']);
-        Route::post('/generate-feed', [ReelController::class, 'generateFeed']);
+        Route::post('/{id}/comments', [ReelController::class, 'comment'])->middleware('auth.token');
+        Route::post('/{id}/like', [ReelController::class, 'like'])->middleware('auth.token');
+        Route::post('/{id}/watch', [ReelController::class, 'watch'])->middleware('auth.token');
+        Route::post('/generate-feed', [ReelController::class, 'generateFeed'])->middleware('auth.token');
     });
 
     Route::get('/offline', [OfflineController::class, 'requestOffline']);

@@ -22,9 +22,6 @@ use Kreait\Firebase\Factory;
 
 class PaymentController extends Controller
 {
-    private $merchantId = 'M221AEW7ARW15';
-    private $saltKey = '1d8c7b88-710d-4c48-a70a-cdd08c8cabac';
-
     protected $subscriptionController;
     protected $cashfreeController;
     protected $PhonepePaymentController;
@@ -214,12 +211,14 @@ class PaymentController extends Controller
             } catch (\Exception $e) {
 
                 DB::rollBack();
+                Log::error('Payment processing failed', [
+                    'payment_id' => $payment->id ?? null,
+                    'error' => $e->getMessage(),
+                ]);
+
                 return response()->json([
                     'status' => 'error',
                     'message' => 'Payment processing failed',
-                    'error' => $e->getMessage(), // 🔥 MAIN ERROR
-                    'line' => $e->getLine(),
-                    'file' => $e->getFile()
                 ], 500);
 
             }
@@ -784,7 +783,7 @@ class PaymentController extends Controller
     public function verifyRazorpaySubscriptionPayment(Request $request)
     {
         $validated = $request->validate([
-            'plan_id' => 'required|integer|exists:n_plans,id',
+            'plan_id' => 'nullable|integer|exists:n_plans,id',
             'razorpay_order_id' => 'required|string|max:255',
             'razorpay_payment_id' => 'required|string|max:255',
             'razorpay_signature' => 'required|string|max:255',
@@ -805,13 +804,14 @@ class PaymentController extends Controller
             ->first();
 
         if ($existingPayment) {
+            $isPpvPayment = !empty($existingPayment->movie_id);
             if (
                 (string) $existingPayment->user_id !== $authUserId ||
-                (int) $existingPayment->plan_id !== (int) $validated['plan_id']
+                (!$isPpvPayment && (int) $existingPayment->plan_id !== (int) ($validated['plan_id'] ?? 0))
             ) {
                 return response()->json([
                     'status' => 'error',
-                    'message' => 'Payment order does not match this subscription request',
+                    'message' => 'Payment order does not match this request',
                 ], 403);
             }
 
@@ -863,6 +863,38 @@ class PaymentController extends Controller
                 'message' => 'Razorpay payment is not completed',
                 'error' => $statusData,
             ], 409);
+        }
+
+        if ($existingPayment && !empty($existingPayment->movie_id)) {
+            $meta = is_array($existingPayment->meta) ? $existingPayment->meta : [];
+            if (!empty($validated['target_device_token'])) {
+                $meta['device_token'] = $validated['target_device_token'];
+            }
+            $existingPayment->update(['meta' => $meta]);
+
+            $result = $this->processRazorpayWebhookPayment($existingPayment, true);
+            $completedPayment = $existingPayment->fresh();
+            $qrResult = $this->updateQrSessionFromRazorpayWebhook(
+                new Request(),
+                'payment_completed',
+                $validated['razorpay_order_id']
+            );
+
+            return response()->json([
+                'status' => 'success',
+                'message' => $result['message'] ?? 'Payment verified and rental activated',
+                'data' => [
+                    'payment_history' => $completedPayment,
+                    'qr' => $qrResult,
+                ],
+            ], 200);
+        }
+
+        if (empty($validated['plan_id'])) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'plan_id is required for subscription payments',
+            ], 422);
         }
 
         $plan = Plan::where('id', $validated['plan_id'])

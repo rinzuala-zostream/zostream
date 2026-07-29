@@ -13,6 +13,30 @@ class QrSessionController extends Controller
 
     public function create(Request $request)
     {
+        $type = strtolower(trim((string) $request->input('type', 'login')));
+        if ($type !== 'login') {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Public QR creation is available for device login only.',
+            ], 403);
+        }
+        $request->merge(['type' => 'login']);
+
+        return $this->createSession($request);
+    }
+
+    public function createPayment(Request $request)
+    {
+        $request->merge([
+            'type' => 'payment',
+            'user_id' => (string) $request->input('auth_user_id'),
+        ]);
+
+        return $this->createSession($request);
+    }
+
+    private function createSession(Request $request)
+    {
         $response = $this->sessions->create($request);
 
         if ($response instanceof JsonResponse && $response->isSuccessful()) {
@@ -33,7 +57,7 @@ class QrSessionController extends Controller
             'device_type' => $request->input('device_type', 'browser'),
         ]);
 
-        return $this->create($request);
+        return $this->createSession($request);
     }
 
     public function status(string $token)

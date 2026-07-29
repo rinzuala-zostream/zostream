@@ -73,6 +73,9 @@ Route::prefix('v4')
             Route::get('/genres', [CatalogController::class, 'genres']);
             Route::get('/latest', [CatalogController::class, 'latest']);
             Route::get('/ppv', [CatalogController::class, 'ppv']);
+            Route::get('/items/{contentId}/details', [CatalogController::class, 'details']);
+            Route::get('/items/{contentId}/recommendations', [CatalogController::class, 'recommendations']);
+            Route::get('/items/{contentId}/ppv-status', [CatalogController::class, 'ppvStatus']);
             Route::get('/items/{contentId}', [CatalogController::class, 'show']);
         });
 
@@ -104,14 +107,19 @@ Route::prefix('v4')
 
             Route::prefix('account')->group(function () {
                 Route::get('/', [AccountController::class, 'show']);
-                Route::patch('/', [AccountController::class, 'update']);
-                Route::delete('/', [AccountController::class, 'destroy']);
+                Route::patch('/', [AccountController::class, 'update'])
+                    ->middleware('owner.device');
+                Route::delete('/', [AccountController::class, 'destroy'])
+                    ->middleware('owner.device');
                 Route::get('/devices', [AccountController::class, 'devices']);
-                Route::post('/devices', [AccountController::class, 'storeDevice']);
-                Route::delete('/devices', [AccountController::class, 'clearDevices']);
+                Route::post('/devices', [AccountController::class, 'storeDevice'])
+                    ->middleware('owner.device');
+                Route::delete('/devices', [AccountController::class, 'clearDevices'])
+                    ->middleware('owner.device');
                 Route::get('/subscriptions', [AccountController::class, 'subscriptions']);
                 Route::get('/phone/status', [AccountController::class, 'phoneStatus']);
-                Route::put('/phone', [AccountController::class, 'updatePhone']);
+                Route::put('/phone', [AccountController::class, 'updatePhone'])
+                    ->middleware('owner.device');
             });
 
             Route::prefix('catalog')->group(function () {
@@ -138,7 +146,7 @@ Route::prefix('v4')
                     ->middleware('throttle:120,1');
             });
 
-            Route::prefix('billing')->group(function () {
+            Route::prefix('billing')->middleware('owner.device')->group(function () {
                 Route::post('/subscriptions', [BillingController::class, 'createSubscription']);
                 Route::post('/subscriptions/with-payment', [BillingController::class, 'createSubscriptionWithPayment']);
                 Route::post('/payments/process', [BillingController::class, 'processPayments']);
@@ -147,7 +155,8 @@ Route::prefix('v4')
                 Route::post('/payments/apple/subscriptions', [BillingController::class, 'processAppleSubscription']);
             });
 
-            Route::prefix('qr-sessions')->group(function () {
+            Route::prefix('qr-sessions')->middleware('owner.device')->group(function () {
+                Route::post('/payment', [V4QrSessionController::class, 'createPayment']);
                 Route::get('/{token}', [V4QrSessionController::class, 'inspect']);
                 Route::post('/{token}/verify', [V4QrSessionController::class, 'verify']);
                 Route::post('/{token}/selection', [V4QrSessionController::class, 'updateSelection']);
@@ -157,8 +166,10 @@ Route::prefix('v4')
 
             Route::get('/offline/access', [OfflineController::class, 'requestAccess']);
 
-            Route::post('/channels/{channelId}/subscriptions', [ChannelSubscriptionController::class, 'store']);
-            Route::delete('/channels/{channelId}/subscriptions', [ChannelSubscriptionController::class, 'destroy']);
+            Route::post('/channels/{channelId}/subscriptions', [ChannelSubscriptionController::class, 'store'])
+                ->middleware('owner.device');
+            Route::delete('/channels/{channelId}/subscriptions', [ChannelSubscriptionController::class, 'destroy'])
+                ->middleware('owner.device');
 
             Route::prefix('support')->group(function () {
                 Route::get('/tickets', [SupportController::class, 'index']);

@@ -20,11 +20,16 @@ class AdminWhatsAppController extends Controller
     {
         $validated = $request->validate([
             'phone_number' => 'required|string',
+            'country_code' => 'nullable|string|max:10',
             'user_id' => 'nullable|string',
         ]);
 
         $normalizedPhone = $this->normalizePhone($validated['phone_number']);
-        if (!$this->isAllowedPhone($normalizedPhone)) {
+        $countryCode = $this->normalizeCountryCode((string) ($validated['country_code'] ?? ''));
+        [$authPhone, $resolvedCountryCode] = $this->splitPhoneForStorage($normalizedPhone, $countryCode);
+        $fullPhone = $this->fullPhoneNumber($authPhone, $resolvedCountryCode);
+
+        if (!$this->isAllowedPhone($fullPhone ?: $normalizedPhone)) {
             return response()->json([
                 'status' => 'error',
                 'message' => 'This phone number is not allowed to access admin login.',
@@ -32,7 +37,8 @@ class AdminWhatsAppController extends Controller
         }
 
         $request->merge([
-            'phone_number' => $normalizedPhone,
+            'phone_number' => $authPhone ?: $normalizedPhone,
+            'country_code' => $resolvedCountryCode,
         ]);
 
         return $this->otpController->send($request);
@@ -111,5 +117,52 @@ class AdminWhatsAppController extends Controller
     private function normalizePhone(string $phone)
     {
         return preg_replace('/\D+/', '', trim($phone));
+    }
+
+    private function normalizeCountryCode(string $countryCode): ?string
+    {
+        $digits = $this->normalizePhone($countryCode);
+
+        return $digits === '' ? null : '+' . $digits;
+    }
+
+    private function splitPhoneForStorage(string $phone, ?string $countryCode): array
+    {
+        $phone = $this->normalizePhone($phone);
+        $countryCodeDigits = $this->normalizePhone((string) $countryCode);
+
+        if ($countryCodeDigits !== '' && str_starts_with($phone, $countryCodeDigits)) {
+            $localPhone = substr($phone, strlen($countryCodeDigits));
+
+            return [$localPhone !== '' ? $localPhone : $phone, '+' . $countryCodeDigits];
+        }
+
+        // Backward-compatible guard for existing admin3 builds that sent
+        // 91xxxxxxxxxx without a separate country_code. Store only the local
+        // number in auth_phone, while still sending WhatsApp to +91xxxxxxxxxx.
+        if ($countryCodeDigits === '' && strlen($phone) > 10) {
+            $localPhone = substr($phone, -10);
+            $derivedCountryCode = substr($phone, 0, -10);
+
+            return [$localPhone, $derivedCountryCode !== '' ? '+' . $derivedCountryCode : null];
+        }
+
+        return [$phone, $countryCode];
+    }
+
+    private function fullPhoneNumber(string $phone, ?string $countryCode): string
+    {
+        $phone = $this->normalizePhone($phone);
+        $countryCodeDigits = $this->normalizePhone((string) $countryCode);
+
+        if ($phone === '') {
+            return '';
+        }
+
+        if ($countryCodeDigits === '' || str_starts_with($phone, $countryCodeDigits)) {
+            return $phone;
+        }
+
+        return $countryCodeDigits . $phone;
     }
 }

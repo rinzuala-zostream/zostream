@@ -5,6 +5,11 @@ use Illuminate\Http\Request;
 
 define('LARAVEL_START', microtime(true));
 
+// API responses must remain valid JSON and must never expose filesystem paths
+// or stack details through PHP's direct error display. Laravel still records
+// reportable errors through its configured log channels.
+ini_set('display_errors', '0');
+
 // Determine if the application is in maintenance mode...
 if (file_exists($maintenance = __DIR__.'/../storage/framework/maintenance.php')) {
     require $maintenance;

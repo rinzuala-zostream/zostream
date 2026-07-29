@@ -63,7 +63,7 @@ class OTPController extends Controller
             $countryCode = $this->normalizeCountryCode($request->country_code);
             $phoneRequest = $this->digitsOnly($request->phone_number);
             $phoneWithoutCountryCode = $this->phoneWithoutCountryCode($phoneRequest, $countryCode);
-            $authPhoneForNewUser = $this->fullPhoneNumber($phoneWithoutCountryCode ?: $phoneRequest, $countryCode);
+            $authPhoneForNewUser = $phoneWithoutCountryCode ?: $phoneRequest;
             $deviceId = $request->device_id ?: $request->device_token;
             $deviceName = $request->device_name ?: 'Unknown Device';
             $fcmToken = $request->fcm_token ?: $request->token;
@@ -118,9 +118,25 @@ class OTPController extends Controller
                     'token' => $fcmToken,
                     'is_auth_phone_active' => true,
                 ]);
-            } elseif ($countryCode && $user->country_code !== $countryCode) {
-                $user->country_code = $countryCode;
-                $user->save();
+            } else {
+                $updates = [];
+
+                if ($countryCode && $user->country_code !== $countryCode) {
+                    $updates['country_code'] = $countryCode;
+                }
+
+                // Normalize users created by older clients/server versions
+                // that stored the country code in both phone columns.
+                if (
+                    $authPhoneForNewUser !== ''
+                    && $this->digitsOnly($user->auth_phone) !== $authPhoneForNewUser
+                ) {
+                    $updates['auth_phone'] = $authPhoneForNewUser;
+                }
+
+                if ($updates !== []) {
+                    $user->update($updates);
+                }
             }
 
             // 📱 Determine OTP target phone
@@ -347,6 +363,7 @@ class OTPController extends Controller
             $deviceId = $request->device_id ?: $request->device_token;
             $deviceType = $this->normalizeLoginDeviceType($request->device_type);
             $fcmToken = $request->fcm_token ?: $request->token;
+            $verifiedOtpRequest = null;
 
             if ($otp !== '326416') {
 
@@ -369,8 +386,9 @@ class OTPController extends Controller
                     return response()->json(['status' => 'error', 'message' => 'Invalid OTP'], 400);
                 }
 
-                // ✅ Valid OTP — remove old record
-                $otpRequest->delete();
+                // Keep the OTP until token generation succeeds. A temporary
+                // server/database failure must not consume a valid OTP.
+                $verifiedOtpRequest = $otpRequest;
             }
 
             // 🔎 Find user
@@ -395,6 +413,8 @@ class OTPController extends Controller
                 ) {
                     throw new \Exception('Token generation failed');
                 }
+
+                $verifiedOtpRequest?->delete();
             } catch (\Exception $e) {
                 Log::error('Token generation failed', ['user_id' => $userId, 'error' => $e->getMessage()]);
                 return response()->json(['status' => 'error', 'message' => 'Failed to generate tokens'], 500);

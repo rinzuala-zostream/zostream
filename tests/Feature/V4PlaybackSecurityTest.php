@@ -10,6 +10,7 @@ use App\Http\Controllers\NewStreamController;
 use App\Http\Controllers\RazorpayController;
 use App\Http\Controllers\TokenController;
 use App\Http\Controllers\WatchPositionController;
+use App\Http\Middleware\OwnerDeviceMiddleware;
 use App\Models\New\ActiveStream;
 use App\Models\New\Devices;
 use App\Models\New\Plan;
@@ -477,6 +478,82 @@ class V4PlaybackSecurityTest extends TestCase
         $this->assertDatabaseMissing('session_tokens', [
             'access_token' => 'logout-access-token',
         ]);
+    }
+
+    public function test_new_session_tokens_are_hashed_at_rest_and_still_authenticate(): void
+    {
+        $tokens = app(TokenController::class)->generateTokens(
+            'user-a',
+            'Security test',
+            'device-a',
+        );
+
+        $record = DB::table('session_tokens')
+            ->where('user_id', 'user-a')
+            ->first();
+
+        $this->assertNotNull($record);
+        $this->assertNotSame($tokens['access_token'], $record->access_token);
+        $this->assertNotSame($tokens['refresh_token'], $record->refresh_token);
+        $this->assertStringStartsWith('sha256:', $record->access_token);
+        $this->assertSame(
+            'user-a',
+            TokenController::validateToken($tokens['access_token']),
+        );
+        $this->assertNull(TokenController::validateToken($record->access_token));
+    }
+
+    public function test_owner_only_actions_reject_a_shared_device(): void
+    {
+        Devices::create([
+            'user_id' => 'user-a',
+            'device_name' => 'Shared mobile',
+            'device_type' => 'mobile',
+            'device_token' => 'shared-mobile',
+            'is_owner_device' => false,
+            'status' => 'active',
+        ]);
+        $request = Request::create('/api/v4/billing/subscriptions', 'POST', [
+            'auth_user_id' => 'user-a',
+            'auth_device_id' => 'shared-mobile',
+        ]);
+
+        $response = app(OwnerDeviceMiddleware::class)->handle(
+            $request,
+            fn () => response()->json(['status' => 'success']),
+        );
+
+        $this->assertSame(403, $response->getStatusCode());
+    }
+
+    public function test_owner_only_actions_fail_closed_without_device_identity(): void
+    {
+        $request = Request::create('/api/v4/account', 'PATCH', [
+            'auth_user_id' => 'user-a',
+        ]);
+
+        $response = app(OwnerDeviceMiddleware::class)->handle(
+            $request,
+            fn () => response()->json(['status' => 'success']),
+        );
+
+        $this->assertSame(403, $response->getStatusCode());
+    }
+
+    public function test_owner_only_actions_accept_the_verified_owner_device(): void
+    {
+        $this->device('user-a', 'owner-mobile', 'active');
+        $request = Request::create('/api/v4/account', 'PATCH', [
+            'auth_user_id' => 'user-a',
+            'auth_device_id' => 'owner-mobile',
+        ]);
+
+        $response = app(OwnerDeviceMiddleware::class)->handle(
+            $request,
+            fn () => response()->json(['status' => 'success']),
+        );
+
+        $this->assertSame(200, $response->getStatusCode());
     }
 
     public function test_pending_manual_subscription_does_not_reset_shared_devices(): void

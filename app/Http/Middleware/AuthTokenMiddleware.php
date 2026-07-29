@@ -21,7 +21,7 @@ class AuthTokenMiddleware
         }
 
         $accessToken = trim(substr($authHeader, 7));
-        $record = SessionTokenModel::where('access_token', $accessToken)->first();
+        $record = SessionTokenModel::findByAccessToken($accessToken);
 
         if (! $record) {
             return response()->json(['status' => 'error', 'message' => 'Invalid or revoked token'], 401);
