@@ -101,6 +101,8 @@ Route::prefix('v4')
             ->middleware('throttle:20,1');
         Route::get('/qr-sessions/{token}/status', [V4QrSessionController::class, 'status'])
             ->middleware('throttle:120,1');
+        Route::post('/admin/qr-sessions', [V4QrSessionController::class, 'createAdmin'])
+            ->middleware('throttle:20,1');
 
         Route::middleware('auth.token')->group(function () {
             Route::post('/auth/logout', [AuthController::class, 'logout']);
