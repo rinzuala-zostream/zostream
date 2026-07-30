@@ -252,8 +252,6 @@ Route::prefix('v4')
 
                     Route::get('/payments/user/{userId}', [PaymentHistoryController::class, 'getByUser']);
 
-                    Route::post('/qr-sessions', [V4QrSessionController::class, 'createAdmin']);
-
                     Route::post('/channels', [ChannelController::class, 'store']);
                     Route::put('/channels/{channelId}', [ChannelController::class, 'update']);
                     Route::delete('/channels/{channelId}', [ChannelController::class, 'destroy']);
