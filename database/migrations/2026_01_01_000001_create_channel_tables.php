@@ -20,7 +20,7 @@ return new class extends Migration
             $table->enum('status', ['pending', 'active', 'suspended', 'deleted'])->default('pending');
             $table->timestamps();
 
-            $table->foreign('user_id')->references('uid')->on('user');
+            $table->index('user_id');
         });
 
         Schema::create('channel_subscription_plans', function (Blueprint $table) {
@@ -49,7 +49,6 @@ return new class extends Migration
 
             $table->unique(['channel_id', 'user_id']);
             $table->index(['user_id', 'status']);
-            $table->foreign('user_id')->references('uid')->on('user');
         });
 
         Schema::create('channel_subscription_history', function (Blueprint $table) {
@@ -67,7 +66,6 @@ return new class extends Migration
 
             $table->index(['channel_id', 'user_id']);
             $table->index('transaction_id');
-            $table->foreign('user_id')->references('uid')->on('user');
         });
 
         Schema::create('channel_contents', function (Blueprint $table) {
@@ -118,7 +116,6 @@ return new class extends Migration
 
             $table->unique(['user_id', 'content_id']);
             $table->index(['content_id', 'status']);
-            $table->foreign('user_id')->references('uid')->on('user');
         });
 
         Schema::create('channel_content_rental_history', function (Blueprint $table) {
@@ -135,7 +132,6 @@ return new class extends Migration
 
             $table->index(['user_id', 'content_id']);
             $table->index('transaction_id');
-            $table->foreign('user_id')->references('uid')->on('user');
         });
     }
 

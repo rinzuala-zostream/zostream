@@ -495,10 +495,17 @@ class SubscriptionController extends Controller
                 ], 404);
             }
 
-            $startAt = now();
-            $endAt = $startAt->copy()->addDays($plan->duration_days);
             $deviceToken = $request->device_id ?: $request->device_token;
             $deviceType = strtolower(trim((string) ($request->device_type ?? $plan->device_type)));
+            $startAt = now();
+            $currentSubscription = Subscription::activeForUserAndDeviceType($request->user_id, $plan->device_type)
+                ->orderByDesc('end_at')
+                ->first();
+            $endAt = Subscription::renewEndAt(
+                $currentSubscription?->end_at,
+                $startAt,
+                $plan->duration_days
+            );
             $device = $deviceToken
                 ? Devices::where('user_id', $request->user_id)
                     ->where('device_token', $deviceToken)
@@ -659,10 +666,12 @@ class SubscriptionController extends Controller
                 : null;
             $endAt = $manualEndAt
                 ?? ($manualStartAt
-                    ? $manualStartAt->copy()->addDays($plan->duration_days)
-                    : ($subscription && $subscription->end_at && $subscription->end_at->isFuture()
-                        ? $subscription->end_at->copy()->addDays($plan->duration_days)
-                        : $startAt->copy()->addDays($plan->duration_days)));
+                    ? Subscription::endAtForDuration($manualStartAt, $plan->duration_days)
+                    : Subscription::renewEndAt(
+                        $subscription?->end_at,
+                        $startAt,
+                        $plan->duration_days
+                    ));
 
             if ($subscription) {
                 $updates = [
@@ -672,7 +681,7 @@ class SubscriptionController extends Controller
                     'renewed_by' => null,
                 ];
 
-                if ($manualStartAt || !$subscription->end_at || $subscription->end_at->isPast()) {
+                if ($manualStartAt || Subscription::endAtIsExpired($subscription->end_at)) {
                     $updates['start_at'] = $startAt;
                 }
 
@@ -850,7 +859,6 @@ class SubscriptionController extends Controller
             }
 
             $currency = strtoupper($validated['currency'] ?? 'INR');
-            $expiryDate = now()->addDays(30);
             $receipt = substr(sprintf(
                 'ext_sub_%s_%s',
                 $phoneSuffix,
@@ -905,13 +913,23 @@ class SubscriptionController extends Controller
                 $resolvedUserId,
                 $phoneSuffix,
                 $currency,
-                $expiryDate,
                 $planDeviceTypes,
+                $plans,
                 $order
             ) {
                 $created = [];
 
                 foreach ($planDeviceTypes as $planId => $deviceType) {
+                    $plan = $plans->get($planId);
+                    $currentSubscription = Subscription::activeForUserAndDeviceType($resolvedUserId, $deviceType)
+                        ->orderByDesc('end_at')
+                        ->first();
+                    $expiryDate = Subscription::renewEndAt(
+                        $currentSubscription?->end_at,
+                        now(),
+                        $plan?->duration_days ?? 30
+                    );
+
                     $created[] = PaymentHistory::create([
                         'subscription_id' => null,
                         'user_id' => $resolvedUserId,

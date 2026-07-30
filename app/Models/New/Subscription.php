@@ -63,10 +63,17 @@ class Subscription extends Model
     public function scopeActiveForUserAndDeviceType(Builder $query, $userId, string $deviceType): Builder
     {
         return $query->where('user_id', $userId)
-            ->where('is_active', true)
+            ->currentlyActive()
             ->whereHas('plan', function (Builder $planQuery) use ($deviceType) {
                 $planQuery->where('device_type', strtolower(trim($deviceType)));
             });
+    }
+
+    public function scopeCurrentlyActive(Builder $query): Builder
+    {
+        return $query->where('is_active', true)
+            ->whereNotNull('end_at')
+            ->where('end_at', '>=', Carbon::now()->startOfDay());
     }
 
     /*
@@ -79,7 +86,39 @@ class Subscription extends Model
     {
         return $this->is_active &&
                $this->end_at &&
-               $this->end_at->isFuture();
+               ! self::endAtIsExpired($this->end_at);
+    }
+
+    public static function endAtIsExpired($endAt): bool
+    {
+        if (! $endAt) {
+            return true;
+        }
+
+        return Carbon::parse($endAt)->endOfDay()->isPast();
+    }
+
+    public static function endAtForDuration(Carbon $startAt, int $durationDays): Carbon
+    {
+        $days = max($durationDays, 1);
+
+        return $startAt->copy()
+            ->startOfDay()
+            ->addDays($days - 1)
+            ->endOfDay();
+    }
+
+    public static function renewEndAt(?Carbon $currentEndAt, Carbon $startAt, int $durationDays): Carbon
+    {
+        $days = max($durationDays, 1);
+
+        if ($currentEndAt && ! self::endAtIsExpired($currentEndAt)) {
+            return $currentEndAt->copy()
+                ->addDays($days)
+                ->endOfDay();
+        }
+
+        return self::endAtForDuration($startAt, $days);
     }
 
     public function extend(): void
@@ -88,11 +127,11 @@ class Subscription extends Model
             return;
         }
 
-        $duration = $this->plan->duration_days;
-
-        $newExpiry = $this->end_at && $this->end_at->isFuture()
-            ? $this->end_at->copy()->addDays($duration)
-            : Carbon::now()->addDays($duration);
+        $newExpiry = self::renewEndAt(
+            $this->end_at,
+            Carbon::now(),
+            $this->plan->duration_days
+        );
 
         $this->update([
             'start_at' => $this->start_at ?? now(),

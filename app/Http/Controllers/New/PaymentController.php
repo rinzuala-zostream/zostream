@@ -129,9 +129,12 @@ class PaymentController extends Controller
                         $subscription = Subscription::activeForUserAndDeviceType($uid, $plan->device_type)
                             ->lockForUpdate()
                             ->first();
-                        $endAt = $subscription && $subscription->end_at && $subscription->end_at->isFuture()
-                            ? $subscription->end_at->copy()->addDays($plan->duration_days)
-                            : $startAt->copy()->addDays($plan->duration_days);
+                        $endAt = $this->subscriptionEndAtFromPaymentHistory(
+                            $payment,
+                            $subscription,
+                            $startAt,
+                            $plan->duration_days
+                        );
 
                         if ($subscription) {
                             $updates = [
@@ -140,7 +143,7 @@ class PaymentController extends Controller
                                 'is_active' => true,
                             ];
 
-                            if (!$subscription->end_at || $subscription->end_at->isPast()) {
+                            if (Subscription::endAtIsExpired($subscription->end_at)) {
                                 $updates['start_at'] = $startAt;
                             }
 
@@ -367,9 +370,12 @@ class PaymentController extends Controller
                 $subscription = Subscription::activeForUserAndDeviceType($uid, $plan->device_type)
                     ->lockForUpdate()
                     ->first();
-                $endAt = $subscription && $subscription->end_at && $subscription->end_at->isFuture()
-                    ? $subscription->end_at->copy()->addDays($plan->duration_days)
-                    : $startAt->copy()->addDays($plan->duration_days);
+                $endAt = $this->subscriptionEndAtFromPaymentHistory(
+                    $payment,
+                    $subscription,
+                    $startAt,
+                    $plan->duration_days
+                );
 
                 if ($subscription) {
                     $updates = [
@@ -378,7 +384,7 @@ class PaymentController extends Controller
                         'is_active' => true,
                     ];
 
-                    if (!$subscription->end_at || $subscription->end_at->isPast()) {
+                    if (Subscription::endAtIsExpired($subscription->end_at)) {
                         $updates['start_at'] = $startAt;
                     }
 
@@ -464,6 +470,23 @@ class PaymentController extends Controller
         return (clone $query)
             ->where('is_owner_device', true)
             ->first();
+    }
+
+    private function subscriptionEndAtFromPaymentHistory(
+        PaymentHistory $payment,
+        ?Subscription $subscription,
+        Carbon $startAt,
+        int $durationDays
+    ): Carbon {
+        if ($payment->expiry_date) {
+            return Carbon::parse($payment->expiry_date);
+        }
+
+        return Subscription::renewEndAt(
+            $subscription?->end_at,
+            $startAt,
+            $durationDays
+        );
     }
 
     private function updateQrSessionFromRazorpayWebhook(Request $request, string $status, string $orderId): array
@@ -648,6 +671,16 @@ class PaymentController extends Controller
             ], 502);
         }
 
+        $startAt = now();
+        $currentSubscription = Subscription::activeForUserAndDeviceType($authUserId, $plan->device_type)
+            ->orderByDesc('end_at')
+            ->first();
+        $expiryDate = Subscription::renewEndAt(
+            $currentSubscription?->end_at,
+            $startAt,
+            $plan->duration_days
+        );
+
         try {
             PaymentHistory::updateOrCreate(
                 [
@@ -664,6 +697,7 @@ class PaymentController extends Controller
                     'payment_method' => 'checkout',
                     'status' => 'pending',
                     'payment_type' => 'new',
+                    'expiry_date' => $expiryDate,
                     'meta' => [
                         'device_token' => $validated['target_device_token'] ?? null,
                         'device_type' => $plan->device_type,

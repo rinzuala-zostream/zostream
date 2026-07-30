@@ -67,7 +67,7 @@ class OfflineController extends Controller
             ], 404);
         }
 
-        if (Carbon::parse($subscription->end_at)->isPast() || !$subscription->is_active) {
+        if (Subscription::endAtIsExpired($subscription->end_at) || !$subscription->is_active) {
             return response()->json([
                 'status' => 'error',
                 'title' => 'Subscription Expired',
@@ -260,4 +260,3 @@ class OfflineController extends Controller
         ];
     }
 }
-

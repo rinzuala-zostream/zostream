@@ -47,7 +47,7 @@ class SubscriptionMaintenance extends Command
         $expiredIds = Subscription::query()
             ->where('is_active', true)
             ->whereNotNull('end_at')
-            ->where('end_at', '<=', now())
+            ->where('end_at', '<', now()->startOfDay())
             ->pluck('id');
 
         if ($expiredIds->isEmpty()) {
@@ -67,9 +67,7 @@ class SubscriptionMaintenance extends Command
         $cutoff = now()->copy()->addDays($reminderDays);
 
         $subscriptions = Subscription::with('plan')
-            ->where('is_active', true)
-            ->whereNotNull('end_at')
-            ->where('end_at', '>', now())
+            ->currentlyActive()
             ->where('end_at', '<=', $cutoff)
             ->orderBy('end_at')
             ->get();

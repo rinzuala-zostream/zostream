@@ -38,8 +38,7 @@ class DashboardController extends Controller
             $dateField = $validated['date_field'] ?? 'created_at';
 
             $activeSubscriptionsQuery = Subscription::query()
-                ->where('is_active', true)
-                ->where('end_at', '>=', now());
+                ->currentlyActive();
 
             if ($deviceType) {
                 $activeSubscriptionsQuery->whereHas('plan', function ($query) use ($deviceType) {
@@ -50,7 +49,7 @@ class DashboardController extends Controller
             $filteredActiveSubscriptionAggregates = DB::table('n_subscriptions as subscriptions')
                 ->join('n_plans as plans', 'plans.id', '=', 'subscriptions.plan_id')
                 ->where('subscriptions.is_active', true)
-                ->where('subscriptions.end_at', '>=', now())
+                ->where('subscriptions.end_at', '>=', now()->startOfDay())
                 ->when($deviceType, function ($query) use ($deviceType) {
                     $query->where('plans.device_type', $deviceType);
                 })
@@ -132,8 +131,7 @@ class DashboardController extends Controller
 
             $totalActiveUsers = UserModel::where('isACActive', true)->count();
             $totalUsersWithActiveSubscription = Subscription::query()
-                ->where('is_active', true)
-                ->where('end_at', '>=', now())
+                ->currentlyActive()
                 ->when($deviceType, function ($query) use ($deviceType) {
                     $query->whereHas('plan', function ($planQuery) use ($deviceType) {
                         $planQuery->where('device_type', $deviceType);

@@ -115,7 +115,7 @@ class NewStreamController extends Controller
                 ], 403);
             }
 
-            if (Carbon::parse($subscription->end_at)->isPast() || !$subscription->is_active) {
+            if (Subscription::endAtIsExpired($subscription->end_at) || !$subscription->is_active) {
                 return response()->json([
                     'status' => 'error',
                     'title' => 'Subscription Expired',
@@ -310,7 +310,7 @@ class NewStreamController extends Controller
                     || ! hash_equals((string) $subscription->user_id, (string) $userId)
                     || ! $subscription->is_active
                     || ! $subscription->end_at
-                    || $subscription->end_at->isPast()
+                    || Subscription::endAtIsExpired($subscription->end_at)
                 ) {
                     DB::rollBack();
 
@@ -804,7 +804,7 @@ class NewStreamController extends Controller
                 ->where('is_active', true)
                 ->first();
 
-            if (! $subscription || ! $subscription->end_at || $subscription->end_at->isPast()) {
+            if (! $subscription || Subscription::endAtIsExpired($subscription->end_at)) {
                 $stream->update([
                     'status' => 'stopped',
                     'last_ping' => now(),
