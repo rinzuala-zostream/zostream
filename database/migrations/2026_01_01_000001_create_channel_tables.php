@@ -8,7 +8,8 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('channels', function (Blueprint $table) {
+        if (! Schema::hasTable('channels')) {
+            Schema::create('channels', function (Blueprint $table) {
             $table->id();
             $table->string('user_id');
             $table->string('name');
@@ -21,9 +22,11 @@ return new class extends Migration
             $table->timestamps();
 
             $table->index('user_id');
-        });
+            });
+        }
 
-        Schema::create('channel_subscription_plans', function (Blueprint $table) {
+        if (! Schema::hasTable('channel_subscription_plans')) {
+            Schema::create('channel_subscription_plans', function (Blueprint $table) {
             $table->id();
             $table->foreignId('channel_id')->constrained('channels');
             $table->string('name', 100)->nullable();
@@ -35,9 +38,11 @@ return new class extends Migration
             $table->timestamps();
 
             $table->index(['channel_id', 'is_active']);
-        });
+            });
+        }
 
-        Schema::create('channel_subscribers', function (Blueprint $table) {
+        if (! Schema::hasTable('channel_subscribers')) {
+            Schema::create('channel_subscribers', function (Blueprint $table) {
             $table->id();
             $table->foreignId('channel_id')->constrained('channels');
             $table->string('user_id');
@@ -49,9 +54,11 @@ return new class extends Migration
 
             $table->unique(['channel_id', 'user_id']);
             $table->index(['user_id', 'status']);
-        });
+            });
+        }
 
-        Schema::create('channel_subscription_history', function (Blueprint $table) {
+        if (! Schema::hasTable('channel_subscription_history')) {
+            Schema::create('channel_subscription_history', function (Blueprint $table) {
             $table->id();
             $table->foreignId('channel_id')->constrained('channels');
             $table->string('user_id');
@@ -66,9 +73,11 @@ return new class extends Migration
 
             $table->index(['channel_id', 'user_id']);
             $table->index('transaction_id');
-        });
+            });
+        }
 
-        Schema::create('channel_contents', function (Blueprint $table) {
+        if (! Schema::hasTable('channel_contents')) {
+            Schema::create('channel_contents', function (Blueprint $table) {
             $table->id();
             $table->foreignId('channel_id')->constrained('channels');
             $table->string('title')->nullable();
@@ -83,9 +92,11 @@ return new class extends Migration
 
             $table->index(['channel_id', 'status']);
             $table->index(['access_type', 'status']);
-        });
+            });
+        }
 
-        Schema::create('channel_content_media', function (Blueprint $table) {
+        if (! Schema::hasTable('channel_content_media')) {
+            Schema::create('channel_content_media', function (Blueprint $table) {
             $table->id();
             $table->foreignId('content_id')->constrained('channel_contents')->cascadeOnDelete();
             $table->enum('media_type', ['video', 'audio', 'subtitle', 'thumbnail'])->nullable();
@@ -94,18 +105,22 @@ return new class extends Migration
             $table->text('url');
             $table->bigInteger('file_size')->nullable();
             $table->timestamp('created_at')->nullable();
-        });
+            });
+        }
 
-        Schema::create('channel_content_ppv', function (Blueprint $table) {
+        if (! Schema::hasTable('channel_content_ppv')) {
+            Schema::create('channel_content_ppv', function (Blueprint $table) {
             $table->id();
             $table->foreignId('content_id')->constrained('channel_contents')->cascadeOnDelete();
             $table->decimal('price', 10, 2);
             $table->integer('rental_days')->default(7);
             $table->boolean('is_active')->default(true);
             $table->timestamps();
-        });
+            });
+        }
 
-        Schema::create('channel_content_rentals', function (Blueprint $table) {
+        if (! Schema::hasTable('channel_content_rentals')) {
+            Schema::create('channel_content_rentals', function (Blueprint $table) {
             $table->id();
             $table->string('user_id');
             $table->foreignId('content_id')->constrained('channel_contents');
@@ -116,9 +131,11 @@ return new class extends Migration
 
             $table->unique(['user_id', 'content_id']);
             $table->index(['content_id', 'status']);
-        });
+            });
+        }
 
-        Schema::create('channel_content_rental_history', function (Blueprint $table) {
+        if (! Schema::hasTable('channel_content_rental_history')) {
+            Schema::create('channel_content_rental_history', function (Blueprint $table) {
             $table->id();
             $table->string('user_id');
             $table->foreignId('content_id')->constrained('channel_contents');
@@ -132,7 +149,8 @@ return new class extends Migration
 
             $table->index(['user_id', 'content_id']);
             $table->index('transaction_id');
-        });
+            });
+        }
     }
 
     public function down(): void
