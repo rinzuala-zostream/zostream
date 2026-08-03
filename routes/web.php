@@ -22,6 +22,10 @@ Route::get('/invoices/payments/{payment}', [InvoiceController::class, 'show'])
     ->middleware('signed')
     ->name('invoice.payments.show');
 
+Route::get('/invoices/payments/{payment}/pdf', [InvoiceController::class, 'pdf'])
+    ->middleware('signed')
+    ->name('invoice.payments.pdf');
+
 Route::get('/redis-test', function () {
     Redis::set('mykey', 'Hello Redis!');
     return Redis::get('mykey'); // Should return "Hello Redis!"

@@ -24,6 +24,8 @@ class WhatsAppController extends Controller
             'type' => 'required|string|in:template,text',
             'template_name' => 'nullable|string',
             'template_params' => 'nullable|array',
+            'template_header_document_url' => 'nullable|string',
+            'template_header_document_name' => 'nullable|string',
             'template_button_url' => 'nullable|string',
             'language' => 'nullable|string',
             'message' => 'nullable|string',
@@ -76,6 +78,21 @@ class WhatsAppController extends Controller
                     ]
                 ]
             ];
+
+            if (!empty($validated['template_header_document_url'])) {
+                $payload['template']['components'][] = [
+                    "type" => "header",
+                    "parameters" => [
+                        [
+                            "type" => "document",
+                            "document" => [
+                                "link" => $validated['template_header_document_url'],
+                                "filename" => $validated['template_header_document_name'] ?? 'invoice.pdf',
+                            ],
+                        ],
+                    ],
+                ];
+            }
 
             if ($validated['template_name'] === 'zostream_auth_otp') {
                 $otp = $validated['template_params'][0] ?? '';

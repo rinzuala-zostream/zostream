@@ -52,12 +52,18 @@ class InvoiceService
             'valid_till' => $payment->expiry_date ? Carbon::parse($payment->expiry_date) : null,
             'status' => $payment->status ?: 'success',
             'view_url' => $this->invoiceUrl($payment),
+            'pdf_url' => $this->invoicePdfUrl($payment),
         ];
     }
 
     public function invoiceUrl(PaymentHistory $payment): string
     {
         return URL::signedRoute('invoice.payments.show', ['payment' => $payment->id]);
+    }
+
+    public function invoicePdfUrl(PaymentHistory $payment): string
+    {
+        return URL::signedRoute('invoice.payments.pdf', ['payment' => $payment->id]);
     }
 
     public function sendWhatsAppInvoice(PaymentHistory $payment): bool
@@ -91,6 +97,8 @@ class InvoiceService
                 'type' => 'template',
                 'template_name' => $templateName,
                 'language' => 'en',
+                'template_header_document_url' => $data['pdf_url'],
+                'template_header_document_name' => $data['invoice_no'] . '.pdf',
                 'template_params' => [
                     $data['customer_name'],
                     $data['payment_type'],
@@ -144,6 +152,7 @@ class InvoiceService
         $meta = is_array($payment->meta) ? $payment->meta : [];
         $meta['invoice_whatsapp_sent_at'] = now()->toIso8601String();
         $meta['invoice_url'] = $invoiceUrl;
+        $meta['invoice_pdf_url'] = $this->invoicePdfUrl($payment);
 
         $payment->forceFill(['meta' => $meta])->save();
     }
