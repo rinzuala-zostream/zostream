@@ -13,6 +13,10 @@ class AlsoLikeController extends Controller
     
         $movieTitle = $request->query('movie_title');
         $ageRestriction = $request->boolean('age_restriction', false);
+        $modeHeader = strtolower((string) $request->header('X-Mode', ''));
+        $isKidsByHeader = $modeHeader === 'kids';
+        $isKidsByQuery = ($request->query('isChildMode') ?? 'false') === 'true';
+        $isKidsMode = $isKidsByHeader || $isKidsByQuery;
 
         if (!$movieTitle) {
             return response()->json(['error' => 'Missing movie_title parameter'], 400);
@@ -21,26 +25,35 @@ class AlsoLikeController extends Controller
         // ✅ Read user ID
         $userId = $request->header('X-User-Id') ?? $request->query('user_id', '');
 
-        // ✅ Mizo-only logic (applies to special user OR when userId is null/empty)
+        // ✅ Mizo-only logic (same as home/search for guest + special user)
         //$onlyMizoUser = $userId === 'AW7ovVnTdgWuvE1Uke7QTQ5OEQt1';
-        $onlyMizoUser = empty($userId) || $userId === 'AW7ovVnTdgWuvE1Uke7QTQ5OEQt1';
+        $onlyMizoUser = empty($userId)
+            || $userId === 'guest'
+            || $userId === 'AW7ovVnTdgWuvE1Uke7QTQ5OEQt1';
 
         // ✅ Fetch movies based on Mizo-only + restriction
-        $movies = $this->fetchMovies($ageRestriction, $onlyMizoUser);
+        $movies = $this->fetchMovies($ageRestriction, $onlyMizoUser, $isKidsMode);
 
         // ✅ Generate recommendations
         $recommended = $this->getRecommendations($movieTitle, $movies);
 
-        return response()->json($recommended);
+        return response()->json(array_values(array_map(
+            fn ($movie) => $this->transformMovie($movie),
+            $recommended
+        )));
     }
 
-    private function fetchMovies(bool $ageRestriction, bool $onlyMizoUser = false)
+    private function fetchMovies(bool $ageRestriction, bool $onlyMizoUser = false, bool $isKidsMode = false)
     {
         $query = MovieModel::where('isEnable', 1)
             ->where('status', 'Published');
 
         if (!$ageRestriction) {
             $query->where('isAgeRestricted', 0);
+        }
+
+        if ($isKidsMode) {
+            $query->where('isChildMode', 1);
         }
 
         // ✅ Return only Mizo movies for special user or empty user ID
@@ -59,7 +72,11 @@ class AlsoLikeController extends Controller
             'isKorean',
             'isMizo',
             'isDocumentary',
-            'isSeason'
+            'isPayPerView',
+            'isPremium',
+            'isSeason',
+            'isSubtitle',
+            'isChildMode',
         ];
 
         foreach ($movies as &$movie) {
@@ -159,5 +176,47 @@ class AlsoLikeController extends Controller
         }
 
         return array_slice(array_values($unique), 0, 20);
+    }
+
+    private function transformMovie(array $movie): array
+    {
+        foreach ([
+            'isProtected',
+            'isBollywood',
+            'isCompleted',
+            'isDocumentary',
+            'isDubbed',
+            'isEnable',
+            'isHollywood',
+            'isKorean',
+            'isMizo',
+            'isPayPerView',
+            'isPremium',
+            'isAgeRestricted',
+            'isSeason',
+            'isSubtitle',
+            'isChildMode',
+        ] as $key) {
+            if (array_key_exists($key, $movie)) {
+                $movie[$key] = (bool) $movie[$key];
+            }
+        }
+
+        if (array_key_exists('num', $movie)) {
+            $movie['num'] = (int) $movie['num'];
+        }
+
+        if (array_key_exists('views', $movie)) {
+            $movie['views'] = (int) $movie['views'];
+        }
+
+        unset(
+            $movie['url'],
+            $movie['dash_url'],
+            $movie['hls_url'],
+            $movie['token']
+        );
+
+        return $movie;
     }
 }
