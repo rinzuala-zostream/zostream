@@ -92,7 +92,7 @@ class InvoiceService
         }
 
         try {
-            $response = $this->whatsAppController->send(new Request([
+            $payload = [
                 'to' => $data['customer_phone'],
                 'type' => 'template',
                 'template_name' => $templateName,
@@ -107,14 +107,21 @@ class InvoiceService
                     $data['transaction_id'],
                     $data['valid_till'] ? $data['valid_till']->format('M d, Y') : 'N/A',
                 ],
-                'template_button_url' => $this->invoiceButtonParameter($data['view_url']),
-            ]));
+            ];
+
+            $buttonParameter = $this->invoiceButtonParameter($data['view_url']);
+
+            if ($buttonParameter !== '') {
+                $payload['template_button_url'] = $buttonParameter;
+            }
+
+            $response = $this->whatsAppController->send(new Request($payload));
 
             if ($response->getStatusCode() >= 400) {
                 Log::warning('Invoice WhatsApp failed', [
                     'payment_id' => $payment->id,
                     'template' => $templateName,
-                    'button_parameter' => $this->invoiceButtonParameter($data['view_url']),
+                    'button_parameter' => $buttonParameter,
                     'status' => $response->getStatusCode(),
                     'response' => method_exists($response, 'getData') ? $response->getData(true) : null,
                 ]);
@@ -159,7 +166,13 @@ class InvoiceService
 
     private function invoiceButtonParameter(string $invoiceUrl): string
     {
-        if ((string) config('app.whatsapp_invoice_button_parameter', 'path') === 'url') {
+        $mode = (string) config('app.whatsapp_invoice_button_parameter', 'none');
+
+        if ($mode === 'none' || $mode === '') {
+            return '';
+        }
+
+        if ($mode === 'url') {
             return $invoiceUrl;
         }
 
