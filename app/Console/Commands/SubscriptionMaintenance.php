@@ -12,6 +12,8 @@ use Illuminate\Support\Facades\Log;
 
 class SubscriptionMaintenance extends Command
 {
+    private const REMINDER_DAYS_LEFT = [3, 1, 0];
+
     protected $signature = 'app:subscription-maintenance
                             {--deactivate=1 : Whether to deactivate expired subscriptions}
                             {--reminder-days=3 : Send reminders for subscriptions expiring within this many days}
@@ -68,6 +70,7 @@ class SubscriptionMaintenance extends Command
 
         $subscriptions = Subscription::with('plan')
             ->currentlyActive()
+            ->whereHas('plan', fn ($query) => $query->where('is_active', true))
             ->where('end_at', '<=', $cutoff)
             ->orderBy('end_at')
             ->get();
@@ -83,6 +86,11 @@ class SubscriptionMaintenance extends Command
                     ->diffInDays($subscription->end_at->copy()->startOfDay(), false),
                 0
             );
+
+            if (! in_array($daysLeft, self::REMINDER_DAYS_LEFT, true)) {
+                $this->line("Skipped reminder for subscription #{$subscription->id}: {$daysLeft} day(s) left.");
+                continue;
+            }
 
             $this->sendReminderNotification($subscription, $daysLeft);
         }

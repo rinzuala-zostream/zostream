@@ -23,6 +23,7 @@ return [
 
     'whatsapp_phone_id' => env('WHATSAPP_PHONE_ID'),
     'whatsapp_token' => env('WHATSAPP_TOKEN'),
+    'whatsapp_invoice_template' => env('WHATSAPP_INVOICE_TEMPLATE', 'zostream_invoice'),
 
     /*
     |--------------------------------------------------------------------------

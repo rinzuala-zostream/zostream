@@ -24,6 +24,7 @@ class WhatsAppController extends Controller
             'type' => 'required|string|in:template,text',
             'template_name' => 'nullable|string',
             'template_params' => 'nullable|array',
+            'template_button_url' => 'nullable|string',
             'language' => 'nullable|string',
             'message' => 'nullable|string',
         ]);
@@ -91,6 +92,20 @@ class WhatsAppController extends Controller
                         ]
                     ];
                 }
+            }
+
+            if (!empty($validated['template_button_url'])) {
+                $payload['template']['components'][] = [
+                    "type" => "button",
+                    "sub_type" => "url",
+                    "index" => "0",
+                    "parameters" => [
+                        [
+                            "type" => "text",
+                            "text" => $validated['template_button_url']
+                        ]
+                    ]
+                ];
             }
         } else {
             if (empty($validated['message'])) {

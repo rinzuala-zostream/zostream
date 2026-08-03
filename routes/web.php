@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AdsController;
+use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Redis;
@@ -16,6 +17,10 @@ Route::get('/check', function () {
 });
 
 Route::get('/ads/{ad}', [AdsController::class, 'show'])->name('ads.show');
+
+Route::get('/invoices/payments/{payment}', [InvoiceController::class, 'show'])
+    ->middleware('signed')
+    ->name('invoice.payments.show');
 
 Route::get('/redis-test', function () {
     Redis::set('mykey', 'Hello Redis!');

@@ -19,6 +19,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 use Kreait\Firebase\Factory;
+use App\Services\InvoiceService;
 
 class PaymentController extends Controller
 {
@@ -27,6 +28,7 @@ class PaymentController extends Controller
     protected $PhonepePaymentController;
     protected $razorpayController;
     protected $streamEventController;
+    protected $invoiceService;
     private $firebaseDatabase;
 
     public function __construct(
@@ -34,7 +36,8 @@ class PaymentController extends Controller
         CashFreeController $cashFreeController,
         PhonePeSdkV2Controller $phonepePaymentController,
         RazorpayController $razorpayController,
-        NewStreamController $streamEventController
+        NewStreamController $streamEventController,
+        InvoiceService $invoiceService
     ) {
 
 
@@ -43,6 +46,7 @@ class PaymentController extends Controller
         $this->PhonepePaymentController = $phonepePaymentController;
         $this->razorpayController = $razorpayController;
         $this->streamEventController = $streamEventController;
+        $this->invoiceService = $invoiceService;
     }
 
     public function processUserPayments(Request $request)
@@ -422,6 +426,9 @@ class PaymentController extends Controller
                 }
 
                 DB::commit();
+                if ($freshPayment = $payment->fresh()) {
+                    $this->invoiceService->sendWhatsAppInvoice($freshPayment);
+                }
 
                 return [
                     'message' => 'Subscription payment processed successfully',
@@ -441,6 +448,9 @@ class PaymentController extends Controller
             ]);
 
             DB::commit();
+            if ($freshPayment = $payment->fresh()) {
+                $this->invoiceService->sendWhatsAppInvoice($freshPayment);
+            }
 
             return [
                 'message' => 'PPV payment processed successfully',

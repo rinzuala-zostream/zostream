@@ -41,4 +41,9 @@ class PaymentHistory extends Model
     {
         return $this->belongsTo(Subscription::class, 'subscription_id');
     }
+
+    public function plan()
+    {
+        return $this->belongsTo(Plan::class, 'plan_id');
+    }
 }
