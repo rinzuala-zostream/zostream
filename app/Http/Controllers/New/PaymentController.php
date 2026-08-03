@@ -341,6 +341,9 @@ class PaymentController extends Controller
 
             if ($payment->status === 'success') {
                 DB::commit();
+                if ($freshPayment = $payment->fresh()) {
+                    $this->invoiceService->sendWhatsAppInvoice($freshPayment);
+                }
 
                 return [
                     'message' => 'Payment already processed',
@@ -770,6 +773,8 @@ class PaymentController extends Controller
             ->first();
 
         if ($existingPayment) {
+            $this->invoiceService->sendWhatsAppInvoice($existingPayment);
+
             return response()->json([
                 'status' => 'success',
                 'message' => 'Apple in-app purchase already processed',
@@ -817,6 +822,8 @@ class PaymentController extends Controller
             ], $subscriptionResponse->getStatusCode() >= 400 ? $subscriptionResponse->getStatusCode() : 500);
         }
 
+        $this->sendInvoiceForPaymentPayload($subscriptionData['data']['payment_history'] ?? null);
+
         return response()->json([
             'status' => 'success',
             'message' => 'Apple in-app purchase activated',
@@ -860,6 +867,8 @@ class PaymentController extends Controller
             }
 
             if ($existingPayment->status === 'success') {
+                $this->invoiceService->sendWhatsAppInvoice($existingPayment);
+
                 return response()->json([
                     'status' => 'success',
                     'message' => 'Payment already verified',
@@ -999,11 +1008,30 @@ class PaymentController extends Controller
             ], $subscriptionResponse->getStatusCode() >= 400 ? $subscriptionResponse->getStatusCode() : 500);
         }
 
+        $this->sendInvoiceForPaymentPayload($subscriptionData['data']['payment_history'] ?? null);
+
         return response()->json([
             'status' => 'success',
             'message' => 'Payment verified and subscription activated',
             'data' => $subscriptionData['data'] ?? null,
         ], 200);
+    }
+
+    private function sendInvoiceForPaymentPayload($paymentPayload): void
+    {
+        $paymentId = is_array($paymentPayload)
+            ? ($paymentPayload['id'] ?? null)
+            : (is_object($paymentPayload) ? ($paymentPayload->id ?? null) : null);
+
+        if (!$paymentId) {
+            return;
+        }
+
+        $payment = PaymentHistory::find($paymentId);
+
+        if ($payment) {
+            $this->invoiceService->sendWhatsAppInvoice($payment);
+        }
     }
 
     private function checkPaymentStatus($phonepeReq, $merchantOrderId)

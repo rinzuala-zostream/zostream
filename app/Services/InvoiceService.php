@@ -66,7 +66,16 @@ class InvoiceService
             return false;
         }
 
+        if ($this->invoiceWhatsAppAlreadySent($payment)) {
+            Log::info('Invoice WhatsApp skipped: already sent', [
+                'payment_id' => $payment->id,
+                'invoice_sent_at' => $payment->meta['invoice_whatsapp_sent_at'] ?? null,
+            ]);
+            return true;
+        }
+
         $data = $this->buildInvoiceData($payment);
+        $templateName = config('app.whatsapp_invoice_template', 'zostream_invoice');
 
         if ($data['customer_phone'] === '') {
             Log::warning('Invoice WhatsApp skipped: phone not found', [
@@ -80,7 +89,7 @@ class InvoiceService
             $response = $this->whatsAppController->send(new Request([
                 'to' => $data['customer_phone'],
                 'type' => 'template',
-                'template_name' => config('app.whatsapp_invoice_template', 'zostream_invoice'),
+                'template_name' => $templateName,
                 'language' => 'en',
                 'template_params' => [
                     $data['customer_name'],
@@ -90,21 +99,26 @@ class InvoiceService
                     $data['transaction_id'],
                     $data['valid_till'] ? $data['valid_till']->format('M d, Y') : 'N/A',
                 ],
-                'template_button_url' => $data['view_url'],
+                'template_button_url' => $this->invoiceButtonParameter($data['view_url']),
             ]));
 
             if ($response->getStatusCode() >= 400) {
                 Log::warning('Invoice WhatsApp failed', [
                     'payment_id' => $payment->id,
+                    'template' => $templateName,
+                    'button_parameter' => $this->invoiceButtonParameter($data['view_url']),
                     'status' => $response->getStatusCode(),
                     'response' => method_exists($response, 'getData') ? $response->getData(true) : null,
                 ]);
                 return false;
             }
 
+            $this->markInvoiceWhatsAppSent($payment, $data['view_url']);
+
             Log::info('Invoice WhatsApp sent', [
                 'payment_id' => $payment->id,
                 'invoice_no' => $data['invoice_no'],
+                'template' => $templateName,
             ]);
 
             return true;
@@ -116,6 +130,46 @@ class InvoiceService
 
             return false;
         }
+    }
+
+    private function invoiceWhatsAppAlreadySent(PaymentHistory $payment): bool
+    {
+        $meta = is_array($payment->meta) ? $payment->meta : [];
+
+        return !empty($meta['invoice_whatsapp_sent_at']);
+    }
+
+    private function markInvoiceWhatsAppSent(PaymentHistory $payment, string $invoiceUrl): void
+    {
+        $meta = is_array($payment->meta) ? $payment->meta : [];
+        $meta['invoice_whatsapp_sent_at'] = now()->toIso8601String();
+        $meta['invoice_url'] = $invoiceUrl;
+
+        $payment->forceFill(['meta' => $meta])->save();
+    }
+
+    private function invoiceButtonParameter(string $invoiceUrl): string
+    {
+        if ((string) config('app.whatsapp_invoice_button_parameter', 'path') === 'url') {
+            return $invoiceUrl;
+        }
+
+        $parts = parse_url($invoiceUrl);
+        $path = $parts['path'] ?? '';
+        $query = $parts['query'] ?? '';
+        $fragment = $parts['fragment'] ?? '';
+
+        $value = ltrim($path, '/');
+
+        if ($query !== '') {
+            $value .= '?' . $query;
+        }
+
+        if ($fragment !== '') {
+            $value .= '#' . $fragment;
+        }
+
+        return $value !== '' ? $value : $invoiceUrl;
     }
 
     private function resolveItem(PaymentHistory $payment): array
