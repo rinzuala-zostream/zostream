@@ -73,7 +73,7 @@ class CatalogController extends Controller
         }
 
         $request->query->set('movie_title', (string) $movie->title);
-        $request->query->set('user_id', $this->catalogUserId($request));
+        $request->query->set('user_id', $this->recommendationUserId($request));
 
         return $this->recommendations->alsoLike($request);
     }
@@ -115,8 +115,42 @@ class CatalogController extends Controller
             }
         }
 
+        $headerUserId = trim((string) $request->header('X-User-Id', ''));
+
+        if ($headerUserId !== '') {
+            return $headerUserId;
+        }
+
         $queryUserId = trim((string) $request->query('user_id', ''));
 
         return $queryUserId !== '' ? $queryUserId : 'guest';
+    }
+
+    private function recommendationUserId(Request $request): string
+    {
+        $authUserId = trim((string) $request->input('auth_user_id', ''));
+
+        if ($authUserId !== '') {
+            return $authUserId;
+        }
+
+        $authHeader = (string) $request->header('Authorization', '');
+
+        if (str_starts_with($authHeader, 'Bearer ')) {
+            $token = trim(substr($authHeader, 7));
+            $record = $token !== '' ? SessionTokenModel::findByAccessToken($token) : null;
+
+            if ($record && ! Carbon::parse($record->access_expires_at)->isPast()) {
+                return (string) $record->user_id;
+            }
+        }
+
+        $headerUserId = trim((string) $request->header('X-User-Id', ''));
+
+        if ($headerUserId !== '') {
+            return $headerUserId;
+        }
+
+        return trim((string) $request->query('user_id', ''));
     }
 }
