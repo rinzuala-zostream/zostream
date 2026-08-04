@@ -19,11 +19,20 @@
             border-bottom: 3px solid #ff3448;
         }
         .brand {
+            display: inline-block;
             font-size: 26px;
             font-weight: 800;
             letter-spacing: -1px;
+            vertical-align: middle;
         }
         .brand span { color: #ff3448; }
+        .logo-mark {
+            width: 48px;
+            height: 48px;
+            display: inline-block;
+            vertical-align: middle;
+            margin-right: 10px;
+        }
         .invoice-title {
             float: right;
             text-align: right;
@@ -113,6 +122,7 @@
 </head>
 <body>
     <div class="top">
+        @include('invoices.partials.logo-mark')
         <div class="brand">Zo <span>Stream</span></div>
         <div class="invoice-title">
             <h1>Invoice</h1>
@@ -186,8 +196,8 @@
     </div>
 
     <div class="footer">
-        Zo Stream, Zuangtui, Aizawl · GSTIN: AUEPL9421AA1Z1
-        <span class="right" style="float:right;">support@zostream.in</span>
+        Zo Stream, Zuangtui, Aizawl
+        <span class="right" style="float:right;">Support: 8837076347</span>
     </div>
 </body>
 </html>

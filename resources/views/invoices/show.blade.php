@@ -50,6 +50,16 @@
             border-bottom: 1px solid var(--line);
         }
 
+        .brand-row { display: flex; align-items: center; gap: 14px; margin-bottom: 10px; }
+        .logo-mark {
+            width: 58px;
+            height: 58px;
+            flex: 0 0 auto;
+            border-radius: 18px;
+            background: rgba(255,255,255,.96);
+            padding: 7px;
+            box-shadow: 0 14px 34px rgba(0,0,0,.24);
+        }
         .brand { font-size: 28px; font-weight: 900; letter-spacing: -.04em; }
         .brand span { color: var(--accent); }
         .label {
@@ -156,7 +166,10 @@
     <main class="invoice">
         <section class="hero">
             <div>
-                <div class="brand">Zo <span>Stream</span></div>
+                <div class="brand-row">
+                    @include('invoices.partials.logo-mark')
+                    <div class="brand">Zo <span>Stream</span></div>
+                </div>
                 <span class="label">Payment Successful</span>
                 <h1>Invoice</h1>
                 <p class="muted">Thank you for your {{ strtolower($invoice['payment_type']) }} purchase.</p>
@@ -231,8 +244,8 @@
             </div>
 
             <div class="footer">
-                <span>Zo Stream, Zuangtui, Aizawl · GSTIN: AUEPL9421AA1Z1</span>
-                <span>Need help? <a href="mailto:support@zostream.in">support@zostream.in</a></span>
+                <span>Zo Stream, Zuangtui, Aizawl</span>
+                <span>Need help? <a href="tel:8837076347">8837076347</a></span>
             </div>
         </section>
     </main>
