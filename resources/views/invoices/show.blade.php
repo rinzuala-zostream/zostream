@@ -55,9 +55,7 @@
             width: 58px;
             height: 58px;
             flex: 0 0 auto;
-            border-radius: 18px;
-            background: rgba(255,255,255,.96);
-            padding: 7px;
+            border-radius: 14px;
             box-shadow: 0 14px 34px rgba(0,0,0,.24);
         }
         .brand { font-size: 28px; font-weight: 900; letter-spacing: -.04em; }
