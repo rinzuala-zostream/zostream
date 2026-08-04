@@ -12,6 +12,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Str;
 
 class InvoiceService
 {
@@ -31,6 +32,7 @@ class InvoiceService
         $paymentType = strtolower((string) $payment->app_payment_type) === 'ppv'
             ? 'Rent'
             : 'Subscription';
+        $deviceLabel = $this->resolveDeviceLabel($payment);
 
         return [
             'invoice_no' => $this->invoiceNumber($payment),
@@ -42,6 +44,9 @@ class InvoiceService
             'customer_email' => $user?->mail ?: null,
             'customer_address' => $user?->address ?: 'Aizawl',
             'payment_type' => $paymentType,
+            'access_type' => $paymentType,
+            'device_type' => $this->resolveDeviceType($payment),
+            'device_label' => $deviceLabel,
             'item_name' => $item['name'],
             'item_description' => $item['description'],
             'amount' => (float) $payment->amount,
@@ -198,11 +203,10 @@ class InvoiceService
     {
         if (strtolower((string) $payment->app_payment_type) !== 'ppv') {
             $planName = $payment->plan?->name ?: 'Zo Stream Plan';
-            $deviceType = $payment->plan?->device_type ?: $payment->device_type;
 
             return [
                 'name' => $planName,
-                'description' => $deviceType ? 'Subscription for ' . ucfirst((string) $deviceType) : 'Subscription',
+                'description' => 'Subscription plan',
             ];
         }
 
@@ -243,6 +247,34 @@ class InvoiceService
     private function invoiceNumber(PaymentHistory $payment): string
     {
         return 'INV-' . str_pad((string) $payment->id, 10, '0', STR_PAD_LEFT);
+    }
+
+    private function resolveDeviceType(PaymentHistory $payment): string
+    {
+        $meta = is_array($payment->meta) ? $payment->meta : [];
+
+        return strtolower(trim((string) (
+            $payment->device_type
+            ?: ($meta['device_type'] ?? '')
+            ?: ($payment->plan?->device_type ?? '')
+            ?: 'unknown'
+        )));
+    }
+
+    private function resolveDeviceLabel(PaymentHistory $payment): string
+    {
+        $deviceType = $this->resolveDeviceType($payment);
+
+        return match ($deviceType) {
+            'mobile' => 'Mobile',
+            'browser', 'web' => 'Web / Browser',
+            'tv', 'android_tv' => 'Android TV',
+            'samsung', 'samsung_tv' => 'Samsung TV',
+            'lg', 'webos', 'lg_webos' => 'LG webOS',
+            default => $deviceType !== 'unknown'
+                ? Str::of($deviceType)->replace(['_', '-'], ' ')->title()->toString()
+                : 'N/A',
+        };
     }
 
     private function resolvePhone(?UserModel $user): string

@@ -198,6 +198,7 @@
                     <p><strong>Status:</strong> {{ ucfirst($invoice['status']) }}</p>
                     <p><strong>Gateway:</strong> {{ ucfirst($invoice['payment_gateway']) }}</p>
                     <p><strong>Method:</strong> {{ ucfirst($invoice['payment_method']) }}</p>
+                    <p><strong>Device:</strong> {{ $invoice['device_label'] }}</p>
                     <p><strong>Transaction:</strong> {{ $invoice['transaction_id'] }}</p>
                     @if($invoice['valid_till'])
                         <p><strong>Valid till:</strong> {{ $invoice['valid_till']->format('M d, Y') }}</p>
@@ -210,6 +211,7 @@
                     <tr>
                         <th>Description</th>
                         <th>Type</th>
+                        <th>Device</th>
                         <th>Amount</th>
                     </tr>
                 </thead>
@@ -220,6 +222,7 @@
                             <span class="muted">{{ $invoice['item_description'] }}</span>
                         </td>
                         <td>{{ $invoice['payment_type'] }}</td>
+                        <td>{{ $invoice['device_label'] }}</td>
                         <td>
                             @if(strtoupper($invoice['currency']) === 'INR')
                                 ₹{{ number_format($invoice['amount'], 2) }}
