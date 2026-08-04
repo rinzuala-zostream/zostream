@@ -32,6 +32,7 @@
             display: inline-block;
             vertical-align: middle;
             margin-right: 10px;
+            object-fit: contain;
         }
         .invoice-title {
             float: right;
@@ -122,7 +123,7 @@
 </head>
 <body>
     <div class="top">
-        @include('invoices.partials.logo-mark')
+        <img class="logo-mark" src="{{ public_path('images/zostream-invoice-logo.png') }}" alt="Zo Stream logo">
         <div class="brand">Zo <span>Stream</span></div>
         <div class="invoice-title">
             <h1>Invoice</h1>

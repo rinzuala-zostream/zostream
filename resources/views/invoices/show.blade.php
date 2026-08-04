@@ -56,6 +56,7 @@
             height: 58px;
             flex: 0 0 auto;
             border-radius: 14px;
+            object-fit: contain;
             box-shadow: 0 14px 34px rgba(0,0,0,.24);
         }
         .brand { font-size: 28px; font-weight: 900; letter-spacing: -.04em; }
@@ -165,7 +166,7 @@
         <section class="hero">
             <div>
                 <div class="brand-row">
-                    @include('invoices.partials.logo-mark')
+                    <img class="logo-mark" src="{{ asset('images/zostream-invoice-logo.png') }}" alt="Zo Stream logo">
                     <div class="brand">Zo <span>Stream</span></div>
                 </div>
                 <span class="label">Payment Successful</span>
