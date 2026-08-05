@@ -97,6 +97,8 @@ class V4ApiTest extends TestCase
             'api/v4/auth/admin/otp/request',
             'api/v4/auth/otp/verify',
             'api/v4/auth/tokens/refresh',
+            'api/v4/account-deletion/otp',
+            'api/v4/account-deletion',
             'api/v4/qr-sessions',
             'api/v4/admin/qr-sessions',
             'api/v4/webhooks/razorpay',
@@ -116,6 +118,30 @@ class V4ApiTest extends TestCase
 
             $this->assertContains('auth.token', $route->gatherMiddleware(), $route->uri());
         }
+    }
+
+    public function test_public_account_deletion_requires_a_valid_challenge_and_confirmation(): void
+    {
+        $headers = [
+            'X-Client-Platform' => 'web',
+            'X-Client-Version' => 'test',
+        ];
+
+        $this->withHeaders($headers)
+            ->postJson('/api/v4/account-deletion/otp')
+            ->assertUnprocessable()
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('error.code', 'VALIDATION_FAILED');
+
+        $this->withHeaders($headers)
+            ->deleteJson('/api/v4/account-deletion', [
+                'deletion_token' => 'not-a-valid-encrypted-challenge',
+                'otp' => '326416',
+                'confirmed' => true,
+            ])
+            ->assertBadRequest()
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'This account deletion request is invalid. Please request a new code.');
     }
 
     public function test_sensitive_legacy_notification_and_reel_mutations_are_authenticated(): void

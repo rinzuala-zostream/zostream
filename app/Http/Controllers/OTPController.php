@@ -10,8 +10,10 @@ use App\Models\OTPRequestModel;
 use App\Models\SessionTokenModel;
 use App\Models\UserModel;
 use Carbon\Carbon;
+use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Exception;
@@ -499,30 +501,7 @@ class OTPController extends Controller
                 return $otpResponse;
             }
 
-            DB::transaction(function () use ($authUserId, $user) {
-                OTPRequestModel::where('user_id', $authUserId)->delete();
-                SessionTokenModel::where('user_id', $authUserId)->delete();
-
-                $deviceTokens = Devices::where('user_id', $authUserId)
-                    ->whereNotNull('device_token')
-                    ->pluck('device_token')
-                    ->filter()
-                    ->unique()
-                    ->values();
-
-                $deviceQuery = Devices::where(function ($query) use ($authUserId, $deviceTokens) {
-                    $query->where('user_id', $authUserId);
-
-                    if ($deviceTokens->isNotEmpty()) {
-                        $query->orWhereIn('device_token', $deviceTokens);
-                    }
-                });
-
-                $deviceQuery->delete();
-
-                Subscription::where('user_id', $authUserId)->delete();
-                $user->delete();
-            });
+            $this->deleteUserAccount($user);
 
             return response()->json([
                 'status' => 'success',
@@ -548,9 +527,159 @@ class OTPController extends Controller
         }
     }
 
-    private function verifyOtpForUser(string $userId, string $otp)
+    /**
+     * Send a strict account-deletion OTP without creating a new user or login session.
+     */
+    public function requestAccountDeletionOtp(Request $request)
     {
-        if ($otp === '326416') {
+        $validated = $request->validate([
+            'country_code' => ['required', 'string', 'max:10', 'regex:/^\+?\d{1,4}$/'],
+            'phone_number' => ['required', 'string', 'regex:/^\d{6,15}$/'],
+        ]);
+
+        $countryCode = $this->normalizeCountryCode($validated['country_code']);
+        $phoneNumber = $this->digitsOnly($validated['phone_number']);
+        $user = $this->findUserForOtpRequest($phoneNumber, $countryCode);
+
+        if (! $user) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'No Zo Stream account was found for this phone number.',
+            ], 404);
+        }
+
+        $otpPhone = $this->fullPhoneNumber($user->auth_phone ?: $phoneNumber, $user->country_code ?: $countryCode);
+        $otp = (string) random_int(100000, 999999);
+        $expiresAt = now()->addMinutes(5);
+
+        $otpRequest = OTPRequestModel::updateOrCreate(
+            ['user_id' => $user->uid, 'is_verified' => 0],
+            ['otp_code' => Hash::make($otp), 'expires_at' => $expiresAt, 'updated_at' => now()]
+        );
+
+        try {
+            $response = $this->whatsappController->send(new Request([
+                'to' => $otpPhone,
+                'type' => 'template',
+                'template_name' => 'zostream_auth_otp',
+                'template_params' => [$otp],
+                'language' => 'en',
+            ]));
+
+            if ($response->getStatusCode() < 200 || $response->getStatusCode() >= 300) {
+                $otpRequest->delete();
+
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Unable to send the verification code. Please try again.',
+                ], 503);
+            }
+        } catch (Exception $error) {
+            $otpRequest->delete();
+            Log::warning('Account deletion OTP send failed', [
+                'user_id' => $user->uid,
+                'error' => $error->getMessage(),
+            ]);
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Unable to send the verification code. Please try again.',
+            ], 503);
+        }
+
+        $deletionToken = Crypt::encryptString(json_encode([
+            'user_id' => $user->uid,
+            'phone_hash' => hash('sha256', $otpPhone),
+            'expires_at' => $expiresAt->timestamp,
+        ], JSON_THROW_ON_ERROR));
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Verification code sent to your registered WhatsApp number.',
+            'deletion_token' => $deletionToken,
+            'expires_in' => 300,
+            'phone_hint' => '••••••' . substr($otpPhone, -4),
+        ]);
+    }
+
+    /**
+     * Permanently delete an account after its web deletion OTP is verified.
+     */
+    public function deleteAccountFromWeb(Request $request)
+    {
+        $validated = $request->validate([
+            'deletion_token' => ['required', 'string'],
+            'otp' => ['required', 'string', 'regex:/^\d{6}$/'],
+            'confirmed' => ['accepted'],
+        ]);
+
+        try {
+            $challenge = json_decode(
+                Crypt::decryptString($validated['deletion_token']),
+                true,
+                flags: JSON_THROW_ON_ERROR
+            );
+        } catch (DecryptException|\JsonException) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'This account deletion request is invalid. Please request a new code.',
+            ], 400);
+        }
+
+        if (! is_array($challenge)) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'This account deletion request is invalid. Please request a new code.',
+            ], 400);
+        }
+
+        $userId = is_string($challenge['user_id'] ?? null) ? $challenge['user_id'] : '';
+        $expiresAt = (int) ($challenge['expires_at'] ?? 0);
+
+        if ($userId === '' || $expiresAt < now()->timestamp) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'This verification code has expired. Please request a new code.',
+            ], 400);
+        }
+
+        $user = UserModel::where('uid', $userId)->first();
+        if (! $user) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Account not found.',
+            ], 404);
+        }
+
+        $registeredPhone = $this->fullPhoneNumber($user->auth_phone ?: '', $user->country_code);
+        if (! hash_equals((string) ($challenge['phone_hash'] ?? ''), hash('sha256', $registeredPhone))) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'The registered phone number has changed. Please request a new code.',
+            ], 409);
+        }
+
+        // Never accept the legacy test OTP bypass for public web deletion.
+        $otpResponse = $this->verifyOtpForUser($userId, $validated['otp'], false);
+        if ($otpResponse !== null) {
+            return $otpResponse;
+        }
+
+        $this->deleteUserAccount($user);
+
+        Log::info('Account deleted from public web deletion flow', [
+            'user_id' => $userId,
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Your Zo Stream account has been permanently deleted.',
+        ]);
+    }
+
+    private function verifyOtpForUser(string $userId, string $otp, bool $allowTestOtp = true)
+    {
+        if ($allowTestOtp && $otp === '326416') {
             return null;
         }
 
@@ -573,6 +702,34 @@ class OTPController extends Controller
         $otpRequest->delete();
 
         return null;
+    }
+
+    private function deleteUserAccount(UserModel $user): void
+    {
+        $userId = (string) $user->uid;
+
+        DB::transaction(function () use ($userId, $user) {
+            OTPRequestModel::where('user_id', $userId)->delete();
+            SessionTokenModel::where('user_id', $userId)->delete();
+
+            $deviceTokens = Devices::where('user_id', $userId)
+                ->whereNotNull('device_token')
+                ->pluck('device_token')
+                ->filter()
+                ->unique()
+                ->values();
+
+            Devices::where(function ($query) use ($userId, $deviceTokens) {
+                $query->where('user_id', $userId);
+
+                if ($deviceTokens->isNotEmpty()) {
+                    $query->orWhereIn('device_token', $deviceTokens);
+                }
+            })->delete();
+
+            Subscription::where('user_id', $userId)->delete();
+            $user->delete();
+        });
     }
 
     private function syncUserDeviceInfo(UserModel $user, ?string $deviceId, ?string $deviceName, ?string $fcmToken): void

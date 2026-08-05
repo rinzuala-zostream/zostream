@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\V4\QrSessionController as V4QrSessionController;
 use App\Http\Controllers\Api\V4\SupportController;
 use App\Http\Controllers\Channel\ChannelController;
 use App\Http\Controllers\FCMNotificationController;
+use App\Http\Controllers\OTPController;
 use App\Http\Controllers\New\AdminWhatsAppController;
 use App\Http\Controllers\New\AppUpdateController;
 use App\Http\Controllers\New\BannerController;
@@ -61,6 +62,11 @@ Route::prefix('v4')
             Route::post('/tokens/refresh', [AuthController::class, 'refresh'])
                 ->middleware('throttle:30,1');
         });
+
+        Route::post('/account-deletion/otp', [OTPController::class, 'requestAccountDeletionOtp'])
+            ->middleware('throttle:6,1');
+        Route::delete('/account-deletion', [OTPController::class, 'deleteAccountFromWeb'])
+            ->middleware('throttle:10,1');
 
         Route::prefix('app-releases')->group(function () {
             Route::get('/', [AppUpdateController::class, 'index']);
