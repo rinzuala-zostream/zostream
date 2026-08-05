@@ -30,6 +30,8 @@ class MovieModel extends Model
         'isSeason' => 'boolean',
         'isSubtitle' => 'boolean',
         'isChildMode' => 'boolean',
+        'create_date' => 'date:Y-m-d',
+        'release_on' => 'date:Y-m-d',
 
     ];
 

@@ -16,16 +16,15 @@ class SeasonController extends Controller
     {
         try {
             $validated = $request->validate([
-                'q' => 'required|string|min:2',
+                'q' => 'nullable|string',
                 'limit' => 'nullable|integer|min:1|max:50',
             ]);
 
-            $query = trim($validated['q']);
+            $query = trim($validated['q'] ?? '');
             $limit = $validated['limit'] ?? 20;
 
-            $movies = MovieModel::query()
+            $moviesQuery = MovieModel::query()
                 ->select(['num', 'id', 'title', 'poster', 'genre', 'status'])
-                ->where('title', 'LIKE', "%{$query}%")
                 ->whereHas('seasons')
                 ->with([
                     'seasons' => function ($seasonQuery) {
@@ -37,8 +36,16 @@ class SeasonController extends Controller
                                 }
                             ]);
                     }
-                ])
-                ->orderBy('title')
+                ]);
+
+            if ($query !== '') {
+                $moviesQuery->where('title', 'LIKE', "%{$query}%")
+                    ->orderBy('title');
+            } else {
+                $moviesQuery->latest('num');
+            }
+
+            $movies = $moviesQuery
                 ->limit($limit)
                 ->get();
 
@@ -165,7 +172,7 @@ class SeasonController extends Controller
         try {
 
             $season = Season::where('id', $id)
-                ->with('episodes')
+                ->with(['episodes', 'movie'])
                 ->first();
 
             if (!$season) {

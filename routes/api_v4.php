@@ -1,11 +1,13 @@
 <?php
 
 use App\Http\Controllers\Api\V4\AccountController;
+use App\Http\Controllers\Api\V4\AdminRealtimeConfigController;
 use App\Http\Controllers\Api\V4\AuthController;
 use App\Http\Controllers\Api\V4\BillingController;
 use App\Http\Controllers\Api\V4\CatalogController;
 use App\Http\Controllers\Api\V4\ChannelSubscriptionController;
 use App\Http\Controllers\Api\V4\LibraryController;
+use App\Http\Controllers\Api\V4\LegalPageController;
 use App\Http\Controllers\Api\V4\OfflineController;
 use App\Http\Controllers\Api\V4\PlaybackController;
 use App\Http\Controllers\Api\V4\QrSessionController as V4QrSessionController;
@@ -81,6 +83,9 @@ Route::prefix('v4')
 
         Route::get('/banners', [BannerController::class, 'index']);
         Route::get('/banners/{id}', [BannerController::class, 'show']);
+
+        Route::get('/legal-pages', [LegalPageController::class, 'publicIndex']);
+        Route::get('/legal-pages/{slug}', [LegalPageController::class, 'publicShow']);
 
         Route::get('/catalog/items/{movieId}/seasons', [SeasonController::class, 'index']);
         Route::get('/catalog/seasons/{id}', [SeasonController::class, 'show']);
@@ -185,6 +190,12 @@ Route::prefix('v4')
                 ->group(function () {
                     Route::get('/dashboard', [DashboardController::class, 'index']);
 
+
+                    Route::get('/legal-pages', [LegalPageController::class, 'index']);
+                    Route::post('/legal-pages', [LegalPageController::class, 'store']);
+                    Route::get('/legal-pages/{legalPage}', [LegalPageController::class, 'show']);
+                    Route::match(['put', 'patch'], '/legal-pages/{legalPage}', [LegalPageController::class, 'update']);
+
                     Route::get('/users/find', [UserController::class, 'find']);
                     Route::get('/users-search', [UserController::class, 'search']);
                     Route::apiResource('users', UserController::class);
@@ -249,6 +260,16 @@ Route::prefix('v4')
                     Route::put('/app-releases/{platform}', [AppUpdateController::class, 'update']);
                     Route::post('/notifications/push', [FCMNotificationController::class, 'send']);
                     Route::post('/whatsapp/send', [AdminWhatsAppController::class, 'send']);
+                    Route::get('/realtime/warning', [AdminRealtimeConfigController::class, 'warning']);
+                    Route::put('/realtime/warning', [AdminRealtimeConfigController::class, 'saveWarning']);
+                    Route::delete('/realtime/warning', [AdminRealtimeConfigController::class, 'deleteWarning']);
+                    Route::get('/realtime/text-scroll', [AdminRealtimeConfigController::class, 'textScroll']);
+                    Route::put('/realtime/text-scroll', [AdminRealtimeConfigController::class, 'saveTextScroll']);
+                    Route::delete('/realtime/text-scroll', [AdminRealtimeConfigController::class, 'deleteTextScroll']);
+                    Route::get('/official-clients', [AdminRealtimeConfigController::class, 'officialClients']);
+                    Route::post('/official-clients', [AdminRealtimeConfigController::class, 'saveOfficialClient']);
+                    Route::put('/official-clients/{id}', [AdminRealtimeConfigController::class, 'saveOfficialClient']);
+                    Route::delete('/official-clients/{id}', [AdminRealtimeConfigController::class, 'deleteOfficialClient']);
 
                     Route::get('/payments/user/{userId}', [PaymentHistoryController::class, 'getByUser']);
 

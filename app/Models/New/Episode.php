@@ -35,7 +35,7 @@ class Episode extends Model
         'isPremium' => 'boolean',
         'duration' => 'integer',
         'amount' => 'decimal:2',
-        'release_date' => 'date',
+        'release_date' => 'date:Y-m-d',
         'is_active' => 'boolean',
         'isPayPerView' => 'boolean',
         'status' => 'string'

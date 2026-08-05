@@ -12,6 +12,22 @@ Route::get('/', function () {
     return view('welcome');
 });
 
+Route::view('/admin/{path?}', 'welcome')
+    ->where('path', '.*')
+    ->name('admin.spa');
+
+Route::view('/about-us', 'welcome');
+Route::view('/contact-us', 'welcome');
+Route::view('/download', 'welcome');
+Route::view('/terms-and-conditions', 'welcome');
+Route::view('/privacy-policy', 'welcome');
+Route::view('/refund-and-cancellation', 'welcome');
+Route::view('/return-policy', 'welcome');
+Route::view('/shipping-policy', 'welcome');
+Route::view('/copyright-policy', 'welcome');
+Route::view('/faq', 'welcome');
+Route::view('/legal/{slug}', 'welcome')->where('slug', '[a-z0-9-]+');
+
 Route::get('/check', function () {
     return view('Test');
 });

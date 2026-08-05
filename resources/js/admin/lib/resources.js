@@ -1,0 +1,59 @@
+const f = (name, label, type = 'text', extra = {}) => ({ name, label, type, ...extra });
+
+export const resources = {
+    users: {
+        label: 'Users', singular: 'User', icon: 'users', endpoint: '/admin/users', searchEndpoint: '/admin/users-search', columns: ['uid', 'name', 'auth_phone', 'mail', 'isACActive'],
+        fields: [f('uid', 'User ID', 'text', { placeholder: 'Auto: phone, email, or generated ID' }), f('name', 'Name'), f('country_code', 'Country code', 'text', { placeholder: '+91' }), f('auth_phone', 'Phone'), f('call', 'Alternate phone'), f('mail', 'Email', 'email'), f('dob', 'Date of birth', 'date'), f('khua', 'Town'), f('veng', 'Locality'), f('img', 'Profile image URL', 'url', { wide: true }), f('device_name', 'Device name'), f('device_id', 'Device ID'), f('token', 'FCM token', 'text', { wide: true }), f('created_date', 'Created date', 'datetime-local'), f('edit_date', 'Edited date', 'datetime-local'), f('lastLogin', 'Last login', 'datetime-local'), f('isACActive', 'Account active', 'checkbox', { default: true }), f('isAccountComplete', 'Account complete', 'checkbox'), f('is_auth_phone_active', 'Phone verified', 'checkbox', { default: true })],
+    },
+    movies: {
+        label: 'Movies', singular: 'Movie', icon: 'film', endpoint: '/admin/catalog/items', listEndpoint: '/catalog/items', searchEndpoint: '/catalog/items/search', columns: ['id', 'title', 'genre', 'status', 'release_on'],
+        fields: [f('title', 'Title', 'text', { required: true }), f('genre', 'Genre'), f('age_rating', 'Age rating'), f('director', 'Director'), f('description', 'Description', 'textarea', { wide: true }), f('duration', 'Duration'), f('release_on', 'Release date', 'date'), f('create_date', 'Create date', 'date'), f('poster', 'Poster URL or upload', 'url', { wide: true, upload: true }), f('cover_img', 'Cover URL or upload', 'url', { wide: true, upload: true }), f('title_img', 'Title image URL', 'url', { wide: true }), f('url', 'Primary video URL', 'url', { wide: true }), f('hls_url', 'HLS URL', 'url', { wide: true }), f('dash_url', 'DASH URL', 'url', { wide: true }), f('trailer', 'Trailer URL', 'url', { wide: true }), f('subtitle', 'Subtitle URL', 'url', { wide: true }), f('token', 'Playback token', 'text', { wide: true }), f('status', 'Status', 'select', { options: ['Draft', 'Published', 'Scheduled'], default: 'Draft' }), f('ppv_amount', 'PPV amount', 'number'), f('isMizo', 'Mizo', 'checkbox'), f('isHollywood', 'Hollywood', 'checkbox'), f('isBollywood', 'Bollywood', 'checkbox'), f('isKorean', 'Asian', 'checkbox'), f('isDocumentary', 'Documentary', 'checkbox'), f('isSeason', 'Series', 'checkbox'), f('isPremium', 'Premium', 'checkbox', { default: true }), f('isPayPerView', 'Pay per view', 'checkbox'), f('isAgeRestricted', '18+', 'checkbox'), f('isChildMode', 'Kids', 'checkbox'), f('isProtected', 'DRM protected', 'checkbox'), f('isEnable', 'Visible', 'checkbox', { default: true }), f('isCompleted', 'Completed', 'checkbox', { default: true }), f('isDubbed', 'Dubbed', 'checkbox', { default: true }), f('isSubtitle', 'Subtitles', 'checkbox'), f('notification', 'Send notification when published', 'checkbox')],
+    },
+    seasons: {
+        label: 'Seasons', singular: 'Season', icon: 'layers', endpoint: '/admin/catalog/seasons', searchEndpoint: '/admin/catalog/seasons/search', searchOnly: true, columns: ['id', 'movie_title', 'title', 'season_number', 'status'],
+        fields: [f('movie_id', 'Movie ID', 'number', { required: true, relation: 'movie' }), f('title', 'Title'), f('season_number', 'Season number', 'number', { required: true }), f('release_date', 'Release date', 'date'), f('description', 'Description', 'textarea', { wide: true }), f('poster', 'Poster URL', 'url', { wide: true }), f('status', 'Status', 'select', { options: ['Draft', 'Published', 'Scheduled'], default: 'Draft' }), f('isPayPerView', 'Pay per view', 'checkbox'), f('amount', 'Amount', 'number')],
+    },
+    episodes: {
+        label: 'Episodes', singular: 'Episode', icon: 'play', endpoint: '/admin/catalog/episodes', listEndpoint: '/catalog/seasons/{parent}/episodes', searchEndpoint: '/admin/catalog/seasons/search', parentKey: 'season_id', columns: ['id', 'movie_title', 'season_title', 'episode_number', 'title', 'status'],
+        fields: [f('movie_id', 'Movie ID', 'number'), f('season_id', 'Season ID', 'text', { required: true, relation: 'season' }), f('title', 'Title'), f('episode_number', 'Episode number', 'number', { required: true }), f('description', 'Description', 'textarea', { wide: true }), f('thumbnail', 'Thumbnail URL or upload', 'url', { wide: true, upload: true }), f('release_date', 'Release date', 'date'), f('url', 'Video URL', 'url', { wide: true }), f('type', 'Video type', 'select', { options: ['DASH', 'HLS', 'MP4', 'Other'], default: 'DASH' }), f('quality', 'Quality', 'select', { options: ['SD', 'HD', 'FULL_HD', '4K'], default: 'HD' }), f('status', 'Status', 'select', { options: ['Draft', 'Published', 'Scheduled'], default: 'Draft' }), f('is_active', 'Active', 'checkbox', { default: true }), f('isPremium', 'Premium', 'checkbox'), f('isPayPerView', 'Pay per view', 'checkbox'), f('amount', 'Amount', 'number')],
+    },
+    banners: {
+        label: 'Banners', singular: 'Banner', icon: 'image', endpoint: '/admin/banners', listEndpoint: '/banners', columns: ['id', 'title', 'type', 'media_type', 'is_active'],
+        fields: [f('title', 'Title', 'text', { required: true }), f('description', 'Description', 'textarea', { wide: true }), f('type', 'Type', 'select', { required: true, options: ['movie', 'ad', 'external', 'category', 'custom'], default: 'movie' }), f('media_type', 'Media type', 'select', { required: true, options: ['image', 'video'], default: 'image' }), f('media_url', 'Media URL', 'url', { wide: true, required: true }), f('thumbnail_url', 'Thumbnail URL', 'url', { wide: true }), f('target_type', 'Target type', 'select', { required: true, options: ['movie', 'series', 'episode', 'url', 'category', 'none'], default: 'none' }), f('target_id', 'Target ID'), f('target_url', 'Target URL', 'url', { wide: true }), f('priority', 'Priority', 'number', { default: 0 }), f('button_text', 'Button text'), f('start_date', 'Start date', 'datetime-local'), f('end_date', 'End date', 'datetime-local'), f('age_rating', 'Age rating', 'select', { options: ['G', 'PG', 'PG13', 'R', '18+', '21+'] }), f('min_age', 'Minimum age', 'number'), f('max_age', 'Maximum age', 'number'), f('is_active', 'Active', 'checkbox', { default: true }), f('age_restriction_enabled', 'Age restricted', 'checkbox'), f('requires_parental_pin', 'Require parental PIN', 'checkbox')],
+    },
+    subscriptions: {
+        label: 'Subscribers', singular: 'Subscription', icon: 'credit-card', endpoint: '/admin/subscriptions', searchEndpoint: '/admin/subscriptions/search', columns: ['id', 'user_id', 'plan_name', 'device_type', 'start_at', 'end_at', 'is_active'],
+        createEndpoint: '/admin/subscriptions/with-payment',
+        fields: [f('user_id', 'User ID or phone', 'text', { required: true, relation: 'user' }), f('plan_id', 'Plan', 'number', { required: true, relation: 'plan' }), f('start_at', 'Starts at', 'date'), f('end_at', 'Ends at', 'date'), f('amount', 'Amount', 'number'), f('currency', 'Currency', 'text', { default: 'INR' }), f('payment_method', 'Payment method'), f('payment_gateway', 'Payment gateway'), f('transaction_id', 'Transaction ID'), f('renewed_by', 'Renewed by'), f('is_active', 'Active', 'checkbox', { default: true })],
+    },
+    plans: {
+        label: 'Plans', singular: 'Plan', icon: 'badge', endpoint: '/admin/plans', searchEndpoint: '/admin/plans', searchParam: 'search', columns: ['id', 'name', 'device_type', 'price', 'duration_days', 'is_active'],
+        fields: [f('name', 'Plan name', 'text', { required: true }), f('device_type', 'Device type', 'select', { required: true, options: ['mobile', 'tv', 'browser'], default: 'mobile' }), f('device_limit', 'Device limit', 'number', { required: true, min: 1 }), f('price', 'Price', 'number', { required: true, min: 0 }), f('duration_days', 'Duration (days)', 'number', { required: true, min: 1 }), f('quality', 'Quality', 'select', { required: true, options: ['SD', 'HD', 'FULL_HD', '4K'], default: 'HD' }), f('features', 'Features (one per line)', 'lines', { wide: true }), f('ppv_discount', 'PPV discount (%)', 'number', { min: 0, max: 100 }), f('is_active', 'Active', 'checkbox', { default: true })],
+    },
+    polls: {
+        label: 'Polls', singular: 'Poll', icon: 'chart', endpoint: '/admin/polls', columns: ['id', 'question', 'status', 'starts_at', 'ends_at'],
+        fields: [f('question', 'Question', 'text', { required: true, wide: true }), f('description', 'Description', 'textarea', { wide: true }), f('status', 'Status', 'select', { options: ['active', 'closed'] }), f('starts_at', 'Starts at', 'datetime-local'), f('ends_at', 'Ends at', 'datetime-local'), f('options', 'Options (one per line)', 'lines', { required: true, wide: true })],
+    },
+    legal: {
+        label: 'Legal pages', singular: 'Legal page', icon: 'file', endpoint: '/admin/legal-pages', columns: ['id', 'title', 'slug', 'effective_date', 'is_published'],
+        fields: [f('title', 'Title', 'text', { required: true }), f('slug', 'Slug', 'text', { required: true }), f('eyebrow', 'Eyebrow'), f('effective_date', 'Effective date', 'date'), f('intro', 'Introduction', 'textarea', { wide: true }), f('sections', 'Sections JSON', 'json', { wide: true }), f('sort_order', 'Sort order', 'number'), f('is_published', 'Published', 'checkbox')],
+    },
+    devices: { label: 'Devices', singular: 'Device', icon: 'monitor', endpoint: '/admin/devices', searchEndpoint: '/admin/devices/search', noCreate: true, columns: ['id', 'user_id', 'device_name', 'device_type', 'status', 'last_activity'], fields: [f('device_name', 'Device name', 'text', { required: true }), f('device_type', 'Device type', 'select', { required: true, options: ['mobile', 'tv', 'browser'] }), f('status', 'Status', 'select', { required: true, options: ['active', 'inactive', 'blocked'] })] },
+};
+
+export function normalizeForSubmit(key, source) {
+    const payload = { ...source };
+    resources[key].fields.forEach((field) => {
+        if (field.type === 'number' && !Array.isArray(payload[field.name]) && payload[field.name] !== '' && payload[field.name] != null) payload[field.name] = Number(payload[field.name]);
+        if (field.type === 'lines' && key === 'polls') payload[field.name] = String(payload[field.name] || '').split('\n').map((value, index) => ({ option_text: value.trim(), sort_order: index })).filter((item) => item.option_text);
+        if (field.type === 'lines' && key !== 'polls') payload[field.name] = String(payload[field.name] || '').split('\n').map((value) => value.trim()).filter(Boolean);
+        if (field.type === 'json' && typeof payload[field.name] === 'string') payload[field.name] = JSON.parse(payload[field.name] || '[]');
+    });
+    if (key === 'users' && !payload.uid) payload.uid = String(payload.auth_phone || '').replace(/\D/g, '').slice(-10) || payload.mail || `user_${Date.now()}`;
+    if (key === 'movies' && !payload.isPayPerView) delete payload.ppv_amount;
+    if (key === 'subscriptions') {
+        payload.payment_type = 'new'; payload.status = 'success';
+        if (!payload.start_at) delete payload.start_at; if (!payload.end_at) delete payload.end_at;
+    }
+    return payload;
+}

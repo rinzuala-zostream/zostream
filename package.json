@@ -15,7 +15,10 @@
         "vite": "^6.2.4"
     },
     "dependencies": {
+        "firebase": "^12.17.1",
+        "qr-code-styling": "^1.9.2",
         "superagent": "^10.2.1",
-        "vue": "^3.5.40"
+        "vue": "^3.5.40",
+        "vue-router": "^4.6.4"
     }
 }

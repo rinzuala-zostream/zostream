@@ -1,13 +1,14 @@
 export const navigation = [
-    { label: 'Home', target: '#home' },
-    { label: 'TV', target: '#featured' },
-    { label: 'About us', target: '#features' },
-    { label: 'Plans', target: '#plans' },
-    { label: 'Contact us', target: '#contact' },
+    { label: 'Home', target: '/' },
+    { label: 'Experience', target: '/#featured' },
+    { label: 'About us', target: '/about-us' },
+    { label: 'Plans', target: '/#plans' },
+    { label: 'Download', target: '/download' },
+    { label: 'Contact us', target: '/contact-us' },
 ];
 
 export const platformStats = [
-    { value: '2,000', suffix: '+', label: 'Movies & TV Shows' },
+    { value: '2,000', suffix: '+', label: 'Mizo Content' },
     { value: '50K', suffix: '+', label: 'Happy Users' },
     { value: '100K', suffix: '+', label: 'Downloads' },
     { value: '4.2', suffix: '★', label: 'App Rating' },
@@ -30,13 +31,17 @@ export const plans = [
 ];
 
 export const links = {
+    downloadPage: '/download',
     playStore: 'https://play.google.com/store/apps/details?hl=en_IN&id=com.buannel.studio.pvt.ltd.zostream',
     supportEmail: 'support@zostream.in',
 };
 
 export const legalLinks = [
-    { label: 'Terms & Conditions', href: 'https://zostream.in/terms-and-conditions' },
-    { label: 'Privacy Policy', href: 'https://zostream.in/privacy-policy' },
-    { label: 'Copyright Policy', href: 'https://zostream.in/copyright-policy' },
-    { label: 'FAQ', href: 'https://zostream.in/faq' },
+    { label: 'Terms & Conditions', href: '/terms-and-conditions' },
+    { label: 'Privacy Policy', href: '/privacy-policy' },
+    { label: 'Refund & Cancellation', href: '/refund-and-cancellation' },
+    { label: 'Return Policy', href: '/return-policy' },
+    { label: 'Shipping Policy', href: '/shipping-policy' },
+    { label: 'Copyright Policy', href: '/copyright-policy' },
+    { label: 'FAQ', href: '/faq' },
 ];

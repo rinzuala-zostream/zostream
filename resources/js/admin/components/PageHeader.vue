@@ -1,0 +1,2 @@
+<script setup>import AdminIcon from './AdminIcon.vue'; defineProps({ eyebrow:String, title:String, description:String, back:String });</script>
+<template><header class="admin-page-header"><RouterLink v-if="back" :to="back" class="admin-back"><AdminIcon name="arrow" /></RouterLink><div><p>{{ eyebrow }}</p><h1>{{ title }}</h1><span>{{ description }}</span></div><div class="admin-page-actions"><slot /></div></header></template>

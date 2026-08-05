@@ -11,6 +11,7 @@ use Kreait\Firebase\Factory;
 class AppUpdateController extends Controller
 {
     private const VERSION_FIELDS = [
+        'update' => 'v_code',
         'ios_update' => 'v_code',
         'lg_tv_update' => 'version',
         'sam_tv_update' => 'version',
@@ -93,8 +94,9 @@ class AppUpdateController extends Controller
         }
 
         $versionField = self::VERSION_FIELDS[$platform];
-        $numericVersion = in_array($platform, ['ios_update', 'tv_update'], true);
+        $numericVersion = in_array($platform, ['update', 'ios_update', 'tv_update'], true);
         $rules = [
+            'enabled' => ['nullable', 'boolean'],
             'force' => ['required', 'boolean'],
             'url' => ['nullable', 'string', 'max:2048'],
             $versionField => $numericVersion
@@ -114,6 +116,7 @@ class AppUpdateController extends Controller
 
         $validated = $validator->validated();
         $config = [
+            'enabled' => (bool) ($validated['enabled'] ?? true),
             'force' => (bool) $validated['force'],
             'url' => $validated['url'] ?? '',
             $versionField => $validated[$versionField] ?? '',
@@ -151,8 +154,11 @@ class AppUpdateController extends Controller
         $versionField = self::VERSION_FIELDS[$platform];
 
         return [
+            'platform' => $platform,
+            'enabled' => ($value['enabled'] ?? true) !== false,
             'force' => ($value['force'] ?? false) === true,
             'url' => is_string($value['url'] ?? null) ? $value['url'] : '',
+            'version' => $value[$versionField] ?? '',
             $versionField => $value[$versionField] ?? '',
         ];
     }

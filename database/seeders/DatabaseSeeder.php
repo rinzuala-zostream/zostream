@@ -17,7 +17,7 @@ class DatabaseSeeder extends Seeder
 
         $this->call([
             NDatabaseSeeder::class,
-           
+            LegalPageSeeder::class,
         ]);
     }
 }

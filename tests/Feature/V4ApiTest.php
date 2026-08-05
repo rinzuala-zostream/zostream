@@ -43,7 +43,10 @@ class V4ApiTest extends TestCase
     public function test_every_admin_route_requires_customer_and_admin_authentication(): void
     {
         $adminRoutes = collect(Route::getRoutes()->getRoutes())
-            ->filter(fn ($route) => str_starts_with($route->uri(), 'api/v4/admin/'));
+            ->filter(fn ($route) => str_starts_with($route->uri(), 'api/v4/admin/'))
+            // A browser creates this high-entropy, short-lived session before
+            // it has an access token. Every other admin route stays protected.
+            ->reject(fn ($route) => $route->uri() === 'api/v4/admin/qr-sessions');
 
         $this->assertNotEmpty($adminRoutes);
 
@@ -63,6 +66,7 @@ class V4ApiTest extends TestCase
             'api/v4/auth/otp/verify',
             'api/v4/auth/tokens/refresh',
             'api/v4/qr-sessions',
+            'api/v4/admin/qr-sessions',
             'api/v4/webhooks/razorpay',
         ];
 
