@@ -84,6 +84,7 @@ class AdminRealtimeConfigController extends Controller
             'platform' => ['required', 'string', 'max:60', 'regex:/^[a-zA-Z0-9_-]+$/'],
             'name' => ['required', 'string', 'max:160'],
             'enabled' => ['required', 'boolean'],
+            'verification_enabled' => ['sometimes', 'boolean'],
             'verification_mode' => ['required', 'string', 'max:80'],
             'app_identifier' => ['nullable', 'string', 'max:255'],
             'certificate_sha256' => ['nullable'],
@@ -102,7 +103,11 @@ class AdminRealtimeConfigController extends Controller
         $id ??= $this->database()->getReference("official_client_configs/{$platform}")->push()->getKey();
         abort_unless($id, 500, 'Could not create official client key.');
         $this->removeOfficialClient($id);
-        $value = array_merge($data, ['platform' => $platform, 'updated_at' => now()->toIso8601String()]);
+        $value = array_merge(
+            ['verification_enabled' => true],
+            $data,
+            ['platform' => $platform, 'updated_at' => now()->toIso8601String()]
+        );
         $this->database()->getReference("official_client_configs/{$platform}/{$id}")->set($value);
 
         return V4Response::success(array_merge($value, ['id' => $id]), 'Official client saved.');
