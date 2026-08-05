@@ -59,6 +59,8 @@ class MovieController extends Controller
                 'num',
                 'id',
                 'title',
+                'description',
+                'cover_img',
                 'poster',
                 'genre',
                 'status',

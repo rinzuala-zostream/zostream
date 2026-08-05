@@ -176,9 +176,12 @@ function selectRelation(item) {
     if (key.value === 'seasons') model.movie_id = item.id;
     if (key.value === 'episodes') { model.season_id = item.id; model.movie_id = item.movieId; }
     if (key.value === 'banners') {
+        const movieCover = item.cover_img || item.poster || '';
         model.target_id = item.id || item.num;
         model.target_type = item.isSeason ? 'series' : 'movie';
         model.type = 'movie';
+        if (movieCover) model.thumbnail_url = movieCover;
+        if (item.description) model.description = item.description;
         if (!String(model.title || '').trim()) model.title = item.title || '';
     }
     relationQuery.value = item.label || item.title || item.name || item.uid || item.auth_phone; relationResults.value = [];
