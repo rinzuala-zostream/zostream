@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\V4\QrSessionController as V4QrSessionController;
 use App\Http\Controllers\Api\V4\SupportController;
 use App\Http\Controllers\Channel\ChannelController;
 use App\Http\Controllers\FCMNotificationController;
+use App\Http\Controllers\HlsFolderController;
 use App\Http\Controllers\OTPController;
 use App\Http\Controllers\New\AdminWhatsAppController;
 use App\Http\Controllers\New\AppUpdateController;
@@ -51,6 +52,9 @@ Route::prefix('v4')
             'service' => 'zostream-api',
             'status' => 'available',
         ]))->name('v4.system.health');
+
+        Route::get('/hls/check-folder', [HlsFolderController::class, 'check'])
+            ->name('v4.hls.check-folder');
 
         Route::prefix('auth')->group(function () {
             Route::post('/otp/request', [AuthController::class, 'requestOtp'])
