@@ -42,6 +42,46 @@ class MovieController extends Controller
     }
 
     /**
+     * Search the complete movie catalogue for admin relationship pickers.
+     */
+    public function searchForAdmin(Request $request)
+    {
+        $validated = $request->validate([
+            'q' => 'required|string|min:2|max:180',
+            'limit' => 'nullable|integer|min:1|max:50',
+        ]);
+
+        $query = trim($validated['q']);
+        $limit = $validated['limit'] ?? 20;
+
+        $movies = MovieModel::query()
+            ->select([
+                'num',
+                'id',
+                'title',
+                'poster',
+                'genre',
+                'status',
+                'isSeason',
+            ])
+            ->where('title', 'like', "%{$query}%")
+            ->orderByRaw('CASE WHEN title = ? THEN 0 WHEN title LIKE ? THEN 1 ELSE 2 END', [
+                $query,
+                "{$query}%",
+            ])
+            ->orderBy('title')
+            ->limit($limit)
+            ->get();
+
+        return response()->json([
+            'status' => 'success',
+            'query' => $query,
+            'count' => $movies->count(),
+            'data' => $movies,
+        ]);
+    }
+
+    /**
      * Create a movie. Uploaded poster/cover images are always stored as WebP
      * and are limited to 500 KiB after processing.
      */

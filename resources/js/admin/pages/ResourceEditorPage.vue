@@ -120,6 +120,7 @@ const relationContext = computed(() => {
 });
 const relationSearchLabel = computed(() => {
     if (key.value === 'subscriptions') return 'Find user by name, phone, email or UID';
+    if (key.value === 'banners') return 'Find a movie or series by title';
     if (editing.value && key.value === 'seasons') return 'Change movie by movie title';
     if (editing.value && key.value === 'episodes') return 'Change season by movie title';
     return 'Find movie / season by movie title';
@@ -157,6 +158,9 @@ async function searchRelations() {
         if (key.value === 'subscriptions') {
             const data = valueData(await api(`/admin/users-search${queryString({ q: query, per_page: 20 })}`));
             relationResults.value = Array.isArray(data) ? data : data.data || [];
+        } else if (key.value === 'banners') {
+            const data = valueData(await api(`/admin/catalog/items/search${queryString({ q: query, limit: 20 })}`));
+            relationResults.value = Array.isArray(data) ? data : data.data || [];
         } else {
             const movies = valueData(await api(`/admin/catalog/seasons/search${queryString({ q: query, limit: 20 })}`));
             relationResults.value = (Array.isArray(movies) ? movies : []).flatMap(movie => {
@@ -171,7 +175,21 @@ function selectRelation(item) {
     if (key.value === 'subscriptions') model.user_id = item.uid || item.auth_phone;
     if (key.value === 'seasons') model.movie_id = item.id;
     if (key.value === 'episodes') { model.season_id = item.id; model.movie_id = item.movieId; }
-    relationQuery.value = item.label || item.name || item.uid || item.auth_phone; relationResults.value = [];
+    if (key.value === 'banners') {
+        model.target_id = item.id || item.num;
+        model.target_type = item.isSeason ? 'series' : 'movie';
+        model.type = 'movie';
+        if (!String(model.title || '').trim()) model.title = item.title || '';
+    }
+    relationQuery.value = item.label || item.title || item.name || item.uid || item.auth_phone; relationResults.value = [];
+}
+function relationResultSubtitle(item) {
+    if (key.value === 'banners') {
+        const kind = item.isSeason ? 'Series' : 'Movie';
+        return `${kind} · ${item.genre || item.status || `ID ${item.id || item.num}`}`;
+    }
+
+    return item.auth_phone || item.mail || item.id;
 }
 function splitSeasonAmount() {
     const selected = seasonEpisodes.value.filter(episode => episode.isPayPerView); if (!selected.length) return;
@@ -263,10 +281,10 @@ onMounted(load);
                     <div><b v-for="fact in relationContext.facts" :key="fact">{{ fact }}</b></div>
                 </article>
             </section>
-            <section v-if="['subscriptions','seasons','episodes'].includes(key)" class="admin-relation-picker">
+            <section v-if="['subscriptions','seasons','episodes','banners'].includes(key)" class="admin-relation-picker">
                 <label><span>{{ relationSearchLabel }}</span><input v-model="relationQuery" type="search" :placeholder="relationContext ? 'Search only if you want to change this link…' : 'Type at least 2 characters…'" @input="queueRelationSearch"></label>
                 <small v-if="relationBusy">Searching…</small>
-                <div v-if="relationResults.length" class="admin-relation-results"><button v-for="item in relationResults" :key="item.id || item.uid" type="button" @click="selectRelation(item)"><b>{{ item.label || item.name || item.uid }}</b><span>{{ item.auth_phone || item.mail || item.id }}</span></button></div>
+                <div v-if="relationResults.length" class="admin-relation-results"><button v-for="item in relationResults" :key="item.id || item.uid || item.num" type="button" @click="selectRelation(item)"><b>{{ item.label || item.title || item.name || item.uid }}</b><span>{{ relationResultSubtitle(item) }}</span></button></div>
             </section>
             <div class="admin-form-grid">
                 <label v-for="field in resource.fields.filter(item => !(key === 'legal' && item.name === 'sections'))" :key="field.name" :class="{wide:field.wide,check:field.type==='checkbox'}">
