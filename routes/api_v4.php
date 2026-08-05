@@ -225,6 +225,7 @@ Route::prefix('v4')
                     Route::delete('/catalog/episode-urls/{id}', [EpisodeController::class, 'deleteUrl']);
 
                     Route::post('/banners', [BannerController::class, 'store']);
+                    Route::get('/banners/{id}', [BannerController::class, 'show']);
                     Route::put('/banners/{id}', [BannerController::class, 'update']);
                     Route::delete('/banners/{id}', [BannerController::class, 'destroy']);
 
