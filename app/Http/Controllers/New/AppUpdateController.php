@@ -123,12 +123,24 @@ class AppUpdateController extends Controller
         ];
 
         try {
-            $this->database->getReference($platform)->set($config);
+            $reference = $this->database->getReference($platform);
+            $reference->update($config);
+            $stored = $reference->getValue();
+
+            if (! is_array($stored)) {
+                throw new \RuntimeException('Firebase did not return the saved app release configuration.');
+            }
+
+            $savedConfig = $this->normalizeConfig($platform, $stored);
+
+            if ($savedConfig['enabled'] !== $config['enabled']) {
+                throw new \RuntimeException('Firebase did not persist the app release enabled state.');
+            }
 
             return response()->json([
                 'status' => true,
                 'message' => 'App update configuration saved',
-                'data' => $config,
+                'data' => $savedConfig,
             ]);
         } catch (\Throwable $error) {
             return $this->firebaseErrorResponse($error, 'Failed to save app update');
