@@ -9,6 +9,7 @@ import HeroSection from './components/HeroSection.vue';
 import PlatformStats from './components/PlatformStats.vue';
 import PricingSection from './components/PricingSection.vue';
 import AboutPage from './components/pages/AboutPage.vue';
+import AccountDeletePage from './components/pages/AccountDeletePage.vue';
 import ContactPage from './components/pages/ContactPage.vue';
 import DownloadPage from './components/pages/DownloadPage.vue';
 import FaqPage from './components/pages/FaqPage.vue';
@@ -24,7 +25,7 @@ const dynamicLegalSlug = currentPath.startsWith('/legal/') ? currentPath.slice(7
 const legalSlug = policyPage ? currentPath.slice(1) : dynamicLegalSlug;
 const isLegalPage = Boolean(policyPage || dynamicLegalSlug);
 const livePolicyPage = ref(policyPage || { eyebrow: 'Legal', title: 'Legal page', date: '', intro: '', sections: [] });
-const pageTitles = { '/about-us': 'About us', '/contact-us': 'Contact us', '/download': 'Download', '/faq': 'FAQ' };
+const pageTitles = { '/about-us': 'About us', '/account-delete': 'Delete account', '/contact-us': 'Contact us', '/download': 'Download', '/faq': 'FAQ' };
 let sectionObserver;
 let revealObserver;
 
@@ -84,6 +85,7 @@ onBeforeUnmount(() => {
         <AppHeader :active-section="activeSection" :current-path="currentPath" :scrolled="scrolled" @navigate="navigate" />
         <main v-if="isHome"><HeroSection @navigate="navigate" /><PlatformStats /><FeaturesSection /><FeaturedSection /><PricingSection /><DownloadSection /></main>
         <AboutPage v-else-if="currentPath === '/about-us'" />
+        <AccountDeletePage v-else-if="currentPath === '/account-delete'" />
         <ContactPage v-else-if="currentPath === '/contact-us'" />
         <DownloadPage v-else-if="currentPath === '/download'" />
         <FaqPage v-else-if="currentPath === '/faq'" />

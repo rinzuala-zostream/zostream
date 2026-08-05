@@ -43,5 +43,6 @@ export const legalLinks = [
     { label: 'Return Policy', href: '/return-policy' },
     { label: 'Shipping Policy', href: '/shipping-policy' },
     { label: 'Copyright Policy', href: '/copyright-policy' },
+    { label: 'Delete Account', href: '/account-delete' },
     { label: 'FAQ', href: '/faq' },
 ];

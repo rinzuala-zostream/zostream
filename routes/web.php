@@ -26,6 +26,7 @@ Route::view('/return-policy', 'welcome');
 Route::view('/shipping-policy', 'welcome');
 Route::view('/copyright-policy', 'welcome');
 Route::view('/faq', 'welcome');
+Route::view('/account-delete', 'welcome');
 Route::view('/legal/{slug}', 'welcome')->where('slug', '[a-z0-9-]+');
 
 Route::get('/check', function () {
