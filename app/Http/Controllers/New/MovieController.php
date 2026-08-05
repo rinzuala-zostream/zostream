@@ -94,12 +94,12 @@ class MovieController extends Controller
             $movieData = $this->prepareMovieData($request, $validated);
             $movieData['id'] = Str::random(10);
             $movieData['create_date'] = ! empty($movieData['create_date'])
-                ? Carbon::parse($movieData['create_date'])->format('F j, Y')
-                : now()->format('F j, Y');
+                ? Carbon::parse($movieData['create_date'])->toDateString()
+                : now()->toDateString();
             $movieData['trailer'] = $movieData['trailer'] ?? '';
 
             if (! empty($movieData['release_on'])) {
-                $movieData['release_on'] = Carbon::parse($movieData['release_on'])->format('F j, Y');
+                $movieData['release_on'] = Carbon::parse($movieData['release_on'])->toDateString();
             }
 
             $movie = MovieModel::create($movieData);
@@ -140,8 +140,14 @@ class MovieController extends Controller
             $validated = $request->validate($this->movieRules($request));
             $movieData = $this->prepareMovieData($request, $validated);
 
-            if (! empty($movieData['release_on'])) {
-                $movieData['release_on'] = Carbon::parse($movieData['release_on'])->format('F j, Y');
+            foreach (['create_date', 'release_on'] as $dateField) {
+                if (! array_key_exists($dateField, $movieData)) {
+                    continue;
+                }
+
+                $movieData[$dateField] = ! empty($movieData[$dateField])
+                    ? Carbon::parse($movieData[$dateField])->toDateString()
+                    : null;
             }
 
             $movie->update($movieData);
@@ -1055,7 +1061,7 @@ class MovieController extends Controller
             if ($column === 'newrelease') {
                 $query->whereNotNull('release_on')
                     ->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', $ageRestriction))
-                    ->orderByRaw("STR_TO_DATE(release_on, '%M %d, %Y') DESC");
+                    ->orderByDesc('release_on');
             } elseif ($column === 'mostwatch') {
                 $query->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', $ageRestriction))
                     ->orderByDesc('views');
@@ -1106,10 +1112,10 @@ class MovieController extends Controller
         // ✅ Full sections response
         else {
             $categories = [
-                "New Release" => ["where" => "release_on IS NOT NULL", "order" => "STR_TO_DATE(release_on, '%M %d, %Y') DESC"],
+                "New Release" => ["where" => "release_on IS NOT NULL", "order" => "release_on DESC"],
                 "Most Watched" => ["where" => "1", "order" => "views DESC"],
                 "Pay Per View" => ["where" => "isPayPerView = 1", "order" => "num DESC"],
-                "Latest Update" => ["where" => "1", "order" => "STR_TO_DATE(create_date, '%M %d, %Y') DESC"],
+                "Latest Update" => ["where" => "1", "order" => "create_date DESC"],
                 "Asian" => ["where" => "isKorean = 1", "order" => "num DESC"],
                 "Series" => ["where" => "isSeason = 1", "order" => "num DESC"],
                 "Hollywood" => ["where" => "isHollywood = 1", "order" => "num DESC"],
@@ -1290,11 +1296,7 @@ class MovieController extends Controller
             $sortBy = $validated['sort_by'] ?? $defaultSortBy;
             $sortDir = $validated['sort_dir'] ?? $defaultSortDir;
 
-            if (in_array($sortBy, ['create_date', 'release_on'], true)) {
-                $query->orderByRaw("STR_TO_DATE({$sortBy}, '%M %e, %Y') {$sortDir}");
-            } else {
-                $query->orderBy($sortBy, $sortDir);
-            }
+            $query->orderBy($sortBy, $sortDir);
 
             if (!empty($validated['range'])) {
                 [$offset, $limit] = $this->parseMovieRange($validated['range']);
@@ -1401,11 +1403,7 @@ class MovieController extends Controller
                 $query->where('isAgeRestricted', 0);
             }
 
-            if (in_array($sortBy, ['create_date', 'release_on'], true)) {
-                $query->orderByRaw("STR_TO_DATE({$sortBy}, '%M %e, %Y') {$sortDir}");
-            } else {
-                $query->orderBy($sortBy, $sortDir);
-            }
+            $query->orderBy($sortBy, $sortDir);
 
             $matchedMovies = $query
                 ->get()

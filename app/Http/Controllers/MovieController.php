@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Models\EpisodeModel;
 use App\Models\MovieModel;
 use Carbon\Carbon;
-use DateTime;
 use Firebase\JWT\JWT;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -187,7 +186,7 @@ class MovieController extends Controller
             if ($column === 'newrelease') {
                 $query->whereNotNull('release_on')
                     ->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', $ageRestriction))
-                    ->orderByRaw("STR_TO_DATE(release_on, '%M %d, %Y') DESC");
+                    ->orderByDesc('release_on');
             } elseif ($column === 'mostwatch') {
                 $query->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', $ageRestriction))
                     ->orderByDesc('views');
@@ -238,10 +237,10 @@ class MovieController extends Controller
         // ✅ Full sections response
         else {
             $categories = [
-                "New Release" => ["where" => "release_on IS NOT NULL", "order" => "STR_TO_DATE(release_on, '%M %d, %Y') DESC"],
+                "New Release" => ["where" => "release_on IS NOT NULL", "order" => "release_on DESC"],
                 "Most Watched" => ["where" => "1", "order" => "views DESC"],
                 "Pay Per View" => ["where" => "isPayPerView = 1", "order" => "num DESC"],
-                "Latest Update" => ["where" => "1", "order" => "STR_TO_DATE(create_date, '%M %d, %Y') DESC"],
+                "Latest Update" => ["where" => "1", "order" => "create_date DESC"],
                 "Asian" => ["where" => "isKorean = 1", "order" => "num DESC"],
                 "Series" => ["where" => "isSeason = 1", "order" => "num DESC"],
                 "Hollywood" => ["where" => "isHollywood = 1", "order" => "num DESC"],
@@ -400,11 +399,11 @@ class MovieController extends Controller
             $validated['id'] = Str::random(10);
 
             $validated['create_date'] = !empty($validated['create_date'])
-                ? (new DateTime($validated['create_date']))->format('F j, Y')
-                : now()->format('F j, Y');
+                ? Carbon::parse($validated['create_date'])->toDateString()
+                : now()->toDateString();
 
             if (!empty($validated['release_on'])) {
-                $validated['release_on'] = Carbon::parse($validated['release_on'])->format('F j, Y');
+                $validated['release_on'] = Carbon::parse($validated['release_on'])->toDateString();
             }
 
             if (!empty($validated['dash_url']) && !empty($validated['isProtected'])) {
@@ -501,8 +500,14 @@ class MovieController extends Controller
                 "isChildMode" => "boolean"
             ]);
 
-            if (isset($validated['release_on'])) {
-                $validated['release_on'] = Carbon::parse($validated['release_on'])->format('F j, Y');
+            foreach (['create_date', 'release_on'] as $dateField) {
+                if (! array_key_exists($dateField, $validated)) {
+                    continue;
+                }
+
+                $validated[$dateField] = ! empty($validated[$dateField])
+                    ? Carbon::parse($validated[$dateField])->toDateString()
+                    : null;
             }
 
             if (!empty($validated['dash_url']) && !empty($validated['isProtected'])) {
