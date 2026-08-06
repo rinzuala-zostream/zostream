@@ -30,8 +30,8 @@ class MovieModel extends Model
         'isSeason' => 'boolean',
         'isSubtitle' => 'boolean',
         'isChildMode' => 'boolean',
-        'create_date' => 'date:Y-m-d',
-        'release_on' => 'date:Y-m-d',
+        'create_date' => 'date',
+        'release_on' => 'date',
 
     ];
 
@@ -73,6 +73,16 @@ class MovieModel extends Model
         'status',
         'ppv_amount',
     ];
+
+    /**
+     * The legacy movie table does not allow a NULL subtitle value. Laravel's
+     * ConvertEmptyStringsToNull middleware turns an empty admin form field into
+     * NULL, so normalize it at the model boundary for both create and update.
+     */
+    public function setSubtitleAttribute(?string $value): void
+    {
+        $this->attributes['subtitle'] = $value ?? '';
+    }
 
     public function seasons()
     {

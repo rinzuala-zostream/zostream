@@ -173,6 +173,38 @@ class MovieController extends Controller
         }
     }
 
+    /**
+     * Delete a movie by its public string ID. Related seasons, episodes and
+     * video URLs are removed by the database's configured cascade rules.
+     */
+    public function destroy(string $id)
+    {
+        try {
+            $movie = MovieModel::where('id', $id)->first();
+
+            if (! $movie) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Movie not found',
+                ], 404);
+            }
+
+            $movie->delete();
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Movie deleted successfully',
+            ]);
+        } catch (Exception $e) {
+            Log::error('Movie delete error', [
+                'id' => $id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return $this->errorResponse('Failed to delete movie', $e);
+        }
+    }
+
     private function movieRules(Request $request, bool $creating = false): array
     {
         $imageOrUrl = static fn (string $field): array => $request->hasFile($field)
