@@ -123,6 +123,11 @@
 .whatsapp-widget-content{display:grid;min-height:0;grid-template-rows:auto minmax(0,1fr);overflow:hidden}
 .whatsapp-widget-body,.whatsapp-widget-thread{height:100%;overflow:hidden}
 
+/* Let the inbox body fill all remaining drawer height when no error banner exists. */
+.whatsapp-widget-content{display:flex;min-height:0;flex-direction:column;overflow:hidden}
+.whatsapp-widget-content>.whatsapp-widget-loading,.whatsapp-widget-content>.whatsapp-widget-body{min-height:0;flex:1}
+.whatsapp-widget-body{height:auto}
+
 /* Readability pass: keep secondary admin text comfortably legible. */
 .admin-nav section>p,.admin-page-header p,.admin-panel header p,.admin-profile p{font-size:11px}
 .admin-user small,.admin-brand small,.admin-stat-grid p,.admin-table-card th,.admin-pill,.admin-parent-filter,.admin-filter-bar label{font-size:11px}
