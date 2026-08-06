@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { api } from '../lib/api';
+import { formatChatTime } from '../lib/chatTime';
 import AdminIcon from './AdminIcon.vue';
 
 const LAST_SEEN_KEY = 'zostream_whatsapp_widget_seen_at';
@@ -24,9 +25,6 @@ const unreadCount = computed(() => conversations.value.filter(item => (
     item.direction === 'inbound' && Date.parse(item.last_message_at || '') > lastSeenAt.value
 )).length);
 
-function date(value) {
-    return value ? new Intl.DateTimeFormat(undefined, { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value)) : '';
-}
 function markSeen() {
     lastSeenAt.value = Date.now();
     localStorage.setItem(LAST_SEEN_KEY, String(lastSeenAt.value));
@@ -120,26 +118,28 @@ onBeforeUnmount(() => {
                 <div><span>Customer care</span><h2>WhatsApp Inbox</h2></div>
                 <div><RouterLink to="/whatsapp" @click="closeWidget">Open full inbox</RouterLink><button type="button" aria-label="Close WhatsApp conversations" @click="closeWidget"><AdminIcon name="x" /></button></div>
             </header>
-            <p v-if="error" class="whatsapp-widget-error">{{ error }}</p>
-            <div v-if="loading" class="whatsapp-widget-loading">Loading conversations…</div>
-            <div v-else class="whatsapp-widget-body" :class="{ 'has-thread': selectedPhone }">
-                <aside class="whatsapp-widget-conversations">
-                    <header><b>Conversations</b><button type="button" @click="loadConversations()">Refresh</button></header>
-                    <button v-for="item in conversations" :key="item.phone" type="button" :class="{ active: selectedPhone === item.phone }" @click="selectConversation(item.phone)">
-                        <i>{{ (item.name || item.phone).slice(0, 2).toUpperCase() }}</i>
-                        <span><b>{{ item.name || `+${item.phone}` }}</b><small>{{ item.last_message }}</small></span>
-                        <time>{{ date(item.last_message_at) }}</time>
-                    </button>
-                    <p v-if="!conversations.length">No WhatsApp conversations yet.</p>
-                </aside>
-                <article class="whatsapp-widget-thread">
-                    <header v-if="selectedConversation"><button class="whatsapp-widget-back" type="button" aria-label="Back to conversations" @click="selectedPhone = ''"><AdminIcon name="arrow" /></button><div><b>{{ selectedConversation.name || 'WhatsApp customer' }}</b><span>+{{ selectedPhone }}</span></div></header>
-                    <div v-if="selectedPhone" ref="messageList" class="whatsapp-widget-messages">
-                        <div v-for="item in messages" :key="item.id" :class="['whatsapp-widget-message', item.direction]"><span>{{ item.body }}</span><small>{{ date(item.message_at) }} · {{ item.status }}</small></div>
-                    </div>
-                    <div v-else class="whatsapp-widget-empty"><AdminIcon name="message" /><b>Select a conversation</b><span>Choose a customer to view and reply.</span></div>
-                    <form v-if="selectedPhone" class="whatsapp-widget-reply" @submit.prevent="sendReply"><textarea v-model="reply" required maxlength="4096" placeholder="Type a reply…" /><button type="submit" class="admin-primary" :disabled="busy || !reply.trim()">{{ busy ? 'Sending…' : 'Send' }}</button></form>
-                </article>
+            <div class="whatsapp-widget-content">
+                <p v-if="error" class="whatsapp-widget-error">{{ error }}</p>
+                <div v-if="loading" class="whatsapp-widget-loading">Loading conversations…</div>
+                <div v-else class="whatsapp-widget-body" :class="{ 'has-thread': selectedPhone }">
+                    <aside class="whatsapp-widget-conversations">
+                        <header><b>Conversations</b><button type="button" @click="loadConversations()">Refresh</button></header>
+                        <button v-for="item in conversations" :key="item.phone" type="button" :class="{ active: selectedPhone === item.phone }" @click="selectConversation(item.phone)">
+                            <i>{{ (item.name || item.phone).slice(0, 2).toUpperCase() }}</i>
+                            <span><b>{{ item.name || `+${item.phone}` }}</b><small>{{ item.last_message }}</small></span>
+                            <time>{{ formatChatTime(item.last_message_at) }}</time>
+                        </button>
+                        <p v-if="!conversations.length">No WhatsApp conversations yet.</p>
+                    </aside>
+                    <article class="whatsapp-widget-thread">
+                        <header v-if="selectedConversation"><button class="whatsapp-widget-back" type="button" aria-label="Back to conversations" @click="selectedPhone = ''"><AdminIcon name="arrow" /></button><div><b>{{ selectedConversation.name || 'WhatsApp customer' }}</b><span>+{{ selectedPhone }}</span></div></header>
+                        <div v-if="selectedPhone" ref="messageList" class="whatsapp-widget-messages">
+                            <div v-for="item in messages" :key="item.id" :class="['whatsapp-widget-message', item.direction]"><span>{{ item.body }}</span><small>{{ formatChatTime(item.message_at) }} · {{ item.status }}</small></div>
+                        </div>
+                        <div v-else class="whatsapp-widget-empty"><AdminIcon name="message" /><b>Select a conversation</b><span>Choose a customer to view and reply.</span></div>
+                        <form v-if="selectedPhone" class="whatsapp-widget-reply" @submit.prevent="sendReply"><textarea v-model="reply" required maxlength="4096" placeholder="Type a reply…" /><button type="submit" class="admin-primary" :disabled="busy || !reply.trim()">{{ busy ? 'Sending…' : 'Send' }}</button></form>
+                    </article>
+                </div>
             </div>
         </section>
     </template>

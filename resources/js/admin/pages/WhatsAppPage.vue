@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import PageHeader from '../components/PageHeader.vue';
 import StatusPanel from '../components/StatusPanel.vue';
 import { api } from '../lib/api';
+import { formatChatTime } from '../lib/chatTime';
 
 const loading = ref(true); const busy = ref(false); const error = ref(''); const notice = ref('');
 const conversations = ref([]); const messages = ref([]); const selectedPhone = ref(''); const reply = ref('');
@@ -12,7 +13,6 @@ const settings = reactive({ verify_token: '', auto_reply_enabled: false, auto_re
 const selectedConversation = computed(() => conversations.value.find(item => item.phone === selectedPhone.value));
 
 function showError(reason) { error.value = reason?.message || 'Something went wrong.'; }
-function date(value) { return value ? new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : ''; }
 async function loadSettings() { Object.assign(settings, await api('/admin/whatsapp/settings') || {}); }
 async function loadConversations(quiet = false) {
     try {
@@ -95,14 +95,14 @@ onBeforeUnmount(() => window.clearInterval(refreshTimer));
                 <aside class="whatsapp-conversations">
                     <header><div><p>MESSAGES</p><h2>Conversations</h2></div><button class="admin-secondary" @click="loadConversations()">Refresh</button></header>
                     <button v-for="item in conversations" :key="item.phone" :class="{ active: selectedPhone === item.phone }" @click="selectConversation(item.phone)">
-                        <i>{{ (item.name || item.phone).slice(0, 2).toUpperCase() }}</i><span><b>{{ item.name || item.phone }}</b><small>{{ item.last_message }}</small></span><time>{{ date(item.last_message_at) }}</time>
+                        <i>{{ (item.name || item.phone).slice(0, 2).toUpperCase() }}</i><span><b>{{ item.name || item.phone }}</b><small>{{ item.last_message }}</small></span><time>{{ formatChatTime(item.last_message_at) }}</time>
                     </button>
                     <p v-if="!conversations.length" class="admin-empty">Webhook messages will appear here.</p>
                 </aside>
                 <article class="whatsapp-thread">
                     <header v-if="selectedConversation"><div><p>{{ selectedConversation.name || 'WhatsApp customer' }}</p><h2>+{{ selectedPhone }}</h2></div></header>
                     <div v-if="selectedPhone" class="whatsapp-message-list">
-                        <div v-for="item in messages" :key="item.id" :class="['whatsapp-message', item.direction]"><span>{{ item.body }}</span><small>{{ date(item.message_at) }} · {{ item.status }}</small></div>
+                        <div v-for="item in messages" :key="item.id" :class="['whatsapp-message', item.direction]"><span>{{ item.body }}</span><small>{{ formatChatTime(item.message_at) }} · {{ item.status }}</small></div>
                     </div>
                     <div v-else class="admin-empty-state"><h2>No conversation selected</h2><p>Incoming customer messages will be listed on the left.</p></div>
                     <form v-if="selectedPhone" class="whatsapp-reply" @submit.prevent="sendReply"><textarea v-model="reply" required maxlength="4096" placeholder="Type a reply…" /><button class="admin-primary" :disabled="busy || !reply.trim()">Send reply</button></form>

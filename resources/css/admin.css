@@ -119,6 +119,9 @@
 /* Keep the floating inbox composer pinned while only the message history scrolls. */
 .whatsapp-widget-reply{position:sticky;z-index:2;bottom:0;background:rgba(5,13,16,.96);box-shadow:0 -12px 28px rgba(0,0,0,.12)}
 .is-light .whatsapp-widget-reply{background:rgba(243,248,248,.98);box-shadow:0 -12px 28px rgba(31,65,71,.08)}
+.whatsapp-widget{grid-template-rows:auto minmax(0,1fr)}
+.whatsapp-widget-content{display:grid;min-height:0;grid-template-rows:auto minmax(0,1fr);overflow:hidden}
+.whatsapp-widget-body,.whatsapp-widget-thread{height:100%;overflow:hidden}
 
 /* Readability pass: keep secondary admin text comfortably legible. */
 .admin-nav section>p,.admin-page-header p,.admin-panel header p,.admin-profile p{font-size:11px}
