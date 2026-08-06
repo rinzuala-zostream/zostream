@@ -18,6 +18,7 @@ const groups = [
     { label: 'Engagement', items: ['polls', 'legal'].map(item).concat([
         { label: 'Poll voters', to: '/polls/voters', icon: 'users' },
         { label: 'Notifications', to: '/tools/notifications', icon: 'bell' },
+        { label: 'WhatsApp Inbox', to: '/whatsapp', icon: 'message' },
         { label: 'App releases', to: '/tools/app-releases', icon: 'settings' },
         { label: 'Official clients', to: '/tools/official-clients', icon: 'monitor' },
         { label: 'Admin tools', to: '/tools/operations', icon: 'settings' },

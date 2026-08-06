@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\V4\AccountController;
 use App\Http\Controllers\Api\V4\AdminRealtimeConfigController;
+use App\Http\Controllers\Api\V4\AdminWhatsAppInboxController;
 use App\Http\Controllers\Api\V4\AuthController;
 use App\Http\Controllers\Api\V4\BillingController;
 use App\Http\Controllers\Api\V4\CatalogController;
@@ -12,6 +13,7 @@ use App\Http\Controllers\Api\V4\OfflineController;
 use App\Http\Controllers\Api\V4\PlaybackController;
 use App\Http\Controllers\Api\V4\QrSessionController as V4QrSessionController;
 use App\Http\Controllers\Api\V4\SupportController;
+use App\Http\Controllers\Api\V4\WhatsAppWebhookController;
 use App\Http\Controllers\Channel\ChannelController;
 use App\Http\Controllers\FCMNotificationController;
 use App\Http\Controllers\HlsFolderController;
@@ -104,6 +106,10 @@ Route::prefix('v4')
 
         Route::get('/billing/plans/device/{deviceType}', [SubscriptionController::class, 'getByDeviceType']);
         Route::post('/webhooks/razorpay', [PaymentController::class, 'razorpayWebhook']);
+        Route::get('/webhooks/whatsapp', [WhatsAppWebhookController::class, 'verify'])
+            ->middleware('throttle:60,1');
+        Route::post('/webhooks/whatsapp', [WhatsAppWebhookController::class, 'receive'])
+            ->middleware('throttle:300,1');
 
         Route::get('/channels', [ChannelController::class, 'index']);
         Route::get('/channels/{channelId}', [ChannelController::class, 'show']);
@@ -272,6 +278,12 @@ Route::prefix('v4')
                     Route::put('/app-releases/{platform}', [AppUpdateController::class, 'update']);
                     Route::post('/notifications/push', [FCMNotificationController::class, 'send']);
                     Route::post('/whatsapp/send', [AdminWhatsAppController::class, 'send']);
+                    Route::get('/whatsapp/settings', [AdminWhatsAppInboxController::class, 'settings']);
+                    Route::put('/whatsapp/settings', [AdminWhatsAppInboxController::class, 'saveSettings']);
+                    Route::post('/whatsapp/verify-token', [AdminWhatsAppInboxController::class, 'generateVerifyToken']);
+                    Route::get('/whatsapp/conversations', [AdminWhatsAppInboxController::class, 'conversations']);
+                    Route::get('/whatsapp/conversations/{phone}', [AdminWhatsAppInboxController::class, 'messages']);
+                    Route::post('/whatsapp/reply', [AdminWhatsAppInboxController::class, 'reply']);
                     Route::get('/realtime/warning', [AdminRealtimeConfigController::class, 'warning']);
                     Route::put('/realtime/warning', [AdminRealtimeConfigController::class, 'saveWarning']);
                     Route::delete('/realtime/warning', [AdminRealtimeConfigController::class, 'deleteWarning']);

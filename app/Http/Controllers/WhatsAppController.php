@@ -36,14 +36,18 @@ class WhatsAppController extends Controller
 
     protected function dispatchValidatedMessage(array $validated)
     {
-        if (empty($this->whatsappPhoneId) || empty($this->whatsappToken)) {
+        $phoneId = $this->whatsappPhoneId;
+        $token = $this->whatsappToken;
+        $version = config('services.whatsapp.api_version', 'v22.0');
+
+        if (empty($phoneId) || empty($token)) {
             return response()->json([
                 'status' => 'error',
                 'message' => 'WhatsApp API is not configured.',
             ], 500);
         }
 
-        $url = "https://graph.facebook.com/v22.0/{$this->whatsappPhoneId}/messages";
+        $url = "https://graph.facebook.com/{$version}/{$phoneId}/messages";
 
         if ($validated['type'] === 'template') {
             if (empty($validated['template_name']) || empty($validated['template_params'])) {
@@ -143,7 +147,7 @@ class WhatsAppController extends Controller
             ];
         }
 
-        $response = Http::withToken($this->whatsappToken)->post($url, $payload);
+        $response = Http::withToken($token)->post($url, $payload);
 
         if ($response->successful()) {
             return response()->json([

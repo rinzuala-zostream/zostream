@@ -10,6 +10,7 @@ import ProfilePage from './pages/ProfilePage.vue';
 import PollInsightsPage from './pages/PollInsightsPage.vue';
 import PollVotersPage from './pages/PollVotersPage.vue';
 import NotFoundPage from './pages/NotFoundPage.vue';
+import WhatsAppPage from './pages/WhatsAppPage.vue';
 
 const aliases = [
     ['/movies/add', '/manage/movies/new'], ['/movies/update', '/manage/movies'], ['/movies/update/:id', '/manage/movies/:id'],
@@ -37,6 +38,7 @@ const router = createRouter({
                 { path: 'manage/:resource/new', component: ResourceEditorPage },
                 { path: 'manage/:resource/:id', component: ResourceEditorPage },
                 { path: 'tools/:tool', component: ToolsPage },
+                { path: 'whatsapp', component: WhatsAppPage },
                 { path: 'polls/:id/insights', component: PollInsightsPage },
                 { path: 'polls/voters', component: PollVotersPage },
                 { path: 'profile', component: ProfilePage },
