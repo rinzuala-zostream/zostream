@@ -74,7 +74,7 @@ class WhatsAppWebhookController extends Controller
                         && filled($settings->auto_reply_message)
                     ) {
                         try {
-                            $whatsApp->sendText($phone, $settings->auto_reply_message, $stored->wamid);
+                            $whatsApp->sendText($phone, $settings->auto_reply_message);
                         } catch (Throwable $exception) {
                             Log::warning('WhatsApp auto reply failed', [
                                 'message_id' => $stored->id,

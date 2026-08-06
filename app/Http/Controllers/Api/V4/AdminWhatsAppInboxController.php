@@ -97,13 +97,11 @@ class AdminWhatsAppInboxController extends Controller
         $validated = $request->validate([
             'to' => 'required|string|max:40',
             'message' => 'required|string|max:4096',
-            'reply_to_wamid' => 'nullable|string|max:500',
         ]);
 
         $message = $whatsApp->sendText(
             $validated['to'],
-            $validated['message'],
-            $validated['reply_to_wamid'] ?? null
+            $validated['message']
         );
 
         return response()->json($message, 201);

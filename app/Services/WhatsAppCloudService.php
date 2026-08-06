@@ -9,7 +9,7 @@ use RuntimeException;
 
 class WhatsAppCloudService
 {
-    public function sendText(string $to, string $message, ?string $replyTo = null): WhatsAppMessage
+    public function sendText(string $to, string $message): WhatsAppMessage
     {
         $payload = [
             'messaging_product' => 'whatsapp',
@@ -18,10 +18,6 @@ class WhatsAppCloudService
             'type' => 'text',
             'text' => ['preview_url' => false, 'body' => $message],
         ];
-
-        if ($replyTo) {
-            $payload['context'] = ['message_id' => $replyTo];
-        }
 
         $response = $this->postMessage($payload);
         $wamid = data_get($response->json(), 'messages.0.id');
@@ -33,7 +29,6 @@ class WhatsAppCloudService
             'type' => 'text',
             'body' => $message,
             'status' => $wamid ? 'accepted' : 'sent',
-            'reply_to_wamid' => $replyTo,
             'payload' => $response->json(),
             'message_at' => now(),
         ]);

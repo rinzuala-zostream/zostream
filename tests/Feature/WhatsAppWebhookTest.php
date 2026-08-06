@@ -82,6 +82,7 @@ class WhatsAppWebhookTest extends TestCase
             'app.whatsapp_phone_id' => 'phone-id',
             'app.whatsapp_token' => 'access-token',
             'services.whatsapp.app_secret' => 'app-secret',
+            'services.whatsapp.api_version' => 'v22.0',
         ]);
         WhatsAppSetting::current()->update([
             'auto_reply_enabled' => true,
@@ -125,8 +126,10 @@ class WhatsAppWebhookTest extends TestCase
             'wamid' => 'wamid.outbound',
             'direction' => 'outbound',
             'body' => 'Kan lo dawng e.',
+            'reply_to_wamid' => null,
         ]);
         Http::assertSentCount(1);
+        Http::assertSent(fn ($request) => ! isset($request->data()['context']));
     }
 
     public function test_invalid_webhook_signature_is_rejected(): void
@@ -143,6 +146,7 @@ class WhatsAppWebhookTest extends TestCase
         config([
             'app.whatsapp_phone_id' => 'phone-id',
             'app.whatsapp_token' => 'access-token',
+            'services.whatsapp.api_version' => 'v22.0',
         ]);
         Http::fake([
             'https://graph.facebook.com/v22.0/phone-id/messages' => Http::response([
@@ -154,5 +158,6 @@ class WhatsAppWebhookTest extends TestCase
 
         $this->assertSame('919876543210', $message->contact_phone);
         $this->assertSame('wamid.reply', $message->wamid);
+        Http::assertSent(fn ($request) => ! isset($request->data()['context']));
     }
 }

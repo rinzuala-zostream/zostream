@@ -52,8 +52,7 @@ async function sendReply() {
     const body = reply.value.trim(); if (!body || !selectedPhone.value) return;
     busy.value = true; error.value = ''; notice.value = '';
     try {
-        const lastInbound = [...messages.value].reverse().find(item => item.direction === 'inbound');
-        await api('/admin/whatsapp/reply', { method: 'POST', body: { to: selectedPhone.value, message: body, reply_to_wamid: lastInbound?.wamid } });
+        await api('/admin/whatsapp/reply', { method: 'POST', body: { to: selectedPhone.value, message: body } });
         reply.value = ''; await loadMessages(selectedPhone.value); await loadConversations(true);
         notice.value = 'Reply sent.';
     } catch (reason) { showError(reason); }
