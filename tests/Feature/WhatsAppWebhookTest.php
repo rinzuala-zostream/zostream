@@ -160,4 +160,28 @@ class WhatsAppWebhookTest extends TestCase
         $this->assertSame('wamid.reply', $message->wamid);
         Http::assertSent(fn ($request) => ! isset($request->data()['context']));
     }
+
+    public function test_cloud_service_downloads_inbound_media(): void
+    {
+        config([
+            'app.whatsapp_token' => 'access-token',
+            'services.whatsapp.api_version' => 'v22.0',
+        ]);
+        Http::fake([
+            'https://graph.facebook.com/v22.0/media-123' => Http::response([
+                'url' => 'https://lookaside.example/media-123',
+                'mime_type' => 'image/jpeg',
+            ]),
+            'https://lookaside.example/media-123' => Http::response('image-bytes', 200, [
+                'Content-Type' => 'image/jpeg',
+            ]),
+        ]);
+
+        $media = app(WhatsAppCloudService::class)->downloadMedia('media-123');
+
+        $this->assertSame('image-bytes', $media['content']);
+        $this->assertSame('image/jpeg', $media['mime_type']);
+        Http::assertSentCount(2);
+        Http::assertSent(fn ($request) => $request->hasHeader('Authorization', 'Bearer access-token'));
+    }
 }

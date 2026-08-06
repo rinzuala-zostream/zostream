@@ -66,7 +66,7 @@ class AdminWhatsAppInboxController extends Controller
                 return [
                     'phone' => $latest->contact_phone,
                     'name' => $rows->firstWhere('contact_name', '!=', null)?->contact_name,
-                    'last_message' => $latest->body,
+                    'last_message' => $this->conversationPreview($latest),
                     'last_message_at' => $latest->message_at,
                     'direction' => $latest->direction,
                     'status' => $latest->status,
@@ -92,6 +92,34 @@ class AdminWhatsAppInboxController extends Controller
         );
     }
 
+    public function media(WhatsAppMessage $message, WhatsAppCloudService $whatsApp)
+    {
+        if (! in_array($message->type, ['image', 'document'], true)) {
+            return response()->json(['message' => 'This message does not contain supported media.'], 404);
+        }
+
+        $mediaId = (string) data_get($message->payload, "{$message->type}.id", '');
+        if ($mediaId === '') {
+            return response()->json(['message' => 'WhatsApp media ID is missing.'], 404);
+        }
+
+        try {
+            $media = $whatsApp->downloadMedia($mediaId);
+        } catch (\RuntimeException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 502);
+        }
+
+        $filename = (string) data_get($message->payload, 'document.filename', "whatsapp-{$message->id}");
+        $filename = preg_replace('/[^A-Za-z0-9._-]+/', '_', basename($filename)) ?: "whatsapp-{$message->id}";
+
+        return response($media['content'], 200, [
+            'Content-Type' => $media['mime_type'],
+            'Content-Disposition' => 'inline; filename="'.$filename.'"',
+            'Cache-Control' => 'private, max-age=300',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
+    }
+
     public function reply(Request $request, WhatsAppCloudService $whatsApp)
     {
         $validated = $request->validate([
@@ -105,5 +133,18 @@ class AdminWhatsAppInboxController extends Controller
         );
 
         return response()->json($message, 201);
+    }
+
+    private function conversationPreview(WhatsAppMessage $message): ?string
+    {
+        if ($message->type === 'image') {
+            return $message->body && $message->body !== '[image]' ? 'Image: '.$message->body : 'Image';
+        }
+
+        if ($message->type === 'document') {
+            return 'Document: '.data_get($message->payload, 'document.filename', 'File');
+        }
+
+        return $message->body;
     }
 }

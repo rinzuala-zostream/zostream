@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router';
 import { api } from '../lib/api';
 import { formatChatTime } from '../lib/chatTime';
+import { useWhatsAppMedia } from '../lib/whatsappMedia';
 import AdminIcon from './AdminIcon.vue';
 
 const LAST_SEEN_KEY = 'zostream_whatsapp_widget_seen_at';
@@ -17,6 +18,7 @@ const selectedPhone = ref('');
 const reply = ref('');
 const messageList = ref(null);
 const lastSeenAt = ref(Number(localStorage.getItem(LAST_SEEN_KEY) || 0));
+const media = useWhatsAppMedia();
 let refreshTimer;
 
 const visible = computed(() => !route.path.startsWith('/whatsapp'));
@@ -36,6 +38,7 @@ async function scrollToLatest() {
 async function loadMessages(phone, quiet = false) {
     try {
         messages.value = await api(`/admin/whatsapp/conversations/${encodeURIComponent(phone)}`) || [];
+        media.loadAll(messages.value);
         await scrollToLatest();
     } catch (reason) {
         if (!quiet) error.value = reason?.message || 'Messages could not be loaded.';
@@ -134,7 +137,14 @@ onBeforeUnmount(() => {
                     <article class="whatsapp-widget-thread">
                         <header v-if="selectedConversation"><button class="whatsapp-widget-back" type="button" aria-label="Back to conversations" @click="selectedPhone = ''"><AdminIcon name="arrow" /></button><div><b>{{ selectedConversation.name || 'WhatsApp customer' }}</b><span>+{{ selectedPhone }}</span></div></header>
                         <div v-if="selectedPhone" ref="messageList" class="whatsapp-widget-messages">
-                            <div v-for="item in messages" :key="item.id" :class="['whatsapp-widget-message', item.direction]"><span>{{ item.body }}</span><small>{{ formatChatTime(item.message_at) }} · {{ item.status }}</small></div>
+                            <div v-for="item in messages" :key="item.id" :class="['whatsapp-widget-message', item.direction]">
+                                <a v-if="item.type === 'image' && media.urls[item.id]" class="whatsapp-media-image-link" :href="media.urls[item.id]" target="_blank" rel="noopener"><img class="whatsapp-media-image" :src="media.urls[item.id]" :alt="media.caption(item) || 'WhatsApp image'"></a>
+                                <a v-else-if="item.type === 'document' && media.urls[item.id]" class="whatsapp-media-document" :href="media.urls[item.id]" :download="media.filename(item)"><b>Document</b><span>{{ media.filename(item) }}</span></a>
+                                <span v-else-if="media.loading[item.id]" class="whatsapp-media-state">Loading {{ item.type }}…</span>
+                                <span v-else-if="media.failed[item.id]" class="whatsapp-media-state is-error">{{ media.failed[item.id] }}</span>
+                                <span v-if="media.caption(item)">{{ media.caption(item) }}</span>
+                                <small>{{ formatChatTime(item.message_at) }} · {{ item.status }}</small>
+                            </div>
                         </div>
                         <div v-else class="whatsapp-widget-empty"><AdminIcon name="message" /><b>Select a conversation</b><span>Choose a customer to view and reply.</span></div>
                         <form v-if="selectedPhone" class="whatsapp-widget-reply" @submit.prevent="sendReply"><textarea v-model="reply" required maxlength="4096" placeholder="Type a reply…" /><button type="submit" class="admin-primary" :disabled="busy || !reply.trim()">{{ busy ? 'Sending…' : 'Send' }}</button></form>

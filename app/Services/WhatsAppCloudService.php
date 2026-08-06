@@ -57,4 +57,38 @@ class WhatsAppCloudService
 
         return $response;
     }
+
+    public function downloadMedia(string $mediaId): array
+    {
+        $token = config('app.whatsapp_token');
+        $version = config('services.whatsapp.api_version', 'v22.0');
+
+        if (! $token) {
+            throw new RuntimeException('WHATSAPP_TOKEN is missing from the server environment.');
+        }
+
+        $metadata = Http::withToken($token)
+            ->acceptJson()
+            ->timeout(15)
+            ->get("https://graph.facebook.com/{$version}/{$mediaId}");
+
+        if (! $metadata->successful() || blank($metadata->json('url'))) {
+            throw new RuntimeException(
+                data_get($metadata->json(), 'error.message', 'WhatsApp media metadata could not be loaded.')
+            );
+        }
+
+        $download = Http::withToken($token)
+            ->timeout(30)
+            ->get($metadata->json('url'));
+
+        if (! $download->successful()) {
+            throw new RuntimeException('WhatsApp media could not be downloaded.');
+        }
+
+        return [
+            'content' => $download->body(),
+            'mime_type' => $metadata->json('mime_type') ?: $download->header('Content-Type') ?: 'application/octet-stream',
+        ];
+    }
 }

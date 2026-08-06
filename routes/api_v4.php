@@ -282,6 +282,7 @@ Route::prefix('v4')
                     Route::put('/whatsapp/settings', [AdminWhatsAppInboxController::class, 'saveSettings']);
                     Route::post('/whatsapp/verify-token', [AdminWhatsAppInboxController::class, 'generateVerifyToken']);
                     Route::get('/whatsapp/conversations', [AdminWhatsAppInboxController::class, 'conversations']);
+                    Route::get('/whatsapp/messages/{message}/media', [AdminWhatsAppInboxController::class, 'media']);
                     Route::get('/whatsapp/conversations/{phone}', [AdminWhatsAppInboxController::class, 'messages']);
                     Route::post('/whatsapp/reply', [AdminWhatsAppInboxController::class, 'reply']);
                     Route::get('/realtime/warning', [AdminRealtimeConfigController::class, 'warning']);

@@ -47,6 +47,33 @@ export async function api(path, options = {}, retried = false) {
     return unwrap(payload);
 }
 
+export async function apiBlob(path, retried = false) {
+    const session = getSession();
+    const headers = new Headers({
+        Accept: '*/*',
+        'X-Client-Platform': 'admin',
+        'X-Client-Version': '1.0',
+    });
+    if (session?.access_token) headers.set('Authorization', `Bearer ${session.access_token}`);
+
+    const response = await fetch(path.startsWith('http') ? path : `${API_ROOT}${path}`, { headers });
+    if (response.status === 401 && !retried && session?.refresh_token) {
+        try {
+            const refreshed = await api('/auth/tokens/refresh', { method: 'POST', body: { refresh_token: session.refresh_token } }, true);
+            saveSession({ ...session, ...(refreshed?.data || refreshed) });
+            return apiBlob(path, true);
+        } catch {
+            clearSession();
+            window.dispatchEvent(new Event('zostream:session-expired'));
+        }
+    }
+    if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(errorMessage(payload, response.status));
+    }
+    return response.blob();
+}
+
 export function queryString(values = {}) {
     const query = new URLSearchParams();
     Object.entries(values).forEach(([key, value]) => {
