@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import PageHeader from '../components/PageHeader.vue';
 import StatusPanel from '../components/StatusPanel.vue';
 import { api } from '../lib/api';
@@ -8,6 +8,7 @@ import { useWhatsAppMedia } from '../lib/whatsappMedia';
 
 const loading = ref(true); const busy = ref(false); const error = ref(''); const notice = ref('');
 const conversations = ref([]); const messages = ref([]); const selectedPhone = ref(''); const reply = ref('');
+const messageList = ref(null);
 const configOpen = ref(localStorage.getItem('zostream_whatsapp_config') !== 'closed');
 const generatedToken = ref(''); let refreshTimer;
 const media = useWhatsAppMedia();
@@ -16,6 +17,10 @@ const selectedConversation = computed(() => conversations.value.find(item => ite
 
 function showError(reason) { error.value = reason?.message || 'Something went wrong.'; }
 async function loadSettings() { Object.assign(settings, await api('/admin/whatsapp/settings') || {}); }
+async function scrollToLatest() {
+    await nextTick();
+    if (messageList.value) messageList.value.scrollTop = messageList.value.scrollHeight;
+}
 async function loadConversations(quiet = false) {
     try {
         conversations.value = await api('/admin/whatsapp/conversations') || [];
@@ -27,6 +32,7 @@ async function loadMessages(phone, quiet = false) {
     try {
         messages.value = await api(`/admin/whatsapp/conversations/${encodeURIComponent(phone)}`) || [];
         media.loadAll(messages.value);
+        await scrollToLatest();
     }
     catch (reason) { if (!quiet) showError(reason); }
 }
@@ -75,6 +81,7 @@ onMounted(async () => {
     finally { loading.value = false; }
     refreshTimer = window.setInterval(() => loadConversations(true), 15000);
 });
+watch(() => Object.keys(media.urls).length, scrollToLatest);
 onBeforeUnmount(() => window.clearInterval(refreshTimer));
 </script>
 
@@ -106,9 +113,9 @@ onBeforeUnmount(() => window.clearInterval(refreshTimer));
                 </aside>
                 <article class="whatsapp-thread">
                     <header v-if="selectedConversation"><div><p>{{ selectedConversation.name || 'WhatsApp customer' }}</p><h2>+{{ selectedPhone }}</h2></div></header>
-                    <div v-if="selectedPhone" class="whatsapp-message-list">
+                    <div v-if="selectedPhone" ref="messageList" class="whatsapp-message-list">
                         <div v-for="item in messages" :key="item.id" :class="['whatsapp-message', item.direction]">
-                            <a v-if="item.type === 'image' && media.urls[item.id]" class="whatsapp-media-image-link" :href="media.urls[item.id]" target="_blank" rel="noopener"><img class="whatsapp-media-image" :src="media.urls[item.id]" :alt="media.caption(item) || 'WhatsApp image'"></a>
+                            <a v-if="item.type === 'image' && media.urls[item.id]" class="whatsapp-media-image-link" :href="media.urls[item.id]" target="_blank" rel="noopener"><img class="whatsapp-media-image" :src="media.urls[item.id]" :alt="media.caption(item) || 'WhatsApp image'" @load="scrollToLatest"></a>
                             <a v-else-if="item.type === 'document' && media.urls[item.id]" class="whatsapp-media-document" :href="media.urls[item.id]" :download="media.filename(item)"><b>Document</b><span>{{ media.filename(item) }}</span></a>
                             <span v-else-if="media.loading[item.id]" class="whatsapp-media-state">Loading {{ item.type }}…</span>
                             <span v-else-if="media.failed[item.id]" class="whatsapp-media-state is-error">{{ media.failed[item.id] }}</span>

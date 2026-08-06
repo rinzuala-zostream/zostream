@@ -96,6 +96,7 @@ function handleKeydown(event) {
 watch(() => route.path, () => {
     if (!visible.value) closeWidget();
 });
+watch(() => Object.keys(media.urls).length, scrollToLatest);
 onMounted(() => {
     if (visible.value) loadConversations(true);
     refreshTimer = window.setInterval(() => {
@@ -138,7 +139,7 @@ onBeforeUnmount(() => {
                         <header v-if="selectedConversation"><button class="whatsapp-widget-back" type="button" aria-label="Back to conversations" @click="selectedPhone = ''"><AdminIcon name="arrow" /></button><div><b>{{ selectedConversation.name || 'WhatsApp customer' }}</b><span>+{{ selectedPhone }}</span></div></header>
                         <div v-if="selectedPhone" ref="messageList" class="whatsapp-widget-messages">
                             <div v-for="item in messages" :key="item.id" :class="['whatsapp-widget-message', item.direction]">
-                                <a v-if="item.type === 'image' && media.urls[item.id]" class="whatsapp-media-image-link" :href="media.urls[item.id]" target="_blank" rel="noopener"><img class="whatsapp-media-image" :src="media.urls[item.id]" :alt="media.caption(item) || 'WhatsApp image'"></a>
+                                <a v-if="item.type === 'image' && media.urls[item.id]" class="whatsapp-media-image-link" :href="media.urls[item.id]" target="_blank" rel="noopener"><img class="whatsapp-media-image" :src="media.urls[item.id]" :alt="media.caption(item) || 'WhatsApp image'" @load="scrollToLatest"></a>
                                 <a v-else-if="item.type === 'document' && media.urls[item.id]" class="whatsapp-media-document" :href="media.urls[item.id]" :download="media.filename(item)"><b>Document</b><span>{{ media.filename(item) }}</span></a>
                                 <span v-else-if="media.loading[item.id]" class="whatsapp-media-state">Loading {{ item.type }}…</span>
                                 <span v-else-if="media.failed[item.id]" class="whatsapp-media-state is-error">{{ media.failed[item.id] }}</span>
