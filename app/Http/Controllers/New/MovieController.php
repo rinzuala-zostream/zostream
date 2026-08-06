@@ -9,6 +9,7 @@ use App\Models\New\PlanFeature;
 use App\Models\New\Subscription;
 use App\Models\New\VideoUrl;
 use App\Support\WebpImageUploader;
+use App\Support\MpdDurationExtractor;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use App\Models\MovieModel;
@@ -20,7 +21,10 @@ use Exception;
 
 class MovieController extends Controller
 {
-    public function __construct(private readonly WebpImageUploader $imageUploader) {}
+    public function __construct(
+        private readonly WebpImageUploader $imageUploader,
+        private readonly MpdDurationExtractor $mpdDurationExtractor
+    ) {}
 
     /**
      * 📋 List all movies with pagination
@@ -98,6 +102,17 @@ class MovieController extends Controller
                 : now()->toDateString();
             $movieData['trailer'] = $movieData['trailer'] ?? '';
 
+            if (empty($movieData['duration'])) {
+                foreach ([$movieData['dash_url'] ?? null, $movieData['url'] ?? null] as $mpdSource) {
+                    $extractedDuration = $this->mpdDurationExtractor->extract($mpdSource);
+
+                    if ($extractedDuration !== null) {
+                        $movieData['duration'] = $extractedDuration;
+                        break;
+                    }
+                }
+            }
+
             if (! empty($movieData['release_on'])) {
                 $movieData['release_on'] = Carbon::parse($movieData['release_on'])->toDateString();
             }
@@ -139,6 +154,22 @@ class MovieController extends Controller
 
             $validated = $request->validate($this->movieRules($request));
             $movieData = $this->prepareMovieData($request, $validated);
+
+            if (empty($movieData['duration'])) {
+                $sources = [
+                    $movieData['dash_url'] ?? $movie->dash_url,
+                    $movieData['url'] ?? $movie->url,
+                ];
+
+                foreach ($sources as $mpdSource) {
+                    $extractedDuration = $this->mpdDurationExtractor->extract($mpdSource);
+
+                    if ($extractedDuration !== null) {
+                        $movieData['duration'] = $extractedDuration;
+                        break;
+                    }
+                }
+            }
 
             foreach (['create_date', 'release_on'] as $dateField) {
                 if (! array_key_exists($dateField, $movieData)) {
