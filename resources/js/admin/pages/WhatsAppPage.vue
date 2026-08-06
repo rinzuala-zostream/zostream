@@ -6,6 +6,7 @@ import { api } from '../lib/api';
 
 const loading = ref(true); const busy = ref(false); const error = ref(''); const notice = ref('');
 const conversations = ref([]); const messages = ref([]); const selectedPhone = ref(''); const reply = ref('');
+const configOpen = ref(localStorage.getItem('zostream_whatsapp_config') !== 'closed');
 const generatedToken = ref(''); let refreshTimer;
 const settings = reactive({ verify_token: '', auto_reply_enabled: false, auto_reply_message: '', webhook_url: '', has_verify_token: false, server_credentials_configured: false });
 const selectedConversation = computed(() => conversations.value.find(item => item.phone === selectedPhone.value));
@@ -48,6 +49,10 @@ async function copy(value) {
     try { await navigator.clipboard.writeText(value); notice.value = 'Copied to clipboard.'; }
     catch { error.value = 'Copy failed. Select and copy the value manually.'; }
 }
+function toggleConfig() {
+    configOpen.value = !configOpen.value;
+    localStorage.setItem('zostream_whatsapp_config', configOpen.value ? 'open' : 'closed');
+}
 async function sendReply() {
     const body = reply.value.trim(); if (!body || !selectedPhone.value) return;
     busy.value = true; error.value = ''; notice.value = '';
@@ -75,8 +80,8 @@ onBeforeUnmount(() => window.clearInterval(refreshTimer));
         <div v-if="loading" class="admin-loading">Loading WhatsApp…</div>
         <template v-else>
             <section class="admin-panel whatsapp-setup">
-                <header><div><p>CLOUD API</p><h2>Webhook</h2></div><strong :class="{ off: !settings.server_credentials_configured }">{{ settings.server_credentials_configured ? 'Server configured' : 'Missing .env credentials' }}</strong></header>
-                <form class="admin-form-grid" @submit.prevent="saveSettings">
+                <header><div><p>CLOUD API</p><h2>Webhook</h2></div><div class="whatsapp-setup-controls"><strong :class="{ off: !settings.server_credentials_configured }">{{ settings.server_credentials_configured ? 'Server configured' : 'Missing .env credentials' }}</strong><button type="button" class="admin-secondary whatsapp-collapse" :aria-expanded="configOpen" aria-controls="whatsapp-webhook-settings" @click="toggleConfig">{{ configOpen ? 'Collapse' : 'Expand' }}<span :class="{ open: configOpen }" aria-hidden="true">⌄</span></button></div></header>
+                <form v-if="configOpen" id="whatsapp-webhook-settings" class="admin-form-grid" @submit.prevent="saveSettings">
                     <label><span>Verify token</span><input v-model="settings.verify_token" type="password" :placeholder="settings.has_verify_token ? 'Saved — leave blank to keep' : 'Webhook verify token'"></label>
                     <label class="wide"><span>Callback URL</span><div class="whatsapp-copy"><input :value="settings.webhook_url" readonly><button type="button" class="admin-secondary" @click="copy(settings.webhook_url)">Copy</button></div></label>
                     <label v-if="generatedToken" class="wide"><span>New verify token — copy it now</span><div class="whatsapp-copy"><input :value="generatedToken" readonly><button type="button" class="admin-secondary" @click="copy(generatedToken)">Copy</button></div></label>
