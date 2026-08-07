@@ -118,7 +118,7 @@ class InvoiceService
         }
 
         $templateName = $isWifiInvoice
-            ? 'zostream_wifi_invoice'
+            ? config('app.whatsapp_wifi_invoice_template', 'zostream_wifi_invoice')
             : config('app.whatsapp_invoice_template', 'zostream_invoice');
 
         if ($data['customer_phone'] === '') {

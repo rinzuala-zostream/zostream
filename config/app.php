@@ -25,6 +25,7 @@ return [
     'whatsapp_token' => env('WHATSAPP_TOKEN'),
     'whatsapp_invoice_template' => env('WHATSAPP_INVOICE_TEMPLATE', 'zostream_invoice'),
     'whatsapp_invoice_button_parameter' => env('WHATSAPP_INVOICE_BUTTON_PARAMETER', 'none'),
+    'whatsapp_wifi_invoice_template' => env('WHATSAPP_WIFI_INVOICE_TEMPLATE', 'zostream_wifi_invoice'),
     'whatsapp_wifi_invoice_button_parameter' => env('WHATSAPP_WIFI_INVOICE_BUTTON_PARAMETER', 'path'),
     'whatsapp_wifi_invoice_language' => env('WHATSAPP_WIFI_INVOICE_LANGUAGE', 'en_US'),
 

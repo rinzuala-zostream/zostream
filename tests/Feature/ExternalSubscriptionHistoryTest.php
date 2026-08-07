@@ -329,6 +329,8 @@ class ExternalSubscriptionHistoryTest extends TestCase
 
     public function test_wifi_payment_uses_wifi_invoice_template_and_separate_invoice_views(): void
     {
+        config(['app.whatsapp_wifi_invoice_template' => 'zostream_wifi_invoice_v2']);
+
         DB::table('user')->insert([
             'uid' => 'wifi-user',
             'auth_phone' => '9876543210',
@@ -423,7 +425,7 @@ class ExternalSubscriptionHistoryTest extends TestCase
         $this->assertTrue($invoices->sendWhatsAppInvoice($payment));
         $this->assertTrue($invoices->sendWhatsAppInvoice($mobilePayment));
         $this->assertTrue($linksStoredBeforeWhatsAppSend);
-        $this->assertSame('zostream_wifi_invoice', $sentPayload['template_name']);
+        $this->assertSame('zostream_wifi_invoice_v2', $sentPayload['template_name']);
         $this->assertSame('en_US', $sentPayload['language']);
         $this->assertSame([
             'WiFi Customer',
