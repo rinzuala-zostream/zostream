@@ -109,7 +109,7 @@ class ExternalSubscriptionHistoryTest extends TestCase
                 'id' => 24,
                 'name' => 'TV plan',
                 'device_type' => 'tv',
-                'duration_days' => 30,
+                'duration_days' => 90,
                 'price' => 299,
                 'created_at' => now(),
                 'updated_at' => now(),

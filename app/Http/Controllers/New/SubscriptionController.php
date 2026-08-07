@@ -911,28 +911,19 @@ class SubscriptionController extends Controller
             }
 
             $order = $razorpayData['order'];
+            $wifiExpiryDate = Subscription::endAtForDuration(now(), 30);
             $payments = DB::transaction(function () use (
                 $validated,
                 $resolvedUserId,
                 $phoneSuffix,
                 $currency,
                 $planDeviceTypes,
-                $plans,
-                $order
+                $order,
+                $wifiExpiryDate
             ) {
                 $created = [];
 
                 foreach ($planDeviceTypes as $planId => $deviceType) {
-                    $plan = $plans->get($planId);
-                    $currentSubscription = Subscription::activeForUserAndDeviceType($resolvedUserId, $deviceType)
-                        ->orderByDesc('end_at')
-                        ->first();
-                    $expiryDate = Subscription::renewEndAt(
-                        $currentSubscription?->end_at,
-                        now(),
-                        $plan?->duration_days ?? 30
-                    );
-
                     $created[] = PaymentHistory::create([
                         'subscription_id' => null,
                         'user_id' => $resolvedUserId,
@@ -947,7 +938,7 @@ class SubscriptionController extends Controller
                         'status' => 'pending',
                         'payment_type' => 'new',
                         'payment_date' => now(),
-                        'expiry_date' => $expiryDate,
+                        'expiry_date' => $wifiExpiryDate,
                         'meta' => array_merge($validated['meta'] ?? [], [
                             'source' => 'external_api',
                             'provider' => 'zostream_wifi',

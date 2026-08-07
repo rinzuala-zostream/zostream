@@ -491,6 +491,10 @@ class PaymentController extends Controller
         Carbon $startAt,
         int $durationDays
     ): Carbon {
+        if ($this->invoiceService->isZoStreamWifiPayment($payment)) {
+            return Subscription::endAtForDuration($startAt, 30);
+        }
+
         if ($payment->expiry_date) {
             return Carbon::parse($payment->expiry_date);
         }
