@@ -105,6 +105,10 @@ Route::prefix('v4')
         Route::get('/catalog/episodes/{id}', [EpisodeController::class, 'show']);
 
         Route::get('/billing/plans/device/{deviceType}', [SubscriptionController::class, 'getByDeviceType']);
+        Route::post('/external/subscription-history', [SubscriptionController::class, 'storeExternalHistory'])
+            ->middleware('api.key')
+            ->withoutMiddleware('api.v4')
+            ->name('v4.external.subscription-history.store');
         Route::post('/webhooks/razorpay', [PaymentController::class, 'razorpayWebhook']);
         Route::get('/webhooks/whatsapp', [WhatsAppWebhookController::class, 'verify'])
             ->middleware('throttle:60,1');

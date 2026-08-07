@@ -12,7 +12,7 @@ class InvoiceController extends Controller
     {
         abort_unless($payment->status === 'success', 404);
 
-        return view('invoices.show', [
+        return view($invoices->isZoStreamWifiPayment($payment) ? 'invoices.wifi_show' : 'invoices.show', [
             'invoice' => $invoices->buildInvoiceData($payment),
         ]);
     }
@@ -22,10 +22,10 @@ class InvoiceController extends Controller
         abort_unless($payment->status === 'success', 404);
 
         $invoice = $invoices->buildInvoiceData($payment);
-        $pdf = Pdf::loadView('invoices.pdf', [
+        $pdf = Pdf::loadView($invoices->isZoStreamWifiPayment($payment) ? 'invoices.wifi_pdf' : 'invoices.pdf', [
             'invoice' => $invoice,
         ]);
 
-        return $pdf->stream($invoice['invoice_no'] . '.pdf');
+        return $pdf->stream($invoice['invoice_no'].'.pdf');
     }
 }

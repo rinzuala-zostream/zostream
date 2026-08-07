@@ -29,17 +29,25 @@ class InvoiceService
             ->first();
 
         $item = $this->resolveItem($payment);
+        $meta = is_array($payment->meta) ? $payment->meta : [];
         $paymentType = strtolower((string) $payment->app_payment_type) === 'ppv'
             ? 'Rent'
             : 'Subscription';
         $deviceLabel = $this->resolveDeviceLabel($payment);
 
+        $invoiceDate = $payment->payment_date
+            ? Carbon::parse($payment->payment_date)
+            : Carbon::parse($payment->updated_at ?? now());
+        $dueDate = $payment->expiry_date ? Carbon::parse($payment->expiry_date) : null;
+        $invoiceAmount = $this->isZoStreamWifiPayment($payment)
+            && is_numeric($meta['actual_amount'] ?? null)
+                ? (float) $meta['actual_amount']
+                : (float) $payment->amount;
+
         return [
             'invoice_no' => $this->invoiceNumber($payment),
-            'invoice_date' => $payment->payment_date
-                ? Carbon::parse($payment->payment_date)
-                : Carbon::parse($payment->updated_at ?? now()),
-            'customer_name' => $user?->name ?: 'Zo Stream User',
+            'invoice_date' => $invoiceDate,
+            'customer_name' => $user?->name ?: ($meta['name'] ?? 'Zo Stream User'),
             'customer_phone' => $this->resolvePhone($user),
             'customer_email' => $user?->mail ?: null,
             'customer_address' => $user?->address ?: 'Aizawl',
@@ -49,12 +57,16 @@ class InvoiceService
             'device_label' => $deviceLabel,
             'item_name' => $item['name'],
             'item_description' => $item['description'],
-            'amount' => (float) $payment->amount,
+            'amount' => $invoiceAmount,
             'currency' => $payment->currency ?: 'INR',
             'payment_gateway' => $payment->payment_gateway ?: 'N/A',
             'payment_method' => $payment->payment_method ?: $payment->payment_type ?: 'N/A',
             'transaction_id' => $payment->transaction_id ?: 'N/A',
-            'valid_till' => $payment->expiry_date ? Carbon::parse($payment->expiry_date) : null,
+            'valid_till' => $dueDate,
+            'billing_period' => $dueDate
+                ? $invoiceDate->format('M d, Y').' - '.$dueDate->format('M d, Y')
+                : $invoiceDate->format('M d, Y'),
+            'due_date' => $dueDate,
             'status' => $payment->status ?: 'success',
             'view_url' => $this->invoiceUrl($payment),
             'pdf_url' => $this->invoicePdfUrl($payment),
@@ -82,17 +94,22 @@ class InvoiceService
                 'payment_id' => $payment->id,
                 'invoice_sent_at' => $payment->meta['invoice_whatsapp_sent_at'] ?? null,
             ]);
+
             return true;
         }
 
         $data = $this->buildInvoiceData($payment);
-        $templateName = config('app.whatsapp_invoice_template', 'zostream_invoice');
+        $isWifiInvoice = $this->isZoStreamWifiPayment($payment);
+        $templateName = $isWifiInvoice
+            ? 'zostream_wifi_invoice'
+            : config('app.whatsapp_invoice_template', 'zostream_invoice');
 
         if ($data['customer_phone'] === '') {
             Log::warning('Invoice WhatsApp skipped: phone not found', [
                 'payment_id' => $payment->id,
                 'user_id' => $payment->user_id,
             ]);
+
             return false;
         }
 
@@ -102,19 +119,33 @@ class InvoiceService
                 'type' => 'template',
                 'template_name' => $templateName,
                 'language' => 'en',
-                'template_header_document_url' => $data['pdf_url'],
-                'template_header_document_name' => $data['invoice_no'] . '.pdf',
-                'template_params' => [
+            ];
+
+            if ($isWifiInvoice) {
+                $payload['template_params'] = [
+                    $data['customer_name'],
+                    $data['invoice_no'],
+                    $data['billing_period'],
+                    number_format($data['amount'], 2, '.', ''),
+                    $data['due_date'] ? $data['due_date']->format('M d, Y') : 'N/A',
+                ];
+                $buttonParameter = $this->invoiceButtonParameter(
+                    $data['view_url'],
+                    (string) config('app.whatsapp_wifi_invoice_button_parameter', 'path')
+                );
+            } else {
+                $payload['template_header_document_url'] = $data['pdf_url'];
+                $payload['template_header_document_name'] = $data['invoice_no'].'.pdf';
+                $payload['template_params'] = [
                     $data['customer_name'],
                     $data['payment_type'],
                     $data['item_name'],
                     $this->formatMoney($data['amount'], $data['currency']),
                     $data['transaction_id'],
                     $data['valid_till'] ? $data['valid_till']->format('M d, Y') : 'N/A',
-                ],
-            ];
-
-            $buttonParameter = $this->invoiceButtonParameter($data['view_url']);
+                ];
+                $buttonParameter = $this->invoiceButtonParameter($data['view_url']);
+            }
 
             if ($buttonParameter !== '') {
                 $payload['template_button_url'] = $buttonParameter;
@@ -130,6 +161,7 @@ class InvoiceService
                     'status' => $response->getStatusCode(),
                     'response' => method_exists($response, 'getData') ? $response->getData(true) : null,
                 ]);
+
                 return false;
             }
 
@@ -156,7 +188,7 @@ class InvoiceService
     {
         $meta = is_array($payment->meta) ? $payment->meta : [];
 
-        return !empty($meta['invoice_whatsapp_sent_at']);
+        return ! empty($meta['invoice_whatsapp_sent_at']);
     }
 
     private function markInvoiceWhatsAppSent(PaymentHistory $payment, string $invoiceUrl): void
@@ -169,9 +201,9 @@ class InvoiceService
         $payment->forceFill(['meta' => $meta])->save();
     }
 
-    private function invoiceButtonParameter(string $invoiceUrl): string
+    private function invoiceButtonParameter(string $invoiceUrl, ?string $mode = null): string
     {
-        $mode = (string) config('app.whatsapp_invoice_button_parameter', 'none');
+        $mode ??= (string) config('app.whatsapp_invoice_button_parameter', 'none');
 
         if ($mode === 'none' || $mode === '') {
             return '';
@@ -189,11 +221,11 @@ class InvoiceService
         $value = ltrim($path, '/');
 
         if ($query !== '') {
-            $value .= '?' . $query;
+            $value .= '?'.$query;
         }
 
         if ($fragment !== '') {
-            $value .= '#' . $fragment;
+            $value .= '#'.$fragment;
         }
 
         return $value !== '' ? $value : $invoiceUrl;
@@ -223,8 +255,9 @@ class InvoiceService
         $episode = Episode::with('season.movie')->where('id', $movieId)->first();
         if ($episode) {
             $seriesTitle = $episode->season?->movie?->title ?: 'Series';
+
             return [
-                'name' => $seriesTitle . ' - ' . ($episode->title ?: 'Episode'),
+                'name' => $seriesTitle.' - '.($episode->title ?: 'Episode'),
                 'description' => 'Pay-per-view episode rental',
             ];
         }
@@ -232,8 +265,9 @@ class InvoiceService
         $season = Season::with('movie')->where('id', $movieId)->first();
         if ($season) {
             $seriesTitle = $season->movie?->title ?: 'Series';
+
             return [
-                'name' => $seriesTitle . ' - ' . ($season->title ?: 'Season ' . $season->season_number),
+                'name' => $seriesTitle.' - '.($season->title ?: 'Season '.$season->season_number),
                 'description' => 'Pay-per-view season rental',
             ];
         }
@@ -246,7 +280,17 @@ class InvoiceService
 
     private function invoiceNumber(PaymentHistory $payment): string
     {
-        return 'INV-' . str_pad((string) $payment->id, 10, '0', STR_PAD_LEFT);
+        $prefix = $this->isZoStreamWifiPayment($payment) ? 'WIFI-INV-' : 'INV-';
+
+        return $prefix.str_pad((string) $payment->id, 10, '0', STR_PAD_LEFT);
+    }
+
+    public function isZoStreamWifiPayment(PaymentHistory $payment): bool
+    {
+        $meta = is_array($payment->meta) ? $payment->meta : [];
+
+        return ($meta['provider'] ?? null) === 'zostream_wifi'
+            && ($meta['subscription_origin'] ?? null) === 'zostream_wifi_connection';
     }
 
     private function resolveDeviceType(PaymentHistory $payment): string
@@ -296,7 +340,7 @@ class InvoiceService
 
         $hasCountryCode = str_starts_with($phone, $countryCode) && strlen($phone) > 10;
 
-        return $hasCountryCode ? $phone : $countryCode . $phone;
+        return $hasCountryCode ? $phone : $countryCode.$phone;
     }
 
     private function normalizePhone(string $phone): string
@@ -306,8 +350,8 @@ class InvoiceService
 
     private function formatMoney(float $amount, string $currency): string
     {
-        $symbol = strtoupper($currency) === 'INR' ? '₹' : strtoupper($currency) . ' ';
+        $symbol = strtoupper($currency) === 'INR' ? '₹' : strtoupper($currency).' ';
 
-        return $symbol . number_format($amount, 2);
+        return $symbol.number_format($amount, 2);
     }
 }

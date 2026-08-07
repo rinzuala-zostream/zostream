@@ -2,9 +2,15 @@
 
 namespace Tests\Feature;
 
+use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\RazorpayController;
-use Illuminate\Support\Facades\DB;
+use App\Http\Controllers\WhatsAppController;
+use App\Models\New\PaymentHistory;
+use App\Models\New\Subscription;
+use App\Services\InvoiceService;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
@@ -20,6 +26,10 @@ class ExternalSubscriptionHistoryTest extends TestCase
             $table->id('num');
             $table->string('uid');
             $table->string('auth_phone')->nullable();
+            $table->string('country_code')->nullable();
+            $table->string('name')->nullable();
+            $table->string('mail')->nullable();
+            $table->string('address')->nullable();
             $table->string('created_date')->nullable();
             $table->string('device_name')->nullable();
             $table->boolean('isACActive')->nullable();
@@ -123,8 +133,11 @@ class ExternalSubscriptionHistoryTest extends TestCase
         ];
 
         $this->withHeader('X-Api-Key', 'external-test-key')
-            ->postJson('/api/v3.0/external/subscription-history', $payload)
+            ->postJson('/api/v4/external/subscription-history', $payload)
             ->assertCreated()
+            ->assertHeader('X-API-Version', '4')
+            ->assertJsonMissingPath('success')
+            ->assertJsonPath('status', 'success')
             ->assertJsonPath('user_id', 'user-123')
             ->assertJsonPath('user_created', false)
             ->assertJsonPath('razorpay_key_id', 'rzp_test_key')
@@ -156,12 +169,22 @@ class ExternalSubscriptionHistoryTest extends TestCase
             'status' => 'pending',
         ]);
 
+        $histories = DB::table('n_payment_histories')->get();
+        foreach ($histories as $history) {
+            $meta = json_decode($history->meta, true, flags: JSON_THROW_ON_ERROR);
+
+            $this->assertSame('external_api', $meta['source']);
+            $this->assertSame('zostream_wifi', $meta['provider']);
+            $this->assertSame('zostream_wifi_connection', $meta['subscription_origin']);
+            $this->assertSame('complimentary', $meta['access_type']);
+            $this->assertTrue($meta['is_free']);
+        }
+
         $expiryDates = DB::table('n_payment_histories')->pluck('expiry_date');
         foreach ($expiryDates as $expiryDate) {
-            $this->assertEqualsWithDelta(
-                now()->addDays(30)->timestamp,
-                strtotime($expiryDate),
-                5
+            $this->assertSame(
+                Subscription::endAtForDuration(now(), 30)->format('Y-m-d H:i:s'),
+                $expiryDate
             );
         }
     }
@@ -302,5 +325,84 @@ class ExternalSubscriptionHistoryTest extends TestCase
             'user_id' => 'latest-user',
             'plan_id' => 24,
         ]);
+    }
+
+    public function test_wifi_payment_uses_wifi_invoice_template_and_separate_invoice_views(): void
+    {
+        DB::table('user')->insert([
+            'uid' => 'wifi-user',
+            'auth_phone' => '9876543210',
+            'country_code' => '91',
+        ]);
+
+        DB::table('n_plans')->insert([
+            'id' => 24,
+            'name' => 'Zo Stream WIFI Plan',
+            'device_type' => 'tv',
+            'duration_days' => 30,
+            'price' => 499,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $payment = PaymentHistory::create([
+            'user_id' => 'wifi-user',
+            'plan_id' => 24,
+            'device_type' => 'tv',
+            'app_payment_type' => 'subscription',
+            'amount' => 499,
+            'currency' => 'INR',
+            'payment_method' => 'razorpay',
+            'payment_gateway' => 'razorpay',
+            'transaction_id' => 'order_wifi_invoice',
+            'status' => 'success',
+            'payment_type' => 'new',
+            'payment_date' => '2026-08-07 10:00:00',
+            'expiry_date' => '2026-09-05 23:59:59',
+            'meta' => [
+                'source' => 'external_api',
+                'provider' => 'zostream_wifi',
+                'subscription_origin' => 'zostream_wifi_connection',
+                'name' => 'WiFi Customer',
+                'actual_amount' => 699,
+            ],
+        ]);
+
+        $sentPayload = null;
+        $whatsApp = $this->mock(WhatsAppController::class);
+        $whatsApp->shouldReceive('send')
+            ->once()
+            ->with(\Mockery::on(function (Request $request) use (&$sentPayload) {
+                $sentPayload = $request->all();
+
+                return true;
+            }))
+            ->andReturn(response()->json(['status' => 'success']));
+
+        $invoices = new InvoiceService($whatsApp);
+
+        $this->assertTrue($invoices->sendWhatsAppInvoice($payment));
+        $this->assertSame('zostream_wifi_invoice', $sentPayload['template_name']);
+        $this->assertSame([
+            'WiFi Customer',
+            'WIFI-INV-'.str_pad((string) $payment->id, 10, '0', STR_PAD_LEFT),
+            'Aug 07, 2026 - Sep 05, 2026',
+            '699.00',
+            'Sep 05, 2026',
+        ], $sentPayload['template_params']);
+        $this->assertStringStartsWith('invoices/payments/'.$payment->id, $sentPayload['template_button_url']);
+        $this->assertArrayNotHasKey('template_header_document_url', $sentPayload);
+
+        $freshPayment = $payment->fresh();
+        $view = app(InvoiceController::class)->show($freshPayment, $invoices);
+
+        $this->assertSame('invoices.wifi_show', $view->name());
+        $this->get($freshPayment->meta['invoice_url'])
+            ->assertOk()
+            ->assertSeeText('Zo Stream WIFI')
+            ->assertSeeText('Download PDF Invoice');
+        $this->get($freshPayment->meta['invoice_pdf_url'])
+            ->assertOk()
+            ->assertHeader('content-type', 'application/pdf');
     }
 }

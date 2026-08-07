@@ -802,6 +802,8 @@ class SubscriptionController extends Controller
             'phone_number' => 'required|string|max:30',
             'amount' => 'required|numeric|min:1',
             'currency' => 'nullable|string|size:3',
+            'name' => 'nullable|string|max:255',
+            'actual_amount' => 'nullable|numeric|min:1',
             'env' => 'nullable|string|in:SANDBOX,PRODUCTION',
             'meta' => 'nullable|array',
         ]);
@@ -827,6 +829,7 @@ class SubscriptionController extends Controller
                 $user = UserModel::create([
                     'uid' => (string) Str::uuid(),
                     'auth_phone' => $phoneSuffix,
+                    'name' => $validated['name'] ?? 'External User',
                     'created_date' => Carbon::now()->format('M d, Y h:i:s a'),
                     'device_name' => 'External Subscription API',
                     'isACActive' => true,
@@ -947,6 +950,13 @@ class SubscriptionController extends Controller
                         'expiry_date' => $expiryDate,
                         'meta' => array_merge($validated['meta'] ?? [], [
                             'source' => 'external_api',
+                            'provider' => 'zostream_wifi',
+                            'amount' => $validated['amount'],
+                            'name' => $validated['name'] ?? null,
+                            'actual_amount' => $validated['actual_amount'] ?? $validated['amount'],
+                            'subscription_origin' => 'zostream_wifi_connection',
+                            'access_type' => 'complimentary',
+                            'is_free' => true,
                             'phone_number' => $phoneSuffix,
                             'razorpay_order' => $order,
                         ]),
