@@ -118,7 +118,7 @@ class InvoiceService
         }
 
         $templateName = $isWifiInvoice
-            ? config('app.whatsapp_wifi_invoice_template', 'zostream_wifi_invoice')
+            ? 'zostream_wifi_invoice_v2'
             : config('app.whatsapp_invoice_template', 'zostream_invoice');
 
         if ($data['customer_phone'] === '') {
@@ -137,9 +137,7 @@ class InvoiceService
                 'to' => $data['customer_phone'],
                 'type' => 'template',
                 'template_name' => $templateName,
-                'language' => $isWifiInvoice
-                    ? config('app.whatsapp_wifi_invoice_language', 'en_US')
-                    : 'en',
+                'language' => 'en',
             ];
 
             if ($isWifiInvoice) {
@@ -150,10 +148,7 @@ class InvoiceService
                     number_format($data['amount'], 2, '.', ''),
                     $data['due_date'] ? $data['due_date']->format('M d, Y') : 'N/A',
                 ];
-                $buttonParameter = $this->invoiceButtonParameter(
-                    $data['view_url'],
-                    (string) config('app.whatsapp_wifi_invoice_button_parameter', 'path')
-                );
+                $buttonParameter = $this->invoiceButtonParameter($data['view_url']);
             } else {
                 $payload['template_header_document_url'] = $data['pdf_url'];
                 $payload['template_header_document_name'] = $data['invoice_no'].'.pdf';
