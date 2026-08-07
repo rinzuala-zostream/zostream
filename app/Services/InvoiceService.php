@@ -112,6 +112,11 @@ class InvoiceService
         }
 
         $data = $this->buildInvoiceData($payment);
+
+        if ($isWifiInvoice) {
+            $this->storeZoStreamWifiInvoiceLinks($payment, $data['view_url'], $data['pdf_url']);
+        }
+
         $templateName = $isWifiInvoice
             ? 'zostream_wifi_invoice'
             : config('app.whatsapp_invoice_template', 'zostream_invoice');
@@ -132,7 +137,9 @@ class InvoiceService
                 'to' => $data['customer_phone'],
                 'type' => 'template',
                 'template_name' => $templateName,
-                'language' => 'en',
+                'language' => $isWifiInvoice
+                    ? config('app.whatsapp_wifi_invoice_language', 'en_US')
+                    : 'en',
             ];
 
             if ($isWifiInvoice) {
@@ -231,6 +238,20 @@ class InvoiceService
             $meta['invoice_url'] = $invoiceUrl;
             $meta['invoice_pdf_url'] = $pdfUrl;
             unset($meta['invoice_whatsapp_processing_at']);
+
+            $orderPayment->forceFill(['meta' => $meta])->save();
+        }
+    }
+
+    private function storeZoStreamWifiInvoiceLinks(
+        PaymentHistory $payment,
+        string $invoiceUrl,
+        string $invoicePdfUrl
+    ): void {
+        foreach ($this->zoStreamWifiOrderPayments($payment) as $orderPayment) {
+            $meta = is_array($orderPayment->meta) ? $orderPayment->meta : [];
+            $meta['invoice_url'] = $invoiceUrl;
+            $meta['invoice_pdf_url'] = $invoicePdfUrl;
 
             $orderPayment->forceFill(['meta' => $meta])->save();
         }

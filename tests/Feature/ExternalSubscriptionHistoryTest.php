@@ -403,11 +403,16 @@ class ExternalSubscriptionHistoryTest extends TestCase
         ]);
 
         $sentPayload = null;
+        $linksStoredBeforeWhatsAppSend = false;
         $whatsApp = $this->mock(WhatsAppController::class);
         $whatsApp->shouldReceive('send')
             ->once()
-            ->with(\Mockery::on(function (Request $request) use (&$sentPayload) {
+            ->with(\Mockery::on(function (Request $request) use (&$sentPayload, &$linksStoredBeforeWhatsAppSend) {
                 $sentPayload = $request->all();
+                $linksStoredBeforeWhatsAppSend = PaymentHistory::where('transaction_id', 'order_wifi_invoice')
+                    ->get()
+                    ->every(fn (PaymentHistory $payment) => ! empty($payment->meta['invoice_url'])
+                        && ! empty($payment->meta['invoice_pdf_url']));
 
                 return true;
             }))
@@ -417,7 +422,9 @@ class ExternalSubscriptionHistoryTest extends TestCase
 
         $this->assertTrue($invoices->sendWhatsAppInvoice($payment));
         $this->assertTrue($invoices->sendWhatsAppInvoice($mobilePayment));
+        $this->assertTrue($linksStoredBeforeWhatsAppSend);
         $this->assertSame('zostream_wifi_invoice', $sentPayload['template_name']);
+        $this->assertSame('en_US', $sentPayload['language']);
         $this->assertSame([
             'WiFi Customer',
             'WIFI-INV-'.str_pad((string) $payment->id, 10, '0', STR_PAD_LEFT),
