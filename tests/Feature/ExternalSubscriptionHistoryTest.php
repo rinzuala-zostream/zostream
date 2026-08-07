@@ -336,19 +336,53 @@ class ExternalSubscriptionHistoryTest extends TestCase
         ]);
 
         DB::table('n_plans')->insert([
-            'id' => 24,
-            'name' => 'Zo Stream WIFI Plan',
-            'device_type' => 'tv',
-            'duration_days' => 30,
-            'price' => 499,
-            'created_at' => now(),
-            'updated_at' => now(),
+            [
+                'id' => 22,
+                'name' => 'Zo Stream WIFI Mobile Plan',
+                'device_type' => 'mobile',
+                'duration_days' => 30,
+                'price' => 499,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'id' => 24,
+                'name' => 'Zo Stream WIFI TV Plan',
+                'device_type' => 'tv',
+                'duration_days' => 30,
+                'price' => 499,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
         ]);
 
         $payment = PaymentHistory::create([
             'user_id' => 'wifi-user',
             'plan_id' => 24,
             'device_type' => 'tv',
+            'app_payment_type' => 'subscription',
+            'amount' => 499,
+            'currency' => 'INR',
+            'payment_method' => 'razorpay',
+            'payment_gateway' => 'razorpay',
+            'transaction_id' => 'order_wifi_invoice',
+            'status' => 'success',
+            'payment_type' => 'new',
+            'payment_date' => '2026-08-07 10:00:00',
+            'expiry_date' => '2026-09-05 23:59:59',
+            'meta' => [
+                'source' => 'external_api',
+                'provider' => 'zostream_wifi',
+                'subscription_origin' => 'zostream_wifi_connection',
+                'name' => 'WiFi Customer',
+                'actual_amount' => 699,
+            ],
+        ]);
+
+        $mobilePayment = PaymentHistory::create([
+            'user_id' => 'wifi-user',
+            'plan_id' => 22,
+            'device_type' => 'mobile',
             'app_payment_type' => 'subscription',
             'amount' => 499,
             'currency' => 'INR',
@@ -382,6 +416,7 @@ class ExternalSubscriptionHistoryTest extends TestCase
         $invoices = new InvoiceService($whatsApp);
 
         $this->assertTrue($invoices->sendWhatsAppInvoice($payment));
+        $this->assertTrue($invoices->sendWhatsAppInvoice($mobilePayment));
         $this->assertSame('zostream_wifi_invoice', $sentPayload['template_name']);
         $this->assertSame([
             'WiFi Customer',
@@ -394,6 +429,13 @@ class ExternalSubscriptionHistoryTest extends TestCase
         $this->assertArrayNotHasKey('template_header_document_url', $sentPayload);
 
         $freshPayment = $payment->fresh();
+        $freshMobilePayment = $mobilePayment->fresh();
+
+        $this->assertNotEmpty($freshPayment->meta['invoice_whatsapp_sent_at']);
+        $this->assertSame($freshPayment->meta['invoice_whatsapp_sent_at'], $freshMobilePayment->meta['invoice_whatsapp_sent_at']);
+        $this->assertSame($freshPayment->meta['invoice_url'], $freshMobilePayment->meta['invoice_url']);
+        $this->assertSame($freshPayment->meta['invoice_pdf_url'], $freshMobilePayment->meta['invoice_pdf_url']);
+
         $view = app(InvoiceController::class)->show($freshPayment, $invoices);
 
         $this->assertSame('invoices.wifi_show', $view->name());

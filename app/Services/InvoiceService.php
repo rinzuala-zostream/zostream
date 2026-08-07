@@ -10,6 +10,8 @@ use App\Models\New\Season;
 use App\Models\UserModel;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
@@ -89,7 +91,18 @@ class InvoiceService
             return false;
         }
 
-        if ($this->invoiceWhatsAppAlreadySent($payment)) {
+        $isWifiInvoice = $this->isZoStreamWifiPayment($payment);
+
+        if ($isWifiInvoice && ! $this->claimZoStreamWifiInvoiceSend($payment)) {
+            Log::info('Zo Stream WiFi invoice WhatsApp skipped: order already sent or being processed', [
+                'payment_id' => $payment->id,
+                'transaction_id' => $payment->transaction_id,
+            ]);
+
+            return true;
+        }
+
+        if (! $isWifiInvoice && $this->invoiceWhatsAppAlreadySent($payment)) {
             Log::info('Invoice WhatsApp skipped: already sent', [
                 'payment_id' => $payment->id,
                 'invoice_sent_at' => $payment->meta['invoice_whatsapp_sent_at'] ?? null,
@@ -99,12 +112,13 @@ class InvoiceService
         }
 
         $data = $this->buildInvoiceData($payment);
-        $isWifiInvoice = $this->isZoStreamWifiPayment($payment);
         $templateName = $isWifiInvoice
             ? 'zostream_wifi_invoice'
             : config('app.whatsapp_invoice_template', 'zostream_invoice');
 
         if ($data['customer_phone'] === '') {
+            $this->releaseZoStreamWifiInvoiceSend($payment);
+
             Log::warning('Invoice WhatsApp skipped: phone not found', [
                 'payment_id' => $payment->id,
                 'user_id' => $payment->user_id,
@@ -154,6 +168,8 @@ class InvoiceService
             $response = $this->whatsAppController->send(new Request($payload));
 
             if ($response->getStatusCode() >= 400) {
+                $this->releaseZoStreamWifiInvoiceSend($payment);
+
                 Log::warning('Invoice WhatsApp failed', [
                     'payment_id' => $payment->id,
                     'template' => $templateName,
@@ -175,6 +191,8 @@ class InvoiceService
 
             return true;
         } catch (\Throwable $e) {
+            $this->releaseZoStreamWifiInvoiceSend($payment);
+
             Log::error('Invoice WhatsApp exception', [
                 'payment_id' => $payment->id,
                 'error' => $e->getMessage(),
@@ -186,6 +204,14 @@ class InvoiceService
 
     private function invoiceWhatsAppAlreadySent(PaymentHistory $payment): bool
     {
+        if ($this->isZoStreamWifiPayment($payment)) {
+            return $this->zoStreamWifiOrderPayments($payment)->contains(function (PaymentHistory $orderPayment) {
+                $meta = is_array($orderPayment->meta) ? $orderPayment->meta : [];
+
+                return ! empty($meta['invoice_whatsapp_sent_at']);
+            });
+        }
+
         $meta = is_array($payment->meta) ? $payment->meta : [];
 
         return ! empty($meta['invoice_whatsapp_sent_at']);
@@ -193,12 +219,103 @@ class InvoiceService
 
     private function markInvoiceWhatsAppSent(PaymentHistory $payment, string $invoiceUrl): void
     {
-        $meta = is_array($payment->meta) ? $payment->meta : [];
-        $meta['invoice_whatsapp_sent_at'] = now()->toIso8601String();
-        $meta['invoice_url'] = $invoiceUrl;
-        $meta['invoice_pdf_url'] = $this->invoicePdfUrl($payment);
+        $payments = $this->isZoStreamWifiPayment($payment)
+            ? $this->zoStreamWifiOrderPayments($payment)
+            : collect([$payment]);
+        $sentAt = now()->toIso8601String();
+        $pdfUrl = $this->invoicePdfUrl($payment);
 
-        $payment->forceFill(['meta' => $meta])->save();
+        foreach ($payments as $orderPayment) {
+            $meta = is_array($orderPayment->meta) ? $orderPayment->meta : [];
+            $meta['invoice_whatsapp_sent_at'] = $sentAt;
+            $meta['invoice_url'] = $invoiceUrl;
+            $meta['invoice_pdf_url'] = $pdfUrl;
+            unset($meta['invoice_whatsapp_processing_at']);
+
+            $orderPayment->forceFill(['meta' => $meta])->save();
+        }
+    }
+
+    private function claimZoStreamWifiInvoiceSend(PaymentHistory $payment): bool
+    {
+        if (! $payment->transaction_id) {
+            return ! $this->invoiceWhatsAppAlreadySent($payment);
+        }
+
+        return DB::transaction(function () use ($payment) {
+            $payments = $this->zoStreamWifiOrderPayments($payment, true);
+
+            foreach ($payments as $orderPayment) {
+                $meta = is_array($orderPayment->meta) ? $orderPayment->meta : [];
+
+                if (! empty($meta['invoice_whatsapp_sent_at'])) {
+                    return false;
+                }
+
+                if ($this->invoiceSendIsBeingProcessed($meta)) {
+                    return false;
+                }
+            }
+
+            $processingAt = now()->toIso8601String();
+
+            foreach ($payments as $orderPayment) {
+                $meta = is_array($orderPayment->meta) ? $orderPayment->meta : [];
+                $meta['invoice_whatsapp_processing_at'] = $processingAt;
+                $orderPayment->forceFill(['meta' => $meta])->save();
+            }
+
+            return true;
+        });
+    }
+
+    private function releaseZoStreamWifiInvoiceSend(PaymentHistory $payment): void
+    {
+        if (! $this->isZoStreamWifiPayment($payment)) {
+            return;
+        }
+
+        foreach ($this->zoStreamWifiOrderPayments($payment) as $orderPayment) {
+            $meta = is_array($orderPayment->meta) ? $orderPayment->meta : [];
+            unset($meta['invoice_whatsapp_processing_at']);
+            $orderPayment->forceFill(['meta' => $meta])->save();
+        }
+    }
+
+    private function invoiceSendIsBeingProcessed(array $meta): bool
+    {
+        $processingAt = $meta['invoice_whatsapp_processing_at'] ?? null;
+
+        if (! is_string($processingAt) || $processingAt === '') {
+            return false;
+        }
+
+        try {
+            return Carbon::parse($processingAt)->isAfter(now()->subMinutes(5));
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    private function zoStreamWifiOrderPayments(PaymentHistory $payment, bool $lockForUpdate = false): Collection
+    {
+        if (! $payment->transaction_id) {
+            return collect([$payment]);
+        }
+
+        $query = PaymentHistory::query()
+            ->where('transaction_id', $payment->transaction_id)
+            ->where('payment_gateway', $payment->payment_gateway)
+            ->orderBy('id');
+
+        if ($lockForUpdate) {
+            $query->lockForUpdate();
+        }
+
+        return $query
+            ->get()
+            ->filter(fn (PaymentHistory $orderPayment) => $this->isZoStreamWifiPayment($orderPayment))
+            ->values();
     }
 
     private function invoiceButtonParameter(string $invoiceUrl, ?string $mode = null): string
