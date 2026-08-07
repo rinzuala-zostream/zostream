@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\New;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\FCMNotificationController;
 use App\Models\New\Episode;
 use App\Models\New\PaymentHistory;
 use App\Models\New\PlanFeature;
@@ -23,7 +24,8 @@ class MovieController extends Controller
 {
     public function __construct(
         private readonly WebpImageUploader $imageUploader,
-        private readonly MpdDurationExtractor $mpdDurationExtractor
+        private readonly MpdDurationExtractor $mpdDurationExtractor,
+        private readonly FCMNotificationController $fcmNotificationController,
     ) {}
 
     /**
@@ -118,6 +120,23 @@ class MovieController extends Controller
             }
 
             $movie = MovieModel::create($movieData);
+
+            if ($request->boolean('notification', true) && $movie->status === 'Published') {
+                $notification = $this->fcmNotificationController->sendToTopic(
+                    topic: 'all',
+                    title: $movie->title,
+                    body: 'Streaming on Zo Stream',
+                    image: $movie->cover_img ?? '',
+                    key: $movie->id,
+                );
+
+                if (! ($notification['success'] ?? false)) {
+                    Log::warning('Movie created but push notification delivery failed', [
+                        'movie_id' => $movie->id,
+                        'notification_status' => $notification['status'] ?? null,
+                    ]);
+                }
+            }
 
             return response()->json([
                 'status' => 'success',
