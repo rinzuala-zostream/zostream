@@ -141,6 +141,8 @@ class InvoiceService
             ];
 
             if ($isWifiInvoice) {
+                $payload['template_header_document_url'] = $data['pdf_url'];
+                $payload['template_header_document_name'] = $data['invoice_no'].'.pdf';
                 $payload['template_params'] = [
                     $data['customer_name'],
                     $data['invoice_no'],

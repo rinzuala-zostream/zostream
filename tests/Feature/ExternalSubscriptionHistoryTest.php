@@ -425,7 +425,7 @@ class ExternalSubscriptionHistoryTest extends TestCase
         $this->assertTrue($invoices->sendWhatsAppInvoice($payment));
         $this->assertTrue($invoices->sendWhatsAppInvoice($mobilePayment));
         $this->assertTrue($linksStoredBeforeWhatsAppSend);
-        $this->assertSame('zostream_wifi_invoice_v2', $sentPayload['template_name']);
+        $this->assertSame('zostream_wifi_invoice_v3', $sentPayload['template_name']);
         $this->assertSame('en', $sentPayload['language']);
         $this->assertSame([
             'WiFi Customer',
@@ -435,7 +435,11 @@ class ExternalSubscriptionHistoryTest extends TestCase
             'Sep 05, 2026',
         ], $sentPayload['template_params']);
         $this->assertStringStartsWith('invoices/payments/'.$payment->id, $sentPayload['template_button_url']);
-        $this->assertArrayNotHasKey('template_header_document_url', $sentPayload);
+        $this->assertSame($payment->fresh()->meta['invoice_pdf_url'], $sentPayload['template_header_document_url']);
+        $this->assertSame(
+            'WIFI-INV-'.str_pad((string) $payment->id, 10, '0', STR_PAD_LEFT).'.pdf',
+            $sentPayload['template_header_document_name']
+        );
 
         $freshPayment = $payment->fresh();
         $freshMobilePayment = $mobilePayment->fresh();
