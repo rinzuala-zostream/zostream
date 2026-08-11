@@ -6,6 +6,10 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration {
     public function up(): void {
+        if (Schema::hasTable('n_stream_events')) {
+            return;
+        }
+
         Schema::create('n_stream_events', function (Blueprint $table) {
             $table->id();
             $table->foreignId('subscription_id')->constrained('n_subscriptions')->cascadeOnDelete();
