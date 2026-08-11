@@ -2,11 +2,86 @@
 
 namespace Tests\Feature;
 
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
 
 class V4ApiTest extends TestCase
 {
+    public function test_otp_entry_points_use_separate_named_rate_limiters(): void
+    {
+        $expectedMiddleware = [
+            'api/v4/auth/otp/request' => 'throttle:otp-request',
+            'api/v4/auth/admin/otp/request' => 'throttle:admin-otp-request',
+            'api/v4/auth/otp/verify' => 'throttle:otp-verify',
+            'api/v4/account-deletion/otp' => 'throttle:account-deletion-otp',
+        ];
+
+        foreach ($expectedMiddleware as $uri => $middleware) {
+            $route = collect(Route::getRoutes()->getRoutes())->first(
+                fn ($route) => $route->uri() === $uri
+            );
+
+            $this->assertNotNull($route, $uri);
+            $this->assertContains($middleware, $route->gatherMiddleware(), $uri);
+        }
+    }
+
+    public function test_admin_otp_rate_limit_is_keyed_by_normalized_recipient(): void
+    {
+        $limiter = RateLimiter::limiter('admin-otp-request');
+
+        $this->assertNotNull($limiter);
+
+        $localPhone = Request::create('/api/v4/auth/admin/otp/request', 'POST', [
+            'country_code' => '+91',
+            'phone_number' => '88370 76347',
+        ]);
+        $fullPhone = Request::create('/api/v4/auth/admin/otp/request', 'POST', [
+            'country_code' => '91',
+            'phone_number' => '+91 88370 76347',
+        ]);
+        $otherPhone = Request::create('/api/v4/auth/admin/otp/request', 'POST', [
+            'country_code' => '+91',
+            'phone_number' => '99999 99999',
+        ]);
+
+        $localLimit = $limiter($localPhone);
+        $fullLimit = $limiter($fullPhone);
+        $otherLimit = $limiter($otherPhone);
+
+        $this->assertSame(6, $localLimit->maxAttempts);
+        $this->assertSame(60, $localLimit->decaySeconds);
+        $this->assertSame($localLimit->key, $fullLimit->key);
+        $this->assertNotSame($localLimit->key, $otherLimit->key);
+    }
+
+    public function test_mobile_otp_rate_limit_does_not_collide_for_users_on_the_same_ip(): void
+    {
+        $limiter = RateLimiter::limiter('otp-request');
+
+        $this->assertNotNull($limiter);
+
+        $firstUser = Request::create('/api/v4/auth/otp/request', 'POST', [
+            'country_code' => '+91',
+            'phone_number' => '88370 76347',
+            'device_type' => 'mobile',
+        ], [], [], ['REMOTE_ADDR' => '10.0.0.5']);
+        $secondUser = Request::create('/api/v4/auth/otp/request', 'POST', [
+            'country_code' => '+91',
+            'phone_number' => '99999 99999',
+            'device_type' => 'mobile',
+        ], [], [], ['REMOTE_ADDR' => '10.0.0.5']);
+
+        $firstLimit = $limiter($firstUser);
+        $secondLimit = $limiter($secondUser);
+
+        $this->assertSame(10, $firstLimit->maxAttempts);
+        $this->assertSame(60, $firstLimit->decaySeconds);
+        $this->assertNotSame($firstLimit->key, $secondLimit->key);
+    }
+
     public function test_health_response_uses_the_canonical_envelope(): void
     {
         $response = $this->withHeaders([

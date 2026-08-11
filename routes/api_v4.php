@@ -60,17 +60,17 @@ Route::prefix('v4')
 
         Route::prefix('auth')->group(function () {
             Route::post('/otp/request', [AuthController::class, 'requestOtp'])
-                ->middleware('throttle:6,1');
+                ->middleware('throttle:otp-request');
             Route::post('/admin/otp/request', [AdminWhatsAppController::class, 'requestOtp'])
-                ->middleware('throttle:6,1');
+                ->middleware('throttle:admin-otp-request');
             Route::post('/otp/verify', [AuthController::class, 'verifyOtp'])
-                ->middleware('throttle:10,1');
+                ->middleware('throttle:otp-verify');
             Route::post('/tokens/refresh', [AuthController::class, 'refresh'])
                 ->middleware('throttle:30,1');
         });
 
         Route::post('/account-deletion/otp', [OTPController::class, 'requestAccountDeletionOtp'])
-            ->middleware('throttle:6,1');
+            ->middleware('throttle:account-deletion-otp');
         Route::delete('/account-deletion', [OTPController::class, 'deleteAccountFromWeb'])
             ->middleware('throttle:10,1');
 
