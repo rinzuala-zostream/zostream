@@ -23,3 +23,9 @@ Schedule::command('app:subscription-maintenance --deactivate=1 --send-reminders=
 // 10 AM: reminder only
 Schedule::command('app:subscription-maintenance --deactivate=0 --reminder-days=3 --send-reminders=1')
     ->dailyAt('10:00');
+
+// Playback clients can disappear without sending a stop request. Expire their
+// rows independently of future playback starts so "active" remains truthful.
+Schedule::command('streams:expire-stale')
+    ->everyMinute()
+    ->withoutOverlapping();

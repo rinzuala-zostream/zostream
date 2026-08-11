@@ -20,7 +20,7 @@ use Log;
 
 class NewStreamController extends Controller
 {
-    protected $streamTimeout = 500; // 8 minutes 20 seconds
+    protected $streamTimeout;
     protected $lockTTL = 30000; // milliseconds
 
     public $movieController;
@@ -29,6 +29,7 @@ class NewStreamController extends Controller
 
     public function __construct(HlsFolderController $hlsFolderController, MovieController $movieController, WatchPositionController $watchPositionController)
     {
+        $this->streamTimeout = max(60, (int) config('playback.stream_timeout_seconds', 500));
         $this->hlsFolderController = $hlsFolderController;
         $this->movieController = $movieController;
         $this->watchPositionController = $watchPositionController;

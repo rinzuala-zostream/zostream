@@ -53,6 +53,30 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(max(1, (int) config('otp.verify_max_attempts', 10)))
                 ->by('otp-verify:'.hash('sha256', $identifier));
         });
+
+        RateLimiter::for('playback-start', function (Request $request) {
+            return $this->playbackDeviceLimit(
+                $request,
+                'start',
+                (int) config('playback.rate_limits.start_per_minute', 60)
+            );
+        });
+
+        RateLimiter::for('playback-heartbeat', function (Request $request) {
+            return $this->playbackDeviceLimit(
+                $request,
+                'heartbeat',
+                (int) config('playback.rate_limits.heartbeat_per_minute', 300)
+            );
+        });
+
+        RateLimiter::for('playback-stop', function (Request $request) {
+            return $this->playbackDeviceLimit(
+                $request,
+                'stop',
+                (int) config('playback.rate_limits.stop_per_minute', 120)
+            );
+        });
     }
 
     private function otpRecipientLimit(Request $request, string $scope, int $maxAttempts): Limit
@@ -68,5 +92,17 @@ class AppServiceProvider extends ServiceProvider
 
         return Limit::perMinute(max(1, $maxAttempts))
             ->by($scope.':'.hash('sha256', $identifier));
+    }
+
+    private function playbackDeviceLimit(Request $request, string $scope, int $maxAttempts): Limit
+    {
+        // auth_device_id is supplied by AuthTokenMiddleware from the verified
+        // session token. This prevents unrelated viewers behind one public IP
+        // (mobile carrier NAT, office Wi-Fi, etc.) from sharing a counter.
+        $deviceId = trim((string) $request->input('auth_device_id', ''));
+        $identifier = $deviceId !== '' ? $deviceId : $request->ip();
+
+        return Limit::perMinute(max(1, $maxAttempts))
+            ->by('playback-'.$scope.':'.hash('sha256', $identifier));
     }
 }

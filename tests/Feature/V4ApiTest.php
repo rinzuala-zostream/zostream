@@ -82,6 +82,48 @@ class V4ApiTest extends TestCase
         $this->assertNotSame($firstLimit->key, $secondLimit->key);
     }
 
+    public function test_playback_routes_use_separate_named_rate_limiters(): void
+    {
+        $expectedMiddleware = [
+            'api/v4/playback/sessions' => 'throttle:playback-start',
+            'api/v4/playback/sessions/heartbeat' => 'throttle:playback-heartbeat',
+            'api/v4/playback/sessions/stop' => 'throttle:playback-stop',
+        ];
+
+        foreach ($expectedMiddleware as $uri => $middleware) {
+            $route = collect(Route::getRoutes()->getRoutes())->first(
+                fn ($route) => $route->uri() === $uri
+            );
+
+            $this->assertNotNull($route, $uri);
+            $this->assertContains($middleware, $route->gatherMiddleware(), $uri);
+        }
+    }
+
+    public function test_playback_rate_limit_does_not_collide_for_devices_on_the_same_ip(): void
+    {
+        $limiter = RateLimiter::limiter('playback-heartbeat');
+
+        $this->assertNotNull($limiter);
+
+        $firstDevice = Request::create('/api/v4/playback/sessions/heartbeat', 'POST', [], [], [], [
+            'REMOTE_ADDR' => '10.0.0.5',
+        ]);
+        $firstDevice->merge(['auth_device_id' => 'device-one']);
+
+        $secondDevice = Request::create('/api/v4/playback/sessions/heartbeat', 'POST', [], [], [], [
+            'REMOTE_ADDR' => '10.0.0.5',
+        ]);
+        $secondDevice->merge(['auth_device_id' => 'device-two']);
+
+        $firstLimit = $limiter($firstDevice);
+        $secondLimit = $limiter($secondDevice);
+
+        $this->assertSame(300, $firstLimit->maxAttempts);
+        $this->assertSame(60, $firstLimit->decaySeconds);
+        $this->assertNotSame($firstLimit->key, $secondLimit->key);
+    }
+
     public function test_health_response_uses_the_canonical_envelope(): void
     {
         $response = $this->withHeaders([

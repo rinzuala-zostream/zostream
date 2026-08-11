@@ -166,11 +166,11 @@ Route::prefix('v4')
 
             Route::prefix('playback/sessions')->group(function () {
                 Route::post('/', [PlaybackController::class, 'start'])
-                    ->middleware('throttle:60,1');
+                    ->middleware('throttle:playback-start');
                 Route::post('/heartbeat', [PlaybackController::class, 'heartbeat'])
-                    ->middleware('throttle:300,1');
+                    ->middleware('throttle:playback-heartbeat');
                 Route::post('/stop', [PlaybackController::class, 'stop'])
-                    ->middleware('throttle:120,1');
+                    ->middleware('throttle:playback-stop');
             });
 
             Route::prefix('billing')->middleware('owner.device')->group(function () {
