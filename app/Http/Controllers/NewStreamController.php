@@ -828,22 +828,31 @@ class NewStreamController extends Controller
 
         $now = now();
 
-        if (
-            !$stream->last_ping ||
-            $stream->last_ping->lt($now->copy()->subSeconds(20))
-        ) {
-            $stream->update([
-                'last_ping' => $now,
-            ]);
+        // Clients heartbeat every 20 seconds. Keep acknowledging every valid
+        // heartbeat, but coalesce persistence so simultaneous/retried requests
+        // cannot all write the same rows from stale model state.
+        $heartbeatCutoff = $now->copy()->subSeconds(
+            max(1, (int) config('playback.write_intervals.heartbeat_seconds', 45))
+        );
+        if (!$stream->last_ping || $stream->last_ping->lte($heartbeatCutoff)) {
+            ActiveStream::whereKey($stream->id)
+                ->where(function ($query) use ($heartbeatCutoff) {
+                    $query->whereNull('last_ping')
+                        ->orWhere('last_ping', '<=', $heartbeatCutoff);
+                })
+                ->update(['last_ping' => $now]);
         }
 
-        if (
-            !$device->last_activity ||
-            $device->last_activity->lt($now->copy()->subSeconds(60))
-        ) {
-            $device->update([
-                'last_activity' => $now,
-            ]);
+        $activityCutoff = $now->copy()->subSeconds(
+            max(1, (int) config('playback.write_intervals.device_activity_seconds', 300))
+        );
+        if (!$device->last_activity || $device->last_activity->lte($activityCutoff)) {
+            Devices::whereKey($device->id)
+                ->where(function ($query) use ($activityCutoff) {
+                    $query->whereNull('last_activity')
+                        ->orWhere('last_activity', '<=', $activityCutoff);
+                })
+                ->update(['last_activity' => $now]);
         }
 
         return response()->json([

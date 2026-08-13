@@ -119,7 +119,7 @@ class V4ApiTest extends TestCase
         $firstLimit = $limiter($firstDevice);
         $secondLimit = $limiter($secondDevice);
 
-        $this->assertSame(300, $firstLimit->maxAttempts);
+        $this->assertSame(20, $firstLimit->maxAttempts);
         $this->assertSame(60, $firstLimit->decaySeconds);
         $this->assertNotSame($firstLimit->key, $secondLimit->key);
     }

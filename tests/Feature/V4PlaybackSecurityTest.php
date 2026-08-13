@@ -193,6 +193,38 @@ class V4PlaybackSecurityTest extends TestCase
         $this->assertSame('stopped', $stream->fresh()->status);
     }
 
+    public function test_heartbeat_coalesces_recent_database_writes(): void
+    {
+        $device = $this->device('user-a', 'device-a', 'active');
+        $stream = $this->stream($device, 'active-stream-token');
+        $stream->update(['last_ping' => now()->subSeconds(20)]);
+        $device->update(['last_activity' => now()->subMinute()]);
+        $lastPing = $stream->fresh()->last_ping->toDateTimeString();
+        $lastActivity = $device->fresh()->last_activity->toDateTimeString();
+
+        $response = $this->controller()->ping($this->heartbeatRequest($device, $stream));
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertSame($lastPing, $stream->fresh()->last_ping->toDateTimeString());
+        $this->assertSame($lastActivity, $device->fresh()->last_activity->toDateTimeString());
+    }
+
+    public function test_heartbeat_refreshes_database_activity_after_write_intervals(): void
+    {
+        $device = $this->device('user-a', 'device-a', 'active');
+        $stream = $this->stream($device, 'active-stream-token');
+        $stream->update(['last_ping' => now()->subSeconds(46)]);
+        $device->update(['last_activity' => now()->subSeconds(301)]);
+        $lastPing = $stream->fresh()->last_ping;
+        $lastActivity = $device->fresh()->last_activity;
+
+        $response = $this->controller()->ping($this->heartbeatRequest($device, $stream));
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertTrue($stream->fresh()->last_ping->gt($lastPing));
+        $this->assertTrue($device->fresh()->last_activity->gt($lastActivity));
+    }
+
     public function test_expired_heartbeat_keeps_the_active_device_entitlement(): void
     {
         $device = $this->device('user-a', 'device-a', 'active');
@@ -701,5 +733,18 @@ class V4PlaybackSecurityTest extends TestCase
             'last_ping' => now()->subMinute(),
             'status' => 'active',
         ]);
+    }
+
+    private function heartbeatRequest(Devices $device, ActiveStream $stream): Request
+    {
+        $request = Request::create('/api/v4/playback/sessions/heartbeat', 'POST', [
+            'auth_user_id' => $device->user_id,
+            'stream_token' => $stream->stream_token,
+            'movie_id' => $stream->content_key,
+            'type' => $stream->content_type,
+        ]);
+        $request->headers->set('Device-Token', $device->device_token);
+
+        return $request;
     }
 }
