@@ -57,7 +57,7 @@ class NewStreamController extends Controller
         $requiresSubscription = false;
         $movie = null;
 
-        if ($contentKey === '' || ! in_array($contentType, ['movie', 'episode'], true)) {
+        if ($contentKey === '' || !in_array($contentType, ['movie', 'episode'], true)) {
             return response()->json([
                 'status' => 'error',
                 'title' => 'Invalid Content',
@@ -66,7 +66,7 @@ class NewStreamController extends Controller
         }
 
         $movie = $this->findContent($contentType, $contentKey);
-        if (! $movie) {
+        if (!$movie) {
             return response()->json([
                 'status' => 'error',
                 'title' => 'Content Not Found',
@@ -76,9 +76,9 @@ class NewStreamController extends Controller
         $resolvedContentId = (string) $movie->id;
 
         $isPPV = (bool) ($movie->isPayPerView ?? false);
-        $requiresSubscription = (bool) ($movie->isPremium ?? false) && ! $isPPV;
+        $requiresSubscription = (bool) ($movie->isPremium ?? false) && !$isPPV;
 
-        if (! $deviceToken || ! $userId) {
+        if (!$deviceToken || !$userId) {
             return response()->json([
                 'status' => 'error',
                 'title' => 'Missing Information',
@@ -108,7 +108,7 @@ class NewStreamController extends Controller
                 ], 404);
             }
 
-            if (! hash_equals((string) $subscription->user_id, (string) $userId)) {
+            if (!hash_equals((string) $subscription->user_id, (string) $userId)) {
                 return response()->json([
                     'status' => 'error',
                     'title' => 'Subscription Access Denied',
@@ -287,7 +287,7 @@ class NewStreamController extends Controller
                 ->lockForUpdate()
                 ->first();
 
-            if (! $device) {
+            if (!$device) {
                 DB::rollBack();
 
                 return response()->json([
@@ -307,10 +307,10 @@ class NewStreamController extends Controller
                     ->first();
 
                 if (
-                    ! $subscription
-                    || ! hash_equals((string) $subscription->user_id, (string) $userId)
-                    || ! $subscription->is_active
-                    || ! $subscription->end_at
+                    !$subscription
+                    || !hash_equals((string) $subscription->user_id, (string) $userId)
+                    || !$subscription->is_active
+                    || !$subscription->end_at
                     || Subscription::endAtIsExpired($subscription->end_at)
                 ) {
                     DB::rollBack();
@@ -429,7 +429,7 @@ class NewStreamController extends Controller
                 if ($dbStatus === 'inactive') {
                     $device->update(['status' => 'active']);
                     $activeDeviceCount++;
-                    $deviceActivatedByStart = ! $device->is_owner_device;
+                    $deviceActivatedByStart = !$device->is_owner_device;
                 }
 
                 $currentActiveSeats = $activeDeviceCount;
@@ -610,7 +610,7 @@ class NewStreamController extends Controller
             }
         }
 
-        if (! $movieLinks) {
+        if (!$movieLinks) {
             $failedStream = ActiveStream::where('stream_token', $streamToken)
                 ->where('device_id', $device->id)
                 ->first();
@@ -621,7 +621,7 @@ class NewStreamController extends Controller
                     'last_ping' => now(),
                 ]);
             }
-            if ($deviceActivatedByStart && ! $device->is_owner_device) {
+            if ($deviceActivatedByStart && !$device->is_owner_device) {
                 $device->update([
                     'status' => 'inactive',
                     'last_activity' => now(),
@@ -669,10 +669,10 @@ class NewStreamController extends Controller
         $contentId = filled($movieId) && is_numeric($movieId) ? (int) $movieId : null;
 
         if (
-            ! $deviceToken
+            !$deviceToken
             || $streamToken === ''
             || $contentKey === ''
-            || ! in_array($contentType, ['movie', 'episode'], true)
+            || !in_array($contentType, ['movie', 'episode'], true)
         ) {
             return response()->json([
                 'status' => 'error',
@@ -713,7 +713,7 @@ class NewStreamController extends Controller
         $stream = $streamQuery->first();
         $timeout = now()->subSeconds($this->streamTimeout);
 
-        if (! $stream) {
+        if (!$stream) {
             // A superseded start response or delayed stop can leave the player with
             // an old token. Recover only a fresh, still-active session belonging to
             // the authenticated device and the exact same content.
@@ -748,7 +748,7 @@ class NewStreamController extends Controller
             }
         }
 
-        if (! $stream) {
+        if (!$stream) {
             $activeDeviceStream = ActiveStream::where('device_id', $device->id)
                 ->where('status', 'active')
                 ->latest('last_ping')
@@ -805,7 +805,7 @@ class NewStreamController extends Controller
                 ->where('is_active', true)
                 ->first();
 
-            if (! $subscription || Subscription::endAtIsExpired($subscription->end_at)) {
+            if (!$subscription || Subscription::endAtIsExpired($subscription->end_at)) {
                 $stream->update([
                     'status' => 'stopped',
                     'last_ping' => now(),
@@ -818,7 +818,7 @@ class NewStreamController extends Controller
             }
         }
 
-        if (! $this->streamMatchesContent($stream, $contentType, $contentKey)) {
+        if (!$this->streamMatchesContent($stream, $contentType, $contentKey)) {
             return response()->json([
                 'status' => 'error',
                 'title' => 'Session Mismatch',
@@ -826,8 +826,25 @@ class NewStreamController extends Controller
             ], 403);
         }
 
-        $stream->update(['last_ping' => now()]);
-        $device->update(['last_activity' => now()]);
+        $now = now();
+
+        if (
+            !$stream->last_ping ||
+            $stream->last_ping->lt($now->copy()->subSeconds(20))
+        ) {
+            $stream->update([
+                'last_ping' => $now,
+            ]);
+        }
+
+        if (
+            !$device->last_activity ||
+            $device->last_activity->lt($now->copy()->subSeconds(60))
+        ) {
+            $device->update([
+                'last_activity' => $now,
+            ]);
+        }
 
         return response()->json([
             'status' => 'success',
@@ -860,7 +877,7 @@ class NewStreamController extends Controller
                 ->where('user_id', $userId)
                 ->first();
 
-            if (! $device) {
+            if (!$device) {
                 return response()->json([
                     'status' => 'error',
                     'code' => 'DEVICE_REVOKED',
@@ -876,7 +893,7 @@ class NewStreamController extends Controller
                 ->lockForUpdate()
                 ->first();
 
-            if (! $stream) {
+            if (!$stream) {
                 DB::rollBack();
 
                 return response()->json([
@@ -886,7 +903,7 @@ class NewStreamController extends Controller
                 ], 404);
             }
 
-            if (! $this->streamMatchesContent($stream, $contentType, $movieId)) {
+            if (!$this->streamMatchesContent($stream, $contentType, $movieId)) {
                 DB::rollBack();
 
                 return response()->json([
@@ -898,7 +915,7 @@ class NewStreamController extends Controller
 
             $alreadyStopped = $stream->status !== 'active';
 
-            if (! $alreadyStopped) {
+            if (!$alreadyStopped) {
                 $stream->update([
                     'status' => 'stopped',
                     'last_ping' => now(),
@@ -911,7 +928,7 @@ class NewStreamController extends Controller
 
             $watchData = [];
 
-            if (! $alreadyStopped) {
+            if (!$alreadyStopped) {
                 try {
                     $fakeRequest = Request::create('', 'POST', [
                         'movie_id' => $movieId,
@@ -941,7 +958,7 @@ class NewStreamController extends Controller
             return response()->json([
                 'status' => 'success',
                 'message' => ($alreadyStopped ? 'Streaming was already stopped.' : 'Streaming stopped.')
-                    . ($watchMessage ? ' '.$watchMessage : ''),
+                    . ($watchMessage ? ' ' . $watchMessage : ''),
                 'watch_position_response' => $watchData,
             ]);
 
@@ -1003,7 +1020,7 @@ class NewStreamController extends Controller
             ], 404);
         }
 
-        if (! hash_equals((string) $subscription->user_id, (string) $userId)) {
+        if (!hash_equals((string) $subscription->user_id, (string) $userId)) {
             return response()->json([
                 'status' => 'error',
                 'title' => 'Subscription Access Denied',
@@ -1074,9 +1091,9 @@ class NewStreamController extends Controller
                 ->lockForUpdate()
                 ->get();
 
-            $deleted = $sharedDevices->pluck('id')->map(fn ($id) => (int) $id)->all();
+            $deleted = $sharedDevices->pluck('id')->map(fn($id) => (int) $id)->all();
 
-            if (! empty($deleted)) {
+            if (!empty($deleted)) {
                 ActiveStream::whereIn('device_id', $deleted)
                     ->where('status', 'active')
                     ->update([
@@ -1122,7 +1139,7 @@ class NewStreamController extends Controller
             ->where('id', $contentKey)
             ->when(
                 ctype_digit($contentKey),
-                fn ($query) => $query->orWhere('num', (int) $contentKey)
+                fn($query) => $query->orWhere('num', (int) $contentKey)
             )
             ->first();
     }
@@ -1134,7 +1151,7 @@ class NewStreamController extends Controller
     ): bool {
         if (
             $stream->content_type !== null
-            && ! hash_equals((string) $stream->content_type, $contentType)
+            && !hash_equals((string) $stream->content_type, $contentType)
         ) {
             return false;
         }
@@ -1155,7 +1172,7 @@ class NewStreamController extends Controller
                 ->lockForUpdate()
                 ->first();
 
-            if (! $lockedRental) {
+            if (!$lockedRental) {
                 return false;
             }
 
