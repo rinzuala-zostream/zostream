@@ -66,8 +66,17 @@ class AppServiceProvider extends ServiceProvider
             return $this->playbackDeviceLimit(
                 $request,
                 'heartbeat',
-                (int) config('playback.rate_limits.heartbeat_per_minute', 300)
-            );
+                (int) config('playback.rate_limits.heartbeat_per_minute', 20)
+            )->response(function (Request $request, array $headers) {
+                // A valid client normally sends only three heartbeats a minute.
+                // Treat duplicate bursts as an acknowledged no-op so older
+                // players do not stop playback while waiting for the next ping.
+                return response()->json([
+                    'status' => 'success',
+                    'message' => 'Streaming session heartbeat accepted.',
+                    'throttled' => true,
+                ], 200, $headers);
+            });
         });
 
         RateLimiter::for('playback-stop', function (Request $request) {
@@ -96,11 +105,25 @@ class AppServiceProvider extends ServiceProvider
 
     private function playbackDeviceLimit(Request $request, string $scope, int $maxAttempts): Limit
     {
-        // auth_device_id is supplied by AuthTokenMiddleware from the verified
-        // session token. This prevents unrelated viewers behind one public IP
-        // (mobile carrier NAT, office Wi-Fi, etc.) from sharing a counter.
+        // Prefer identities supplied by AuthTokenMiddleware. Device-Token keeps
+        // legacy authenticated sessions isolated before falling back to an IP,
+        // which may be shared by many viewers behind Cloudflare or carrier NAT.
         $deviceId = trim((string) $request->input('auth_device_id', ''));
-        $identifier = $deviceId !== '' ? $deviceId : $request->ip();
+        $sessionId = trim((string) $request->attributes->get('auth_session_token_id', ''));
+        $headerDeviceId = trim((string) $request->header('Device-Token', ''));
+        $bodyDeviceId = trim((string) (
+            $request->input('device_token')
+            ?: $request->input('device_id')
+            ?: ''
+        ));
+
+        $identifier = match (true) {
+            $deviceId !== '' => 'device:'.$deviceId,
+            $sessionId !== '' => 'session:'.$sessionId,
+            $headerDeviceId !== '' => 'header-device:'.$headerDeviceId,
+            $bodyDeviceId !== '' => 'body-device:'.$bodyDeviceId,
+            default => 'ip:'.$request->ip(),
+        };
 
         return Limit::perMinute(max(1, $maxAttempts))
             ->by('playback-'.$scope.':'.hash('sha256', $identifier));

@@ -119,9 +119,47 @@ class V4ApiTest extends TestCase
         $firstLimit = $limiter($firstDevice);
         $secondLimit = $limiter($secondDevice);
 
-        $this->assertSame(20, $firstLimit->maxAttempts);
+        $this->assertSame(
+            (int) config('playback.rate_limits.heartbeat_per_minute'),
+            $firstLimit->maxAttempts
+        );
         $this->assertSame(60, $firstLimit->decaySeconds);
         $this->assertNotSame($firstLimit->key, $secondLimit->key);
+    }
+
+    public function test_playback_rate_limit_uses_device_header_before_shared_ip_fallback(): void
+    {
+        $limiter = RateLimiter::limiter('playback-heartbeat');
+
+        $firstDevice = Request::create('/api/v4/playback/sessions/heartbeat', 'POST', [], [], [], [
+            'REMOTE_ADDR' => '10.0.0.5',
+            'HTTP_DEVICE_TOKEN' => 'legacy-device-one',
+        ]);
+        $secondDevice = Request::create('/api/v4/playback/sessions/heartbeat', 'POST', [], [], [], [
+            'REMOTE_ADDR' => '10.0.0.5',
+            'HTTP_DEVICE_TOKEN' => 'legacy-device-two',
+        ]);
+
+        $this->assertNotSame($limiter($firstDevice)->key, $limiter($secondDevice)->key);
+    }
+
+    public function test_excess_heartbeat_is_acknowledged_with_json_success(): void
+    {
+        $limiter = RateLimiter::limiter('playback-heartbeat');
+        $request = Request::create('/api/v4/playback/sessions/heartbeat', 'POST');
+        $limit = $limiter($request);
+
+        $this->assertNotNull($limit->responseCallback);
+
+        $response = ($limit->responseCallback)($request, ['Retry-After' => 60]);
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertSame('application/json', $response->headers->get('Content-Type'));
+        $this->assertSame([
+            'status' => 'success',
+            'message' => 'Streaming session heartbeat accepted.',
+            'throttled' => true,
+        ], $response->getData(true));
     }
 
     public function test_health_response_uses_the_canonical_envelope(): void
