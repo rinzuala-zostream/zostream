@@ -193,6 +193,38 @@ class V4PlaybackSecurityTest extends TestCase
         $this->assertSame('stopped', $stream->fresh()->status);
     }
 
+    public function test_inactive_stream_pruning_keeps_active_and_recent_sessions(): void
+    {
+        $device = $this->device('user-a', 'device-a');
+        $active = $this->stream($device, 'active-old-token');
+        $active->update(['last_ping' => now()->subDays(3)]);
+        $recentStopped = $this->stream($device, 'recent-stopped-token');
+        $recentStopped->update([
+            'status' => 'stopped',
+            'last_ping' => now()->subHours(12),
+        ]);
+        $oldStopped = $this->stream($device, 'old-stopped-token');
+        $oldStopped->update([
+            'status' => 'stopped',
+            'last_ping' => now()->subHours(25),
+        ]);
+        $oldExpired = $this->stream($device, 'old-expired-token');
+        $oldExpired->update([
+            'status' => 'expired',
+            'last_ping' => now()->subHours(25),
+        ]);
+
+        $this->artisan('streams:prune-inactive', [
+            '--hours' => 24,
+            '--batch' => 1,
+        ])->assertSuccessful();
+
+        $this->assertDatabaseHas('n_active_streams', ['id' => $active->id]);
+        $this->assertDatabaseHas('n_active_streams', ['id' => $recentStopped->id]);
+        $this->assertDatabaseMissing('n_active_streams', ['id' => $oldStopped->id]);
+        $this->assertDatabaseMissing('n_active_streams', ['id' => $oldExpired->id]);
+    }
+
     public function test_heartbeat_coalesces_recent_database_writes(): void
     {
         $device = $this->device('user-a', 'device-a', 'active');

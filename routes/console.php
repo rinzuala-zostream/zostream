@@ -29,3 +29,9 @@ Schedule::command('app:subscription-maintenance --deactivate=0 --reminder-days=3
 Schedule::command('streams:expire-stale')
     ->everyMinute()
     ->withoutOverlapping();
+
+// Keep stopped/expired rows briefly for idempotent stop retries and diagnosis,
+// then remove them in small batches so the live-session table stays compact.
+Schedule::command('streams:prune-inactive')
+    ->dailyAt('03:30')
+    ->withoutOverlapping(30);
