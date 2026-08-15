@@ -945,7 +945,7 @@ class MovieController extends Controller
             return $raw;
         }
 
-        $rawParam = str_replace('%2B', '+', $raw);
+        $rawParam = rawurldecode(trim($raw));
         $rawParam = str_replace(' ', '+', $rawParam);
         $b64 = strtr($rawParam, '-_', '+/');
         $pad = strlen($b64) % 4;
@@ -981,7 +981,11 @@ class MovieController extends Controller
             return $raw;
         }
 
-        return trim(str_replace(["\r", "\n"], '', $decryptedMessage));
+        $decryptedMessage = trim(str_replace(["\r", "\n"], '', $decryptedMessage));
+
+        return filter_var($decryptedMessage, FILTER_VALIDATE_URL)
+            ? $decryptedMessage
+            : rawurldecode($decryptedMessage);
     }
 
     public function getMovies(Request $request)

@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import { AdminPageHeader } from "@/app/components/admin-page-header";
 import { EditMovieForm } from "@/app/features/movies/components/edit-movie-form";
+import { decryptStreamLink } from "@/app/features/movies/lib/decrypt-stream-link";
 import { movieService } from "@/app/features/movies/services/movie-service";
 import type {
   MovieLinksResponse,
@@ -34,6 +35,28 @@ function linkFields(response: MovieLinksResponse | null): Partial<MovieItem> {
   };
 }
 
+const movieLinkFields = [
+  "url",
+  "dash_url",
+  "hls_url",
+  "trailer",
+  "subtitle",
+] as const;
+
+function withDecryptedLinks(movie: MovieItem): MovieItem {
+  const decrypted = { ...movie };
+
+  for (const field of movieLinkFields) {
+    const value = movie[field];
+
+    if (typeof value === "string") {
+      decrypted[field] = decryptStreamLink(value);
+    }
+  }
+
+  return decrypted;
+}
+
 export default async function EditMoviePage({ params }: EditMoviePageProps) {
   const [{ id }, cookieStore] = await Promise.all([params, cookies()]);
   const savedMode = cookieStore.get("theme-mode")?.value;
@@ -54,9 +77,11 @@ export default async function EditMoviePage({ params }: EditMoviePageProps) {
       movieService.adminGetLinks(id, "movie").catch(() => null),
     ]);
 
-    movie = isMovieItem(fullMovie)
-      ? { ...fullMovie, ...details, ...linkFields(links) }
-      : { ...details, ...linkFields(links) };
+    movie = withDecryptedLinks(
+      isMovieItem(fullMovie)
+        ? { ...fullMovie, ...details, ...linkFields(links) }
+        : { ...details, ...linkFields(links) },
+    );
   } catch {
     notFound();
   }
