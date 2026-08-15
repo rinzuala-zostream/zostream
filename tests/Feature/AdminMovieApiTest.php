@@ -99,6 +99,63 @@ class AdminMovieApiTest extends TestCase
             ->assertJsonPath('data.count', 1);
     }
 
+    public function test_legacy_search_uses_full_catalogue_for_authenticated_admin(): void
+    {
+        config(['app.api_key' => 'test-api-key']);
+
+        DB::table('movie')->insert([
+            'id' => 'supernatural-draft',
+            'title' => 'Supernatural',
+            'status' => 'Draft',
+            'isSeason' => true,
+        ]);
+
+        $this->withHeaders([
+            ...$this->adminHeaders(),
+            'X-Api-Key' => 'test-api-key',
+        ])->getJson('/api/search?q=superna')
+            ->assertOk()
+            ->assertJsonPath('count', 1)
+            ->assertJsonPath('data.0.id', 'supernatural-draft');
+    }
+
+    public function test_v4_public_search_uses_full_catalogue_for_authenticated_admin(): void
+    {
+        DB::table('movie')->insert([
+            'id' => 'supernatural-v4-draft',
+            'title' => 'Supernatural Legacy',
+            'status' => 'Draft',
+            'isSeason' => true,
+        ]);
+
+        $this->withHeaders($this->adminHeaders())
+            ->getJson('/api/v4/catalog/items/search?q=superna')
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.count', 1)
+            ->assertJsonPath('data.data.0.id', 'supernatural-v4-draft');
+    }
+
+    public function test_admin_movie_search_paginates_results(): void
+    {
+        foreach (['Alpha One', 'Alpha Three', 'Alpha Two'] as $index => $title) {
+            DB::table('movie')->insert([
+                'id' => 'alpha-'.$index,
+                'title' => $title,
+                'status' => 'Published',
+                'isSeason' => false,
+            ]);
+        }
+
+        $this->withHeaders($this->adminHeaders())
+            ->getJson('/api/v4/admin/catalog/items/search?q=Alpha&per_page=2&page=2')
+            ->assertOk()
+            ->assertJsonPath('data.count', 3)
+            ->assertJsonPath('data.pagination.current_page', 2)
+            ->assertJsonPath('data.pagination.last_page', 2)
+            ->assertJsonCount(1, 'data.data');
+    }
+
     public function test_admin_can_load_a_movie_for_editing(): void
     {
         DB::table('movie')->insert([

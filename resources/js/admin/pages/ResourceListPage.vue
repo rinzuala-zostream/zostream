@@ -17,7 +17,7 @@ let debounce;
 
 function collection(response) {
     const value = response?.status !== undefined && response?.data !== undefined ? response.data : response;
-    if (Array.isArray(value)) return { items: value, lastPage: 1 };
+    if (Array.isArray(value)) return { items: value, lastPage: response?.pagination?.last_page || response?.last_page || 1 };
     if (Array.isArray(value?.data)) return { items: value.data, lastPage: value.last_page || 1 };
     if (Array.isArray(value?.items)) return { items: value.items, lastPage: value.last_page || 1 };
     return { items: [], lastPage: 1 };

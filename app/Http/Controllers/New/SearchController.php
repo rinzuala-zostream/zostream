@@ -4,13 +4,21 @@ namespace App\Http\Controllers\New;
 
 use App\Http\Controllers\Controller;
 use App\Models\MovieModel;
+use App\Support\AdminAccess;
 use Illuminate\Http\Request;
 
 class SearchController extends Controller
 {
+    public function __construct(private readonly AdminAccess $adminAccess) {}
+
     public function search(Request $request)
     {
-        
+        if ($adminUserId = $this->adminAccess->authenticatedAdminId($request)) {
+            $request->merge(['auth_user_id' => $adminUserId]);
+
+            return app(MovieController::class)->searchForAdmin($request);
+        }
+
         // ✅ Parse query
         $rawQuery = strtolower(trim(preg_replace('/\s+/', ' ', $request->query('q', ''))));
         if (empty($rawQuery)) {

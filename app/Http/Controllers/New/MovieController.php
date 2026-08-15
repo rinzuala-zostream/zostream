@@ -55,10 +55,13 @@ class MovieController extends Controller
         $validated = $request->validate([
             'q' => 'required|string|min:1|max:180',
             'limit' => 'nullable|integer|min:1|max:50',
+            'per_page' => 'nullable|integer|min:1|max:50',
+            'page' => 'nullable|integer|min:1',
         ]);
 
         $query = trim($validated['q']);
-        $limit = $validated['limit'] ?? 20;
+        $perPage = $validated['per_page'] ?? $validated['limit'] ?? 20;
+        $page = $validated['page'] ?? 1;
 
         $movies = MovieModel::query()
             ->select([
@@ -78,23 +81,34 @@ class MovieController extends Controller
             ->where(function ($movieQuery) use ($query) {
                 $movieQuery
                     ->where('title', 'like', "%{$query}%")
+                    ->orWhere('id', 'like', "%{$query}%")
                     ->orWhere('director', 'like', "%{$query}%")
                     ->orWhere('genre', 'like', "%{$query}%")
                     ->orWhere('description', 'like', "%{$query}%");
+
+                if (ctype_digit($query)) {
+                    $movieQuery->orWhere('num', (int) $query);
+                }
             })
             ->orderByRaw('CASE WHEN title = ? THEN 0 WHEN title LIKE ? THEN 1 ELSE 2 END', [
                 $query,
                 "{$query}%",
             ])
             ->orderBy('title')
-            ->limit($limit)
-            ->get();
+            ->paginate($perPage, ['*'], 'page', $page);
 
         return response()->json([
             'status' => 'success',
             'query' => $query,
-            'count' => $movies->count(),
-            'data' => $movies,
+            'count' => $movies->total(),
+            'data' => $movies->items(),
+            'pagination' => [
+                'current_page' => $movies->currentPage(),
+                'per_page' => $movies->perPage(),
+                'total' => $movies->total(),
+                'last_page' => $movies->lastPage(),
+                'next_page_url' => $movies->nextPageUrl(),
+            ],
         ]);
     }
 

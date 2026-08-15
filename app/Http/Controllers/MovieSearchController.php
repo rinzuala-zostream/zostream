@@ -3,13 +3,14 @@
 namespace App\Http\Controllers;
 
 use App\Models\MovieModel;
+use App\Support\AdminAccess;
 use Illuminate\Http\Request;
 
 class MovieSearchController extends Controller
 {
     private $validApiKey;
 
-    public function __construct()
+    public function __construct(private readonly AdminAccess $adminAccess)
     {
         $this->validApiKey = config('app.api_key'); // Set in .env or config/app.php
     }
@@ -20,6 +21,12 @@ class MovieSearchController extends Controller
         $apiKey = $request->header('X-Api-Key');
         if ($apiKey !== $this->validApiKey) {
             return response()->json(["status" => "error", "message" => "Invalid API key"], 401);
+        }
+
+        if ($adminUserId = $this->adminAccess->authenticatedAdminId($request)) {
+            $request->merge(['auth_user_id' => $adminUserId]);
+
+            return app(\App\Http\Controllers\New\MovieController::class)->searchForAdmin($request);
         }
 
         // ✅ Parse query
