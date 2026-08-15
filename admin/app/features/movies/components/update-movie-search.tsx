@@ -21,7 +21,6 @@ import {
 } from "lucide-react";
 import {
   deleteMovieAction,
-  searchMoviesAction,
   type MovieSearchResultItem,
   type MovieSearchState,
 } from "@/app/(admin)/movies/update/actions";
@@ -127,6 +126,28 @@ function writeStoredMovieSearch(query: string) {
       query,
     }),
   );
+}
+
+async function requestMovieSearch(query: string): Promise<MovieSearchState> {
+  const trimmedQuery = query.trim();
+
+  if (!trimmedQuery) return initialSearchState;
+
+  const response = await fetch(
+    `/api/admin/movies/search?q=${encodeURIComponent(trimmedQuery)}`,
+    { cache: "no-store" },
+  );
+  const data = (await response.json()) as MovieSearchState;
+
+  if (!response.ok && data.status !== "error") {
+    return {
+      status: "error",
+      message: data.message || "Movie search failed. Please try again.",
+      results: [],
+    };
+  }
+
+  return data;
 }
 
 function getSpeechRecognition() {
@@ -272,7 +293,21 @@ export function UpdateMovieSearch() {
     searchRequestRef.current = requestId;
 
     startTransition(async () => {
-      const nextState = await searchMoviesAction(nextQuery);
+      let nextState: MovieSearchState;
+
+      try {
+        nextState = await requestMovieSearch(nextQuery);
+      } catch (error) {
+        nextState = {
+          status: "error",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Movie search failed. Please try again.",
+          results: [],
+        };
+      }
+
       if (searchRequestRef.current === requestId) {
         setSearchState(nextState);
         writeStoredMovieSearch(nextQuery);
