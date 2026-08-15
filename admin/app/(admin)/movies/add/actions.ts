@@ -101,6 +101,7 @@ export async function createMovieAction(
   _previousState: AddMovieFormState = initialState,
   formData: FormData,
 ): Promise<AddMovieFormState> {
+  void _previousState;
   const title = stringValue(formData, "title");
 
   if (!title) {
@@ -151,7 +152,9 @@ export async function createMovieAction(
       status: "success",
       message: response.message ?? "Movie saved successfully.",
       movieId:
-        typeof response.movie?.id === "string" ? response.movie.id : undefined,
+        typeof (response.movie ?? response.data)?.id === "string"
+          ? (response.movie ?? response.data)?.id
+          : undefined,
       resetKey: `${Date.now()}`,
     };
   } catch (error) {

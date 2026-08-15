@@ -245,6 +245,22 @@ class V4ApiTest extends TestCase
         $this->assertContains('admin.token', $route->gatherMiddleware());
     }
 
+    public function test_admin_movie_record_can_be_loaded_for_editing(): void
+    {
+        $route = collect(Route::getRoutes()->getRoutes())->first(
+            fn ($route) => $route->uri() === 'api/v4/admin/catalog/items/{id}'
+                && in_array('GET', $route->methods(), true)
+        );
+
+        $this->assertNotNull($route);
+        $this->assertSame(
+            'App\\Http\\Controllers\\New\\MovieController@getById',
+            $route->getActionName()
+        );
+        $this->assertContains('auth.token', $route->gatherMiddleware());
+        $this->assertContains('admin.token', $route->gatherMiddleware());
+    }
+
     public function test_v4_mutations_are_authenticated_except_for_explicit_entry_points(): void
     {
         $publicMutations = [

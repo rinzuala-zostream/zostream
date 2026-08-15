@@ -101,6 +101,7 @@ export async function updateMovieAction(
   _previousState: EditMovieFormState = initialState,
   formData: FormData,
 ): Promise<EditMovieFormState> {
+  void _previousState;
   const movieId = stringValue(formData, "movie_id");
   const title = stringValue(formData, "title");
 
@@ -129,8 +130,8 @@ export async function updateMovieAction(
   for (const field of textFields) {
     payload[field] =
       field === "release_on" || field === "create_date"
-        ? adminFormDateValue(formData, field, "readable")
-        : optionalString(formData, field);
+        ? (adminFormDateValue(formData, field, "readable") ?? null)
+        : (optionalString(formData, field) ?? null);
   }
 
   const submittedBooleanFields = new Set(

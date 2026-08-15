@@ -53,7 +53,7 @@ class MovieController extends Controller
     public function searchForAdmin(Request $request)
     {
         $validated = $request->validate([
-            'q' => 'required|string|min:2|max:180',
+            'q' => 'required|string|min:1|max:180',
             'limit' => 'nullable|integer|min:1|max:50',
         ]);
 
@@ -66,9 +66,12 @@ class MovieController extends Controller
                 'id',
                 'title',
                 'description',
+                'director',
+                'duration',
                 'cover_img',
                 'poster',
                 'genre',
+                'release_on',
                 'status',
                 'isSeason',
             ])

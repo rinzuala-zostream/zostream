@@ -35,7 +35,12 @@ export type MovieItem = {
   isSeason?: boolean | number;
   isSubtitle?: boolean | number;
   create_date?: string | null;
+  url?: string | null;
+  dash_url?: string | null;
+  hls_url?: string | null;
   trailer?: string | null;
+  subtitle?: string | null;
+  token?: string | null;
   ppv_amount?: string | number | null;
   [key: string]: unknown;
 };
@@ -118,6 +123,7 @@ export type MovieMutationResponse = {
   message?: string;
   error?: string;
   movie?: MovieItem;
+  data?: MovieItem;
 };
 
 export type MovieDeleteResponse = {
@@ -126,7 +132,9 @@ export type MovieDeleteResponse = {
   error?: string;
 };
 
-export type MovieUpdatePayload = Partial<MovieCreatePayload>;
+export type MovieUpdatePayload = {
+  [Field in keyof MovieCreatePayload]?: MovieCreatePayload[Field] | null;
+};
 
 export type MovieLinkType = "movie" | "episode";
 
@@ -397,6 +405,15 @@ export const movieService = {
       `${ADMIN_CATALOG_BASE_PATH}/items/${id}/links`,
       {
         query: { type },
+      },
+    );
+  },
+
+  async adminGetById(id: string | number) {
+    return apiClient.get<MovieItem>(
+      `${ADMIN_CATALOG_BASE_PATH}/items/${id}`,
+      {
+        query: { type: "movie" },
       },
     );
   },

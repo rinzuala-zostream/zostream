@@ -78,25 +78,12 @@ const initialSearchState: MovieSearchState = {
   results: [],
 };
 
-const movieSearchStorageKey = "zostream-admin-movie-update-search";
+const movieSearchStorageKey = "zostream-admin-movie-update-search-v2";
 
 type StoredMovieSearch = {
   query: string;
   state: MovieSearchState;
 };
-
-function isMovieSearchState(value: unknown): value is MovieSearchState {
-  if (typeof value !== "object" || value === null) return false;
-
-  const searchState = value as Partial<MovieSearchState>;
-  return (
-    (searchState.status === "idle" ||
-      searchState.status === "success" ||
-      searchState.status === "error") &&
-    typeof searchState.message === "string" &&
-    Array.isArray(searchState.results)
-  );
-}
 
 function readStoredMovieSearch(): StoredMovieSearch {
   if (typeof window === "undefined") {
@@ -121,9 +108,7 @@ function readStoredMovieSearch(): StoredMovieSearch {
 
     return {
       query,
-      state: isMovieSearchState(parsedValue.state)
-        ? parsedValue.state
-        : initialSearchState,
+      state: initialSearchState,
     };
   } catch {
     return {
@@ -133,14 +118,13 @@ function readStoredMovieSearch(): StoredMovieSearch {
   }
 }
 
-function writeStoredMovieSearch(query: string, state: MovieSearchState) {
+function writeStoredMovieSearch(query: string) {
   if (typeof window === "undefined") return;
 
   window.sessionStorage.setItem(
     movieSearchStorageKey,
     JSON.stringify({
       query,
-      state,
     }),
   );
 }
@@ -275,6 +259,7 @@ export function UpdateMovieSearch() {
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
       const storedSearch = readStoredMovieSearch();
+      hasTypedRef.current = Boolean(storedSearch.query.trim());
       setQuery(storedSearch.query);
       setSearchState(storedSearch.state);
     }, 0);
@@ -290,7 +275,7 @@ export function UpdateMovieSearch() {
       const nextState = await searchMoviesAction(nextQuery);
       if (searchRequestRef.current === requestId) {
         setSearchState(nextState);
-        writeStoredMovieSearch(nextQuery, nextState);
+        writeStoredMovieSearch(nextQuery);
       }
     });
   }, [query, startTransition]);
@@ -398,7 +383,7 @@ export function UpdateMovieSearch() {
               const nextQuery = event.target.value;
               hasTypedRef.current = true;
               setQuery(nextQuery);
-              writeStoredMovieSearch(nextQuery, searchState);
+              writeStoredMovieSearch(nextQuery);
             }}
             placeholder="Search movies to update"
             className="min-h-12 min-w-0 flex-1 bg-transparent text-base font-semibold text-slate-950 outline-none placeholder:text-slate-400 dark:text-white dark:placeholder:text-slate-500"

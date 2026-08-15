@@ -96,11 +96,6 @@ export async function searchMoviesAction(
   try {
     const response = await searchService.movies({
       query: trimmedQuery,
-      isEnable: false,
-      ageRestriction: true,
-      isChildMode: false,
-      userId: "admin",
-      mode: "adult",
     });
     if (!Array.isArray(response) && !Array.isArray(response.data)) {
       return {

@@ -228,6 +228,7 @@ Route::prefix('v4')
 
                     Route::post('/catalog/items', [\App\Http\Controllers\New\MovieController::class, 'store']);
                     Route::get('/catalog/items/search', [\App\Http\Controllers\New\MovieController::class, 'searchForAdmin']);
+                    Route::get('/catalog/items/{id}', [\App\Http\Controllers\New\MovieController::class, 'getById']);
                     Route::put('/catalog/items/{id}', [\App\Http\Controllers\New\MovieController::class, 'update']);
                     Route::delete('/catalog/items/{id}', [\App\Http\Controllers\New\MovieController::class, 'destroy']);
                     Route::get('/catalog/items/{id}/links', [\App\Http\Controllers\New\MovieController::class, 'adminGetLink']);

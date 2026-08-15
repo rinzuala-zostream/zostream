@@ -6,7 +6,6 @@ import { decryptStreamLink } from "@/app/features/movies/lib/decrypt-stream-link
 import { movieService } from "@/app/features/movies/services/movie-service";
 import type {
   MovieLinksResponse,
-  MovieHomeSingleResponse,
   MovieItem,
 } from "@/app/features/movies/services/movie-service";
 
@@ -17,10 +16,6 @@ type EditMoviePageProps = {
     id: string;
   }>;
 };
-
-function isMovieItem(response: MovieHomeSingleResponse): response is MovieItem {
-  return !("status" in response && response.status === "error");
-}
 
 function linkFields(response: MovieLinksResponse | null): Partial<MovieItem> {
   if (!response || response.status === "error" || !response.links) return {};
@@ -65,23 +60,12 @@ export default async function EditMoviePage({ params }: EditMoviePageProps) {
   let movie: MovieItem;
 
   try {
-    const [details, fullMovie, links] = await Promise.all([
-      movieService.getById(id, { type: "movie" }),
-      movieService.getHomeMovie(id, {
-        isEnable: false,
-        ageRestriction: true,
-        isChildMode: false,
-        userId: "admin",
-        mode: "adult",
-      }),
+    const [details, links] = await Promise.all([
+      movieService.adminGetById(id),
       movieService.adminGetLinks(id, "movie").catch(() => null),
     ]);
 
-    movie = withDecryptedLinks(
-      isMovieItem(fullMovie)
-        ? { ...fullMovie, ...details, ...linkFields(links) }
-        : { ...details, ...linkFields(links) },
-    );
+    movie = withDecryptedLinks({ ...details, ...linkFields(links) });
   } catch {
     notFound();
   }
