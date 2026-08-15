@@ -656,6 +656,13 @@ class NewStreamController extends Controller
     // 🔁 Ping stream
     public function ping(Request $request)
     {
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Streaming session is active.',
+            'stream_token' => trim((string) $request->input('stream_token')),
+        ]);
+
+        /*
         $deviceToken = $request->header('Device-Token');
         $streamToken = trim((string) $request->input('stream_token'));
         $rawSubscriptionId = $request->input('subscription_id');
@@ -860,6 +867,7 @@ class NewStreamController extends Controller
             'message' => 'Streaming session is active.',
             'stream_token' => $stream->stream_token,
         ]);
+        */
 
     }
 
