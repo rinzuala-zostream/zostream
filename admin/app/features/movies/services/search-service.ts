@@ -17,9 +17,16 @@ export type MovieSearchErrorResponse = {
   message?: string;
 };
 
-export type MovieSearchResponse = MovieItem[] | MovieSearchErrorResponse;
+export type AdminMovieSearchResponse = MovieSearchErrorResponse & {
+  status?: "success" | "error";
+  query?: string;
+  count?: number;
+  data?: MovieItem[];
+};
 
-const MOVIE_SEARCH_PATH = "/api/v4/catalog/items/search";
+export type MovieSearchResponse = MovieItem[] | AdminMovieSearchResponse;
+
+const MOVIE_SEARCH_PATH = "/api/v4/admin/catalog/items/search";
 
 function toSearchQuery(params: MovieSearchParams): QueryParams {
   return {

@@ -72,7 +72,13 @@ class MovieController extends Controller
                 'status',
                 'isSeason',
             ])
-            ->where('title', 'like', "%{$query}%")
+            ->where(function ($movieQuery) use ($query) {
+                $movieQuery
+                    ->where('title', 'like', "%{$query}%")
+                    ->orWhere('director', 'like', "%{$query}%")
+                    ->orWhere('genre', 'like', "%{$query}%")
+                    ->orWhere('description', 'like', "%{$query}%");
+            })
             ->orderByRaw('CASE WHEN title = ? THEN 0 WHEN title LIKE ? THEN 1 ELSE 2 END', [
                 $query,
                 "{$query}%",

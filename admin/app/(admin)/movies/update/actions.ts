@@ -102,8 +102,7 @@ export async function searchMoviesAction(
       userId: "admin",
       mode: "adult",
     });
-
-    if (!Array.isArray(response)) {
+    if (!Array.isArray(response) && !Array.isArray(response.data)) {
       return {
         status: "error",
         message:
@@ -112,13 +111,15 @@ export async function searchMoviesAction(
       };
     }
 
+    const movies = Array.isArray(response) ? response : (response.data ?? []);
+
     return {
       status: "success",
       message:
-        response.length > 0
-          ? `${response.length} movie${response.length === 1 ? "" : "s"} found.`
+        movies.length > 0
+          ? `${movies.length} movie${movies.length === 1 ? "" : "s"} found.`
           : "No movies matched that search.",
-      results: response.map(toSearchResult),
+      results: movies.map(toSearchResult),
     };
   } catch (error) {
     return {
