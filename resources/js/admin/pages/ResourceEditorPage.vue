@@ -66,10 +66,19 @@ async function load() {
         await loadPlans();
         if (!editing.value) return;
         let endpoint = `${resource.value.endpoint}/${encodeURIComponent(route.params.id)}`;
-        if (key.value === 'movies') endpoint = `/catalog/items/${route.params.id}`;
+        if (key.value === 'movies') endpoint = `/admin/catalog/items/${encodeURIComponent(route.params.id)}`;
         if (key.value === 'seasons') endpoint = `/catalog/seasons/${route.params.id}`;
         if (key.value === 'episodes') endpoint = `/catalog/episodes/${route.params.id}`;
-        const record = valueData(await api(endpoint)); currentRecord.value = record; fill(record);
+        const record = valueData(await api(endpoint));
+        if (key.value === 'movies') {
+            try {
+                const linkData = valueData(await api(`/admin/catalog/items/${encodeURIComponent(route.params.id)}/links?type=movie`));
+                Object.assign(record, linkData.links || {});
+            } catch (reason) {
+                if (reason.status !== 404) throw reason;
+            }
+        }
+        currentRecord.value = record; fill(record);
         if (key.value === 'seasons') seasonEpisodes.value = (record.episodes || []).map(episode => ({ id: episode.id, title: episode.title || `Episode ${episode.episode_number}`, isPayPerView: Boolean(episode.isPayPerView), amount: Number(episode.amount || 0) }));
         if (key.value === 'legal') legalSections.value = record.sections?.length ? record.sections.map(section => ({ ...section })) : [{ heading: '', body: '' }];
         if (key.value === 'plans') {
@@ -80,8 +89,8 @@ async function load() {
         }
         if (key.value === 'polls') existingOptions.value = record.options || [];
         if (key.value === 'episodes') {
-            const urls = valueData(await api(`/admin/catalog/episodes/${route.params.id}/urls`));
-            const first = (Array.isArray(urls) ? urls : urls.data || [])[0];
+            const urls = valueData(await api(`/admin/catalog/items/${encodeURIComponent(route.params.id)}/links?type=episode`));
+            const first = (Array.isArray(urls) ? urls : urls.links || urls.data || [])[0];
             if (first) { model.url = first.url || ''; model.type = first.type || 'DASH'; model.quality = first.quality || 'HD'; }
             model.movie_id ||= record.season?.movie_id || record.season?.movie?.num || '';
         }

@@ -41,6 +41,11 @@ class AdminMovieApiTest extends TestCase
             $table->string('cover_img')->nullable();
             $table->string('poster')->nullable();
             $table->string('genre')->nullable();
+            $table->text('url')->nullable();
+            $table->text('dash_url')->nullable();
+            $table->text('hls_url')->nullable();
+            $table->text('trailer')->nullable();
+            $table->text('subtitle')->nullable();
             $table->date('release_on')->nullable();
             $table->string('status')->nullable();
             $table->boolean('isSeason')->default(false);
@@ -172,6 +177,33 @@ class AdminMovieApiTest extends TestCase
             ->assertJsonPath('success', true)
             ->assertJsonPath('data.id', 'editable-movie')
             ->assertJsonPath('data.title', 'Editable Movie');
+    }
+
+    public function test_admin_movie_links_are_decrypted_for_editing(): void
+    {
+        $url = 'https://cdn.zostream.in/Normal/Test/movie.mpd';
+        $key = hash(
+            'sha256',
+            'd4c6198dabafb243b0d043a3c33a9fe171f81605158c267c7dfe5f66df29559a',
+            true
+        );
+        $iv = random_bytes(16);
+        $encrypted = base64_encode($iv.openssl_encrypt($url, 'aes-256-cbc', $key, OPENSSL_RAW_DATA, $iv));
+
+        DB::table('movie')->insert([
+            'id' => 'encrypted-link-movie',
+            'title' => 'Encrypted Link Movie',
+            'url' => $encrypted,
+            'dash_url' => $encrypted,
+            'status' => 'Published',
+            'isSeason' => false,
+        ]);
+
+        $this->withHeaders($this->adminHeaders())
+            ->getJson('/api/v4/admin/catalog/items/encrypted-link-movie/links?type=movie')
+            ->assertOk()
+            ->assertJsonPath('data.links.url', $url)
+            ->assertJsonPath('data.links.dash_url', $url);
     }
 
     private function adminHeaders(): array
