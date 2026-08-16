@@ -135,6 +135,9 @@
 .is-light .whatsapp-media-image-link,.is-light .whatsapp-media-document{background:rgba(16,40,45,.045)}
 .whatsapp-widget-message .whatsapp-media-image{max-height:220px}
 
+/* Server-backed unread state for both the full inbox and quick drawer. */
+.whatsapp-conversation-meta{display:flex!important;min-width:42px!important;align-items:flex-end;flex-direction:column;justify-content:center;gap:7px!important}.whatsapp-unread-badge{display:grid;min-width:20px;height:20px;padding:0 6px;place-items:center;border-radius:999px;background:var(--a-cyan);color:#032c2b;font-size:9px;font-style:normal;font-weight:900;line-height:1}.whatsapp-conversations>button.unread,.whatsapp-widget-conversations>button.unread{background:rgba(53,213,208,.055)}.whatsapp-conversations>button.unread b,.whatsapp-widget-conversations>button.unread b{color:var(--a-cyan);font-weight:900}
+
 /* Readability pass: keep secondary admin text comfortably legible. */
 .admin-nav section>p,.admin-page-header p,.admin-panel header p,.admin-profile p{font-size:11px}
 .admin-user small,.admin-brand small,.admin-stat-grid p,.admin-table-card th,.admin-pill,.admin-parent-filter,.admin-filter-bar label{font-size:11px}

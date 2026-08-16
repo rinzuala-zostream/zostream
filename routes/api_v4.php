@@ -7,8 +7,8 @@ use App\Http\Controllers\Api\V4\AuthController;
 use App\Http\Controllers\Api\V4\BillingController;
 use App\Http\Controllers\Api\V4\CatalogController;
 use App\Http\Controllers\Api\V4\ChannelSubscriptionController;
-use App\Http\Controllers\Api\V4\LibraryController;
 use App\Http\Controllers\Api\V4\LegalPageController;
+use App\Http\Controllers\Api\V4\LibraryController;
 use App\Http\Controllers\Api\V4\OfflineController;
 use App\Http\Controllers\Api\V4\PlaybackController;
 use App\Http\Controllers\Api\V4\QrSessionController as V4QrSessionController;
@@ -17,7 +17,6 @@ use App\Http\Controllers\Api\V4\WhatsAppWebhookController;
 use App\Http\Controllers\Channel\ChannelController;
 use App\Http\Controllers\FCMNotificationController;
 use App\Http\Controllers\HlsFolderController;
-use App\Http\Controllers\OTPController;
 use App\Http\Controllers\New\AdminWhatsAppController;
 use App\Http\Controllers\New\AppUpdateController;
 use App\Http\Controllers\New\BannerController;
@@ -32,6 +31,7 @@ use App\Http\Controllers\New\PollController;
 use App\Http\Controllers\New\SeasonController;
 use App\Http\Controllers\New\SubscriptionController;
 use App\Http\Controllers\New\UserController;
+use App\Http\Controllers\OTPController;
 use App\Support\Api\V4Response;
 use Illuminate\Support\Facades\Route;
 
@@ -210,7 +210,6 @@ Route::prefix('v4')
                 ->group(function () {
                     Route::get('/dashboard', [DashboardController::class, 'index']);
 
-
                     Route::get('/legal-pages', [LegalPageController::class, 'index']);
                     Route::post('/legal-pages', [LegalPageController::class, 'store']);
                     Route::get('/legal-pages/{legalPage}', [LegalPageController::class, 'show']);
@@ -289,6 +288,7 @@ Route::prefix('v4')
                     Route::get('/whatsapp/conversations', [AdminWhatsAppInboxController::class, 'conversations']);
                     Route::get('/whatsapp/messages/{message}/media', [AdminWhatsAppInboxController::class, 'media']);
                     Route::get('/whatsapp/conversations/{phone}', [AdminWhatsAppInboxController::class, 'messages']);
+                    Route::post('/whatsapp/conversations/{phone}/read', [AdminWhatsAppInboxController::class, 'markRead']);
                     Route::post('/whatsapp/reply', [AdminWhatsAppInboxController::class, 'reply']);
                     Route::get('/realtime/warning', [AdminRealtimeConfigController::class, 'warning']);
                     Route::put('/realtime/warning', [AdminRealtimeConfigController::class, 'saveWarning']);

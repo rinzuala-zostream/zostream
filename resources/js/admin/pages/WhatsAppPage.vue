@@ -24,19 +24,28 @@ async function scrollToLatest() {
 async function loadConversations(quiet = false) {
     try {
         conversations.value = await api('/admin/whatsapp/conversations') || [];
-        if (!selectedPhone.value && conversations.value.length) await selectConversation(conversations.value[0].phone);
-        else if (selectedPhone.value) await loadMessages(selectedPhone.value, true);
+        if (selectedPhone.value) {
+            const currentExists = conversations.value.some(item => item.phone === selectedPhone.value);
+            if (currentExists) await loadMessages(selectedPhone.value, true, true);
+            else selectedPhone.value = '';
+        }
     } catch (reason) { if (!quiet) showError(reason); }
 }
-async function loadMessages(phone, quiet = false) {
+async function markConversationRead(phone) {
+    await api(`/admin/whatsapp/conversations/${encodeURIComponent(phone)}/read`, { method: 'POST' });
+    const conversation = conversations.value.find(item => item.phone === phone);
+    if (conversation) conversation.unread_count = 0;
+}
+async function loadMessages(phone, quiet = false, markRead = false) {
     try {
         messages.value = await api(`/admin/whatsapp/conversations/${encodeURIComponent(phone)}`) || [];
+        if (markRead) await markConversationRead(phone);
         media.loadAll(messages.value);
         await scrollToLatest();
     }
     catch (reason) { if (!quiet) showError(reason); }
 }
-async function selectConversation(phone) { selectedPhone.value = phone; await loadMessages(phone); }
+async function selectConversation(phone) { selectedPhone.value = phone; await loadMessages(phone, false, true); }
 async function saveSettings() {
     busy.value = true; error.value = ''; notice.value = '';
     try {
@@ -106,8 +115,8 @@ onBeforeUnmount(() => window.clearInterval(refreshTimer));
             <section class="admin-panel whatsapp-inbox">
                 <aside class="whatsapp-conversations">
                     <header><div><p>MESSAGES</p><h2>Conversations</h2></div><button class="admin-secondary" @click="loadConversations()">Refresh</button></header>
-                    <button v-for="item in conversations" :key="item.phone" :class="{ active: selectedPhone === item.phone }" @click="selectConversation(item.phone)">
-                        <i>{{ (item.name || item.phone).slice(0, 2).toUpperCase() }}</i><span><b>{{ item.name || item.phone }}</b><small>{{ item.last_message }}</small></span><time>{{ formatChatTime(item.last_message_at) }}</time>
+                    <button v-for="item in conversations" :key="item.phone" :class="{ active: selectedPhone === item.phone, unread: item.unread_count > 0 }" @click="selectConversation(item.phone)">
+                        <i>{{ (item.name || item.phone).slice(0, 2).toUpperCase() }}</i><span><b>{{ item.name || item.phone }}</b><small>{{ item.last_message }}</small></span><span class="whatsapp-conversation-meta"><time>{{ formatChatTime(item.last_message_at) }}</time><em v-if="item.unread_count" class="whatsapp-unread-badge">{{ item.unread_count > 99 ? '99+' : item.unread_count }}</em></span>
                     </button>
                     <p v-if="!conversations.length" class="admin-empty">Webhook messages will appear here.</p>
                 </aside>

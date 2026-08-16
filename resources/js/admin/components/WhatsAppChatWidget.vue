@@ -6,7 +6,6 @@ import { formatChatTime } from '../lib/chatTime';
 import { useWhatsAppMedia } from '../lib/whatsappMedia';
 import AdminIcon from './AdminIcon.vue';
 
-const LAST_SEEN_KEY = 'zostream_whatsapp_widget_seen_at';
 const route = useRoute();
 const open = ref(false);
 const loading = ref(false);
@@ -17,27 +16,28 @@ const messages = ref([]);
 const selectedPhone = ref('');
 const reply = ref('');
 const messageList = ref(null);
-const lastSeenAt = ref(Number(localStorage.getItem(LAST_SEEN_KEY) || 0));
 const media = useWhatsAppMedia();
 let refreshTimer;
 
 const visible = computed(() => !route.path.startsWith('/whatsapp'));
 const selectedConversation = computed(() => conversations.value.find(item => item.phone === selectedPhone.value));
-const unreadCount = computed(() => conversations.value.filter(item => (
-    item.direction === 'inbound' && Date.parse(item.last_message_at || '') > lastSeenAt.value
-)).length);
-
-function markSeen() {
-    lastSeenAt.value = Date.now();
-    localStorage.setItem(LAST_SEEN_KEY, String(lastSeenAt.value));
-}
+const unreadCount = computed(() => conversations.value.reduce(
+    (total, item) => total + Number(item.unread_count || 0),
+    0
+));
 async function scrollToLatest() {
     await nextTick();
     if (messageList.value) messageList.value.scrollTop = messageList.value.scrollHeight;
 }
-async function loadMessages(phone, quiet = false) {
+async function markConversationRead(phone) {
+    await api(`/admin/whatsapp/conversations/${encodeURIComponent(phone)}/read`, { method: 'POST' });
+    const conversation = conversations.value.find(item => item.phone === phone);
+    if (conversation) conversation.unread_count = 0;
+}
+async function loadMessages(phone, quiet = false, markRead = false) {
     try {
         messages.value = await api(`/admin/whatsapp/conversations/${encodeURIComponent(phone)}`) || [];
+        if (markRead) await markConversationRead(phone);
         media.loadAll(messages.value);
         await scrollToLatest();
     } catch (reason) {
@@ -50,7 +50,7 @@ async function loadConversations(quiet = false) {
         if (open.value) {
             const currentExists = conversations.value.some(item => item.phone === selectedPhone.value);
             if (!currentExists) selectedPhone.value = '';
-            if (selectedPhone.value) await loadMessages(selectedPhone.value, true);
+            if (selectedPhone.value) await loadMessages(selectedPhone.value, true, true);
         }
     } catch (reason) {
         if (!quiet) error.value = reason?.message || 'Conversations could not be loaded.';
@@ -61,18 +61,15 @@ async function openWidget() {
     loading.value = true;
     error.value = '';
     await loadConversations();
-    markSeen();
     loading.value = false;
 }
 function closeWidget() {
     open.value = false;
-    markSeen();
 }
 async function selectConversation(phone) {
     selectedPhone.value = phone;
     error.value = '';
-    await loadMessages(phone);
-    markSeen();
+    await loadMessages(phone, false, true);
 }
 async function sendReply() {
     const body = reply.value.trim();
@@ -128,10 +125,10 @@ onBeforeUnmount(() => {
                 <div v-else class="whatsapp-widget-body" :class="{ 'has-thread': selectedPhone }">
                     <aside class="whatsapp-widget-conversations">
                         <header><b>Conversations</b><button type="button" @click="loadConversations()">Refresh</button></header>
-                        <button v-for="item in conversations" :key="item.phone" type="button" :class="{ active: selectedPhone === item.phone }" @click="selectConversation(item.phone)">
+                        <button v-for="item in conversations" :key="item.phone" type="button" :class="{ active: selectedPhone === item.phone, unread: item.unread_count > 0 }" @click="selectConversation(item.phone)">
                             <i>{{ (item.name || item.phone).slice(0, 2).toUpperCase() }}</i>
                             <span><b>{{ item.name || `+${item.phone}` }}</b><small>{{ item.last_message }}</small></span>
-                            <time>{{ formatChatTime(item.last_message_at) }}</time>
+                            <span class="whatsapp-conversation-meta"><time>{{ formatChatTime(item.last_message_at) }}</time><em v-if="item.unread_count" class="whatsapp-unread-badge">{{ item.unread_count > 99 ? '99+' : item.unread_count }}</em></span>
                         </button>
                         <p v-if="!conversations.length">No WhatsApp conversations yet.</p>
                     </aside>

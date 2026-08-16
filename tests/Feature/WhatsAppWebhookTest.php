@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Http\Controllers\Api\V4\AdminWhatsAppInboxController;
 use App\Models\WhatsAppMessage;
 use App\Models\WhatsAppSetting;
 use App\Services\WhatsAppCloudService;
@@ -56,6 +57,7 @@ class WhatsAppWebhookTest extends TestCase
             $table->string('reply_to_wamid')->nullable();
             $table->json('payload')->nullable();
             $table->timestamp('message_at')->nullable();
+            $table->timestamp('read_at')->nullable();
             $table->timestamps();
         });
     }
@@ -183,5 +185,48 @@ class WhatsAppWebhookTest extends TestCase
         $this->assertSame('image/jpeg', $media['mime_type']);
         Http::assertSentCount(2);
         Http::assertSent(fn ($request) => $request->hasHeader('Authorization', 'Bearer access-token'));
+    }
+
+    public function test_admin_inbox_returns_every_conversation_with_unread_counts(): void
+    {
+        foreach (range(1, 55) as $index) {
+            WhatsAppMessage::create([
+                'wamid' => "wamid.conversation.{$index}",
+                'contact_phone' => '91900000'.str_pad((string) $index, 4, '0', STR_PAD_LEFT),
+                'contact_name' => "Customer {$index}",
+                'direction' => 'inbound',
+                'type' => 'text',
+                'body' => "Message {$index}",
+                'status' => 'received',
+                'message_at' => now()->addSeconds($index),
+            ]);
+        }
+
+        $response = app(AdminWhatsAppInboxController::class)->conversations(request());
+        $conversations = $response->getData(true);
+
+        $this->assertCount(55, $conversations);
+        $this->assertSame(1, $conversations[0]['unread_count']);
+    }
+
+    public function test_opening_a_conversation_marks_only_its_inbound_messages_read(): void
+    {
+        foreach (['919111111111', '919222222222'] as $phone) {
+            WhatsAppMessage::create([
+                'wamid' => "wamid.{$phone}",
+                'contact_phone' => $phone,
+                'direction' => 'inbound',
+                'type' => 'text',
+                'body' => 'Unread',
+                'status' => 'received',
+                'message_at' => now(),
+            ]);
+        }
+
+        $response = app(AdminWhatsAppInboxController::class)->markRead('919111111111');
+
+        $this->assertSame(1, $response->getData(true)['read_count']);
+        $this->assertNotNull(WhatsAppMessage::where('contact_phone', '919111111111')->value('read_at'));
+        $this->assertNull(WhatsAppMessage::where('contact_phone', '919222222222')->value('read_at'));
     }
 }

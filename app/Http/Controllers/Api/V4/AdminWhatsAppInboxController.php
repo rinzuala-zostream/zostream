@@ -55,7 +55,6 @@ class AdminWhatsAppInboxController extends Controller
 
     public function conversations(Request $request)
     {
-        $limit = min(max((int) $request->query('limit', 50), 1), 100);
         $messages = WhatsAppMessage::query()
             ->orderByDesc('message_at')
             ->orderByDesc('id')
@@ -63,6 +62,7 @@ class AdminWhatsAppInboxController extends Controller
             ->groupBy('contact_phone')
             ->map(function ($rows) {
                 $latest = $rows->first();
+
                 return [
                     'phone' => $latest->contact_phone,
                     'name' => $rows->firstWhere('contact_name', '!=', null)?->contact_name,
@@ -71,10 +71,12 @@ class AdminWhatsAppInboxController extends Controller
                     'direction' => $latest->direction,
                     'status' => $latest->status,
                     'message_count' => $rows->count(),
+                    'unread_count' => $rows->where('direction', 'inbound')
+                        ->whereNull('read_at')
+                        ->count(),
                 ];
             })
-            ->values()
-            ->take($limit);
+            ->values();
 
         return response()->json($messages);
     }
@@ -87,9 +89,28 @@ class AdminWhatsAppInboxController extends Controller
             WhatsAppMessage::where('contact_phone', $phone)
                 ->orderBy('message_at')
                 ->orderBy('id')
-                ->limit(300)
                 ->get()
         );
+    }
+
+    public function markRead(string $phone)
+    {
+        $phone = preg_replace('/\D+/', '', $phone);
+        if ($phone === '') {
+            return response()->json(['message' => 'A valid phone number is required.'], 422);
+        }
+
+        $readAt = now();
+        $readCount = WhatsAppMessage::where('contact_phone', $phone)
+            ->where('direction', 'inbound')
+            ->whereNull('read_at')
+            ->update(['read_at' => $readAt]);
+
+        return response()->json([
+            'phone' => $phone,
+            'read_count' => $readCount,
+            'read_at' => $readAt,
+        ]);
     }
 
     public function media(WhatsAppMessage $message, WhatsAppCloudService $whatsApp)
