@@ -48,6 +48,9 @@ class AdminMovieApiTest extends TestCase
             $table->text('subtitle')->nullable();
             $table->date('release_on')->nullable();
             $table->string('status')->nullable();
+            $table->boolean('isEnable')->default(true);
+            $table->boolean('isMizo')->default(true);
+            $table->boolean('isAgeRestricted')->default(false);
             $table->boolean('isSeason')->default(false);
         });
 
@@ -124,7 +127,7 @@ class AdminMovieApiTest extends TestCase
             ->assertJsonPath('data.0.id', 'supernatural-draft');
     }
 
-    public function test_v4_public_search_uses_full_catalogue_for_authenticated_admin(): void
+    public function test_v4_public_search_keeps_customer_list_contract_for_authenticated_admin(): void
     {
         DB::table('movie')->insert([
             'id' => 'supernatural-v4-draft',
@@ -133,12 +136,22 @@ class AdminMovieApiTest extends TestCase
             'isSeason' => true,
         ]);
 
+        DB::table('movie')->insert([
+            'id' => 'supernatural-v4-published',
+            'title' => 'Supernatural Published',
+            'status' => 'Published',
+            'isEnable' => true,
+            'isMizo' => true,
+            'isAgeRestricted' => false,
+            'isSeason' => true,
+        ]);
+
         $this->withHeaders($this->adminHeaders())
             ->getJson('/api/v4/catalog/items/search?q=superna')
             ->assertOk()
             ->assertJsonPath('success', true)
-            ->assertJsonPath('data.count', 1)
-            ->assertJsonPath('data.data.0.id', 'supernatural-v4-draft');
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', 'supernatural-v4-published');
     }
 
     public function test_admin_movie_search_paginates_results(): void

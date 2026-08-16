@@ -19,6 +19,15 @@ class SearchController extends Controller
             return app(MovieController::class)->searchForAdmin($request);
         }
 
+        return $this->searchPublic($request);
+    }
+
+    /**
+     * Search the customer-visible catalogue with a stable list response.
+     */
+    public function searchPublic(Request $request)
+    {
+
         // ✅ Parse query
         $rawQuery = strtolower(trim(preg_replace('/\s+/', ' ', $request->query('q', ''))));
         if (empty($rawQuery)) {
@@ -44,7 +53,7 @@ class SearchController extends Controller
         $userId = $request->header('X-User-Id') ?? $request->query('user_id', '');
 
         // ✅ Treat empty user ID same as Mizo-only user
-        //$onlyMizoUser = $userId === 'AW7ovVnTdgWuvE1Uke7QTQ5OEQt1';
+        // $onlyMizoUser = $userId === 'AW7ovVnTdgWuvE1Uke7QTQ5OEQt1';
         $onlyMizoUser = empty($userId) || $userId === 'AW7ovVnTdgWuvE1Uke7QTQ5OEQt1';
 
         // ✅ Categories to hide (same default)
@@ -54,30 +63,30 @@ class SearchController extends Controller
 
         // ✅ Determine hidden categories
         $hiddenCategories = [];
-        if (!$onlyMizoUser && $isKidsMode) {
+        if (! $onlyMizoUser && $isKidsMode) {
             $hiddenCategories = $hiddenByPlatform['_default'];
         }
 
         // ✅ Skip check definitions
         $skipChecks = [
-            'Hollywood' => fn($m) => (int)($m->isHollywood ?? 0) === 1,
-            'Bollywood' => fn($m) => (int)($m->isBollywood ?? 0) === 1,
-            'Mizo' => fn($m) => (int)($m->isMizo ?? 0) === 1,
-            'Asian' => fn($m) => (int)($m->isKorean ?? 0) === 1,
-            'Series' => fn($m) => (int)($m->isSeason ?? 0) === 1,
-            'Documentary' => fn($m) => (int)($m->isDocumentary ?? 0) === 1,
-            '18+' => fn($m) => (int)($m->isAgeRestricted ?? 0) === 1,
-            'Animation' => fn($m) => stripos((string)($m->genre ?? ''), 'animation') !== false,
+            'Hollywood' => fn ($m) => (int) ($m->isHollywood ?? 0) === 1,
+            'Bollywood' => fn ($m) => (int) ($m->isBollywood ?? 0) === 1,
+            'Mizo' => fn ($m) => (int) ($m->isMizo ?? 0) === 1,
+            'Asian' => fn ($m) => (int) ($m->isKorean ?? 0) === 1,
+            'Series' => fn ($m) => (int) ($m->isSeason ?? 0) === 1,
+            'Documentary' => fn ($m) => (int) ($m->isDocumentary ?? 0) === 1,
+            '18+' => fn ($m) => (int) ($m->isAgeRestricted ?? 0) === 1,
+            'Animation' => fn ($m) => stripos((string) ($m->genre ?? ''), 'animation') !== false,
         ];
 
         $shouldSkip = function ($movie) use ($isKidsMode, $hiddenCategories, $skipChecks, $onlyMizoUser) {
             // ✅ Restrict non-Mizo content for Mizo-only user or empty user
-            if ($onlyMizoUser && (int)($movie->isMizo ?? 0) !== 1) {
+            if ($onlyMizoUser && (int) ($movie->isMizo ?? 0) !== 1) {
                 return true;
             }
 
             // ✅ Restrict non-child content for Kids Mode
-            if ($isKidsMode && (int)($movie->isChildMode ?? 0) !== 1) {
+            if ($isKidsMode && (int) ($movie->isChildMode ?? 0) !== 1) {
                 return true;
             }
 
@@ -92,16 +101,30 @@ class SearchController extends Controller
         };
 
         // ✅ Clean query and setup
-        $cleanQuery = $this->cleanFullTextInput($rawQuery) . '*';
         $perPage = 20;
 
         // ✅ Step 1: Fulltext search
-        $exactMatches = MovieModel::selectRaw("*, MATCH(title, genre) AGAINST (? IN BOOLEAN MODE) AS relevance", [$cleanQuery])
-            ->whereRaw("MATCH(title, genre) AGAINST (? IN BOOLEAN MODE)", [$cleanQuery])
-            ->when($isEnableRequest, fn($q) => $q->where('status', 'Published')->where('isEnable', 1))
-            ->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', 0))
-            ->when($onlyMizoUser, fn($q) => $q->where('isMizo', 1)) // ✅ Mizo-only filter in query
-            ->orderByDesc('relevance')
+        $exactQuery = MovieModel::query();
+        if ((new MovieModel)->getConnection()->getDriverName() === 'mysql') {
+            $cleanQuery = $this->cleanFullTextInput($rawQuery).'*';
+            $exactQuery
+                ->selectRaw('*, MATCH(title, genre) AGAINST (? IN BOOLEAN MODE) AS relevance', [$cleanQuery])
+                ->whereRaw('MATCH(title, genre) AGAINST (? IN BOOLEAN MODE)', [$cleanQuery])
+                ->orderByDesc('relevance');
+        } else {
+            // Keep local/CI SQLite coverage equivalent without MySQL MATCH syntax.
+            $exactQuery
+                ->where(function ($query) use ($rawQuery) {
+                    $query->where('title', 'LIKE', "{$rawQuery}%")
+                        ->orWhere('genre', 'LIKE', "{$rawQuery}%");
+                })
+                ->orderBy('title');
+        }
+
+        $exactMatches = $exactQuery
+            ->when($isEnableRequest, fn ($q) => $q->where('status', 'Published')->where('isEnable', 1))
+            ->when(! $ageRestriction, fn ($q) => $q->where('isAgeRestricted', 0))
+            ->when($onlyMizoUser, fn ($q) => $q->where('isMizo', 1)) // ✅ Mizo-only filter in query
             ->paginate($perPage);
 
         $filtered = $exactMatches->getCollection()
@@ -111,18 +134,19 @@ class SearchController extends Controller
         if ($filtered->count() > 0) {
             $finalResults = $this->prioritizeSequels($filtered->toArray(), $rawQuery);
             $exactMatches->setCollection(collect($finalResults));
+
             return response()->json($filtered->values());
         }
 
         // ✅ Step 2: LIKE fallback
         $fallbackMatches = MovieModel::where(function ($q) use ($rawQuery) {
-                $q->where('title', 'LIKE', "%{$rawQuery}%")
-                    ->orWhere('genre', 'LIKE', "%{$rawQuery}%")
-                    ->orWhereRaw("SOUNDEX(title) = SOUNDEX(?)", [$rawQuery]);
-            })
-            ->when($isEnableRequest, fn($q) => $q->where('status', 'Published')->where('isEnable', 1))
-            ->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', 0))
-            ->when($onlyMizoUser, fn($q) => $q->where('isMizo', 1)) // ✅ Mizo-only filter in query
+            $q->where('title', 'LIKE', "%{$rawQuery}%")
+                ->orWhere('genre', 'LIKE', "%{$rawQuery}%")
+                ->orWhereRaw('SOUNDEX(title) = SOUNDEX(?)', [$rawQuery]);
+        })
+            ->when($isEnableRequest, fn ($q) => $q->where('status', 'Published')->where('isEnable', 1))
+            ->when(! $ageRestriction, fn ($q) => $q->where('isAgeRestricted', 0))
+            ->when($onlyMizoUser, fn ($q) => $q->where('isMizo', 1)) // ✅ Mizo-only filter in query
             ->paginate($perPage);
 
         $filteredFallback = $fallbackMatches->getCollection()
@@ -132,6 +156,7 @@ class SearchController extends Controller
         if ($filteredFallback->count() > 0) {
             $finalResults = $this->prioritizeSequels($filteredFallback->toArray(), $rawQuery);
             $fallbackMatches->setCollection(collect($finalResults));
+
             return response()->json($filteredFallback->values());
         }
 
@@ -156,17 +181,33 @@ class SearchController extends Controller
             $aScore = 0;
             $bScore = 0;
 
-            if ($aTitle === $query) $aScore += 10;
-            if ($bTitle === $query) $bScore += 10;
+            if ($aTitle === $query) {
+                $aScore += 10;
+            }
+            if ($bTitle === $query) {
+                $bScore += 10;
+            }
 
-            if (str_starts_with($aTitle, $query)) $aScore += 5;
-            if (str_starts_with($bTitle, $query)) $bScore += 5;
+            if (str_starts_with($aTitle, $query)) {
+                $aScore += 5;
+            }
+            if (str_starts_with($bTitle, $query)) {
+                $bScore += 5;
+            }
 
-            if (strpos($aTitle, $query) !== false) $aScore += 2;
-            if (strpos($bTitle, $query) !== false) $bScore += 2;
+            if (strpos($aTitle, $query) !== false) {
+                $aScore += 2;
+            }
+            if (strpos($bTitle, $query) !== false) {
+                $bScore += 2;
+            }
 
-            if (preg_match('/\d+/', $aTitle)) $aScore += 1;
-            if (preg_match('/\d+/', $bTitle)) $bScore += 1;
+            if (preg_match('/\d+/', $aTitle)) {
+                $aScore += 1;
+            }
+            if (preg_match('/\d+/', $bTitle)) {
+                $bScore += 1;
+            }
 
             return $bScore <=> $aScore;
         });

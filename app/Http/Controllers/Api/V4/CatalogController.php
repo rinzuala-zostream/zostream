@@ -32,7 +32,10 @@ class CatalogController extends Controller
 
     public function search(Request $request)
     {
-        return app(\App\Http\Controllers\New\SearchController::class)->search($request);
+        // The public app endpoint must keep one response shape even when the
+        // signed-in customer also has admin access. Admin catalogue searches
+        // use the dedicated /api/v4/admin/catalog/items/search route.
+        return app(\App\Http\Controllers\New\SearchController::class)->searchPublic($request);
     }
 
     public function filter(Request $request)
