@@ -43,19 +43,42 @@ class V4MobileAdapterTest extends TestCase
     public function test_playback_adapter_forces_the_authenticated_user(): void
     {
         $streams = Mockery::mock(NewStreamController::class);
-        $streams->shouldReceive('ping')
+        $streams->shouldReceive('start')
             ->once()
             ->withArgs(fn (Request $request) => $request->input('user_id') === 'trusted-user')
             ->andReturn(response()->json(['status' => 'success']));
 
-        $request = Request::create('/api/v4/playback/sessions/heartbeat', 'POST', [
+        $request = Request::create('/api/v4/playback/sessions', 'POST', [
             'auth_user_id' => 'trusted-user',
             'auth_device_id' => 'trusted-device',
             'user_id' => 'attacker-user',
         ]);
         $request->headers->set('Device-Token', 'trusted-device');
 
-        (new PlaybackController($streams))->heartbeat($request);
+        (new PlaybackController($streams))->start($request);
+    }
+
+    public function test_legacy_heartbeat_returns_success_without_session_mutation(): void
+    {
+        $streams = Mockery::mock(NewStreamController::class);
+        $streams->shouldReceive('ping')
+            ->once()
+            ->andReturn(response()->json([
+                'status' => 'success',
+                'stream_token' => 'legacy-stream-token',
+            ]));
+
+        $request = Request::create('/api/v4/playback/sessions/heartbeat', 'POST', [
+            'auth_user_id' => 'trusted-user',
+            'auth_device_id' => 'trusted-device',
+            'stream_token' => 'legacy-stream-token',
+        ]);
+        $request->headers->set('Device-Token', 'trusted-device');
+
+        $response = (new PlaybackController($streams))->heartbeat($request);
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertSame('success', $response->getData(true)['status']);
     }
 
     public function test_customer_support_list_is_scoped_to_the_authenticated_user(): void

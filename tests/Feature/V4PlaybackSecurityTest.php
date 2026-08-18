@@ -151,48 +151,6 @@ class V4PlaybackSecurityTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_heartbeat_cannot_keep_another_devices_stream_alive(): void
-    {
-        $ownDevice = $this->device('user-a', 'device-a');
-        $otherDevice = $this->device('user-b', 'device-b');
-        $otherStream = $this->stream($otherDevice, 'other-stream-token');
-        $lastPing = $otherStream->last_ping->toDateTimeString();
-
-        $request = Request::create('/api/v4/playback/sessions/heartbeat', 'POST', [
-            'auth_user_id' => 'user-a',
-            'stream_token' => 'other-stream-token',
-            'movie_id' => 'movie-1',
-            'type' => 'movie',
-        ]);
-        $request->headers->set('Device-Token', $ownDevice->device_token);
-
-        $response = $this->controller()->ping($request);
-
-        $this->assertSame(403, $response->getStatusCode());
-        $this->assertSame($lastPing, $otherStream->fresh()->last_ping->toDateTimeString());
-        $this->assertSame('active', $otherStream->fresh()->status);
-    }
-
-    public function test_heartbeat_does_not_reactivate_a_stopped_session(): void
-    {
-        $device = $this->device('user-a', 'device-a');
-        $stream = $this->stream($device, 'stopped-stream-token');
-        $stream->update(['status' => 'stopped']);
-
-        $request = Request::create('/api/v4/playback/sessions/heartbeat', 'POST', [
-            'auth_user_id' => 'user-a',
-            'stream_token' => 'stopped-stream-token',
-            'movie_id' => 'movie-1',
-            'type' => 'movie',
-        ]);
-        $request->headers->set('Device-Token', $device->device_token);
-
-        $response = $this->controller()->ping($request);
-
-        $this->assertSame(403, $response->getStatusCode());
-        $this->assertSame('stopped', $stream->fresh()->status);
-    }
-
     public function test_inactive_stream_pruning_keeps_active_and_recent_sessions(): void
     {
         $device = $this->device('user-a', 'device-a');
@@ -223,59 +181,6 @@ class V4PlaybackSecurityTest extends TestCase
         $this->assertDatabaseHas('n_active_streams', ['id' => $recentStopped->id]);
         $this->assertDatabaseMissing('n_active_streams', ['id' => $oldStopped->id]);
         $this->assertDatabaseMissing('n_active_streams', ['id' => $oldExpired->id]);
-    }
-
-    public function test_heartbeat_coalesces_recent_database_writes(): void
-    {
-        $device = $this->device('user-a', 'device-a', 'active');
-        $stream = $this->stream($device, 'active-stream-token');
-        $stream->update(['last_ping' => now()->subSeconds(20)]);
-        $device->update(['last_activity' => now()->subMinute()]);
-        $lastPing = $stream->fresh()->last_ping->toDateTimeString();
-        $lastActivity = $device->fresh()->last_activity->toDateTimeString();
-
-        $response = $this->controller()->ping($this->heartbeatRequest($device, $stream));
-
-        $this->assertSame(200, $response->getStatusCode());
-        $this->assertSame($lastPing, $stream->fresh()->last_ping->toDateTimeString());
-        $this->assertSame($lastActivity, $device->fresh()->last_activity->toDateTimeString());
-    }
-
-    public function test_heartbeat_refreshes_database_activity_after_write_intervals(): void
-    {
-        $device = $this->device('user-a', 'device-a', 'active');
-        $stream = $this->stream($device, 'active-stream-token');
-        $stream->update(['last_ping' => now()->subSeconds(46)]);
-        $device->update(['last_activity' => now()->subSeconds(301)]);
-        $lastPing = $stream->fresh()->last_ping;
-        $lastActivity = $device->fresh()->last_activity;
-
-        $response = $this->controller()->ping($this->heartbeatRequest($device, $stream));
-
-        $this->assertSame(200, $response->getStatusCode());
-        $this->assertTrue($stream->fresh()->last_ping->gt($lastPing));
-        $this->assertTrue($device->fresh()->last_activity->gt($lastActivity));
-    }
-
-    public function test_expired_heartbeat_keeps_the_active_device_entitlement(): void
-    {
-        $device = $this->device('user-a', 'device-a', 'active');
-        $stream = $this->stream($device, 'expired-stream-token');
-        $stream->update(['last_ping' => now()->subMinutes(10)]);
-
-        $request = Request::create('/api/v4/playback/sessions/heartbeat', 'POST', [
-            'auth_user_id' => 'user-a',
-            'stream_token' => 'expired-stream-token',
-            'movie_id' => 'movie-1',
-            'type' => 'movie',
-        ]);
-        $request->headers->set('Device-Token', $device->device_token);
-
-        $response = $this->controller()->ping($request);
-
-        $this->assertSame(403, $response->getStatusCode());
-        $this->assertSame('expired', $stream->fresh()->status);
-        $this->assertSame('active', $device->fresh()->status);
     }
 
     public function test_stop_cannot_end_another_devices_stream(): void
@@ -325,6 +230,34 @@ class V4PlaybackSecurityTest extends TestCase
 
         $this->assertSame(200, $response->getStatusCode());
         $this->assertSame('stopped', $stream->fresh()->status);
+        $this->assertSame('active', $device->fresh()->status);
+    }
+
+    public function test_stop_saves_progress_for_a_previously_inactive_stream(): void
+    {
+        $device = $this->device('user-a', 'device-a', 'active');
+        $stream = $this->stream($device, 'inactive-stream-token');
+        $stream->update(['status' => 'expired']);
+        $watchPositions = Mockery::mock(WatchPositionController::class);
+        $watchPositions->shouldReceive('save')
+            ->once()
+            ->withArgs(fn (Request $request) => $request->input('position') === 42_000)
+            ->andReturn(response()->json(['status' => 'success']));
+
+        $request = Request::create('/api/v4/playback/sessions/stop', 'POST', [
+            'auth_user_id' => 'user-a',
+            'stream_token' => 'inactive-stream-token',
+            'watch_position' => 42_000,
+            'content_type' => 'movie',
+            'movie_id' => 'movie-1',
+            'duration' => 100_000,
+        ]);
+        $request->headers->set('Device-Token', $device->device_token);
+
+        $response = $this->controller($watchPositions)->stop($request);
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertSame('expired', $stream->fresh()->status);
         $this->assertSame('active', $device->fresh()->status);
     }
 
@@ -767,16 +700,4 @@ class V4PlaybackSecurityTest extends TestCase
         ]);
     }
 
-    private function heartbeatRequest(Devices $device, ActiveStream $stream): Request
-    {
-        $request = Request::create('/api/v4/playback/sessions/heartbeat', 'POST', [
-            'auth_user_id' => $device->user_id,
-            'stream_token' => $stream->stream_token,
-            'movie_id' => $stream->content_key,
-            'type' => $stream->content_type,
-        ]);
-        $request->headers->set('Device-Token', $device->device_token);
-
-        return $request;
-    }
 }

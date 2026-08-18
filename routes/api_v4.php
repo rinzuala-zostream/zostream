@@ -167,8 +167,7 @@ Route::prefix('v4')
             Route::prefix('playback/sessions')->group(function () {
                 Route::post('/', [PlaybackController::class, 'start'])
                     ->middleware('throttle:playback-start');
-                Route::post('/heartbeat', [PlaybackController::class, 'heartbeat'])
-                    ->middleware('throttle:playback-heartbeat');
+                Route::post('/heartbeat', [PlaybackController::class, 'heartbeat']);
                 Route::post('/stop', [PlaybackController::class, 'stop'])
                     ->middleware('throttle:playback-stop');
             });

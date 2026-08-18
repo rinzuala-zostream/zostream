@@ -103,23 +103,26 @@ playback, billing or channel-subscription operations.
 Playback uses one authenticated lifecycle across Android, iOS and Web:
 
 1. `POST /playback/sessions`
-2. `POST /playback/sessions/heartbeat`
-3. `POST /playback/sessions/stop`
+2. `POST /playback/sessions/stop`
+
+`POST /playback/sessions/heartbeat` remains temporarily available as a
+deprecated compatibility no-op for released app versions. It returns success,
+but new clients must not schedule or depend on it.
 
 Every request requires both a bearer token and `Device-Token`. When the access
 token was issued for a known device, its device ID must match `Device-Token`.
 The server derives the user from the bearer token, verifies subscription and
-device ownership, and scopes heartbeat/stop operations to that exact device.
+device ownership, and scopes stop operations to that exact device.
 
 `watch_position`, `duration` and the returned `watch_position` are integers in
-milliseconds on every platform. Heartbeats should be sent about every 30
-seconds. Sessions with no heartbeat for 500 seconds expire. Stop is idempotent
-for the current session and persists watch progress.
+milliseconds on every platform. Playback sessions remain active until the
+client stops them or a newer playback attempt replaces the device's session.
+Stop is idempotent and persists watch progress for repeated stop requests.
 
 Device entitlement is separate from the live stream row. The owner device is
 always active and counts toward the plan's per-device-type `device_limit`.
 Other authenticated devices begin inactive, become active on their first
-allowed playback, and remain active after stop or heartbeat expiry. Playback
+allowed playback, and remain active after playback stops. Playback
 stop never frees an entitled device slot.
 
 A successful subscription renewal (manual or confirmed payment) starts a new

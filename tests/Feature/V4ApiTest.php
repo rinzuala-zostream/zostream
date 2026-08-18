@@ -86,7 +86,6 @@ class V4ApiTest extends TestCase
     {
         $expectedMiddleware = [
             'api/v4/playback/sessions' => 'throttle:playback-start',
-            'api/v4/playback/sessions/heartbeat' => 'throttle:playback-heartbeat',
             'api/v4/playback/sessions/stop' => 'throttle:playback-stop',
         ];
 
@@ -102,16 +101,16 @@ class V4ApiTest extends TestCase
 
     public function test_playback_rate_limit_does_not_collide_for_devices_on_the_same_ip(): void
     {
-        $limiter = RateLimiter::limiter('playback-heartbeat');
+        $limiter = RateLimiter::limiter('playback-start');
 
         $this->assertNotNull($limiter);
 
-        $firstDevice = Request::create('/api/v4/playback/sessions/heartbeat', 'POST', [], [], [], [
+        $firstDevice = Request::create('/api/v4/playback/sessions', 'POST', [], [], [], [
             'REMOTE_ADDR' => '10.0.0.5',
         ]);
         $firstDevice->merge(['auth_device_id' => 'device-one']);
 
-        $secondDevice = Request::create('/api/v4/playback/sessions/heartbeat', 'POST', [], [], [], [
+        $secondDevice = Request::create('/api/v4/playback/sessions', 'POST', [], [], [], [
             'REMOTE_ADDR' => '10.0.0.5',
         ]);
         $secondDevice->merge(['auth_device_id' => 'device-two']);
@@ -120,7 +119,7 @@ class V4ApiTest extends TestCase
         $secondLimit = $limiter($secondDevice);
 
         $this->assertSame(
-            (int) config('playback.rate_limits.heartbeat_per_minute'),
+            (int) config('playback.rate_limits.start_per_minute'),
             $firstLimit->maxAttempts
         );
         $this->assertSame(60, $firstLimit->decaySeconds);
@@ -129,13 +128,13 @@ class V4ApiTest extends TestCase
 
     public function test_playback_rate_limit_uses_device_header_before_shared_ip_fallback(): void
     {
-        $limiter = RateLimiter::limiter('playback-heartbeat');
+        $limiter = RateLimiter::limiter('playback-start');
 
-        $firstDevice = Request::create('/api/v4/playback/sessions/heartbeat', 'POST', [], [], [], [
+        $firstDevice = Request::create('/api/v4/playback/sessions', 'POST', [], [], [], [
             'REMOTE_ADDR' => '10.0.0.5',
             'HTTP_DEVICE_TOKEN' => 'legacy-device-one',
         ]);
-        $secondDevice = Request::create('/api/v4/playback/sessions/heartbeat', 'POST', [], [], [], [
+        $secondDevice = Request::create('/api/v4/playback/sessions', 'POST', [], [], [], [
             'REMOTE_ADDR' => '10.0.0.5',
             'HTTP_DEVICE_TOKEN' => 'legacy-device-two',
         ]);
@@ -143,23 +142,17 @@ class V4ApiTest extends TestCase
         $this->assertNotSame($limiter($firstDevice)->key, $limiter($secondDevice)->key);
     }
 
-    public function test_excess_heartbeat_is_acknowledged_with_json_success(): void
+    public function test_playback_heartbeat_route_remains_available_for_legacy_clients(): void
     {
-        $limiter = RateLimiter::limiter('playback-heartbeat');
-        $request = Request::create('/api/v4/playback/sessions/heartbeat', 'POST');
-        $limit = $limiter($request);
+        $route = collect(Route::getRoutes()->getRoutes())->first(
+            fn ($route) => $route->uri() === 'api/v4/playback/sessions/heartbeat'
+        );
 
-        $this->assertNotNull($limit->responseCallback);
-
-        $response = ($limit->responseCallback)($request, ['Retry-After' => 60]);
-
-        $this->assertSame(200, $response->getStatusCode());
-        $this->assertSame('application/json', $response->headers->get('Content-Type'));
-        $this->assertSame([
-            'status' => 'success',
-            'message' => 'Streaming session heartbeat accepted.',
-            'throttled' => true,
-        ], $response->getData(true));
+        $this->assertNotNull($route);
+        $this->assertSame(
+            'App\\Http\\Controllers\\Api\\V4\\PlaybackController@heartbeat',
+            $route->getActionName()
+        );
     }
 
     public function test_health_response_uses_the_canonical_envelope(): void

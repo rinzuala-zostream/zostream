@@ -322,20 +322,6 @@ class NewStreamController extends Controller
                     ], 403);
                 }
 
-                // 4️⃣ Cleanup stale streams
-                $timeout = now()->subSeconds($this->streamTimeout);
-
-                $staleStreams = ActiveStream::where('subscription_id', $subscriptionId)
-                    ->where('device_type', $type)
-                    ->where('status', 'active')
-                    ->where('last_ping', '<', $timeout)
-                    ->get();
-
-                foreach ($staleStreams as $stream) {
-                    ActiveStream::where('id', $stream->id)
-                        ->update(['status' => 'stopped']);
-                }
-
                 $revokedDeviceIds = ActiveStream::query()
                     ->join('n_devices', 'n_active_streams.device_id', '=', 'n_devices.id')
                     ->leftJoin('session_tokens', function ($join) use ($subscription) {
@@ -346,7 +332,6 @@ class NewStreamController extends Controller
                     ->where('n_active_streams.subscription_id', $subscriptionId)
                     ->where('n_active_streams.device_type', $type)
                     ->where('n_active_streams.status', 'active')
-                    ->where('n_active_streams.last_ping', '>=', $timeout)
                     ->where('n_devices.user_id', $subscription->user_id)
                     ->whereNull('session_tokens.id')
                     ->pluck('n_active_streams.device_id')
@@ -946,29 +931,27 @@ class NewStreamController extends Controller
 
             $watchData = [];
 
-            if (!$alreadyStopped) {
-                try {
-                    $fakeRequest = Request::create('', 'POST', [
-                        'movie_id' => $movieId,
-                        'position' => $watchPosition,
-                        'user_id' => $userId,
-                        'duration' => $duration,
-                        'movie_type' => $contentType,
-                    ]);
+            try {
+                $fakeRequest = Request::create('', 'POST', [
+                    'movie_id' => $movieId,
+                    'position' => $watchPosition,
+                    'user_id' => $userId,
+                    'duration' => $duration,
+                    'movie_type' => $contentType,
+                ]);
 
-                    $watchResponse = $this->watchPositionController->save($fakeRequest);
+                $watchResponse = $this->watchPositionController->save($fakeRequest);
 
-                    if ($watchResponse && method_exists($watchResponse, 'getContent')) {
-                        $watchData = json_decode($watchResponse->getContent(), true) ?? [];
-                    }
-
-                } catch (\Throwable $e) {
-                    // Watch position failure must not keep a playback seat active.
-                    Log::warning('Watch position save failed', [
-                        'stream_token_hash' => hash('sha256', $streamToken),
-                        'error' => $e->getMessage(),
-                    ]);
+                if ($watchResponse && method_exists($watchResponse, 'getContent')) {
+                    $watchData = json_decode($watchResponse->getContent(), true) ?? [];
                 }
+
+            } catch (\Throwable $e) {
+                // Watch position failure must not keep a playback seat active.
+                Log::warning('Watch position save failed', [
+                    'stream_token_hash' => hash('sha256', $streamToken),
+                    'error' => $e->getMessage(),
+                ]);
             }
 
             $watchMessage = $watchData['message'] ?? '';

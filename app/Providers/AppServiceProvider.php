@@ -62,23 +62,6 @@ class AppServiceProvider extends ServiceProvider
             );
         });
 
-        RateLimiter::for('playback-heartbeat', function (Request $request) {
-            return $this->playbackDeviceLimit(
-                $request,
-                'heartbeat',
-                (int) config('playback.rate_limits.heartbeat_per_minute', 20)
-            )->response(function (Request $request, array $headers) {
-                // A valid client normally sends only three heartbeats a minute.
-                // Treat duplicate bursts as an acknowledged no-op so older
-                // players do not stop playback while waiting for the next ping.
-                return response()->json([
-                    'status' => 'success',
-                    'message' => 'Streaming session heartbeat accepted.',
-                    'throttled' => true,
-                ], 200, $headers);
-            });
-        });
-
         RateLimiter::for('playback-stop', function (Request $request) {
             return $this->playbackDeviceLimit(
                 $request,

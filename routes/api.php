@@ -276,7 +276,7 @@ Route::prefix('v3.0')->group(function () {
 
         Route::prefix('stream')->group(function () {
             Route::post('start', [NewStreamController::class, 'start']); // Start streaming
-            Route::post('ping', [NewStreamController::class, 'ping']);   // Heartbeat ping
+            Route::post('ping', [NewStreamController::class, 'ping']);   // Legacy compatibility no-op
             Route::post('stop', [NewStreamController::class, 'stop']);   // Stop stream
         });
 

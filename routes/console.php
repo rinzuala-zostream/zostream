@@ -24,12 +24,6 @@ Schedule::command('app:subscription-maintenance --deactivate=1 --send-reminders=
 Schedule::command('app:subscription-maintenance --deactivate=0 --reminder-days=3 --send-reminders=1')
     ->dailyAt('10:00');
 
-// Playback clients can disappear without sending a stop request. Expire their
-// rows independently of future playback starts so "active" remains truthful.
-Schedule::command('streams:expire-stale')
-    ->everyMinute()
-    ->withoutOverlapping();
-
 // Keep stopped/expired rows briefly for idempotent stop retries and diagnosis,
 // then remove them in small batches so the live-session table stays compact.
 Schedule::command('streams:prune-inactive')
