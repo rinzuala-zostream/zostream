@@ -104,12 +104,22 @@ class HomeSeriesOrderingTest extends TestCase
 
     public function test_movie_update_timestamp_takes_priority_over_create_date(): void
     {
-        MovieModel::where('id', 'newer-series')->firstOrFail()->update(['title' => 'Updated Series']);
+        DB::table('movie')->where('id', 'newer-series')->update(['updated_at' => now()]);
 
         $data = $this->controller()->getMovies(new Request())->getData(true);
 
         $this->assertNotNull(DB::table('movie')->where('id', 'newer-series')->value('updated_at'));
         $this->assertSame(['newer-series', 'older-series'], array_column($data['Latest Update'], 'id'));
+    }
+
+    public function test_view_count_increment_does_not_change_movie_update_timestamp(): void
+    {
+        $timestamp = '2026-08-19 10:00:00';
+        DB::table('movie')->where('id', 'newer-series')->update(['updated_at' => $timestamp]);
+
+        MovieModel::where('id', 'newer-series')->firstOrFail()->increment('views');
+
+        $this->assertSame($timestamp, DB::table('movie')->where('id', 'newer-series')->value('updated_at'));
     }
 
     public function test_other_category_rows_keep_their_original_movie_order(): void

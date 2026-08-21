@@ -126,6 +126,7 @@ class MovieController extends Controller
                 ? Carbon::parse($movieData['create_date'])->toDateString()
                 : now()->toDateString();
             $movieData['trailer'] = $movieData['trailer'] ?? '';
+            $movieData['updated_at'] = now();
 
             if (empty($movieData['duration'])) {
                 foreach ([$movieData['dash_url'] ?? null, $movieData['url'] ?? null] as $mpdSource) {
@@ -222,6 +223,8 @@ class MovieController extends Controller
                     ? Carbon::parse($movieData[$dateField])->toDateString()
                     : null;
             }
+
+            $movieData['updated_at'] = now();
 
             $movie->update($movieData);
 

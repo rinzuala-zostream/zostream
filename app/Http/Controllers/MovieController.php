@@ -415,6 +415,7 @@ class MovieController extends Controller
 
             // ✅ Ensure trailer is stored as empty string if null
             $validated['trailer'] = $validated['trailer'] ?? '';
+            $validated['updated_at'] = now();
 
             // ✅ Always create the movie
             $movie = MovieModel::create($validated);
@@ -522,6 +523,7 @@ class MovieController extends Controller
                 $validated['trailer'] = '';
             }
 
+            $validated['updated_at'] = now();
             $movie->update($validated);
 
             $shouldNotify = $request->boolean('notification', true);

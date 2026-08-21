@@ -12,9 +12,7 @@ class MovieModel extends Model
     protected $primaryKey = 'num'; // Since the primary key is 'num', not 'id'
     public $incrementing = true;   // true if it's AUTO_INCREMENT
 
-    public const CREATED_AT = null;
-
-    public $timestamps = true;
+    public $timestamps = false;
 
     protected $casts = [
         'isProtected' => 'boolean',
@@ -75,6 +73,7 @@ class MovieModel extends Model
         'token',
         'status',
         'ppv_amount',
+        'updated_at',
     ];
 
     /**

@@ -78,6 +78,7 @@ class NewMovieNotificationTest extends TestCase
 
         $this->assertSame(201, $response->getStatusCode());
         $this->assertSame('success', $response->getData(true)['status']);
+        $this->assertNotNull(DB::table('movie')->where('title', 'Test Movie')->value('updated_at'));
     }
 
     public function test_unchecked_notification_does_not_send_push(): void

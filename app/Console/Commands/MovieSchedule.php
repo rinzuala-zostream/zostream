@@ -45,7 +45,10 @@ class MovieSchedule extends Command
         if ($movies->isEmpty()) {
             $this->info('No scheduled movies to publish.');
         } else {
-            MovieModel::whereIn('id', $movies->pluck('id'))->update(['status' => 'Published']);
+            MovieModel::whereIn('id', $movies->pluck('id'))->update([
+                'status' => 'Published',
+                'updated_at' => now(),
+            ]);
             $this->info("Published {$movies->count()} movies.");
         }
 
