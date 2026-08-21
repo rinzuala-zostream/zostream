@@ -33,6 +33,7 @@ class AdminMovieApiTest extends TestCase
 
         Schema::create('movie', function (Blueprint $table) {
             $table->increments('num');
+            $table->timestamp('updated_at')->nullable();
             $table->string('id')->unique();
             $table->string('title');
             $table->text('description')->nullable();

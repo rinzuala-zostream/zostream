@@ -12,7 +12,9 @@ class MovieModel extends Model
     protected $primaryKey = 'num'; // Since the primary key is 'num', not 'id'
     public $incrementing = true;   // true if it's AUTO_INCREMENT
 
-    public $timestamps = false;    // 'create_date' is not standard 'created_at'
+    public const CREATED_AT = null;
+
+    public $timestamps = true;
 
     protected $casts = [
         'isProtected' => 'boolean',
@@ -32,6 +34,7 @@ class MovieModel extends Model
         'isChildMode' => 'boolean',
         'create_date' => 'date',
         'release_on' => 'date',
+        'updated_at' => 'datetime',
 
     ];
 

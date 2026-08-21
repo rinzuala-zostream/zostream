@@ -41,6 +41,7 @@ class NewMovieNotificationTest extends TestCase
             $table->string('duration')->nullable();
             $table->string('status')->nullable();
             $table->date('create_date');
+            $table->timestamp('updated_at')->nullable();
             $table->string('trailer')->default('');
             $table->string('cover_img')->nullable();
         });

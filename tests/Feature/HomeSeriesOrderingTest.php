@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Http\Controllers\FCMNotificationController;
 use App\Http\Controllers\New\MovieController;
+use App\Models\MovieModel;
 use App\Support\MpdDurationExtractor;
 use App\Support\WebpImageUploader;
 use Illuminate\Database\Schema\Blueprint;
@@ -39,6 +40,7 @@ class HomeSeriesOrderingTest extends TestCase
             $table->string('id')->unique();
             $table->string('title');
             $table->date('create_date')->nullable();
+            $table->timestamp('updated_at')->nullable();
             $table->date('release_on')->nullable();
             $table->unsignedInteger('views')->default(0);
             $table->string('genre')->nullable();
@@ -72,8 +74,8 @@ class HomeSeriesOrderingTest extends TestCase
             ['id' => 'newer-season', 'movie_id' => 2, 'release_date' => '2026-01-01', 'status' => 'Published', 'created_at' => '2026-01-01 00:00:00', 'updated_at' => '2026-01-01 00:00:00'],
         ]);
         DB::table('episodes')->insert([
-            ['id' => 'older-series-new-episode', 'season_id' => 'older-season', 'release_date' => '2026-08-20', 'status' => 'Published', 'created_at' => '2026-08-20 00:00:00', 'updated_at' => '2026-08-20 00:00:00'],
-            ['id' => 'newer-series-old-episode', 'season_id' => 'newer-season', 'release_date' => '2026-07-01', 'status' => 'Published', 'created_at' => '2026-07-01 00:00:00', 'updated_at' => '2026-07-01 00:00:00'],
+            ['id' => 'older-series-new-episode', 'season_id' => 'older-season', 'release_date' => '2026-08-20', 'status' => 'Published', 'created_at' => '2026-08-20 21:30:00', 'updated_at' => '2026-08-20 21:30:00'],
+            ['id' => 'newer-series-old-episode', 'season_id' => 'newer-season', 'release_date' => '2026-08-20', 'status' => 'Published', 'created_at' => '2026-08-20 20:15:00', 'updated_at' => '2026-08-20 20:15:00'],
             ['id' => 'newer-series-draft-episode', 'season_id' => 'newer-season', 'release_date' => '2026-09-01', 'status' => 'Draft', 'created_at' => '2026-09-01 00:00:00', 'updated_at' => '2026-09-01 00:00:00'],
         ]);
     }
@@ -98,6 +100,16 @@ class HomeSeriesOrderingTest extends TestCase
         $data = $this->controller()->getMovies(new Request())->getData(true);
 
         $this->assertSame(['older-series', 'newer-series'], array_column($data['Latest Update'], 'id'));
+    }
+
+    public function test_movie_update_timestamp_takes_priority_over_create_date(): void
+    {
+        MovieModel::where('id', 'newer-series')->firstOrFail()->update(['title' => 'Updated Series']);
+
+        $data = $this->controller()->getMovies(new Request())->getData(true);
+
+        $this->assertNotNull(DB::table('movie')->where('id', 'newer-series')->value('updated_at'));
+        $this->assertSame(['newer-series', 'older-series'], array_column($data['Latest Update'], 'id'));
     }
 
     public function test_other_category_rows_keep_their_original_movie_order(): void

@@ -1617,24 +1617,34 @@ class MovieController extends Controller
 
     private function orderByLatestPublishedContent($query): void
     {
-        $query->orderByRaw(<<<'SQL'
-            COALESCE(
-                (
-                    SELECT MAX(COALESCE(series_episodes.release_date, series_episodes.created_at))
-                    FROM episodes AS series_episodes
-                    INNER JOIN seasons AS episode_seasons
-                        ON episode_seasons.id = series_episodes.season_id
-                    WHERE episode_seasons.movie_id = movie.num
-                        AND episode_seasons.status = ?
-                        AND series_episodes.status = ?
+        $latestFunction = Schema::getConnection()->getDriverName() === 'sqlite'
+            ? 'MAX'
+            : 'GREATEST';
+
+        $query->orderByRaw(<<<SQL
+            {$latestFunction}(
+                COALESCE(
+                    (
+                        SELECT MAX(COALESCE(series_episodes.created_at, series_episodes.release_date))
+                        FROM episodes AS series_episodes
+                        INNER JOIN seasons AS episode_seasons
+                            ON episode_seasons.id = series_episodes.season_id
+                        WHERE episode_seasons.movie_id = movie.num
+                            AND episode_seasons.status = ?
+                            AND series_episodes.status = ?
+                    ),
+                    COALESCE(movie.updated_at, movie.create_date)
                 ),
-                (
-                    SELECT MAX(COALESCE(series_seasons.release_date, series_seasons.created_at))
-                    FROM seasons AS series_seasons
-                    WHERE series_seasons.movie_id = movie.num
-                        AND series_seasons.status = ?
+                COALESCE(
+                    (
+                        SELECT MAX(COALESCE(series_seasons.created_at, series_seasons.release_date))
+                        FROM seasons AS series_seasons
+                        WHERE series_seasons.movie_id = movie.num
+                            AND series_seasons.status = ?
+                    ),
+                    COALESCE(movie.updated_at, movie.create_date)
                 ),
-                movie.create_date
+                COALESCE(movie.updated_at, movie.create_date)
             ) DESC,
             movie.num DESC
             SQL, ['Published', 'Published', 'Published']);
