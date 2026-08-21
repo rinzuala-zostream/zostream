@@ -1175,12 +1175,16 @@ class MovieController extends Controller
                 $query->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', $ageRestriction))
                     ->orderByDesc('views');
             } elseif ($column === 'all') {
-                $query->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', $ageRestriction))
-                    ->orderByDesc('num');
+                $query->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', $ageRestriction));
+                $this->orderByLatestPublishedContent($query);
             } elseif ($column === 'free') {
                 $query->where('isPremium', 0)
-                    ->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', $ageRestriction))
-                    ->orderByDesc('num');
+                    ->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', $ageRestriction));
+                $this->orderByLatestPublishedContent($query);
+            } elseif ($column === 'isSeason') {
+                $query->where('isSeason', 1)
+                    ->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', $ageRestriction));
+                $this->orderByLatestPublishedContent($query);
             } elseif (
                 in_array($column, [
                     "isBollywood",
@@ -1199,12 +1203,12 @@ class MovieController extends Controller
                 ])
             ) {
                 $query->where($column, 1)
-                    ->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', $ageRestriction))
-                    ->orderByDesc('num');
+                    ->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', $ageRestriction));
+                $this->orderByLatestPublishedContent($query);
             } else {
                 $query->where('genre', 'LIKE', "%$categoryKey%")
-                    ->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', $ageRestriction))
-                    ->orderByDesc('num');
+                    ->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', $ageRestriction));
+                $this->orderByLatestPublishedContent($query);
             }
 
             $movies = $query->offset($start)->limit($count)->get();
@@ -1299,9 +1303,15 @@ class MovieController extends Controller
                 $builder = $builder->when(
                     !$ageRestriction && strpos($where, 'isAgeRestricted') === false,
                     fn($q) => $q->where('isAgeRestricted', $ageRestriction)
-                )
-                    ->orderByRaw($order)
-                    ->limit($fetchSize);
+                );
+
+                if (!in_array($name, ['New Release', 'Most Watched'], true)) {
+                    $this->orderByLatestPublishedContent($builder);
+                } else {
+                    $builder->orderByRaw($order);
+                }
+
+                $builder->limit($fetchSize);
 
                 $list = $builder->get();
 
@@ -1607,6 +1617,31 @@ class MovieController extends Controller
         }
 
         $query->where($column, 1);
+    }
+
+    private function orderByLatestPublishedContent($query): void
+    {
+        $query->orderByRaw(<<<'SQL'
+            COALESCE(
+                (
+                    SELECT MAX(COALESCE(series_episodes.release_date, series_episodes.created_at))
+                    FROM episodes AS series_episodes
+                    INNER JOIN seasons AS episode_seasons
+                        ON episode_seasons.id = series_episodes.season_id
+                    WHERE episode_seasons.movie_id = movie.num
+                        AND episode_seasons.status = ?
+                        AND series_episodes.status = ?
+                ),
+                (
+                    SELECT MAX(COALESCE(series_seasons.release_date, series_seasons.created_at))
+                    FROM seasons AS series_seasons
+                    WHERE series_seasons.movie_id = movie.num
+                        AND series_seasons.status = ?
+                ),
+                movie.create_date
+            ) DESC,
+            movie.num DESC
+            SQL, ['Published', 'Published', 'Published']);
     }
 
     private function defaultFilterSort(string $category): array

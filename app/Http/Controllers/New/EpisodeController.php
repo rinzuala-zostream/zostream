@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\New;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\FCMNotificationController;
 use App\Models\New\Episode;
 use App\Models\New\Season;
 use App\Models\New\VideoUrl;
@@ -15,7 +16,10 @@ use Illuminate\Support\Str;
 
 class EpisodeController extends Controller
 {
-    public function __construct(private readonly WebpImageUploader $imageUploader) {}
+    public function __construct(
+        private readonly WebpImageUploader $imageUploader,
+        private readonly FCMNotificationController $fcmNotificationController,
+    ) {}
 
     // Get all episodes of a season
     public function index($seasonId)
@@ -75,7 +79,8 @@ class EpisodeController extends Controller
                 'url' => 'nullable|string',
                 'dash_url' => 'nullable|string',
                 'quality' => 'nullable|string',
-                'type' => 'nullable|string'
+                'type' => 'nullable|string',
+                'notification' => 'nullable|boolean',
             ]);
 
             $episodeId = (string) Str::uuid();
@@ -115,6 +120,8 @@ class EpisodeController extends Controller
                     $this->runEpisodeThumbnailExtraction($episode->id, $videoUrl);
                 }
             }
+
+            $this->sendPublishedEpisodeNotification($episode, $request->boolean('notification'));
 
             return response()->json([
                 'status' => 'success',
@@ -202,12 +209,13 @@ class EpisodeController extends Controller
                 'url' => 'nullable|string',
                 'dash_url' => 'nullable|string',
                 'quality' => 'nullable|string',
-                'type' => 'nullable|string'
+                'type' => 'nullable|string',
+                'notification' => 'nullable|boolean',
             ]);
 
             $videoUrl = $validated['url'] ?? $validated['dash_url'] ?? null;
             $episodeData = $validated;
-            unset($episodeData['url'], $episodeData['dash_url'], $episodeData['quality'], $episodeData['type'], $episodeData['image']);
+            unset($episodeData['url'], $episodeData['dash_url'], $episodeData['quality'], $episodeData['type'], $episodeData['image'], $episodeData['notification']);
 
             $originalThumbnail = $this->normalizeThumbnail($episode->thumbnail);
             $uploadedThumbnail = $this->uploadEpisodeThumbnailImage($request);
@@ -263,6 +271,8 @@ class EpisodeController extends Controller
             if (!empty($thumbnailExtractionUrl) && !$hasManualThumbnail) {
                 $this->runEpisodeThumbnailExtraction($freshEpisode->id, $thumbnailExtractionUrl, true);
             }
+
+            $this->sendPublishedEpisodeNotification($freshEpisode, $request->boolean('notification'));
 
             return response()->json([
                 'status' => 'success',
@@ -450,6 +460,42 @@ class EpisodeController extends Controller
         $thumbnail = trim($thumbnail);
 
         return $thumbnail === '' ? null : $thumbnail;
+    }
+
+    private function sendPublishedEpisodeNotification(Episode $episode, bool $shouldNotify): void
+    {
+        if (!$shouldNotify || $episode->status !== 'Published') {
+            return;
+        }
+
+        $episode->loadMissing('season.movie');
+        $movie = $episode->season?->movie;
+
+        if (!$movie) {
+            Log::warning('Episode saved but its notification could not resolve the main movie', [
+                'episode_id' => $episode->id,
+                'season_id' => $episode->season_id,
+            ]);
+
+            return;
+        }
+
+        $title = trim($movie->title . ' ' . ($episode->title ?: "Episode {$episode->episode_number}"));
+        $notification = $this->fcmNotificationController->sendToTopic(
+            topic: 'all',
+            title: $title,
+            body: 'New episode streaming on Zo Stream',
+            image: $episode->thumbnail ?: ($movie->cover_img ?? ''),
+            key: $movie->id,
+        );
+
+        if (!($notification['success'] ?? false)) {
+            Log::warning('Episode saved but push notification delivery failed', [
+                'episode_id' => $episode->id,
+                'movie_id' => $movie->id,
+                'notification_status' => $notification['status'] ?? null,
+            ]);
+        }
     }
 
     private function uploadEpisodeThumbnailImage(Request $request): ?string
