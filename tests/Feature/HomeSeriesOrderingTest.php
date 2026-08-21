@@ -86,11 +86,11 @@ class HomeSeriesOrderingTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_home_series_are_ordered_by_latest_published_episode(): void
+    public function test_home_series_keep_their_original_movie_order(): void
     {
         $data = $this->controller()->getMovies(new Request())->getData(true);
 
-        $this->assertSame(['older-series', 'newer-series'], array_column($data['Series'], 'id'));
+        $this->assertSame(['newer-series', 'older-series'], array_column($data['Series'], 'id'));
     }
 
     public function test_latest_update_row_includes_newly_published_series_episodes(): void
@@ -100,35 +100,36 @@ class HomeSeriesOrderingTest extends TestCase
         $this->assertSame(['older-series', 'newer-series'], array_column($data['Latest Update'], 'id'));
     }
 
-    public function test_category_rows_use_latest_published_content_order(): void
+    public function test_other_category_rows_keep_their_original_movie_order(): void
     {
         $data = $this->controller()->getMovies(new Request())->getData(true);
 
-        $this->assertSame(['older-series', 'newer-series'], array_column($data['Mizo'], 'id'));
+        $this->assertSame(['newer-series', 'older-series'], array_column($data['Mizo'], 'id'));
     }
 
-    public function test_new_release_and_most_watched_keep_their_specific_ordering(): void
+    public function test_latest_update_is_first_and_most_watched_is_hidden(): void
     {
         $data = $this->controller()->getMovies(new Request())->getData(true);
 
+        $this->assertSame('Latest Update', array_key_first($data));
+        $this->assertArrayNotHasKey('Most Watched', $data);
         $this->assertSame(['newer-series', 'older-series'], array_column($data['New Release'], 'id'));
-        $this->assertSame(['newer-series', 'older-series'], array_column($data['Most Watched'], 'id'));
     }
 
-    public function test_series_category_uses_the_same_latest_content_order(): void
+    public function test_series_category_keeps_its_original_movie_order(): void
     {
         $request = Request::create('/movies/home', 'GET', ['category' => 'series']);
         $data = $this->controller()->getMovies($request)->getData(true);
 
-        $this->assertSame(['older-series', 'newer-series'], array_column($data, 'id'));
+        $this->assertSame(['newer-series', 'older-series'], array_column($data, 'id'));
     }
 
-    public function test_view_all_category_uses_latest_published_content_order(): void
+    public function test_view_all_category_keeps_its_original_movie_order(): void
     {
         $request = Request::create('/movies/home', 'GET', ['category' => 'mizo']);
         $data = $this->controller()->getMovies($request)->getData(true);
 
-        $this->assertSame(['older-series', 'newer-series'], array_column($data, 'id'));
+        $this->assertSame(['newer-series', 'older-series'], array_column($data, 'id'));
     }
 
     private function insertSeries(int $num, string $id, string $title, string $createDate): void

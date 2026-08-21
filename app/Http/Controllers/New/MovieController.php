@@ -1179,12 +1179,8 @@ class MovieController extends Controller
                 $this->orderByLatestPublishedContent($query);
             } elseif ($column === 'free') {
                 $query->where('isPremium', 0)
-                    ->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', $ageRestriction));
-                $this->orderByLatestPublishedContent($query);
-            } elseif ($column === 'isSeason') {
-                $query->where('isSeason', 1)
-                    ->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', $ageRestriction));
-                $this->orderByLatestPublishedContent($query);
+                    ->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', $ageRestriction))
+                    ->orderByDesc('num');
             } elseif (
                 in_array($column, [
                     "isBollywood",
@@ -1203,12 +1199,12 @@ class MovieController extends Controller
                 ])
             ) {
                 $query->where($column, 1)
-                    ->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', $ageRestriction));
-                $this->orderByLatestPublishedContent($query);
+                    ->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', $ageRestriction))
+                    ->orderByDesc('num');
             } else {
                 $query->where('genre', 'LIKE', "%$categoryKey%")
-                    ->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', $ageRestriction));
-                $this->orderByLatestPublishedContent($query);
+                    ->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', $ageRestriction))
+                    ->orderByDesc('num');
             }
 
             $movies = $query->offset($start)->limit($count)->get();
@@ -1225,10 +1221,10 @@ class MovieController extends Controller
         // ✅ Full sections response
         else {
             $categories = [
-                "New Release" => ["where" => "release_on IS NOT NULL", "order" => "release_on DESC"],
-                "Most Watched" => ["where" => "1", "order" => "views DESC"],
-                "Pay Per View" => ["where" => "isPayPerView = 1", "order" => "num DESC"],
                 "Latest Update" => ["where" => "1", "order" => "create_date DESC"],
+                "New Release" => ["where" => "release_on IS NOT NULL", "order" => "release_on DESC"],
+                // "Most Watched" => ["where" => "1", "order" => "views DESC"],
+                "Pay Per View" => ["where" => "isPayPerView = 1", "order" => "num DESC"],
                 "Asian" => ["where" => "isKorean = 1", "order" => "num DESC"],
                 "Series" => ["where" => "isSeason = 1", "order" => "num DESC"],
                 "Hollywood" => ["where" => "isHollywood = 1", "order" => "num DESC"],
@@ -1305,7 +1301,7 @@ class MovieController extends Controller
                     fn($q) => $q->where('isAgeRestricted', $ageRestriction)
                 );
 
-                if (!in_array($name, ['New Release', 'Most Watched'], true)) {
+                if ($name === 'Latest Update') {
                     $this->orderByLatestPublishedContent($builder);
                 } else {
                     $builder->orderByRaw($order);
