@@ -106,7 +106,7 @@ export function ThemeToggle({
         className={[
           "relative inline-grid grid-cols-2 items-center rounded-full p-1.5",
           "touch-manipulation select-none",
-          "overflow-hidden border border-white/70 bg-white/45 text-slate-700 backdrop-blur-2xl",
+          "overflow-hidden border border-slate-300/90 bg-white/80 text-slate-700 backdrop-blur-2xl",
           "shadow-[inset_0_1px_0_rgba(255,255,255,0.8),inset_0_-1px_0_rgba(255,255,255,0.35),0_18px_35px_rgba(15,23,42,0.2)]",
           "dark:border-slate-300/25 dark:bg-slate-900/45 dark:text-slate-200",
           "dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.18),inset_0_-1px_0_rgba(255,255,255,0.08),0_18px_35px_rgba(2,6,23,0.55)]",

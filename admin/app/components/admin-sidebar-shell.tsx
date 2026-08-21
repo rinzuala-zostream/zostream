@@ -583,7 +583,7 @@ export function AdminSidebarShell({
         closeMobileSidebar,
       }}
     >
-      <div className="flex min-h-svh w-full">
+      <div className="admin-shell flex min-h-svh w-full">
         {isMobileSidebarOpen ? (
           <button
             type="button"
