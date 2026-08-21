@@ -20,6 +20,7 @@ import {
 import { ShakaPlayerPreview } from "@/app/features/movies/components/shaka-player-preview";
 import { useAdminSidebar } from "@/app/components/admin-sidebar-shell";
 import { AdminFormSection as FormSection } from "@/app/components/admin-form-section";
+import { MovieGenrePicker } from "@/app/features/movies/components/movie-genre-picker";
 import type {
   MovieItem,
   MovieStatus,
@@ -34,29 +35,6 @@ const initialState: EditMovieFormState = {
 };
 
 const statusOptions = ["Draft", "Published", "Scheduled"] as const;
-
-const genreOptions = [
-  "Action",
-  "Adventure",
-  "Animation",
-  "Comedy",
-  "Crime",
-  "Drama",
-  "Fantasy",
-  "Historical",
-  "Horror",
-  "Mystery",
-  "Romance",
-  "Science Fiction (Sci-Fi)",
-  "Thriller",
-  "Western",
-  "War",
-  "Superhero",
-  "Spy/Espionage",
-  "Martial Arts",
-  "Disaster",
-  "Swashbuckler",
-] as const;
 
 const categoryFlags = [
   { name: "isMizo", label: "Mizo" },
@@ -322,119 +300,6 @@ function SwitchPill({
   );
 }
 
-function GenrePicker({ movie }: { movie: MovieItem }) {
-  const [selectedGenres, setSelectedGenres] = useState<string[]>(() =>
-    textValue(movie.genre)
-      .split(",")
-      .map((genre) => genre.trim())
-      .filter(Boolean),
-  );
-  const [customGenre, setCustomGenre] = useState("");
-
-  const addGenre = (genre: string) => {
-    const nextGenre = genre.trim();
-    if (!nextGenre) return;
-
-    setSelectedGenres((currentGenres) => {
-      const alreadySelected = currentGenres.some(
-        (currentGenre) =>
-          currentGenre.toLowerCase() === nextGenre.toLowerCase(),
-      );
-
-      return alreadySelected ? currentGenres : [...currentGenres, nextGenre];
-    });
-  };
-
-  const addCustomGenre = () => {
-    addGenre(customGenre);
-    setCustomGenre("");
-  };
-
-  return (
-    <div className="block min-w-0">
-      <input type="hidden" name="genre" value={selectedGenres.join(", ")} />
-
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">
-          Genre
-        </span>
-        <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-          {selectedGenres.length} selected
-        </span>
-      </div>
-
-      <div className="mt-2 rounded-md border border-[rgba(15,23,42,0.16)] bg-white/50 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.75),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-white/8">
-        <div className="flex flex-wrap gap-2">
-          {selectedGenres.length > 0 ? (
-            selectedGenres.map((genre) => (
-              <button
-                key={genre}
-                type="button"
-                onClick={() =>
-                  setSelectedGenres((currentGenres) =>
-                    currentGenres.filter(
-                      (currentGenre) => currentGenre !== genre,
-                    ),
-                  )
-                }
-                className="inline-flex min-h-8 items-center rounded-md bg-teal-100 px-3 text-xs font-bold text-teal-800 transition hover:bg-teal-200 dark:bg-cyan-300/12 dark:text-cyan-100 dark:hover:bg-cyan-300/18"
-              >
-                {genre}
-                <span className="ml-2 text-teal-600 dark:text-cyan-200">x</span>
-              </button>
-            ))
-          ) : (
-            <span className="px-2 py-1.5 text-sm text-slate-400">
-              Choose one or more genres
-            </span>
-          )}
-        </div>
-
-        <select
-          value=""
-          onChange={(event) => addGenre(event.target.value)}
-          className={cn(
-            selectClassName,
-            "mt-3 bg-white/70 dark:bg-slate-950/45",
-          )}
-        >
-          <option value="" className={optionClassName}>
-            Select genre
-          </option>
-          {genreOptions.map((genre) => (
-            <option key={genre} value={genre} className={optionClassName}>
-              {genre}
-            </option>
-          ))}
-        </select>
-
-        <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-          <input
-            type="text"
-            value={customGenre}
-            onChange={(event) => setCustomGenre(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                addCustomGenre();
-              }
-            }}
-            placeholder="Type a custom genre"
-            className="min-h-11 flex-1 rounded-md border border-[rgba(15,23,42,0.16)] bg-white/70 px-4 text-sm text-slate-950 outline-none shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition placeholder:text-slate-400 focus:border-teal-300 focus:ring-4 focus:ring-teal-200/35 dark:border-white/10 dark:bg-slate-950/45 dark:text-white dark:placeholder:text-slate-500 dark:focus:border-cyan-300/60 dark:focus:ring-cyan-300/15"
-          />
-          <button
-            type="button"
-            onClick={addCustomGenre}
-            className="inline-flex min-h-11 items-center justify-center rounded-md bg-slate-950 px-4 text-sm font-bold text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
-          >
-            Add
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export function EditMovieForm({ movie }: { movie: MovieItem }) {
   const { isDesktopSidebarOpen } = useAdminSidebar();
   const lastToastKeyRef = useRef("");
@@ -500,7 +365,7 @@ export function EditMovieForm({ movie }: { movie: MovieItem }) {
                 movie={movie}
                 type="date"
               />
-              <GenrePicker movie={movie} />
+              <MovieGenrePicker initialValue={textValue(movie.genre)} />
               <Field
                 label="Age Rating"
                 name="age_rating"

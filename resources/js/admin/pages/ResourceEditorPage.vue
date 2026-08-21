@@ -17,6 +17,13 @@ const files = reactive({});
 const seasonEpisodes = ref([]); const episodeIncrease = ref(0);
 const currentRecord = ref(null);
 const episodePpvOpen = ref(false);
+const sectionState = reactive({});
+const openMultiSelect = ref('');
+
+const editorSections = computed(() => (resource.value?.sections || []).map(section => ({
+    ...section,
+    fields: section.fieldNames.map(name => resource.value.fields.find(field => field.name === name)).filter(Boolean),
+})));
 
 function valueData(response) {
     const value = response?.data ?? response;
@@ -41,7 +48,25 @@ function init() {
     Object.keys(model).forEach(name => delete model[name]); Object.keys(files).forEach(name => delete files[name]);
     resource.value?.fields.forEach(field => { model[field.name] = field.default ?? (field.type === 'checkbox' ? false : ''); });
     if (key.value === 'subscriptions' && !editing.value) model.plan_id = [];
+    Object.keys(sectionState).forEach(name => delete sectionState[name]);
+    (resource.value?.sections || []).forEach(section => { sectionState[section.id] = Boolean(section.defaultOpen); });
+    openMultiSelect.value = '';
     currentRecord.value = null; existingFeatures.value = []; existingOptions.value = []; seasonEpisodes.value = []; episodeIncrease.value = 0; episodePpvOpen.value = false; legalSections.value = [{ heading: '', body: '' }]; relationResults.value = []; relationQuery.value = ''; error.value = ''; notice.value = '';
+}
+function toggleSection(sectionId) {
+    sectionState[sectionId] = !sectionState[sectionId];
+}
+function selectedValues(field) {
+    return String(model[field.name] || '').split(',').map(value => value.trim()).filter(Boolean);
+}
+function isSelected(field, option) {
+    return selectedValues(field).some(value => value.toLowerCase() === String(option).toLowerCase());
+}
+function toggleMultiValue(field, option) {
+    const values = selectedValues(field);
+    const existingIndex = values.findIndex(value => value.toLowerCase() === String(option).toLowerCase());
+    if (existingIndex >= 0) values.splice(existingIndex, 1); else values.push(option);
+    model[field.name] = values.join(', ');
 }
 function fill(record) {
     resource.value.fields.forEach(field => {
@@ -298,7 +323,32 @@ onMounted(load);
                 <small v-if="relationBusy">Searching…</small>
                 <div v-if="relationResults.length" class="admin-relation-results"><button v-for="item in relationResults" :key="item.id || item.uid || item.num" type="button" @click="selectRelation(item)"><b>{{ item.label || item.title || item.name || item.uid }}</b><span>{{ relationResultSubtitle(item) }}</span></button></div>
             </section>
-            <div class="admin-form-grid">
+            <div v-if="editorSections.length" class="admin-editor-sections">
+                <section v-for="section in editorSections" :key="section.id" class="admin-editor-section" :class="{open:sectionState[section.id]}">
+                    <button type="button" class="admin-editor-section-toggle" :aria-expanded="sectionState[section.id]" @click="toggleSection(section.id)">
+                        <span><small>{{ section.fields.length }} fields</small><b>{{ section.label }}</b></span><i>⌄</i>
+                    </button>
+                    <div v-show="sectionState[section.id]" class="admin-form-grid admin-section-grid">
+                        <div v-for="field in section.fields" :key="field.name" class="admin-field" :class="{wide:field.wide,check:field.type==='checkbox'}">
+                            <label v-if="field.type==='checkbox'" class="admin-check-field"><input v-model="model[field.name]" type="checkbox"><span>{{field.label}}<small v-if="field.help">{{ field.help }}</small></span></label>
+                            <template v-else><span>{{field.label}} <b v-if="field.required">*</b></span>
+                                <textarea v-if="field.type==='textarea'" v-model="model[field.name]" :required="field.required" :placeholder="field.placeholder" />
+                                <div v-else-if="field.type==='multiselect'" class="admin-multi-select">
+                                    <button type="button" @click="openMultiSelect = openMultiSelect === field.name ? '' : field.name"><span>{{ selectedValues(field).length ? `${selectedValues(field).length} selected` : 'Select genres…' }}</span><i>⌄</i></button>
+                                    <div v-if="selectedValues(field).length" class="admin-multi-tags"><button v-for="value in selectedValues(field)" :key="value" type="button" @click="toggleMultiValue(field,value)">{{ value }} ×</button></div>
+                                    <div v-if="openMultiSelect === field.name" class="admin-multi-options">
+                                        <button v-for="option in field.options" :key="option" type="button" :class="{selected:isSelected(field,option)}" :aria-pressed="isSelected(field,option)" @click="toggleMultiValue(field,option)"><i>{{ isSelected(field,option) ? '✓' : '' }}</i><span>{{ option }}</span></button>
+                                    </div>
+                                </div>
+                                <select v-else-if="field.type==='select'" v-model="model[field.name]" :required="field.required"><option value="">Choose…</option><option v-for="option in field.options" :key="option" :value="option">{{option}}</option></select>
+                                <template v-else-if="field.upload"><input v-model="model[field.name]" :type="field.type" :required="field.required && !files[field.name]" placeholder="https://…"><input type="file" accept="image/*" @change="files[field.name] = $event.target.files?.[0]"><small v-if="files[field.name]">Selected: {{files[field.name].name}}</small></template>
+                                <input v-else v-model="model[field.name]" :type="field.type" :required="field.required" :placeholder="field.placeholder" :step="field.type==='number'?'any':undefined" :min="field.min" :max="field.max">
+                            </template>
+                        </div>
+                    </div>
+                </section>
+            </div>
+            <div v-else class="admin-form-grid">
                 <label v-for="field in resource.fields.filter(item => !(key === 'legal' && item.name === 'sections'))" :key="field.name" :class="{wide:field.wide,check:field.type==='checkbox'}">
                     <template v-if="field.type==='checkbox'"><input v-model="model[field.name]" type="checkbox"><span>{{field.label}}<small v-if="field.help">{{ field.help }}</small></span></template>
                     <template v-else><span>{{field.label}} <b v-if="field.required">*</b></span>

@@ -1,4 +1,5 @@
 const f = (name, label, type = 'text', extra = {}) => ({ name, label, type, ...extra });
+const movieGenres = ['Action', 'Adventure', 'Animation', 'Comedy', 'Crime', 'Drama', 'Fantasy', 'Historical', 'Horror', 'Mystery', 'Romance', 'Science Fiction (Sci-Fi)', 'Thriller', 'Western', 'War', 'Superhero', 'Spy/Espionage', 'Martial Arts', 'Disaster', 'Swashbuckler'];
 
 export const resources = {
     users: {
@@ -7,7 +8,7 @@ export const resources = {
     },
     movies: {
         label: 'Movies', singular: 'Movie', icon: 'film', endpoint: '/admin/catalog/items', listEndpoint: '/catalog/items', searchEndpoint: '/admin/catalog/items/search', columns: ['id', 'title', 'genre', 'status', 'release_on'],
-        fields: [f('title', 'Title', 'text', { required: true }), f('genre', 'Genre'), f('age_rating', 'Age rating'), f('director', 'Director'), f('description', 'Description', 'textarea', { wide: true }), f('duration', 'Duration'), f('release_on', 'Release date', 'date'), f('create_date', 'Create date', 'date'), f('poster', 'Poster URL or upload', 'url', { wide: true, upload: true }), f('cover_img', 'Cover URL or upload', 'url', { wide: true, upload: true }), f('title_img', 'Title image URL', 'url', { wide: true }), f('url', 'Primary video URL', 'url', { wide: true }), f('hls_url', 'HLS URL', 'url', { wide: true }), f('dash_url', 'DASH URL', 'url', { wide: true }), f('trailer', 'Trailer URL', 'url', { wide: true }), f('subtitle', 'Subtitle URL', 'url', { wide: true }), f('token', 'Playback token', 'text', { wide: true }), f('status', 'Status', 'select', { options: ['Draft', 'Published', 'Scheduled'], default: 'Draft' }), f('ppv_amount', 'PPV amount', 'number'), f('isMizo', 'Mizo', 'checkbox'), f('isHollywood', 'Hollywood', 'checkbox'), f('isBollywood', 'Bollywood', 'checkbox'), f('isKorean', 'Asian', 'checkbox'), f('isDocumentary', 'Documentary', 'checkbox'), f('isSeason', 'Series', 'checkbox'), f('isPremium', 'Premium', 'checkbox', { default: true }), f('isPayPerView', 'Pay per view', 'checkbox'), f('isAgeRestricted', '18+', 'checkbox'), f('isChildMode', 'Kids', 'checkbox'), f('isProtected', 'DRM protected', 'checkbox'), f('isEnable', 'Visible', 'checkbox', { default: true }), f('isCompleted', 'Completed', 'checkbox', { default: true }), f('isDubbed', 'Dubbed', 'checkbox', { default: true }), f('isSubtitle', 'Subtitles', 'checkbox'), f('notification', 'Send notification when published', 'checkbox'), f('refresh_latest', 'Move to Latest Update', 'checkbox', { wide: true, help: 'New published movies move automatically. When editing, check this to move the movie to the top of Latest Update.' })],
+        fields: [f('title', 'Title', 'text', { required: true }), f('genre', 'Genre', 'multiselect', { options: movieGenres }), f('age_rating', 'Age rating'), f('director', 'Director'), f('description', 'Description', 'textarea', { wide: true }), f('duration', 'Duration'), f('release_on', 'Release date', 'date'), f('create_date', 'Create date', 'date'), f('poster', 'Poster URL or upload', 'url', { wide: true, upload: true }), f('cover_img', 'Cover URL or upload', 'url', { wide: true, upload: true }), f('title_img', 'Title image URL', 'url', { wide: true }), f('url', 'Primary video URL', 'url', { wide: true }), f('hls_url', 'HLS URL', 'url', { wide: true }), f('dash_url', 'DASH URL', 'url', { wide: true }), f('trailer', 'Trailer URL', 'url', { wide: true }), f('subtitle', 'Subtitle URL', 'url', { wide: true }), f('token', 'Playback token', 'text', { wide: true }), f('status', 'Status', 'select', { options: ['Draft', 'Published', 'Scheduled'], default: 'Draft' }), f('ppv_amount', 'PPV amount', 'number'), f('isMizo', 'Mizo', 'checkbox'), f('isHollywood', 'Hollywood', 'checkbox'), f('isBollywood', 'Bollywood', 'checkbox'), f('isKorean', 'Asian', 'checkbox'), f('isDocumentary', 'Documentary', 'checkbox'), f('isSeason', 'Series', 'checkbox'), f('isPremium', 'Premium', 'checkbox', { default: true }), f('isPayPerView', 'Pay per view', 'checkbox'), f('isAgeRestricted', '18+', 'checkbox'), f('isChildMode', 'Kids', 'checkbox'), f('isProtected', 'DRM protected', 'checkbox'), f('isEnable', 'Visible', 'checkbox', { default: true }), f('isCompleted', 'Completed', 'checkbox', { default: true }), f('isDubbed', 'Dubbed', 'checkbox', { default: true }), f('isSubtitle', 'Subtitles', 'checkbox'), f('notification', 'Send notification when published', 'checkbox'), f('refresh_latest', 'Move to Latest Update', 'checkbox', { wide: true, help: 'New published movies move automatically. When editing, check this to move the movie to the top of Latest Update.' })],
     },
     seasons: {
         label: 'Seasons', singular: 'Season', icon: 'layers', endpoint: '/admin/catalog/seasons', searchEndpoint: '/admin/catalog/seasons/search', searchOnly: true, columns: ['id', 'movie_title', 'title', 'season_number', 'status'],
@@ -40,6 +41,31 @@ export const resources = {
     },
     devices: { label: 'Devices', singular: 'Device', icon: 'monitor', endpoint: '/admin/devices', searchEndpoint: '/admin/devices/search', noCreate: true, columns: ['id', 'user_id', 'device_name', 'device_type', 'status', 'last_activity'], fields: [f('device_name', 'Device name', 'text', { required: true }), f('device_type', 'Device type', 'select', { required: true, options: ['mobile', 'tv', 'browser'] }), f('status', 'Status', 'select', { required: true, options: ['active', 'inactive', 'blocked'] })] },
 };
+
+const editorSectionDefinitions = {
+    movies: [
+        ['details', 'Movie details', ['title', 'genre', 'age_rating', 'director', 'description', 'duration', 'release_on', 'create_date']],
+        ['artwork', 'Artwork', ['poster', 'cover_img', 'title_img']],
+        ['playback', 'Playback links', ['url', 'hls_url', 'dash_url', 'trailer', 'subtitle', 'token']],
+        ['publishing', 'Publishing & access', ['status', 'ppv_amount', 'isPremium', 'isPayPerView', 'isAgeRestricted', 'isChildMode', 'isProtected', 'isEnable', 'isCompleted', 'isDubbed', 'isSubtitle', 'notification', 'refresh_latest']],
+        ['categories', 'Categories', ['isMizo', 'isHollywood', 'isBollywood', 'isKorean', 'isDocumentary', 'isSeason']],
+    ],
+    seasons: [
+        ['details', 'Season details', ['movie_id', 'title', 'season_number', 'description']],
+        ['artwork', 'Artwork', ['poster']],
+        ['publishing', 'Release & pricing', ['release_date', 'status', 'isPayPerView', 'amount']],
+    ],
+    episodes: [
+        ['details', 'Episode details', ['movie_id', 'season_id', 'title', 'episode_number', 'description']],
+        ['artwork', 'Thumbnail', ['thumbnail']],
+        ['playback', 'Playback', ['url', 'type', 'quality']],
+        ['publishing', 'Release & access', ['release_date', 'status', 'is_active', 'isPremium', 'isPayPerView', 'amount', 'notification', 'refresh_latest']],
+    ],
+};
+
+Object.entries(editorSectionDefinitions).forEach(([resourceKey, definitions]) => {
+    resources[resourceKey].sections = definitions.map(([id, label, fieldNames], index) => ({ id, label, fieldNames, defaultOpen: index === 0 }));
+});
 
 export function normalizeForSubmit(key, source) {
     const payload = { ...source };

@@ -19,6 +19,7 @@ import {
 } from "@/app/(admin)/movies/add/actions";
 import { useAdminSidebar } from "@/app/components/admin-sidebar-shell";
 import { AdminFormSection as FormSection } from "@/app/components/admin-form-section";
+import { MovieGenrePicker } from "@/app/features/movies/components/movie-genre-picker";
 import { ShakaPlayerPreview } from "@/app/features/movies/components/shaka-player-preview";
 import { cn } from "@/lib/utils";
 import { toast } from "react-toastify";
@@ -29,29 +30,6 @@ const initialState: AddMovieFormState = {
 };
 
 const statusOptions = ["Draft", "Published", "Scheduled"] as const;
-
-const genreOptions = [
-  "Action",
-  "Adventure",
-  "Animation",
-  "Comedy",
-  "Crime",
-  "Drama",
-  "Fantasy",
-  "Historical",
-  "Horror",
-  "Mystery",
-  "Romance",
-  "Science Fiction (Sci-Fi)",
-  "Thriller",
-  "Western",
-  "War",
-  "Superhero",
-  "Spy/Espionage",
-  "Martial Arts",
-  "Disaster",
-  "Swashbuckler",
-] as const;
 
 const ageRatingOptions = ["G", "PG", "PG-13", "R", "NC-17"] as const;
 
@@ -409,19 +387,6 @@ function MultiValuePicker({
   );
 }
 
-function GenrePicker() {
-  return (
-    <MultiValuePicker
-      name="genre"
-      label="Genre"
-      options={genreOptions}
-      emptyText="Choose one or more genres"
-      selectLabel="Select genre"
-      customPlaceholder="Type a custom genre"
-    />
-  );
-}
-
 function AgeRatingPicker() {
   return (
     <MultiValuePicker
@@ -509,7 +474,7 @@ export function AddMovieForm() {
                 type="date"
                 helper="Stored as a readable release date."
               />
-              <GenrePicker key={`genre-${genreResetToken}`} />
+              <MovieGenrePicker key={`genre-${genreResetToken}`} />
               <AgeRatingPicker key={`age-rating-${genreResetToken}`} />
               <Field
                 label="Director"

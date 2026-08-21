@@ -1,4 +1,4 @@
-const CACHE_VERSION = "zo-admin-static-v1";
+const CACHE_VERSION = "zo-admin-static-v2";
 const STATIC_ASSETS = [
   "/logo/logo.png",
   "/logo/zostream-logo.svg",
@@ -57,9 +57,14 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  const isStaticAsset =
-    url.pathname.startsWith("/_next/static/") ||
-    STATIC_ASSETS.includes(url.pathname);
+  // Next.js fingerprints production assets and manages its own browser cache.
+  // Caching these paths in the service worker can leave local development and
+  // a freshly deployed admin using an older JS/CSS chunk.
+  if (url.pathname.startsWith("/_next/static/")) {
+    return;
+  }
+
+  const isStaticAsset = STATIC_ASSETS.includes(url.pathname);
 
   if (!isStaticAsset) {
     return;
