@@ -177,6 +177,8 @@ export async function updateEpisodeAction(
     isPremium: formData.get("isPremium") === "on",
     isPayPerView: formData.get("isPayPerView") === "on",
     status: episodeStatus(formData),
+    notification: formData.get("notification") === "on",
+    refresh_latest: formData.get("refresh_latest") === "on",
   };
 
   try {

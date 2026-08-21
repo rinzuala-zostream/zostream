@@ -125,6 +125,7 @@ export async function updateMovieAction(
     title,
     status: movieStatus(formData),
     notification: formData.get("notification") === "on",
+    refresh_latest: formData.get("refresh_latest") === "on",
   };
 
   for (const field of textFields) {

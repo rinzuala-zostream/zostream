@@ -58,6 +58,8 @@ export type CreateEpisodePayload = {
   isPayPerView?: boolean;
   status?: EpisodeStatus;
   views?: number;
+  notification?: boolean;
+  refresh_latest?: boolean;
 };
 
 export type UpdateEpisodePayload = Partial<CreateEpisodePayload>;

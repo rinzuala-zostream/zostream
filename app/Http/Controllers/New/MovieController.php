@@ -231,11 +231,29 @@ class MovieController extends Controller
             }
 
             $movie->update($movieData);
+            $freshMovie = $movie->fresh();
+
+            if ($request->boolean('notification') && $freshMovie->status === 'Published') {
+                $notification = $this->fcmNotificationController->sendToTopic(
+                    topic: 'all',
+                    title: $freshMovie->title,
+                    body: 'Streaming on Zo Stream',
+                    image: $freshMovie->cover_img ?? '',
+                    key: $freshMovie->id,
+                );
+
+                if (! ($notification['success'] ?? false)) {
+                    Log::warning('Movie updated but push notification delivery failed', [
+                        'movie_id' => $freshMovie->id,
+                        'notification_status' => $notification['status'] ?? null,
+                    ]);
+                }
+            }
 
             return response()->json([
                 'status' => 'success',
                 'message' => 'Movie updated successfully',
-                'data' => $movie->fresh(),
+                'data' => $freshMovie,
             ]);
         } catch (ValidationException $e) {
             return response()->json([

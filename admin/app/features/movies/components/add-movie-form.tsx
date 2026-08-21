@@ -672,17 +672,16 @@ export function AddMovieForm() {
           </FormSection>
 
           <FormSection title="Publish signal" eyebrow="Notify" icon={BellRing}>
-            <label className="flex items-start gap-3 rounded-md border border-[rgba(15,23,42,0.14)] bg-white/42 p-3 text-sm text-slate-700 shadow-[0_1px_2px_rgba(15,23,42,0.03)] dark:border-white/10 dark:bg-white/6 dark:text-slate-200">
-              <input
-                type="checkbox"
-                name="notification"
-                defaultChecked
-                className="mt-1 size-4 rounded border-slate-300 text-teal-600"
-              />
-              <span>
-                Send a push notification when this movie is saved as Published.
-              </span>
-            </label>
+            <div className="grid gap-2">
+              <label className="flex items-start gap-3 rounded-md border border-[rgba(15,23,42,0.14)] bg-white/42 p-3 text-sm text-slate-700 shadow-[0_1px_2px_rgba(15,23,42,0.03)] dark:border-white/10 dark:bg-white/6 dark:text-slate-200">
+                <input type="checkbox" name="notification" defaultChecked className="mt-1 size-4 rounded border-slate-300 text-teal-600" />
+                <span>Send a push notification when this movie is saved as Published.</span>
+              </label>
+              <label className="flex items-start gap-3 rounded-md border border-[rgba(15,23,42,0.14)] bg-white/42 p-3 text-sm text-slate-700 shadow-[0_1px_2px_rgba(15,23,42,0.03)] dark:border-white/10 dark:bg-white/6 dark:text-slate-200">
+                <input type="checkbox" name="refresh_latest" className="mt-1 size-4 rounded border-slate-300 text-teal-600" />
+                <span>Move to Latest Update. New Published movies already move automatically.</span>
+              </label>
+            </div>
           </FormSection>
         </aside>
       </div>

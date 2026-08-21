@@ -129,6 +129,8 @@ export async function createEpisodeAction(
     isPayPerView: formData.get("isPayPerView") === "on",
     status: episodeStatus(formData),
     views: 0,
+    notification: formData.get("notification") === "on",
+    refresh_latest: formData.get("refresh_latest") === "on",
   };
 
   try {

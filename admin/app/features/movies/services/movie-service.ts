@@ -101,6 +101,7 @@ export type MovieCreatePayload = {
   create_date?: string;
   ppv_amount?: string;
   notification?: boolean;
+  refresh_latest?: boolean;
   isProtected?: boolean;
   isBollywood?: boolean;
   isCompleted?: boolean;

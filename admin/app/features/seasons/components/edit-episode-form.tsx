@@ -12,6 +12,7 @@ import {
 import { flushSync } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
+  BellRing,
   CalendarDays,
   Check,
   Clapperboard,
@@ -1179,6 +1180,19 @@ export function EditEpisodeForm({
                 placeholder="0"
                 helper="Used only when pay per view is enabled."
               />
+            </div>
+          </FormSection>
+
+          <FormSection title="Publish signal" eyebrow="Notify" icon={BellRing}>
+            <div className="grid gap-2">
+              <label className="flex items-start gap-3 rounded-md border border-[rgba(15,23,42,0.14)] bg-white/42 p-3 text-sm text-slate-700 shadow-[0_1px_2px_rgba(15,23,42,0.03)] dark:border-white/10 dark:bg-white/6 dark:text-slate-200">
+                <input type="checkbox" name="notification" className="mt-1 size-4 rounded border-slate-300 text-teal-600" />
+                <span>Send a push notification if this episode is saved as Published.</span>
+              </label>
+              <label className="flex items-start gap-3 rounded-md border border-[rgba(15,23,42,0.14)] bg-white/42 p-3 text-sm text-slate-700 shadow-[0_1px_2px_rgba(15,23,42,0.03)] dark:border-white/10 dark:bg-white/6 dark:text-slate-200">
+                <input type="checkbox" name="refresh_latest" className="mt-1 size-4 rounded border-slate-300 text-teal-600" />
+                <span>Move the linked series to the top of Latest Update.</span>
+              </label>
             </div>
           </FormSection>
         </aside>

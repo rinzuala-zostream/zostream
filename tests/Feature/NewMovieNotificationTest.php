@@ -138,6 +138,31 @@ class NewMovieNotificationTest extends TestCase
         $this->assertNotSame('2026-01-01 10:00:00', DB::table('movie')->where('id', 'update-test')->value('updated_at'));
     }
 
+    public function test_published_movie_update_sends_requested_push_notification(): void
+    {
+        DB::table('movie')->insert([
+            'id' => 'notify-update',
+            'title' => 'Before',
+            'duration' => '90 min',
+            'status' => 'Published',
+            'create_date' => '2026-01-01',
+        ]);
+        $notifications = Mockery::mock(FCMNotificationController::class);
+        $notifications->shouldReceive('sendToTopic')
+            ->once()
+            ->with('all', 'After', 'Streaming on Zo Stream', '', 'notify-update')
+            ->andReturn(['success' => true, 'status' => 200]);
+
+        $response = $this->controller($notifications)->update(new Request([
+            'title' => 'After',
+            'duration' => '90 min',
+            'status' => 'Published',
+            'notification' => true,
+        ]), 'notify-update');
+
+        $this->assertSame('success', $response->getData(true)['status']);
+    }
+
     private function controller(FCMNotificationController $notifications): MovieController
     {
         return new MovieController(
