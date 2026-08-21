@@ -5,6 +5,7 @@ import AdminIcon from '../components/AdminIcon.vue';
 import PageHeader from '../components/PageHeader.vue';
 import StatusPanel from '../components/StatusPanel.vue';
 import { api, queryString } from '../lib/api';
+import { formatAdminDate } from '../lib/adminDate';
 import { resources } from '../lib/resources';
 
 const route = useRoute();
@@ -145,29 +146,19 @@ async function suspend(item) {
         notice.value = 'User suspended.'; await load();
     } catch (reason) { error.value = reason.message; }
 }
-function storedDateTime(value) {
-    if (value == null || value === '') return '—';
-    const text = String(value).trim();
-    const iso = text.match(/^(\d{4}-\d{2}-\d{2})(?:[T\s](\d{2}:\d{2}(?::\d{2})?))?/);
-    if (iso) return iso[2] && !iso[2].startsWith('00:00') ? `${iso[1]} ${iso[2]}` : iso[1];
-    const parsed = Date.parse(text);
-    if (!Number.isNaN(parsed)) {
-        const date = new Date(parsed);
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
-    }
-    return text;
-}
 function isDateColumn(column) {
     const field = resource.value?.fields?.find(item => item.name === column);
-    return ['date', 'datetime-local'].includes(field?.type) || /(^|_)(date|at|on)$/.test(column);
+    return ['date', 'datetime-local'].includes(field?.type) || /(^|_)(date|at|on|time|activity)$/.test(column) || /Date|Time|Login$/.test(column);
+}
+function isBooleanColumn(column) {
+    return resource.value?.fields?.some(item => item.name === column && item.type === 'checkbox') || /^is[A-Z_]/.test(column);
 }
 function display(value, column = '') {
-    if (value === true || value === 1) return 'Yes'; if (value === false || value === 0) return 'No';
     if (value == null || value === '') return '—';
-    if (isDateColumn(column)) return storedDateTime(value);
+    if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+    if (isBooleanColumn(column) && (value === 1 || value === '1')) return 'Yes';
+    if (isBooleanColumn(column) && (value === 0 || value === '0')) return 'No';
+    if (isDateColumn(column)) return formatAdminDate(value);
     if (typeof value === 'object') return Array.isArray(value) ? `${value.length} items` : 'View details';
     return String(value);
 }
@@ -199,7 +190,7 @@ onMounted(load);
         <section class="admin-table-card">
             <div v-if="loading" class="admin-loading">Loading {{ resource.label.toLowerCase() }}…</div>
             <div v-else-if="!items.length" class="admin-empty-state"><AdminIcon :name="resource.icon" /><h2>No {{ resource.label.toLowerCase() }} found</h2><p>{{ resource.parentKey && !parent && search.length < 2 ? `Enter a ${resource.parentKey.replace('_', ' ')} or search by movie title above.` : resource.searchOnly && search.length < 2 ? 'Start with a search above.' : 'Try another search or create the first record.' }}</p></div>
-            <div v-else class="admin-table-scroll"><table><thead><tr><th v-for="column in columns" :key="column">{{ heading(column) }}</th><th>Actions</th></tr></thead><tbody><tr v-for="item in items" :key="item.id || item.uid"><td v-for="column in columns" :key="column"><span v-if="column.includes('status') || column.startsWith('is')" class="admin-pill">{{ display(item[column], column) }}</span><template v-else>{{ display(item[column], column) }}</template></td><td><div class="admin-row-actions"><button v-if="rowActionLabel(item)" class="admin-row-text-action" @click="handleRowAction(item)">{{ rowActionLabel(item) }}</button><RouterLink v-if="key === 'polls'" :to="`/polls/${item.id}/insights`" title="Results"><AdminIcon name="chart" /></RouterLink><button v-if="key === 'users' && item.isACActive !== false && item.isACActive !== 0" title="Suspend user" @click="suspend(item)">⊘</button><RouterLink v-if="!resource.readOnly && !item.__kind" :to="`/manage/${key}/${item.id || item.uid}`"><AdminIcon name="edit" /></RouterLink><button v-if="!resource.readOnly && !item.__kind" @click="remove(item)"><AdminIcon name="trash" /></button></div></td></tr></tbody></table></div>
+            <div v-else class="admin-table-scroll"><table><thead><tr><th v-for="column in columns" :key="column">{{ heading(column) }}</th><th>Actions</th></tr></thead><tbody><tr v-for="item in items" :key="item.id || item.uid"><td v-for="column in columns" :key="column"><span v-if="column.includes('status') || column.startsWith('is')" class="admin-pill">{{ display(item[column], column) }}</span><span v-else class="admin-cell-text" :title="display(item[column], column)">{{ display(item[column], column) }}</span></td><td><div class="admin-row-actions"><button v-if="rowActionLabel(item)" class="admin-row-text-action" @click="handleRowAction(item)">{{ rowActionLabel(item) }}</button><RouterLink v-if="key === 'polls'" :to="`/polls/${item.id}/insights`" title="Results"><AdminIcon name="chart" /></RouterLink><button v-if="key === 'users' && item.isACActive !== false && item.isACActive !== 0" title="Suspend user" @click="suspend(item)">⊘</button><RouterLink v-if="!resource.readOnly && !item.__kind" :to="`/manage/${key}/${item.id || item.uid}`"><AdminIcon name="edit" /></RouterLink><button v-if="!resource.readOnly && !item.__kind" @click="remove(item)"><AdminIcon name="trash" /></button></div></td></tr></tbody></table></div>
             <footer v-if="lastPage > 1" class="admin-pagination"><button :disabled="page <= 1" @click="page--; load()">Previous</button><span>Page {{ page }} / {{ lastPage }}</span><button :disabled="page >= lastPage" @click="page++; load()">Next</button></footer>
         </section>
     </div>
