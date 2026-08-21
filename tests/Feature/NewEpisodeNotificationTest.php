@@ -39,6 +39,7 @@ class NewEpisodeNotificationTest extends TestCase
             $table->string('id')->unique();
             $table->string('title');
             $table->string('cover_img')->nullable();
+            $table->timestamp('updated_at')->nullable();
         });
         Schema::create('seasons', function (Blueprint $table) {
             $table->increments('num');
@@ -102,6 +103,7 @@ class NewEpisodeNotificationTest extends TestCase
         ]));
 
         $this->assertSame('success', $response->getData(true)['status']);
+        $this->assertNotNull(DB::table('movie')->where('num', 7)->value('updated_at'));
     }
 
     public function test_published_episode_update_uses_main_movie_id_as_notification_key(): void
@@ -135,6 +137,21 @@ class NewEpisodeNotificationTest extends TestCase
             'status' => 'Published',
             'notification' => false,
         ]));
+    }
+
+    public function test_draft_episode_does_not_update_main_movie_timestamp(): void
+    {
+        $notifications = Mockery::mock(FCMNotificationController::class);
+        $notifications->shouldNotReceive('sendToTopic');
+
+        $this->controller($notifications)->store(new Request([
+            'season_id' => 'season-1',
+            'episode_number' => 3,
+            'status' => 'Draft',
+            'notification' => false,
+        ]));
+
+        $this->assertNull(DB::table('movie')->where('num', 7)->value('updated_at'));
     }
 
     private function expectedNotification(string $title): FCMNotificationController

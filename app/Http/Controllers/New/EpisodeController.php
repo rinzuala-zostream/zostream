@@ -104,9 +104,13 @@ class EpisodeController extends Controller
                 'views' => $validated['views'] ?? 0
             ]);
 
-            if (!empty($videoUrl)) {
-                $season = Season::where('id', $validated['season_id'])->first();
+            $season = Season::where('id', $validated['season_id'])->first();
 
+            if ($episode->status === 'Published') {
+                $season?->movie()->update(['updated_at' => now()]);
+            }
+
+            if (!empty($videoUrl)) {
                 VideoUrl::create([
                     'id' => (string) Str::uuid(),
                     'movie_id' => $season->movie_id,

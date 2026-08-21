@@ -89,6 +89,10 @@ class MovieSchedule extends Command
             $this->info('No scheduled episodes to publish.');
         } else {
             Episode::whereIn('id', $episodes->pluck('id'))->update(['status' => 'Published']);
+            MovieModel::whereIn(
+                'num',
+                $episodes->pluck('season.movie_id')->filter()->unique()->values()
+            )->update(['updated_at' => now()]);
             $this->info("Published {$episodes->count()} episodes.");
         }
 

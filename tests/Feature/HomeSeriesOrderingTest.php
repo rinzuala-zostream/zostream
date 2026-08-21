@@ -95,21 +95,21 @@ class HomeSeriesOrderingTest extends TestCase
         $this->assertSame(['newer-series', 'older-series'], array_column($data['Series'], 'id'));
     }
 
-    public function test_latest_update_row_includes_newly_published_series_episodes(): void
+    public function test_latest_update_falls_back_to_movie_create_date(): void
     {
         $data = $this->controller()->getMovies(new Request())->getData(true);
 
-        $this->assertSame(['older-series', 'newer-series'], array_column($data['Latest Update'], 'id'));
+        $this->assertSame(['newer-series', 'older-series'], array_column($data['Latest Update'], 'id'));
     }
 
     public function test_movie_update_timestamp_takes_priority_over_create_date(): void
     {
-        DB::table('movie')->where('id', 'newer-series')->update(['updated_at' => now()]);
+        DB::table('movie')->where('id', 'older-series')->update(['updated_at' => now()]);
 
         $data = $this->controller()->getMovies(new Request())->getData(true);
 
-        $this->assertNotNull(DB::table('movie')->where('id', 'newer-series')->value('updated_at'));
-        $this->assertSame(['newer-series', 'older-series'], array_column($data['Latest Update'], 'id'));
+        $this->assertNotNull(DB::table('movie')->where('id', 'older-series')->value('updated_at'));
+        $this->assertSame(['older-series', 'newer-series'], array_column($data['Latest Update'], 'id'));
     }
 
     public function test_view_count_increment_does_not_change_movie_update_timestamp(): void
