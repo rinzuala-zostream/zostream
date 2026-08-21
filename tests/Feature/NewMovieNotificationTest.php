@@ -96,6 +96,48 @@ class NewMovieNotificationTest extends TestCase
         $this->assertSame(201, $response->getStatusCode());
     }
 
+    public function test_draft_movie_create_does_not_refresh_latest_timestamp(): void
+    {
+        $notifications = Mockery::mock(FCMNotificationController::class);
+        $notifications->shouldNotReceive('sendToTopic');
+
+        $this->controller($notifications)->store(new Request([
+            'title' => 'Draft Movie',
+            'duration' => '90 min',
+            'status' => 'Draft',
+        ]));
+
+        $this->assertNull(DB::table('movie')->where('title', 'Draft Movie')->value('updated_at'));
+    }
+
+    public function test_movie_update_refreshes_latest_timestamp_only_when_checked(): void
+    {
+        DB::table('movie')->insert([
+            'id' => 'update-test',
+            'title' => 'Before',
+            'duration' => '90 min',
+            'status' => 'Published',
+            'create_date' => '2026-01-01',
+            'updated_at' => '2026-01-01 10:00:00',
+        ]);
+        $notifications = Mockery::mock(FCMNotificationController::class);
+        $controller = $this->controller($notifications);
+
+        $controller->update(new Request([
+            'title' => 'Edited without refresh',
+            'duration' => '90 min',
+            'refresh_latest' => false,
+        ]), 'update-test');
+        $this->assertSame('2026-01-01 10:00:00', DB::table('movie')->where('id', 'update-test')->value('updated_at'));
+
+        $controller->update(new Request([
+            'title' => 'Edited with refresh',
+            'duration' => '90 min',
+            'refresh_latest' => true,
+        ]), 'update-test');
+        $this->assertNotSame('2026-01-01 10:00:00', DB::table('movie')->where('id', 'update-test')->value('updated_at'));
+    }
+
     private function controller(FCMNotificationController $notifications): MovieController
     {
         return new MovieController(

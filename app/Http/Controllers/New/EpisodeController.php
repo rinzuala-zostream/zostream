@@ -81,6 +81,7 @@ class EpisodeController extends Controller
                 'quality' => 'nullable|string',
                 'type' => 'nullable|string',
                 'notification' => 'nullable|boolean',
+                'refresh_latest' => 'nullable|boolean',
             ]);
 
             $episodeId = (string) Str::uuid();
@@ -215,11 +216,12 @@ class EpisodeController extends Controller
                 'quality' => 'nullable|string',
                 'type' => 'nullable|string',
                 'notification' => 'nullable|boolean',
+                'refresh_latest' => 'nullable|boolean',
             ]);
 
             $videoUrl = $validated['url'] ?? $validated['dash_url'] ?? null;
             $episodeData = $validated;
-            unset($episodeData['url'], $episodeData['dash_url'], $episodeData['quality'], $episodeData['type'], $episodeData['image'], $episodeData['notification']);
+            unset($episodeData['url'], $episodeData['dash_url'], $episodeData['quality'], $episodeData['type'], $episodeData['image'], $episodeData['notification'], $episodeData['refresh_latest']);
 
             $originalThumbnail = $this->normalizeThumbnail($episode->thumbnail);
             $uploadedThumbnail = $this->uploadEpisodeThumbnailImage($request);
@@ -277,6 +279,10 @@ class EpisodeController extends Controller
             }
 
             $this->sendPublishedEpisodeNotification($freshEpisode, $request->boolean('notification'));
+
+            if ($request->boolean('refresh_latest')) {
+                $freshEpisode->season?->movie()->update(['updated_at' => now()]);
+            }
 
             return response()->json([
                 'status' => 'success',

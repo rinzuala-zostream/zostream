@@ -126,7 +126,9 @@ class MovieController extends Controller
                 ? Carbon::parse($movieData['create_date'])->toDateString()
                 : now()->toDateString();
             $movieData['trailer'] = $movieData['trailer'] ?? '';
-            $movieData['updated_at'] = now();
+            if (($movieData['status'] ?? 'Draft') === 'Published') {
+                $movieData['updated_at'] = now();
+            }
 
             if (empty($movieData['duration'])) {
                 foreach ([$movieData['dash_url'] ?? null, $movieData['url'] ?? null] as $mpdSource) {
@@ -224,7 +226,9 @@ class MovieController extends Controller
                     : null;
             }
 
-            $movieData['updated_at'] = now();
+            if ($request->boolean('refresh_latest')) {
+                $movieData['updated_at'] = now();
+            }
 
             $movie->update($movieData);
 
@@ -324,6 +328,7 @@ class MovieController extends Controller
             'isSeason' => 'nullable|boolean',
             'isSubtitle' => 'nullable|boolean',
             'isChildMode' => 'nullable|boolean',
+            'refresh_latest' => 'nullable|boolean',
         ];
     }
 
@@ -349,7 +354,7 @@ class MovieController extends Controller
             $movieData['cover_img'] = $validated['cover'];
         }
 
-        unset($movieData['cover']);
+        unset($movieData['cover'], $movieData['refresh_latest']);
 
         return $movieData;
     }

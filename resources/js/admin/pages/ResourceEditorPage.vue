@@ -300,7 +300,7 @@ onMounted(load);
             </section>
             <div class="admin-form-grid">
                 <label v-for="field in resource.fields.filter(item => !(key === 'legal' && item.name === 'sections'))" :key="field.name" :class="{wide:field.wide,check:field.type==='checkbox'}">
-                    <template v-if="field.type==='checkbox'"><input v-model="model[field.name]" type="checkbox"><span>{{field.label}}</span></template>
+                    <template v-if="field.type==='checkbox'"><input v-model="model[field.name]" type="checkbox"><span>{{field.label}}<small v-if="field.help">{{ field.help }}</small></span></template>
                     <template v-else><span>{{field.label}} <b v-if="field.required">*</b></span>
                         <textarea v-if="['textarea','lines','json'].includes(field.type)" v-model="model[field.name]" :required="field.required" :placeholder="field.type==='lines'?'First item\nSecond item':field.placeholder" />
                         <div v-else-if="field.relation === 'plan' && key === 'subscriptions' && !editing" class="admin-plan-picker">

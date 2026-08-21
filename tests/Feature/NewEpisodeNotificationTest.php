@@ -121,9 +121,11 @@ class NewEpisodeNotificationTest extends TestCase
             'title' => 'Updated',
             'status' => 'Published',
             'notification' => true,
+            'refresh_latest' => true,
         ]), $episode->id);
 
         $this->assertSame('success', $response->getData(true)['status']);
+        $this->assertNotNull(DB::table('movie')->where('num', 7)->value('updated_at'));
     }
 
     public function test_unchecked_episode_notification_does_not_send(): void
@@ -150,6 +152,25 @@ class NewEpisodeNotificationTest extends TestCase
             'status' => 'Draft',
             'notification' => false,
         ]));
+
+        $this->assertNull(DB::table('movie')->where('num', 7)->value('updated_at'));
+    }
+
+    public function test_episode_update_without_checkbox_keeps_main_movie_timestamp(): void
+    {
+        $episode = Episode::create([
+            'id' => 'episode-no-refresh',
+            'season_id' => 'season-1',
+            'episode_number' => 4,
+            'status' => 'Published',
+        ]);
+        $notifications = Mockery::mock(FCMNotificationController::class);
+        $notifications->shouldNotReceive('sendToTopic');
+
+        $this->controller($notifications)->update(new Request([
+            'title' => 'Edited only',
+            'refresh_latest' => false,
+        ]), $episode->id);
 
         $this->assertNull(DB::table('movie')->where('num', 7)->value('updated_at'));
     }
