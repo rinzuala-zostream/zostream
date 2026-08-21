@@ -23,7 +23,6 @@ import {
   Sparkles,
   Video,
   X,
-  type LucideIcon,
 } from "lucide-react";
 import {
   createEpisodeAction,
@@ -36,6 +35,7 @@ import {
   type SeasonSearchState,
 } from "@/app/(admin)/seasons/update/actions";
 import { useAdminSidebar } from "@/app/components/admin-sidebar-shell";
+import { AdminFormSection as FormSection } from "@/app/components/admin-form-section";
 import { ShakaPlayerPreview } from "@/app/features/movies/components/shaka-player-preview";
 import { cn } from "@/lib/utils";
 import { toast } from "react-toastify";
@@ -250,37 +250,6 @@ function VideoUrlField({
         />
       ) : null}
     </div>
-  );
-}
-
-function FormSection({
-  title,
-  eyebrow,
-  icon: Icon,
-  children,
-}: {
-  title: string;
-  eyebrow: string;
-  icon: LucideIcon;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="liquid-glass relative overflow-hidden rounded-lg p-4 shadow-[0_18px_54px_rgba(15,23,42,0.12)] sm:p-5 dark:shadow-[0_18px_54px_rgba(2,6,23,0.48)]">
-      <div className="mb-5 flex items-center gap-3">
-        <span className="flex size-10 shrink-0 items-center justify-center rounded-md border border-[rgba(15,23,42,0.12)] bg-white/55 text-teal-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-white/10 dark:bg-white/8 dark:text-cyan-200">
-          <Icon className="size-4" />
-        </span>
-        <div className="min-w-0">
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700 dark:text-cyan-200">
-            {eyebrow}
-          </p>
-          <h2 className="text-lg font-bold text-slate-950 dark:text-white">
-            {title}
-          </h2>
-        </div>
-      </div>
-      {children}
-    </section>
   );
 }
 
@@ -797,6 +766,7 @@ export function AddEpisodeForm() {
             title="Episode details"
             eyebrow="Required"
             icon={ListVideo}
+            defaultOpen
           >
             <div className="grid gap-4 lg:grid-cols-2">
               <SeasonIdPicker
