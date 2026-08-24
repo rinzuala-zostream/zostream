@@ -1254,8 +1254,8 @@ class MovieController extends Controller
         else {
             $categories = [
                 "Latest Update" => ["where" => "1", "order" => "create_date DESC"],
-                "New Release" => ["where" => "release_on IS NOT NULL", "order" => "release_on DESC"],
                 "Trailer" => ["where" => "trailer IS NOT NULL AND TRIM(trailer) <> ''", "order" => "num DESC"],
+                "New Release" => ["where" => "release_on IS NOT NULL", "order" => "release_on DESC"],
                 // "Most Watched" => ["where" => "1", "order" => "views DESC"],
                 "Pay Per View" => ["where" => "isPayPerView = 1", "order" => "num DESC"],
                 "Asian" => ["where" => "isKorean = 1", "order" => "num DESC"],

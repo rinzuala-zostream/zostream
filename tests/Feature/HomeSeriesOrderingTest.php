@@ -148,6 +148,7 @@ class HomeSeriesOrderingTest extends TestCase
 
         $this->assertSame(['newer-series'], array_column($data['Trailer'], 'id'));
         $this->assertSame('https://example.com/trailer.m3u8', $data['Trailer'][0]['trailer']);
+        $this->assertSame(['Latest Update', 'Trailer'], array_slice(array_keys($data), 0, 2));
     }
 
     public function test_trailer_category_supports_view_all_requests(): void
