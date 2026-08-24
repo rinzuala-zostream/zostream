@@ -306,6 +306,8 @@ a { text-decoration: none; }
 .policy-document h2 { margin: -4px 0 12px; font: 700 21px var(--display); letter-spacing: -.6px; }
 .policy-document p { margin: 0; color: #8f98a4; font-size: 13px; line-height: 1.8; }
 .legal-page .page-hero p, .policy-document p { white-space: pre-line; }
+.legal-page .page-hero p a, .policy-document p a { color: var(--cyan-soft); font-weight: 650; text-decoration: underline; text-decoration-color: rgba(130,220,247,.42); text-underline-offset: 3px; }
+.legal-page .page-hero p a:hover, .policy-document p a:hover { color: var(--cyan); text-decoration-color: currentColor; }
 .policy-help { margin: 24px; padding: 30px; border: 1px solid rgba(23,191,243,.24); border-radius: 18px; background: rgba(23,191,243,.07); }
 .policy-help > span { color: var(--cyan); font-size: 8px; font-weight: 800; letter-spacing: 1.3px; text-transform: uppercase; }
 .policy-help h3 { margin: 11px 0; font: 700 20px var(--display); }
