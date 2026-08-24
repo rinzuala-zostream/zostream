@@ -1169,6 +1169,7 @@ class MovieController extends Controller
                 "pay per view" => "isPayPerView",
                 "new release" => "newrelease",
                 "latest update" => "all",
+                "trailer" => "trailer",
                 "series" => "isSeason",
                 "documentary" => "isDocumentary",
                 "18+" => "isAgeRestricted",
@@ -1203,6 +1204,11 @@ class MovieController extends Controller
             } elseif ($column === 'all') {
                 $query->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', $ageRestriction));
                 $this->orderByMovieUpdate($query);
+            } elseif ($column === 'trailer') {
+                $query->whereNotNull('trailer')
+                    ->whereRaw("TRIM(trailer) <> ''")
+                    ->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', $ageRestriction))
+                    ->orderByDesc('num');
             } elseif ($column === 'free') {
                 $query->where('isPremium', 0)
                     ->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', $ageRestriction))
@@ -1249,6 +1255,7 @@ class MovieController extends Controller
             $categories = [
                 "Latest Update" => ["where" => "1", "order" => "create_date DESC"],
                 "New Release" => ["where" => "release_on IS NOT NULL", "order" => "release_on DESC"],
+                "Trailer" => ["where" => "trailer IS NOT NULL AND TRIM(trailer) <> ''", "order" => "num DESC"],
                 // "Most Watched" => ["where" => "1", "order" => "views DESC"],
                 "Pay Per View" => ["where" => "isPayPerView = 1", "order" => "num DESC"],
                 "Asian" => ["where" => "isKorean = 1", "order" => "num DESC"],

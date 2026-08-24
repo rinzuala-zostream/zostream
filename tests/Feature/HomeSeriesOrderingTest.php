@@ -44,6 +44,7 @@ class HomeSeriesOrderingTest extends TestCase
             $table->date('release_on')->nullable();
             $table->unsignedInteger('views')->default(0);
             $table->string('genre')->nullable();
+            $table->string('trailer')->nullable();
             $table->string('status')->default('Published');
             foreach (['isEnable', 'isMizo', 'isSeason', 'isPayPerView', 'isKorean', 'isHollywood', 'isBollywood', 'isDocumentary', 'isPremium', 'isAgeRestricted', 'isChildMode'] as $column) {
                 $table->boolean($column)->default(false);
@@ -136,6 +137,27 @@ class HomeSeriesOrderingTest extends TestCase
         $this->assertSame('Latest Update', array_key_first($data));
         $this->assertArrayNotHasKey('Most Watched', $data);
         $this->assertSame(['newer-series', 'older-series'], array_column($data['New Release'], 'id'));
+    }
+
+    public function test_home_includes_only_movies_with_a_non_empty_trailer_in_trailer_section(): void
+    {
+        DB::table('movie')->where('id', 'newer-series')->update(['trailer' => 'https://example.com/trailer.m3u8']);
+        DB::table('movie')->where('id', 'older-series')->update(['trailer' => '   ']);
+
+        $data = $this->controller()->getMovies(new Request())->getData(true);
+
+        $this->assertSame(['newer-series'], array_column($data['Trailer'], 'id'));
+        $this->assertSame('https://example.com/trailer.m3u8', $data['Trailer'][0]['trailer']);
+    }
+
+    public function test_trailer_category_supports_view_all_requests(): void
+    {
+        DB::table('movie')->where('id', 'older-series')->update(['trailer' => 'https://example.com/older-trailer.m3u8']);
+
+        $request = Request::create('/movies/home', 'GET', ['category' => 'trailer']);
+        $data = $this->controller()->getMovies($request)->getData(true);
+
+        $this->assertSame(['older-series'], array_column($data, 'id'));
     }
 
     public function test_series_category_keeps_its_original_movie_order(): void
