@@ -17,7 +17,7 @@ onMounted(() => {
 </script>
 
 <template>
-    <main class="inner-page">
+    <main class="inner-page legal-page">
         <section class="page-hero section-pad"><div data-reveal><a href="/">Home</a><span>/</span><b>{{ page.eyebrow }}</b><h1>{{ page.title }}</h1><p>{{ page.intro }}</p><small>{{ page.date }}</small></div></section>
         <section class="document-layout section-pad">
             <aside class="document-nav" data-reveal><span>IN THIS WEBSITE</span><a v-for="item in pageLinks" :key="item.href" :href="item.href" :class="{ active: item.label === page.title || (page.title === 'Return & Refund' && item.href === '/return-policy') }">{{ item.label }}</a></aside>
