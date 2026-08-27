@@ -226,6 +226,7 @@ Route::prefix('v4')
                     Route::apiResource('devices', DeviceController::class)->except(['index']);
 
                     Route::post('/catalog/items', [\App\Http\Controllers\New\MovieController::class, 'store']);
+                    Route::get('/catalog/items', [\App\Http\Controllers\New\MovieController::class, 'index']);
                     Route::get('/catalog/items/search', [\App\Http\Controllers\New\MovieController::class, 'searchForAdmin']);
                     Route::post('/catalog/optimize-image', [\App\Http\Controllers\New\MovieController::class, 'optimizeImageUrl']);
                     Route::post('/catalog/items/{id}/optimize-image', [\App\Http\Controllers\New\MovieController::class, 'optimizeImage']);

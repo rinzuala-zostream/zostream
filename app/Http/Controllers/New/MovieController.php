@@ -39,8 +39,44 @@ class MovieController extends Controller
     public function index(Request $request)
     {
         try {
-            $perPage = $request->get('per_page', 15);
-            $movies = MovieModel::orderBy('create_date', 'desc')->paginate($perPage);
+            $validated = $request->validate([
+                'page' => 'nullable|integer|min:1',
+                'per_page' => 'nullable|integer|min:1|max:100',
+                'q' => 'nullable|string|max:180',
+                'status' => 'nullable|string|in:Published,Draft,Scheduled',
+                'sort_by' => 'nullable|string|in:num,title,views,create_date,release_on',
+                'sort_dir' => 'nullable|string|in:asc,desc',
+            ]);
+
+            $query = MovieModel::query();
+            $search = trim((string) ($validated['q'] ?? ''));
+
+            if ($search !== '') {
+                $query->where(function ($movieQuery) use ($search) {
+                    $movieQuery
+                        ->where('title', 'like', "%{$search}%")
+                        ->orWhere('id', 'like', "%{$search}%")
+                        ->orWhere('director', 'like', "%{$search}%")
+                        ->orWhere('genre', 'like', "%{$search}%");
+
+                    if (ctype_digit($search)) {
+                        $movieQuery->orWhere('num', (int) $search);
+                    }
+                });
+            }
+
+            if (! empty($validated['status'])) {
+                $query->where('status', $validated['status']);
+            }
+
+            $sortBy = $validated['sort_by'] ?? 'create_date';
+            $sortDir = $validated['sort_dir'] ?? 'desc';
+            $perPage = (int) ($validated['per_page'] ?? 15);
+            $movies = $query
+                ->orderBy($sortBy, $sortDir)
+                ->orderBy('num', 'desc')
+                ->paginate($perPage)
+                ->withQueryString();
 
             return response()->json([
                 'status' => 'success',
