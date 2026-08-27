@@ -24,8 +24,8 @@ use Exception;
 
 class MovieController extends Controller
 {
-    private const OPTIMIZED_COVER_MAX_BYTES = 10 * 1024;
-    private const OPTIMIZED_POSTER_MAX_BYTES = 10 * 1024;
+    private const OPTIMIZED_COVER_MAX_BYTES = 30 * 1024;
+    private const OPTIMIZED_POSTER_MAX_BYTES = 30 * 1024;
 
     public function __construct(
         private readonly WebpImageUploader $imageUploader,
