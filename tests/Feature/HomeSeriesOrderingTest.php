@@ -123,11 +123,26 @@ class HomeSeriesOrderingTest extends TestCase
         $this->assertSame($timestamp, DB::table('movie')->where('id', 'newer-series')->value('updated_at'));
     }
 
-    public function test_other_category_rows_keep_their_original_movie_order(): void
+    public function test_other_home_categories_prioritize_movie_update_timestamp(): void
     {
+        DB::table('movie')->where('id', 'older-series')->update(['updated_at' => now()]);
+
         $data = $this->controller()->getMovies(new Request())->getData(true);
 
-        $this->assertSame(['newer-series', 'older-series'], array_column($data['Mizo'], 'id'));
+        $this->assertSame(['older-series', 'newer-series'], array_column($data['Mizo'], 'id'));
+        $this->assertSame(['older-series', 'newer-series'], array_column($data['Series'], 'id'));
+        $this->assertSame(['older-series', 'newer-series'], array_column($data['New Release'], 'id'));
+    }
+
+    public function test_other_home_categories_fall_back_to_create_date_when_updated_at_is_empty(): void
+    {
+        DB::table('movie')->where('id', 'older-series')->update(['create_date' => '2027-01-01']);
+
+        $data = $this->controller()->getMovies(new Request())->getData(true);
+
+        $this->assertSame(['older-series', 'newer-series'], array_column($data['Mizo'], 'id'));
+        $this->assertSame(['older-series', 'newer-series'], array_column($data['Series'], 'id'));
+        $this->assertSame(['older-series', 'newer-series'], array_column($data['New Release'], 'id'));
     }
 
     public function test_latest_update_is_first_and_most_watched_is_hidden(): void
@@ -161,12 +176,14 @@ class HomeSeriesOrderingTest extends TestCase
         $this->assertSame(['older-series'], array_column($data, 'id'));
     }
 
-    public function test_series_category_keeps_its_original_movie_order(): void
+    public function test_series_category_prioritizes_movie_update_timestamp(): void
     {
+        DB::table('movie')->where('id', 'older-series')->update(['updated_at' => now()]);
+
         $request = Request::create('/movies/home', 'GET', ['category' => 'series']);
         $data = $this->controller()->getMovies($request)->getData(true);
 
-        $this->assertSame(['newer-series', 'older-series'], array_column($data, 'id'));
+        $this->assertSame(['older-series', 'newer-series'], array_column($data, 'id'));
     }
 
     public function test_view_all_category_keeps_its_original_movie_order(): void

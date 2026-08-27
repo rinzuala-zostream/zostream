@@ -1196,23 +1196,23 @@ class MovieController extends Controller
 
             if ($column === 'newrelease') {
                 $query->whereNotNull('release_on')
-                    ->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', $ageRestriction))
-                    ->orderByDesc('release_on');
+                    ->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', $ageRestriction));
+                $fallbackOrder = 'release_on DESC';
             } elseif ($column === 'mostwatch') {
-                $query->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', $ageRestriction))
-                    ->orderByDesc('views');
+                $query->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', $ageRestriction));
+                $fallbackOrder = 'views DESC';
             } elseif ($column === 'all') {
                 $query->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', $ageRestriction));
                 $this->orderByMovieUpdate($query);
             } elseif ($column === 'trailer') {
                 $query->whereNotNull('trailer')
                     ->whereRaw("TRIM(trailer) <> ''")
-                    ->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', $ageRestriction))
-                    ->orderByDesc('num');
+                    ->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', $ageRestriction));
+                $fallbackOrder = 'num DESC';
             } elseif ($column === 'free') {
                 $query->where('isPremium', 0)
-                    ->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', $ageRestriction))
-                    ->orderByDesc('num');
+                    ->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', $ageRestriction));
+                $fallbackOrder = 'num DESC';
             } elseif (
                 in_array($column, [
                     "isBollywood",
@@ -1231,12 +1231,16 @@ class MovieController extends Controller
                 ])
             ) {
                 $query->where($column, 1)
-                    ->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', $ageRestriction))
-                    ->orderByDesc('num');
+                    ->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', $ageRestriction));
+                $fallbackOrder = 'num DESC';
             } else {
                 $query->where('genre', 'LIKE', "%$categoryKey%")
-                    ->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', $ageRestriction))
-                    ->orderByDesc('num');
+                    ->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', $ageRestriction));
+                $fallbackOrder = 'num DESC';
+            }
+
+            if ($column !== 'all') {
+                $this->orderByUpdatedAtWithFallback($query, $fallbackOrder);
             }
 
             $movies = $query->offset($start)->limit($count)->get();
@@ -1337,7 +1341,7 @@ class MovieController extends Controller
                 if ($name === 'Latest Update') {
                     $this->orderByMovieUpdate($builder);
                 } else {
-                    $builder->orderByRaw($order);
+                    $this->orderByUpdatedAtWithFallback($builder, $order);
                 }
 
                 $builder->limit($fetchSize);
@@ -1651,6 +1655,12 @@ class MovieController extends Controller
     private function orderByMovieUpdate($query): void
     {
         $query->orderByRaw('COALESCE(movie.updated_at, movie.create_date) DESC, movie.num DESC');
+    }
+
+    private function orderByUpdatedAtWithFallback($query, string $fallbackOrder): void
+    {
+        $query->orderByRaw('COALESCE(movie.updated_at, movie.create_date) DESC')
+            ->orderByRaw($fallbackOrder);
     }
 
     private function defaultFilterSort(string $category): array
