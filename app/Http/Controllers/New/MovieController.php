@@ -24,6 +24,9 @@ use Exception;
 
 class MovieController extends Controller
 {
+    private const OPTIMIZED_COVER_MAX_BYTES = 160 * 1024;
+    private const OPTIMIZED_POSTER_MAX_BYTES = 110 * 1024;
+
     public function __construct(
         private readonly WebpImageUploader $imageUploader,
         private readonly MpdDurationExtractor $mpdDurationExtractor,
@@ -302,7 +305,10 @@ class MovieController extends Controller
         }
 
         try {
-            $optimizedUrl = $this->convertR2ImageToWebp($sourceUrl);
+            $optimizedUrl = $this->convertR2ImageToWebp(
+                $sourceUrl,
+                $this->optimizedImageByteLimit($validated['field']),
+            );
 
             $movie->update([$optimizedColumn => $optimizedUrl]);
 
@@ -340,7 +346,10 @@ class MovieController extends Controller
         ]);
 
         try {
-            $optimizedUrl = $this->convertR2ImageToWebp($validated['source_url']);
+            $optimizedUrl = $this->convertR2ImageToWebp(
+                $validated['source_url'],
+                $this->optimizedImageByteLimit($validated['field']),
+            );
 
             return response()->json([
                 'status' => 'success',
@@ -475,7 +484,7 @@ class MovieController extends Controller
         return $path;
     }
 
-    private function convertR2ImageToWebp(string $sourceUrl): string
+    private function convertR2ImageToWebp(string $sourceUrl, int $maxBytes): string
     {
         $sourcePath = $this->r2PathFromPublicUrl($sourceUrl);
         $targetPath = $this->optimizedWebpPath($sourcePath);
@@ -505,12 +514,19 @@ class MovieController extends Controller
                 true,
             );
 
-            return $this->imageUploader->uploadToPath($uploadedFile, $targetPath);
+            return $this->imageUploader->uploadToPath($uploadedFile, $targetPath, $maxBytes);
         } finally {
             if (is_file($tempPath)) {
                 @unlink($tempPath);
             }
         }
+    }
+
+    private function optimizedImageByteLimit(string $field): int
+    {
+        return $field === 'cover'
+            ? self::OPTIMIZED_COVER_MAX_BYTES
+            : self::OPTIMIZED_POSTER_MAX_BYTES;
     }
 
     private function optimizedWebpPath(string $sourcePath): string
