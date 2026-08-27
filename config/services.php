@@ -55,4 +55,17 @@ return [
         'api_version' => env('WHATSAPP_API_VERSION', 'v22.0'),
     ],
 
+    'amazon_iap' => [
+        'shared_secret' => env('AMAZON_IAP_SHARED_SECRET'),
+        'sandbox' => env('AMAZON_IAP_SANDBOX', false),
+        'subscription_sku_prefix' => env(
+            'AMAZON_IAP_SUBSCRIPTION_SKU_PREFIX',
+            'zostream.tv.subscription.'
+        ),
+        'ppv_sku_prefix' => env(
+            'AMAZON_IAP_PPV_SKU_PREFIX',
+            'zostream.tv.ppv.'
+        ),
+    ],
+
 ];

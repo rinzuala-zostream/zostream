@@ -179,6 +179,7 @@ Route::prefix('v4')
                 Route::post('/payments/razorpay/orders', [BillingController::class, 'createRazorpayOrder']);
                 Route::post('/payments/razorpay/verify', [BillingController::class, 'verifyRazorpayPayment']);
                 Route::post('/payments/apple/subscriptions', [BillingController::class, 'processAppleSubscription']);
+                Route::post('/payments/amazon/verify', [BillingController::class, 'processAmazonPurchase']);
             });
 
             Route::prefix('qr-sessions')->middleware('owner.device')->group(function () {
@@ -295,6 +296,8 @@ Route::prefix('v4')
                     Route::get('/realtime/text-scroll', [AdminRealtimeConfigController::class, 'textScroll']);
                     Route::put('/realtime/text-scroll', [AdminRealtimeConfigController::class, 'saveTextScroll']);
                     Route::delete('/realtime/text-scroll', [AdminRealtimeConfigController::class, 'deleteTextScroll']);
+                    Route::get('/realtime/amazon-iap', [AdminRealtimeConfigController::class, 'amazonIap']);
+                    Route::put('/realtime/amazon-iap', [AdminRealtimeConfigController::class, 'saveAmazonIap']);
                     Route::get('/official-clients', [AdminRealtimeConfigController::class, 'officialClients']);
                     Route::post('/official-clients', [AdminRealtimeConfigController::class, 'saveOfficialClient']);
                     Route::put('/official-clients/{id}', [AdminRealtimeConfigController::class, 'saveOfficialClient']);

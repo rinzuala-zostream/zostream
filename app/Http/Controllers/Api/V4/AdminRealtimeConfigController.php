@@ -65,6 +65,28 @@ class AdminRealtimeConfigController extends Controller
         return V4Response::success(null, 'Scrolling text deleted.');
     }
 
+    public function amazonIap()
+    {
+        $value = (array) ($this->database()
+            ->getReference('payment_features/amazon_tv')
+            ->getValue() ?? []);
+
+        return V4Response::success(array_merge(['iap_enabled' => false], $value));
+    }
+
+    public function saveAmazonIap(Request $request)
+    {
+        $data = $request->validate([
+            'iap_enabled' => ['required', 'boolean'],
+        ]);
+        $value = array_merge($data, [
+            'updated_at' => now()->toIso8601String(),
+        ]);
+        $this->database()->getReference('payment_features/amazon_tv')->set($value);
+
+        return V4Response::success($value, 'Amazon TV IAP configuration saved.');
+    }
+
     public function officialClients()
     {
         $value = (array) ($this->database()->getReference('official_client_configs')->getValue() ?? []);

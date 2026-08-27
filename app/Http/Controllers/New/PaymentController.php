@@ -10,7 +10,10 @@ use App\Http\Controllers\RazorpayController;
 use App\Http\Controllers\SubscriptionController as LegacySubscriptionController;
 use App\Models\New\Devices;
 use App\Models\New\Plan;
+use App\Models\New\Episode;
+use App\Models\New\Season;
 use App\Models\New\Subscription;
+use App\Models\MovieModel;
 use App\Models\PPVPaymentModel;
 use App\Models\New\PaymentHistory;
 use Illuminate\Http\Request;
@@ -833,6 +836,261 @@ class PaymentController extends Controller
             'message' => 'Apple in-app purchase activated',
             'data' => $subscriptionData['data'] ?? null,
         ], 200);
+    }
+
+    public function processAmazonIapPurchase(Request $request)
+    {
+        $validated = $request->validate([
+            'user_id' => 'required|string|max:225',
+            'receipt_id' => 'required|string|max:255',
+            'amazon_user_id' => 'required|string|max:255',
+            'sku' => 'required|string|max:255',
+            'purchase_type' => 'required|string|in:subscription,ppv',
+            'plan_id' => 'nullable|required_if:purchase_type,subscription|integer|exists:n_plans,id',
+            'content_id' => 'nullable|required_if:purchase_type,ppv|string|max:225',
+            'content_type' => 'nullable|required_if:purchase_type,ppv|string|in:movie,episode,season',
+            'device_id' => 'required|string|max:255',
+        ]);
+
+        $existing = PaymentHistory::where('transaction_id', $validated['receipt_id'])
+            ->where('payment_gateway', 'amazon_iap')
+            ->where('status', 'success')
+            ->first();
+
+        if ($existing) {
+            if ((string) $existing->user_id !== (string) $validated['user_id']) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'This Amazon receipt belongs to another ZoStream account.',
+                ], 409);
+            }
+
+            $existingMeta = is_array($existing->meta) ? $existing->meta : [];
+            if (($existingMeta['amazon_sku'] ?? null) !== $validated['sku']
+                || (string) $existing->app_payment_type !== $validated['purchase_type']) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'This Amazon receipt was already used for another product.',
+                ], 409);
+            }
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Amazon purchase already processed.',
+                'data' => [
+                    'payment_history' => $existing,
+                    'subscription' => $existing->subscription,
+                ],
+            ]);
+        }
+
+        $sharedSecret = trim((string) config('services.amazon_iap.shared_secret', ''));
+        if ($sharedSecret === '') {
+            Log::error('Amazon IAP shared secret is not configured');
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Amazon purchase verification is not configured.',
+            ], 503);
+        }
+
+        $sandbox = (bool) config('services.amazon_iap.sandbox', false);
+        $baseUrl = 'https://appstore-sdk.amazon.com/' . ($sandbox ? 'sandbox/' : '');
+        $verificationUrl = $baseUrl
+            . 'version/1.0/verifyReceiptId/developer/' . rawurlencode($sharedSecret)
+            . '/user/' . rawurlencode($validated['amazon_user_id'])
+            . '/receiptId/' . rawurlencode($validated['receipt_id']);
+
+        try {
+            $rvsResponse = Http::acceptJson()->timeout(15)->get($verificationUrl);
+        } catch (\Throwable $error) {
+            Log::error('Amazon RVS request failed', [
+                'receipt_id' => $validated['receipt_id'],
+                'error' => $error->getMessage(),
+            ]);
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Amazon purchase verification is temporarily unavailable.',
+            ], 503);
+        }
+
+        if (!$rvsResponse->successful()) {
+            Log::warning('Amazon RVS rejected receipt', [
+                'receipt_id' => $validated['receipt_id'],
+                'status_code' => $rvsResponse->status(),
+            ]);
+
+            return response()->json([
+                'status' => 'error',
+                'message' => $rvsResponse->status() === 410
+                    ? 'This Amazon purchase was cancelled or expired.'
+                    : 'Amazon could not verify this purchase.',
+            ], $rvsResponse->status() === 429 ? 503 : 422);
+        }
+
+        $receipt = $rvsResponse->json();
+        if (!is_array($receipt)
+            || (string) ($receipt['receiptId'] ?? '') !== $validated['receipt_id']
+            || (string) ($receipt['productId'] ?? '') !== $validated['sku']) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Amazon receipt details do not match the requested product.',
+            ], 422);
+        }
+
+        $cancelDate = isset($receipt['cancelDate']) && is_numeric($receipt['cancelDate'])
+            ? Carbon::createFromTimestampMs((int) $receipt['cancelDate'])
+            : null;
+        if ($cancelDate && $cancelDate->lte(now())) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'This Amazon purchase is no longer active.',
+            ], 422);
+        }
+
+        if ($validated['purchase_type'] === 'subscription') {
+            return $this->activateAmazonSubscription($validated, $receipt);
+        }
+
+        return $this->activateAmazonPpv($validated, $receipt);
+    }
+
+    private function activateAmazonSubscription(array $validated, array $receipt)
+    {
+        if (strtoupper((string) ($receipt['productType'] ?? '')) !== 'SUBSCRIPTION') {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Amazon product is not a subscription.',
+            ], 422);
+        }
+
+        $plan = Plan::whereKey($validated['plan_id'])
+            ->where('device_type', 'tv')
+            ->where('is_active', true)
+            ->first();
+        $expectedSku = (string) config('services.amazon_iap.subscription_sku_prefix') . $validated['plan_id'];
+
+        if (!$plan || !hash_equals($expectedSku, $validated['sku'])) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Amazon subscription SKU does not match the selected TV plan.',
+            ], 422);
+        }
+
+        $renewalDate = isset($receipt['renewalDate']) && is_numeric($receipt['renewalDate'])
+            ? Carbon::createFromTimestampMs((int) $receipt['renewalDate'])
+            : null;
+        $subscriptionRequest = new Request([
+            'user_id' => $validated['user_id'],
+            'plan_id' => $plan->id,
+            'amount' => $plan->price,
+            'currency' => 'INR',
+            'payment_method' => 'iap',
+            'payment_gateway' => 'amazon_iap',
+            'transaction_id' => $validated['receipt_id'],
+            'payment_type' => 'new',
+            'status' => 'success',
+            'target_device_token' => $validated['device_id'],
+            'end_at' => $renewalDate?->toIso8601String(),
+        ]);
+
+        $response = $this->subscriptionController->createSubscriptionWithPayment($subscriptionRequest);
+        $payload = json_decode($response->getContent(), true);
+
+        if (!$response->isSuccessful() || ($payload['status'] ?? '') !== 'success') {
+            return response()->json([
+                'status' => 'error',
+                'message' => $payload['message'] ?? 'Failed to activate Amazon subscription.',
+            ], $response->getStatusCode() >= 400 ? $response->getStatusCode() : 500);
+        }
+
+        $payment = PaymentHistory::where('transaction_id', $validated['receipt_id'])
+            ->where('payment_gateway', 'amazon_iap')
+            ->first();
+        if ($payment) {
+            $payment->update(['meta' => array_merge($payment->meta ?? [], [
+                'amazon_user_id' => $validated['amazon_user_id'],
+                'amazon_sku' => $validated['sku'],
+                'amazon_receipt' => $receipt,
+            ])]);
+            $this->invoiceService->sendWhatsAppInvoice($payment->fresh());
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Amazon subscription activated.',
+            'data' => $payload['data'] ?? null,
+        ]);
+    }
+
+    private function activateAmazonPpv(array $validated, array $receipt)
+    {
+        if (strtoupper((string) ($receipt['productType'] ?? '')) !== 'CONSUMABLE') {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Amazon PPV product must be consumable.',
+            ], 422);
+        }
+
+        $expectedSku = (string) config('services.amazon_iap.ppv_sku_prefix')
+            . $validated['content_type'] . '.' . $validated['content_id'];
+        if (!hash_equals($expectedSku, $validated['sku'])) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Amazon PPV SKU does not match the selected content.',
+            ], 422);
+        }
+
+        $content = match ($validated['content_type']) {
+            'movie' => MovieModel::where('id', $validated['content_id'])->first(),
+            'episode' => Episode::where('id', $validated['content_id'])->first(),
+            'season' => Season::where('id', $validated['content_id'])->first(),
+        };
+        if (!$content || !(bool) $content->isPayPerView) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Selected content is not available as PPV.',
+            ], 422);
+        }
+
+        $amount = (float) ($validated['content_type'] === 'movie'
+            ? ($content->ppv_amount ?? 0)
+            : ($content->amount ?? 0));
+        $payment = PaymentHistory::create([
+            'user_id' => $validated['user_id'],
+            'movie_id' => $validated['content_id'],
+            'device_type' => 'tv',
+            'app_payment_type' => 'ppv',
+            'amount' => $amount,
+            'currency' => 'INR',
+            'payment_method' => 'iap',
+            'payment_gateway' => 'amazon_iap',
+            'transaction_id' => $validated['receipt_id'],
+            'status' => 'success',
+            'payment_type' => 'new',
+            'payment_date' => now(),
+            'expiry_date' => now()->addDays(7),
+            'meta' => [
+                'device_token' => $validated['device_id'],
+                'device_type' => 'tv',
+                'content_type' => $validated['content_type'],
+                'amazon_user_id' => $validated['amazon_user_id'],
+                'amazon_sku' => $validated['sku'],
+                'amazon_receipt' => $receipt,
+            ],
+        ]);
+
+        $this->invoiceService->sendWhatsAppInvoice($payment);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Amazon PPV rental activated.',
+            'data' => [
+                'payment_history' => $payment,
+                'rental_expires_at' => $payment->expiry_date,
+            ],
+        ]);
     }
 
     public function verifyRazorpaySubscriptionPayment(Request $request)

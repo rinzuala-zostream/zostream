@@ -356,4 +356,20 @@ class V4ApiTest extends TestCase
             ->assertJsonPath('success', false)
             ->assertJsonPath('error.code', 'BAD_REQUEST');
     }
+
+    public function test_amazon_iap_verification_requires_authenticated_owner_device(): void
+    {
+        $route = collect(Route::getRoutes()->getRoutes())->first(
+            fn ($route) => $route->uri() === 'api/v4/billing/payments/amazon/verify'
+                && in_array('POST', $route->methods(), true)
+        );
+
+        $this->assertNotNull($route);
+        $this->assertSame(
+            'App\\Http\\Controllers\\Api\\V4\\BillingController@processAmazonPurchase',
+            $route->getActionName()
+        );
+        $this->assertContains('auth.token', $route->gatherMiddleware());
+        $this->assertContains('owner.device', $route->gatherMiddleware());
+    }
 }

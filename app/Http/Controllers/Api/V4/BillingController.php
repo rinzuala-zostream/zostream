@@ -53,6 +53,14 @@ class BillingController extends Controller
         return $this->payments->processAppleIapSubscription($request);
     }
 
+    public function processAmazonPurchase(Request $request)
+    {
+        $this->forceUser($request);
+        $request->merge(['device_id' => (string) $request->input('auth_device_id')]);
+
+        return $this->payments->processAmazonIapPurchase($request);
+    }
+
     private function forceUser(Request $request): void
     {
         $request->merge(['user_id' => $this->userId($request)]);
