@@ -24,14 +24,15 @@ use Exception;
 
 class MovieController extends Controller
 {
-    private const OPTIMIZED_COVER_MAX_BYTES = 160 * 1024;
-    private const OPTIMIZED_POSTER_MAX_BYTES = 110 * 1024;
+    private const OPTIMIZED_COVER_MAX_BYTES = 10 * 1024;
+    private const OPTIMIZED_POSTER_MAX_BYTES = 10 * 1024;
 
     public function __construct(
         private readonly WebpImageUploader $imageUploader,
         private readonly MpdDurationExtractor $mpdDurationExtractor,
         private readonly FCMNotificationController $fcmNotificationController,
-    ) {}
+    ) {
+    }
 
     /**
      * 📋 List all movies with pagination
@@ -65,7 +66,7 @@ class MovieController extends Controller
                 });
             }
 
-            if (! empty($validated['status'])) {
+            if (!empty($validated['status'])) {
                 $query->where('status', $validated['status']);
             }
 
@@ -165,7 +166,7 @@ class MovieController extends Controller
             $validated = $request->validate($this->movieRules($request, true));
             $movieData = $this->prepareMovieData($request, $validated);
             $movieData['id'] = Str::random(10);
-            $movieData['create_date'] = ! empty($movieData['create_date'])
+            $movieData['create_date'] = !empty($movieData['create_date'])
                 ? Carbon::parse($movieData['create_date'])->toDateString()
                 : now()->toDateString();
             $movieData['trailer'] = $movieData['trailer'] ?? '';
@@ -184,7 +185,7 @@ class MovieController extends Controller
                 }
             }
 
-            if (! empty($movieData['release_on'])) {
+            if (!empty($movieData['release_on'])) {
                 $movieData['release_on'] = Carbon::parse($movieData['release_on'])->toDateString();
             }
 
@@ -199,7 +200,7 @@ class MovieController extends Controller
                     key: $movie->id,
                 );
 
-                if (! ($notification['success'] ?? false)) {
+                if (!($notification['success'] ?? false)) {
                     Log::warning('Movie created but push notification delivery failed', [
                         'movie_id' => $movie->id,
                         'notification_status' => $notification['status'] ?? null,
@@ -233,7 +234,7 @@ class MovieController extends Controller
         try {
             $movie = MovieModel::where('id', $id)->first();
 
-            if (! $movie) {
+            if (!$movie) {
                 return response()->json([
                     'status' => 'error',
                     'message' => 'Movie not found',
@@ -260,11 +261,11 @@ class MovieController extends Controller
             }
 
             foreach (['create_date', 'release_on'] as $dateField) {
-                if (! array_key_exists($dateField, $movieData)) {
+                if (!array_key_exists($dateField, $movieData)) {
                     continue;
                 }
 
-                $movieData[$dateField] = ! empty($movieData[$dateField])
+                $movieData[$dateField] = !empty($movieData[$dateField])
                     ? Carbon::parse($movieData[$dateField])->toDateString()
                     : null;
             }
@@ -285,7 +286,7 @@ class MovieController extends Controller
                     key: $freshMovie->id,
                 );
 
-                if (! ($notification['success'] ?? false)) {
+                if (!($notification['success'] ?? false)) {
                     Log::warning('Movie updated but push notification delivery failed', [
                         'movie_id' => $freshMovie->id,
                         'notification_status' => $notification['status'] ?? null,
@@ -325,7 +326,7 @@ class MovieController extends Controller
         ]);
 
         $movie = MovieModel::where('id', $id)->first();
-        if (! $movie) {
+        if (!$movie) {
             return response()->json(['status' => 'error', 'message' => 'Movie not found.'], 404);
         }
 
@@ -417,7 +418,7 @@ class MovieController extends Controller
         try {
             $movie = MovieModel::where('id', $id)->first();
 
-            if (! $movie) {
+            if (!$movie) {
                 return response()->json([
                     'status' => 'error',
                     'message' => 'Movie not found',
@@ -442,7 +443,7 @@ class MovieController extends Controller
 
     private function movieRules(Request $request, bool $creating = false): array
     {
-        $imageOrUrl = static fn (string $field): array => $request->hasFile($field)
+        $imageOrUrl = static fn(string $field): array => $request->hasFile($field)
             ? ['nullable', 'image', 'max:10240']
             : ['nullable', 'string'];
 
@@ -496,7 +497,7 @@ class MovieController extends Controller
         $public = parse_url($publicUrl);
 
         if (
-            ! is_array($source) || ! is_array($public)
+            !is_array($source) || !is_array($public)
             || ($source['scheme'] ?? '') !== ($public['scheme'] ?? '')
             || strtolower((string) ($source['host'] ?? '')) !== strtolower((string) ($public['host'] ?? ''))
         ) {
@@ -506,7 +507,7 @@ class MovieController extends Controller
         $prefix = trim((string) ($public['path'] ?? ''), '/');
         $path = ltrim((string) ($source['path'] ?? ''), '/');
         if ($prefix !== '') {
-            if (! str_starts_with($path, $prefix.'/')) {
+            if (!str_starts_with($path, $prefix . '/')) {
                 throw new \RuntimeException('The image URL is outside the configured CDN path.');
             }
             $path = substr($path, strlen($prefix) + 1);
@@ -531,7 +532,7 @@ class MovieController extends Controller
 
         $contents = Storage::disk('r2')->get($sourcePath);
         $tempDir = storage_path('app/temp/movie-image-optimization');
-        if (! is_dir($tempDir) && ! @mkdir($tempDir, 0755, true) && ! is_dir($tempDir)) {
+        if (!is_dir($tempDir) && !@mkdir($tempDir, 0755, true) && !is_dir($tempDir)) {
             throw new \RuntimeException('Unable to create the image conversion directory.');
         }
 
@@ -573,7 +574,7 @@ class MovieController extends Controller
 
         $target = $filename . ($extension === 'webp' ? '.optimized' : '') . '.webp';
 
-        return $directory === '' ? $target : $directory.'/'.$target;
+        return $directory === '' ? $target : $directory . '/' . $target;
     }
 
     private function prepareMovieData(Request $request, array $validated): array
