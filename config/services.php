@@ -58,14 +58,14 @@ return [
     'amazon_iap' => [
         'shared_secret' => env('AMAZON_IAP_SHARED_SECRET'),
         'sandbox' => env('AMAZON_IAP_SANDBOX', false),
-        'subscription_sku_prefix' => env(
-            'AMAZON_IAP_SUBSCRIPTION_SKU_PREFIX',
-            'zostream.tv.subscription.'
-        ),
-        'ppv_sku_prefix' => env(
-            'AMAZON_IAP_PPV_SKU_PREFIX',
-            'zostream.tv.ppv.'
-        ),
+        'parent_sku' => env('AMAZON_IAP_PARENT_SKU', 'zostream_sub'),
+        'term_skus' => [
+            'week' => env('AMAZON_IAP_WEEK_SKU', 'zostream.week'),
+            'month' => env('AMAZON_IAP_MONTH_SKU', 'zostream.month'),
+            'four_months' => env('AMAZON_IAP_FOUR_MONTHS_SKU', 'zostream.4months'),
+            'six_months' => env('AMAZON_IAP_SIX_MONTHS_SKU', 'zostream.6months'),
+            'year' => env('AMAZON_IAP_YEAR_SKU', 'zostream.year'),
+        ],
     ],
 
 ];

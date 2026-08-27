@@ -10,10 +10,7 @@ use App\Http\Controllers\RazorpayController;
 use App\Http\Controllers\SubscriptionController as LegacySubscriptionController;
 use App\Models\New\Devices;
 use App\Models\New\Plan;
-use App\Models\New\Episode;
-use App\Models\New\Season;
 use App\Models\New\Subscription;
-use App\Models\MovieModel;
 use App\Models\PPVPaymentModel;
 use App\Models\New\PaymentHistory;
 use Illuminate\Http\Request;
@@ -844,11 +841,9 @@ class PaymentController extends Controller
             'user_id' => 'required|string|max:225',
             'receipt_id' => 'required|string|max:255',
             'amazon_user_id' => 'required|string|max:255',
-            'sku' => 'required|string|max:255',
-            'purchase_type' => 'required|string|in:subscription,ppv',
-            'plan_id' => 'nullable|required_if:purchase_type,subscription|integer|exists:n_plans,id',
-            'content_id' => 'nullable|required_if:purchase_type,ppv|string|max:225',
-            'content_type' => 'nullable|required_if:purchase_type,ppv|string|in:movie,episode,season',
+            'parent_sku' => 'required|string|max:255',
+            'term_sku' => 'required|string|max:255',
+            'plan_id' => 'required|integer|exists:n_plans,id',
             'device_id' => 'required|string|max:255',
         ]);
 
@@ -866,8 +861,9 @@ class PaymentController extends Controller
             }
 
             $existingMeta = is_array($existing->meta) ? $existing->meta : [];
-            if (($existingMeta['amazon_sku'] ?? null) !== $validated['sku']
-                || (string) $existing->app_payment_type !== $validated['purchase_type']) {
+            if (($existingMeta['amazon_parent_sku'] ?? null) !== $validated['parent_sku']
+                || ($existingMeta['amazon_term_sku'] ?? null) !== $validated['term_sku']
+                || (string) $existing->app_payment_type !== 'subscription') {
                 return response()->json([
                     'status' => 'error',
                     'message' => 'This Amazon receipt was already used for another product.',
@@ -932,7 +928,8 @@ class PaymentController extends Controller
         $receipt = $rvsResponse->json();
         if (!is_array($receipt)
             || (string) ($receipt['receiptId'] ?? '') !== $validated['receipt_id']
-            || (string) ($receipt['productId'] ?? '') !== $validated['sku']) {
+            || (string) ($receipt['productId'] ?? '') !== $validated['parent_sku']
+            || (string) ($receipt['termSku'] ?? '') !== $validated['term_sku']) {
             return response()->json([
                 'status' => 'error',
                 'message' => 'Amazon receipt details do not match the requested product.',
@@ -949,11 +946,7 @@ class PaymentController extends Controller
             ], 422);
         }
 
-        if ($validated['purchase_type'] === 'subscription') {
-            return $this->activateAmazonSubscription($validated, $receipt);
-        }
-
-        return $this->activateAmazonPpv($validated, $receipt);
+        return $this->activateAmazonSubscription($validated, $receipt);
     }
 
     private function activateAmazonSubscription(array $validated, array $receipt)
@@ -969,9 +962,13 @@ class PaymentController extends Controller
             ->where('device_type', 'tv')
             ->where('is_active', true)
             ->first();
-        $expectedSku = (string) config('services.amazon_iap.subscription_sku_prefix') . $validated['plan_id'];
+        $expectedParentSku = (string) config('services.amazon_iap.parent_sku');
+        $expectedTermSku = $plan ? $this->amazonTermSkuForPlan($plan) : null;
 
-        if (!$plan || !hash_equals($expectedSku, $validated['sku'])) {
+        if (!$plan
+            || !$expectedTermSku
+            || !hash_equals($expectedParentSku, $validated['parent_sku'])
+            || !hash_equals($expectedTermSku, $validated['term_sku'])) {
             return response()->json([
                 'status' => 'error',
                 'message' => 'Amazon subscription SKU does not match the selected TV plan.',
@@ -1011,7 +1008,8 @@ class PaymentController extends Controller
         if ($payment) {
             $payment->update(['meta' => array_merge($payment->meta ?? [], [
                 'amazon_user_id' => $validated['amazon_user_id'],
-                'amazon_sku' => $validated['sku'],
+                'amazon_parent_sku' => $validated['parent_sku'],
+                'amazon_term_sku' => $validated['term_sku'],
                 'amazon_receipt' => $receipt,
             ])]);
             $this->invoiceService->sendWhatsAppInvoice($payment->fresh());
@@ -1024,73 +1022,26 @@ class PaymentController extends Controller
         ]);
     }
 
-    private function activateAmazonPpv(array $validated, array $receipt)
+    private function amazonTermSkuForPlan(Plan $plan): ?string
     {
-        if (strtoupper((string) ($receipt['productType'] ?? '')) !== 'CONSUMABLE') {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Amazon PPV product must be consumable.',
-            ], 422);
-        }
-
-        $expectedSku = (string) config('services.amazon_iap.ppv_sku_prefix')
-            . $validated['content_type'] . '.' . $validated['content_id'];
-        if (!hash_equals($expectedSku, $validated['sku'])) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Amazon PPV SKU does not match the selected content.',
-            ], 422);
-        }
-
-        $content = match ($validated['content_type']) {
-            'movie' => MovieModel::where('id', $validated['content_id'])->first(),
-            'episode' => Episode::where('id', $validated['content_id'])->first(),
-            'season' => Season::where('id', $validated['content_id'])->first(),
+        $byName = match (strtolower(trim((string) $plan->name))) {
+            'kar 1' => 'week',
+            'thla 1' => 'month',
+            'thla 4' => 'four_months',
+            'thla 6' => 'six_months',
+            'kum 1' => 'year',
+            default => null,
         };
-        if (!$content || !(bool) $content->isPayPerView) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Selected content is not available as PPV.',
-            ], 422);
-        }
+        $key = $byName ?? match (true) {
+            $plan->duration_days >= 6 && $plan->duration_days <= 8 => 'week',
+            $plan->duration_days >= 28 && $plan->duration_days <= 31 => 'month',
+            $plan->duration_days >= 118 && $plan->duration_days <= 124 => 'four_months',
+            $plan->duration_days >= 178 && $plan->duration_days <= 186 => 'six_months',
+            $plan->duration_days >= 360 && $plan->duration_days <= 366 => 'year',
+            default => null,
+        };
 
-        $amount = (float) ($validated['content_type'] === 'movie'
-            ? ($content->ppv_amount ?? 0)
-            : ($content->amount ?? 0));
-        $payment = PaymentHistory::create([
-            'user_id' => $validated['user_id'],
-            'movie_id' => $validated['content_id'],
-            'device_type' => 'tv',
-            'app_payment_type' => 'ppv',
-            'amount' => $amount,
-            'currency' => 'INR',
-            'payment_method' => 'iap',
-            'payment_gateway' => 'amazon_iap',
-            'transaction_id' => $validated['receipt_id'],
-            'status' => 'success',
-            'payment_type' => 'new',
-            'payment_date' => now(),
-            'expiry_date' => now()->addDays(7),
-            'meta' => [
-                'device_token' => $validated['device_id'],
-                'device_type' => 'tv',
-                'content_type' => $validated['content_type'],
-                'amazon_user_id' => $validated['amazon_user_id'],
-                'amazon_sku' => $validated['sku'],
-                'amazon_receipt' => $receipt,
-            ],
-        ]);
-
-        $this->invoiceService->sendWhatsAppInvoice($payment);
-
-        return response()->json([
-            'status' => 'success',
-            'message' => 'Amazon PPV rental activated.',
-            'data' => [
-                'payment_history' => $payment,
-                'rental_expires_at' => $payment->expiry_date,
-            ],
-        ]);
+        return $key ? (string) config("services.amazon_iap.term_skus.{$key}") : null;
     }
 
     public function verifyRazorpaySubscriptionPayment(Request $request)
