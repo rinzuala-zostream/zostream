@@ -38,6 +38,7 @@ class MovieModel extends Model
 
     protected $fillable = [
         'cover_img',
+        'opt_cover_url',
         'title_img',
         'create_date',
         'description',
@@ -63,6 +64,7 @@ class MovieModel extends Model
         'isSubtitle',
         'subtitle',
         'poster',
+        'opt_poster_url',
         'release_on',
         'title',
         'url',

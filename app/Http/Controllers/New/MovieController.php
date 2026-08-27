@@ -17,7 +17,9 @@ use App\Models\MovieModel;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Http\UploadedFile;
 use Exception;
 
 class MovieController extends Controller
@@ -72,7 +74,9 @@ class MovieController extends Controller
                 'director',
                 'duration',
                 'cover_img',
+                'opt_cover_url',
                 'poster',
+                'opt_poster_url',
                 'genre',
                 'release_on',
                 'status',
@@ -272,6 +276,94 @@ class MovieController extends Controller
     }
 
     /**
+     * Convert an existing R2 cover or poster into WebP beside the original
+     * object, while leaving the original artwork untouched.
+     */
+    public function optimizeImage(Request $request, string $id)
+    {
+        $validated = $request->validate([
+            'field' => 'required|string|in:cover,poster',
+        ]);
+
+        $movie = MovieModel::where('id', $id)->first();
+        if (! $movie) {
+            return response()->json(['status' => 'error', 'message' => 'Movie not found.'], 404);
+        }
+
+        $sourceColumn = $validated['field'] === 'cover' ? 'cover_img' : 'poster';
+        $optimizedColumn = $validated['field'] === 'cover' ? 'opt_cover_url' : 'opt_poster_url';
+        $sourceUrl = trim((string) $movie->{$sourceColumn});
+
+        if ($sourceUrl === '') {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Save an original image URL before optimizing it.',
+            ], 422);
+        }
+
+        try {
+            $optimizedUrl = $this->convertR2ImageToWebp($sourceUrl);
+
+            $movie->update([$optimizedColumn => $optimizedUrl]);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Optimized WebP image created.',
+                'data' => [
+                    'field' => $validated['field'],
+                    'url' => $optimizedUrl,
+                ],
+            ]);
+        } catch (\Throwable $exception) {
+            Log::warning('Movie image optimization failed', [
+                'movie_id' => $movie->id,
+                'field' => $validated['field'],
+                'error' => $exception->getMessage(),
+            ]);
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Could not optimize this image. Ensure it is an image stored on the configured CDN.',
+            ], 422);
+        }
+    }
+
+    /**
+     * Optimize a pasted R2/CDN URL before a movie exists. The URL must still
+     * belong to this application's configured public R2 base URL.
+     */
+    public function optimizeImageUrl(Request $request)
+    {
+        $validated = $request->validate([
+            'source_url' => 'required|string|max:2048',
+            'field' => 'required|string|in:cover,poster',
+        ]);
+
+        try {
+            $optimizedUrl = $this->convertR2ImageToWebp($validated['source_url']);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Optimized WebP image created.',
+                'data' => [
+                    'field' => $validated['field'],
+                    'url' => $optimizedUrl,
+                ],
+            ]);
+        } catch (\Throwable $exception) {
+            Log::warning('Movie image URL optimization failed', [
+                'field' => $validated['field'],
+                'error' => $exception->getMessage(),
+            ]);
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Could not optimize this image. Ensure it is an image stored on the configured CDN.',
+            ], 422);
+        }
+    }
+
+    /**
      * Delete a movie by its public string ID. Related seasons, episodes and
      * video URLs are removed by the database's configured cascade rules.
      */
@@ -320,6 +412,8 @@ class MovieController extends Controller
             'cover' => $imageOrUrl('cover'),
             'cover_img' => $imageOrUrl('cover_img'),
             'poster' => $imageOrUrl('poster'),
+            'opt_cover_url' => 'nullable|string|max:2048',
+            'opt_poster_url' => 'nullable|string|max:2048',
             'title_img' => 'nullable|string',
             'url' => 'nullable|string',
             'dash_url' => 'nullable|string',
@@ -348,6 +442,86 @@ class MovieController extends Controller
             'isChildMode' => 'nullable|boolean',
             'refresh_latest' => 'nullable|boolean',
         ];
+    }
+
+    private function r2PathFromPublicUrl(string $url): string
+    {
+        $publicUrl = rtrim((string) config('filesystems.disks.r2.url'), '/');
+        $source = parse_url($url);
+        $public = parse_url($publicUrl);
+
+        if (
+            ! is_array($source) || ! is_array($public)
+            || ($source['scheme'] ?? '') !== ($public['scheme'] ?? '')
+            || strtolower((string) ($source['host'] ?? '')) !== strtolower((string) ($public['host'] ?? ''))
+        ) {
+            throw new \RuntimeException('Only images on the configured CDN can be optimized.');
+        }
+
+        $prefix = trim((string) ($public['path'] ?? ''), '/');
+        $path = ltrim((string) ($source['path'] ?? ''), '/');
+        if ($prefix !== '') {
+            if (! str_starts_with($path, $prefix.'/')) {
+                throw new \RuntimeException('The image URL is outside the configured CDN path.');
+            }
+            $path = substr($path, strlen($prefix) + 1);
+        }
+
+        $path = rawurldecode($path);
+        if ($path === '' || str_contains($path, '..')) {
+            throw new \RuntimeException('The image path is invalid.');
+        }
+
+        return $path;
+    }
+
+    private function convertR2ImageToWebp(string $sourceUrl): string
+    {
+        $sourcePath = $this->r2PathFromPublicUrl($sourceUrl);
+        $targetPath = $this->optimizedWebpPath($sourcePath);
+
+        if ($sourcePath === $targetPath) {
+            return $this->imageUploader->publicUrl($sourcePath);
+        }
+
+        $contents = Storage::disk('r2')->get($sourcePath);
+        $tempDir = storage_path('app/temp/movie-image-optimization');
+        if (! is_dir($tempDir) && ! @mkdir($tempDir, 0755, true) && ! is_dir($tempDir)) {
+            throw new \RuntimeException('Unable to create the image conversion directory.');
+        }
+
+        $tempPath = tempnam($tempDir, 'movie-image-');
+        if ($tempPath === false) {
+            throw new \RuntimeException('Unable to create a temporary image file.');
+        }
+
+        try {
+            file_put_contents($tempPath, $contents);
+            $uploadedFile = new UploadedFile(
+                $tempPath,
+                basename($sourcePath),
+                (new \finfo(FILEINFO_MIME_TYPE))->file($tempPath) ?: null,
+                null,
+                true,
+            );
+
+            return $this->imageUploader->uploadToPath($uploadedFile, $targetPath);
+        } finally {
+            if (is_file($tempPath)) {
+                @unlink($tempPath);
+            }
+        }
+    }
+
+    private function optimizedWebpPath(string $sourcePath): string
+    {
+        $extension = strtolower(pathinfo($sourcePath, PATHINFO_EXTENSION));
+        $filename = pathinfo($sourcePath, PATHINFO_FILENAME);
+        $directory = trim(pathinfo($sourcePath, PATHINFO_DIRNAME), '.');
+
+        $target = $filename . ($extension === 'webp' ? '.optimized' : '') . '.webp';
+
+        return $directory === '' ? $target : $directory.'/'.$target;
     }
 
     private function prepareMovieData(Request $request, array $validated): array

@@ -17,15 +17,35 @@ class WebpImageUploader
         int $maxBytes = self::MAX_BYTES
     ): string
     {
-        $contents = $this->webpContents($file, $maxBytes);
         $path = trim($directory, '/').'/'.Str::uuid().'.webp';
+
+        return $this->uploadToPath($file, $path, $maxBytes);
+    }
+
+    public function uploadToPath(
+        UploadedFile $file,
+        string $path,
+        int $maxBytes = self::MAX_BYTES
+    ): string
+    {
+        $contents = $this->webpContents($file, $maxBytes);
+        $path = ltrim($path, '/');
+
+        if ($path === '' || ! str_ends_with(strtolower($path), '.webp')) {
+            throw new RuntimeException('The WebP destination path is invalid.');
+        }
 
         Storage::disk('r2')->put($path, $contents, [
             'visibility' => 'public',
             'ContentType' => 'image/webp',
         ]);
 
-        return rtrim((string) config('filesystems.disks.r2.url'), '/').'/'.$this->encodePath($path);
+        return $this->publicUrl($path);
+    }
+
+    public function publicUrl(string $path): string
+    {
+        return rtrim((string) config('filesystems.disks.r2.url'), '/').'/'.$this->encodePath(ltrim($path, '/'));
     }
 
     public function webpContents(UploadedFile $file, int $maxBytes = self::MAX_BYTES): string
