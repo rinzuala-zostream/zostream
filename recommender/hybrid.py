@@ -154,6 +154,141 @@ class MySqlDataSource:
         self.connection.close()
 
 
+class MySqlDumpDataSource:
+    """Stream the tables required by training from a standard mysqldump file."""
+
+    CREATE_RE = re.compile(r"^CREATE TABLE `([^`]+)` \(")
+    COLUMN_RE = re.compile(r"^\s*`([^`]+)`\s")
+    INSERT_RE = re.compile(r"^INSERT INTO `([^`]+)` VALUES ")
+
+    def __init__(self, dump_file: Path):
+        self.dump_file = dump_file
+        self.schemas = {}
+
+    def validate(self):
+        if not self.dump_file.is_file():
+            raise FileNotFoundError(f"MySQL dump is missing: {self.dump_file}")
+        self.schemas = self._read_schemas()
+        missing = [table for table in MYSQL_COLUMNS if table not in self.schemas]
+        if missing:
+            raise RuntimeError(
+                f"Required tables are missing from MySQL dump: {', '.join(missing)}"
+            )
+
+    def _read_schemas(self):
+        schemas = {}
+        current = None
+        with self.dump_file.open("r", encoding="utf-8", errors="replace") as handle:
+            for line in handle:
+                match = self.CREATE_RE.match(line)
+                if match:
+                    current = match.group(1)
+                    schemas[current] = []
+                    continue
+                if current is None:
+                    continue
+                column = self.COLUMN_RE.match(line)
+                if column:
+                    schemas[current].append(column.group(1))
+                elif line.startswith(")"):
+                    current = None
+        return schemas
+
+    def rows(self, table: str):
+        columns = self.schemas.get(table)
+        if columns is None:
+            raise ValueError(f"Unsupported dump table: {table}")
+        prefix = f"INSERT INTO `{table}` VALUES "
+        with self.dump_file.open("r", encoding="utf-8", errors="replace") as handle:
+            statement = ""
+            collecting = False
+            for line in handle:
+                if not collecting and line.startswith(prefix):
+                    statement = line[len(prefix):]
+                    collecting = True
+                elif collecting:
+                    statement += line
+                else:
+                    continue
+                if statement.rstrip().endswith(";"):
+                    payload = statement.rstrip()[:-1]
+                    for values in parse_mysql_values(payload):
+                        if len(values) != len(columns):
+                            raise RuntimeError(
+                                f"Column/value mismatch while parsing dump table {table}."
+                            )
+                        yield dict(zip(columns, values))
+                    statement = ""
+                    collecting = False
+            if collecting:
+                raise RuntimeError(f"Incomplete INSERT statement in dump table {table}.")
+
+    def close(self):
+        pass
+
+
+def parse_mysql_values(payload: str):
+    escape_map = {
+        "0": "\0", "b": "\b", "n": "\n", "r": "\r", "t": "\t",
+        "Z": "\x1a", "\\": "\\", "'": "'", '"': '"',
+    }
+    index = 0
+    length = len(payload)
+    while index < length:
+        while index < length and (payload[index].isspace() or payload[index] == ","):
+            index += 1
+        if index >= length:
+            return
+        if payload[index] != "(":
+            raise RuntimeError("Invalid mysqldump VALUES tuple.")
+        index += 1
+        values = []
+        while True:
+            while index < length and payload[index].isspace():
+                index += 1
+            if index < length and payload[index] == "'":
+                index += 1
+                value = []
+                while index < length:
+                    character = payload[index]
+                    index += 1
+                    if character == "\\":
+                        if index >= length:
+                            raise RuntimeError("Incomplete escape in mysqldump string.")
+                        escaped = payload[index]
+                        index += 1
+                        value.append(escape_map.get(escaped, escaped))
+                    elif character == "'":
+                        if index < length and payload[index] == "'":
+                            value.append("'")
+                            index += 1
+                        else:
+                            break
+                    else:
+                        value.append(character)
+                else:
+                    raise RuntimeError("Unterminated string in mysqldump VALUES.")
+                parsed = "".join(value)
+            else:
+                start = index
+                while index < length and payload[index] not in ",)":
+                    index += 1
+                token = payload[start:index].strip()
+                parsed = None if token.upper() == "NULL" else token
+            values.append(parsed)
+            while index < length and payload[index].isspace():
+                index += 1
+            if index >= length:
+                raise RuntimeError("Incomplete mysqldump VALUES tuple.")
+            delimiter = payload[index]
+            index += 1
+            if delimiter == ")":
+                yield values
+                break
+            if delimiter != ",":
+                raise RuntimeError("Invalid delimiter in mysqldump VALUES tuple.")
+
+
 def clean(value) -> str:
     return str(value or "").strip()
 
@@ -1039,8 +1174,9 @@ def main():
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     train_parser = subparsers.add_parser("train")
-    train_parser.add_argument("--source", choices=("csv", "mysql"), default="csv")
+    train_parser.add_argument("--source", choices=("csv", "mysql", "sql-dump"), default="csv")
     train_parser.add_argument("--data-dir", type=Path, default=Path(__file__).resolve().parent.parent)
+    train_parser.add_argument("--dump-file", type=Path)
     train_parser.add_argument("--output", type=Path, default=Path(__file__).resolve().parent / "artifacts" / "hybrid_model.json.gz")
 
     recommend_parser = subparsers.add_parser("recommend")
@@ -1059,11 +1195,14 @@ def main():
 
     args = parser.parse_args()
     if args.command == "train":
-        source = (
-            MySqlDataSource()
-            if args.source == "mysql"
-            else CsvDataSource(args.data_dir.resolve())
-        )
+        if args.source == "mysql":
+            source = MySqlDataSource()
+        elif args.source == "sql-dump":
+            if args.dump_file is None:
+                parser.error("train --source sql-dump requires --dump-file")
+            source = MySqlDumpDataSource(args.dump_file.resolve())
+        else:
+            source = CsvDataSource(args.data_dir.resolve())
         try:
             model = train(source, args.output.resolve(), args.source)
         finally:

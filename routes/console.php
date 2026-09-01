@@ -31,7 +31,7 @@ Schedule::command('streams:prune-inactive')
     ->dailyAt('03:30')
     ->withoutOverlapping(30);
 
-Schedule::command('recommender:train')
+Schedule::command('recommender:train-sql-backup')
     ->cron((string) config('recommender.train_schedule', '0 3 * * *'))
     ->timezone((string) config('recommender.train_timezone', config('app.timezone', 'UTC')))
     ->withoutOverlapping(180)

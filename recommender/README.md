@@ -41,6 +41,40 @@ Manual train duh hunah:
 php artisan recommender:train
 ```
 
+## Daily `.sql.gz` backup atanga direct training
+
+Production scheduler-in default-in `recommender:train-sql-backup` a run. He command hian:
+
+1. configured pattern atanga `.sql.gz` latest ber a select;
+2. backup freshness leh gzip integrity a check;
+3. `storage/app/recommender-training/run-*` protected folder-ah `backup.sql` extract;
+4. Python-in `CREATE TABLE` column order leh extended `INSERT VALUES` direct parse;
+5. model train leh atomic-in a replace;
+6. success emaw failure emaw hnuah temporary folder pum a remove.
+
+Temporary MySQL DB, MySQL user thar leh live DB connection a ngai lo. Original backup file leh
+production database a delete/edit lo. Manual full pipeline:
+
+```bash
+php artisan recommender:train-sql-backup
+```
+
+Backup file bik test nan:
+
+```bash
+php artisan recommender:train-sql-backup \
+  --backup=/var/backups/mysql/zo_stream_db_2026-09-01.sql.gz
+```
+
+Diagnosis atan extracted SQL temporary-a vawn duh chuan `--keep-temporary-files` hman theih.
+
+`.env`:
+
+```dotenv
+RECOMMENDER_BACKUP_PATTERN="/var/backups/mysql/zo_stream_db_*.sql.gz"
+RECOMMENDER_BACKUP_MAX_AGE_HOURS=30
+```
+
 CSV fallback manual train:
 
 ```bash

@@ -10,16 +10,18 @@ use Symfony\Component\Process\Process;
 class TrainRecommender extends Command
 {
     protected $signature = 'recommender:train
-        {--source= : Training source: mysql or csv}
-        {--data-dir= : CSV directory when --source=csv}';
+        {--source= : Training source: mysql, csv, or sql-dump}
+        {--data-dir= : CSV directory when --source=csv}
+        {--dump-file= : Extracted .sql file when --source=sql-dump}
+        {--database= : MySQL database override for isolated training}';
 
     protected $description = 'Train and atomically replace the Zo Stream recommendation model';
 
     public function handle(): int
     {
         $source = strtolower((string) ($this->option('source') ?: config('recommender.train_source', 'mysql')));
-        if (! in_array($source, ['mysql', 'csv'], true)) {
-            $this->error('Training source must be mysql or csv.');
+        if (! in_array($source, ['mysql', 'csv', 'sql-dump'], true)) {
+            $this->error('Training source must be mysql, csv, or sql-dump.');
 
             return self::INVALID;
         }
@@ -61,8 +63,17 @@ class TrainRecommender extends Command
         if ($source === 'csv') {
             $command[] = '--data-dir';
             $command[] = (string) ($this->option('data-dir') ?: config('recommender.train_data_dir', base_path()));
+        } elseif ($source === 'sql-dump') {
+            $dumpFile = (string) $this->option('dump-file');
+            if ($dumpFile === '') {
+                throw new RuntimeException('--dump-file is required for sql-dump training.');
+            }
+            $command[] = '--dump-file';
+            $command[] = $dumpFile;
         } else {
-            $environment = $this->mysqlEnvironment();
+            $environment = $this->mysqlEnvironment(
+                $this->option('database') ? (string) $this->option('database') : null
+            );
         }
 
         $this->info("Training recommender from {$source}...");
@@ -93,12 +104,27 @@ class TrainRecommender extends Command
         return self::SUCCESS;
     }
 
-    private function mysqlEnvironment(): array
+    private function mysqlEnvironment(?string $databaseOverride = null): array
     {
         $connectionName = (string) config('database.default');
         $database = (array) config("database.connections.{$connectionName}", []);
         if (! in_array($database['driver'] ?? null, ['mysql', 'mariadb'], true)) {
             throw new RuntimeException('The default Laravel database must be MySQL or MariaDB.');
+        }
+
+        $training = (array) config('recommender.train_mysql', []);
+        $database = array_replace($database, array_filter(
+            $training,
+            fn ($value) => $value !== null && $value !== ''
+        ));
+        if ($databaseOverride !== null) {
+            if (! preg_match('/\A[A-Za-z0-9_]+\z/', $databaseOverride)) {
+                throw new RuntimeException('The MySQL database override is invalid.');
+            }
+            $database['database'] = $databaseOverride;
+            // A production DB_URL would otherwise override the isolated database
+            // name when Python parses the connection settings.
+            $database['url'] = null;
         }
 
         return array_filter([
