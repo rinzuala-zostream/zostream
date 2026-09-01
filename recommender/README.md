@@ -153,6 +153,18 @@ Output-ah heng section-te a awm:
 7. `your_wishlist`: user wishlist direct
 8. `next_episode`: recent series watch atanga published episode dawt leh
 
+Production API-ah section responsibility:
+
+- AI + trained model + live user signals: `because_you_watched`, `top_picks_for_you`,
+  `similar_movies`.
+- Live MySQL rule/query: `continue_watching`, `trending_now`, `new_releases`,
+  `your_wishlist`, `next_episode`.
+
+Laravel-in request user-a current `watch_position` leh `wist_list` chauh a la a, stdin JSON-in
+Python model-ah a pass. AI result pawh response hmain live movie `Published`, `isEnable`, kids
+leh age flags-in a verify leh. Backup hnu lama movie thar chu live New Releases-ah a lang thei;
+full content/collaborative similarity erawh daily train dawt lehah a tel.
+
 Safety/ranking rules:
 
 - Movie leh episode `status = Published` chauh output-ah a lang

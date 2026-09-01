@@ -10,6 +10,7 @@ import json
 import math
 import os
 import re
+import sys
 import tempfile
 from urllib.parse import unquote, urlparse
 from array import array
@@ -827,9 +828,9 @@ def content_allowed(item, mode="adult", include_age_restricted=False):
     return include_age_restricted or not bool(item.get("age_restricted"))
 
 
-def recommend(model, user_id: str, limit=10, mode="adult", include_age_restricted=False):
+def recommend(model, user_id: str, limit=10, mode="adult", include_age_restricted=False, history_pairs=None):
     catalog = model["catalog"]
-    history = dict(model["users"].get(user_id, []))
+    history = dict(model["users"].get(user_id, []) if history_pairs is None else history_pairs)
     seen = set(history)
     collaborative = defaultdict(float)
     for source, preference in history.items():
@@ -879,6 +880,7 @@ def recommend(model, user_id: str, limit=10, mode="adult", include_age_restricte
             "title": item["title"],
             "status": "Published",
             "genre": item["genre"],
+            "poster": item["poster"],
             "premium": item["premium"],
             "ppv": item["ppv"],
             "score": round(score, 6),
@@ -980,10 +982,90 @@ def similar_items(
     return unique_movie_cards(ranked, limit)
 
 
-def homepage(model, user_id: str, limit=10, mode="adult", include_age_restricted=False):
+def build_live_user_context(model, live_data):
+    episode_aliases = {}
+    episode_parent = {}
+    for episode_id, episode in model.get("episodes", {}).items():
+        episode_aliases[episode_id] = episode_id
+        episode_parent[episode_id] = episode.get("parent_id", "")
+        legacy_id = clean(episode.get("legacy_id"))
+        if legacy_id:
+            episode_aliases[legacy_id] = episode_id
+            episode_parent[legacy_id] = episode.get("parent_id", "")
+
+    preference_rows = {}
+    progress = {}
+    recent_items = {}
+    recent_episodes = {}
+    timestamps = []
+    for row in live_data.get("watch_position", []):
+        raw_id = clean(row.get("movie_id"))
+        kind = clean(row.get("movie_type")).casefold()
+        episode_id = episode_aliases.get(raw_id, "") if kind == "episode" else ""
+        item_id = episode_parent.get(raw_id, "") if kind == "episode" else raw_id
+        if item_id not in model["catalog"]:
+            continue
+        timestamp = parse_time(row.get("updated_at") or row.get("created_at"))
+        timestamps.append(timestamp)
+        strength = watch_strength(row)
+        previous = preference_rows.get(item_id, [0.0, 0.0])
+        preference_rows[item_id] = [previous[0] + strength, max(previous[1], timestamp)]
+        recent_items[item_id] = max(recent_items.get(item_id, 0.0), timestamp)
+        if episode_id:
+            recent_episodes[episode_id] = max(recent_episodes.get(episode_id, 0.0), timestamp)
+
+        position = max(0.0, as_float(row.get("position")))
+        duration = max(0.0, as_float(row.get("duration")))
+        completion = min(position / duration, 1.0) if duration else None
+        progress_id = episode_id if kind == "episode" else item_id
+        if progress_id:
+            key = f"{kind}:{progress_id}"
+            if key not in progress or timestamp >= progress[key]["updated_ts"]:
+                progress[key] = {
+                    "type": kind or "movie", "id": progress_id, "parent_id": item_id,
+                    "position": round(position, 3), "duration": round(duration, 3),
+                    "completion": round(completion, 6) if completion is not None else None,
+                    "updated_ts": timestamp,
+                }
+
+    wishlist = []
+    for row in live_data.get("wishlist", []):
+        item_id = clean(row.get("movie_id"))
+        if item_id not in model["catalog"]:
+            continue
+        timestamp = parse_time(row.get("updated_at") or row.get("created_at"))
+        timestamps.append(timestamp)
+        previous = preference_rows.get(item_id, [0.0, 0.0])
+        preference_rows[item_id] = [previous[0] + 3.0, max(previous[1], timestamp)]
+        if item_id not in wishlist:
+            wishlist.append(item_id)
+
+    maximum = max(timestamps, default=0.0)
+    half_life = 180.0 * 86400.0
+    history = []
+    for item_id, (strength, timestamp) in preference_rows.items():
+        age = max(0.0, maximum - timestamp) if timestamp else half_life
+        recency = 0.65 + 0.35 * math.exp(-age / half_life)
+        history.append([item_id, round(min(5.0, 1.0 + math.log1p(strength)) * recency, 6)])
+    history.sort(key=lambda pair: pair[1], reverse=True)
+
+    incomplete = [entry for entry in progress.values() if entry["position"] > 0 and entry["completion"] is not None and entry["completion"] < 0.90]
+    incomplete.sort(key=lambda entry: entry["updated_ts"], reverse=True)
+    recent = sorted(recent_items.items(), key=lambda pair: pair[1], reverse=True)
+    recent_eps = sorted(recent_episodes.items(), key=lambda pair: pair[1], reverse=True)
+    return history[:100], {
+        "continue_watching": incomplete[:100], "recent_items": recent[:100],
+        "recent_episodes": recent_eps[:100], "wishlist": wishlist[:200],
+    }
+
+
+def homepage(model, user_id: str, limit=10, mode="adult", include_age_restricted=False, live_data=None):
     limit = max(1, limit)
-    shelf_data = model.get("homepage_users", {}).get(user_id, {})
-    history_pairs = model["users"].get(user_id, [])
+    if live_data is not None:
+        history_pairs, shelf_data = build_live_user_context(model, live_data)
+    else:
+        shelf_data = model.get("homepage_users", {}).get(user_id, {})
+        history_pairs = model["users"].get(user_id, [])
     seen = {item_id for item_id, _preference in history_pairs}
 
     continue_watching = []
@@ -1024,7 +1106,7 @@ def homepage(model, user_id: str, limit=10, mode="adult", include_age_restricted
         if len(continue_watching) >= limit:
             break
 
-    top_picks = recommend(model, user_id, limit, mode, include_age_restricted)
+    top_picks = recommend(model, user_id, limit, mode, include_age_restricted, history_pairs)
     used = {item["id"] for item in top_picks}
     recent_items = [item_id for item_id, _timestamp in shelf_data.get("recent_items", [])]
     because_anchor = recent_items[0] if recent_items else ""
@@ -1191,6 +1273,7 @@ def main():
     homepage_parser.add_argument("--limit", type=int, default=10)
     homepage_parser.add_argument("--mode", choices=("adult", "kids"), default="adult")
     homepage_parser.add_argument("--include-age-restricted", action="store_true")
+    homepage_parser.add_argument("--live-data-stdin", action="store_true")
     homepage_parser.add_argument("--demo", action="store_true", help="Use a trained user without printing their ID")
 
     args = parser.parse_args()
@@ -1227,7 +1310,8 @@ def main():
                 uid for uid, data in model.get("homepage_users", {}).items()
                 if data.get("recent_items")
             ), "")
-        result = homepage(model, user_id, args.limit, args.mode, args.include_age_restricted)
+        live_data = json.load(sys.stdin) if args.live_data_stdin else None
+        result = homepage(model, user_id, args.limit, args.mode, args.include_age_restricted, live_data)
         if args.demo:
             result["user"] = "[redacted demo user]"
         print(json.dumps(result, ensure_ascii=False, indent=2))

@@ -8,6 +8,10 @@ use Symfony\Component\Process\Process;
 
 class HomeRecommendationService
 {
+    public function __construct(
+        private readonly LiveHomeSectionService $liveSections,
+    ) {}
+
     public function homepage(
         string $userId,
         int $limit,
@@ -25,25 +29,32 @@ class HomeRecommendationService
             throw new RuntimeException('Recommendation model is unavailable.');
         }
 
+        $live = $this->liveSections->snapshot(
+            $userId,
+            $limit,
+            $contentMode,
+            $includeAgeRestricted
+        );
         $modelVersion = (string) filemtime($model);
         $cacheKey = sprintf(
-            'recommendations:home:%s:%d:%s:%d:%s',
+            'recommendations:home:%s:%d:%s:%d:%s:%s',
             hash('sha256', $userId),
             $limit,
             $contentMode,
             (int) $includeAgeRestricted,
-            $modelVersion
+            $modelVersion,
+            $live['version']
         );
         $cacheSeconds = max(0, (int) config('recommender.cache_seconds', 300));
 
         if ($cacheSeconds === 0) {
-            return $this->run($userId, $limit, $contentMode, $includeAgeRestricted, $script, $model);
+            return $this->run($userId, $limit, $contentMode, $includeAgeRestricted, $script, $model, $live);
         }
 
         return Cache::remember(
             $cacheKey,
             now()->addSeconds($cacheSeconds),
-            fn (): array => $this->run($userId, $limit, $contentMode, $includeAgeRestricted, $script, $model)
+            fn (): array => $this->run($userId, $limit, $contentMode, $includeAgeRestricted, $script, $model, $live)
         );
     }
 
@@ -53,7 +64,8 @@ class HomeRecommendationService
         string $contentMode,
         bool $includeAgeRestricted,
         string $script,
-        string $model
+        string $model,
+        array $live
     ): array {
         $command = [
             (string) config('recommender.python', 'python3'),
@@ -67,6 +79,7 @@ class HomeRecommendationService
             (string) $limit,
             '--mode',
             $contentMode,
+            '--live-data-stdin',
         ];
         if ($includeAgeRestricted) {
             $command[] = '--include-age-restricted';
@@ -75,6 +88,7 @@ class HomeRecommendationService
         $process = new Process($command, base_path());
         $process->setTimeout(max(1.0, (float) config('recommender.timeout_seconds', 30)));
         $process->setIdleTimeout(null);
+        $process->setInput(json_encode($live['signals'], JSON_THROW_ON_ERROR));
         $process->run();
 
         if (! $process->isSuccessful()) {
@@ -92,6 +106,15 @@ class HomeRecommendationService
 
         if (! is_array($payload) || ! isset($payload['history_size'])) {
             throw new RuntimeException('Recommendation process returned an invalid payload.');
+        }
+
+        $payload = $this->liveSections->filterAiSections(
+            $payload,
+            $contentMode,
+            $includeAgeRestricted
+        );
+        foreach ($live['sections'] as $section => $items) {
+            $payload[$section] = $items;
         }
 
         return $payload;
