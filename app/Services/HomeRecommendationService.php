@@ -3,8 +3,10 @@
 namespace App\Services;
 
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Symfony\Component\Process\Process;
+use Throwable;
 
 class HomeRecommendationService
 {
@@ -21,20 +23,22 @@ class HomeRecommendationService
         $script = (string) config('recommender.script');
         $model = (string) config('recommender.model');
 
-        if (! is_file($script) || ! is_readable($script)) {
-            throw new RuntimeException('Recommendation script is unavailable.');
-        }
-
-        if (! is_file($model) || ! is_readable($model)) {
-            throw new RuntimeException('Recommendation model is unavailable.');
-        }
-
         $live = $this->liveSections->snapshot(
             $userId,
             $limit,
             $contentMode,
             $includeAgeRestricted
         );
+
+        if (! is_file($script) || ! is_readable($script) || ! is_file($model) || ! is_readable($model)) {
+            Log::warning('Recommendation model is unavailable to the web worker; serving live sections only.', [
+                'script_readable' => is_file($script) && is_readable($script),
+                'model_readable' => is_file($model) && is_readable($model),
+            ]);
+
+            return $this->liveOnlyPayload($live);
+        }
+
         $modelVersion = (string) filemtime($model);
         $cacheKey = sprintf(
             'recommendations:home:%s:%d:%s:%d:%s:%s',
@@ -47,15 +51,23 @@ class HomeRecommendationService
         );
         $cacheSeconds = max(0, (int) config('recommender.cache_seconds', 300));
 
-        if ($cacheSeconds === 0) {
-            return $this->run($userId, $limit, $contentMode, $includeAgeRestricted, $script, $model, $live);
-        }
+        try {
+            if ($cacheSeconds === 0) {
+                return $this->run($userId, $limit, $contentMode, $includeAgeRestricted, $script, $model, $live);
+            }
 
-        return Cache::remember(
-            $cacheKey,
-            now()->addSeconds($cacheSeconds),
-            fn (): array => $this->run($userId, $limit, $contentMode, $includeAgeRestricted, $script, $model, $live)
-        );
+            return Cache::remember(
+                $cacheKey,
+                now()->addSeconds($cacheSeconds),
+                fn (): array => $this->run($userId, $limit, $contentMode, $includeAgeRestricted, $script, $model, $live)
+            );
+        } catch (Throwable $exception) {
+            Log::warning('Recommendation model execution failed; serving live sections only.', [
+                'exception' => $exception,
+            ]);
+
+            return $this->liveOnlyPayload($live);
+        }
     }
 
     private function run(
@@ -118,5 +130,15 @@ class HomeRecommendationService
         }
 
         return $payload;
+    }
+
+    private function liveOnlyPayload(array $live): array
+    {
+        return array_merge([
+            'history_size' => count($live['signals']['watch_position'] ?? []),
+            'because_you_watched' => [],
+            'top_picks_for_you' => [],
+            'similar_movies' => [],
+        ], $live['sections']);
     }
 }

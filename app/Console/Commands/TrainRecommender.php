@@ -96,6 +96,18 @@ class TrainRecommender extends Command
         }
 
         clearstatcache(true, $model);
+        $modelGroup = trim((string) config('recommender.model_group', ''));
+        if ($modelGroup !== '' && ! @chgrp($model, $modelGroup)) {
+            $this->error("Training completed, but the model group could not be changed to {$modelGroup}.");
+
+            return self::FAILURE;
+        }
+        if (! @chmod($model, 0640)) {
+            $this->error('Training completed, but secure web-server read permissions could not be applied to the model.');
+
+            return self::FAILURE;
+        }
+        clearstatcache(true, $model);
         $this->info('Recommendation model trained successfully.');
         $this->table(['Metric', 'Value'], collect($payload)->map(
             fn ($value, $key) => [$key, is_scalar($value) ? (string) $value : json_encode($value)]

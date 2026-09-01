@@ -17,6 +17,10 @@ return [
     ),
     'script' => $absolutePath(env('RECOMMENDER_SCRIPT'), 'recommender/hybrid.py'),
     'model' => $absolutePath(env('RECOMMENDER_MODEL'), 'recommender/artifacts/hybrid_model.json.gz'),
+    'model_group' => env(
+        'RECOMMENDER_MODEL_GROUP',
+        env('APP_ENV') === 'production' ? 'www-data' : null
+    ),
     'timeout_seconds' => (float) env('RECOMMENDER_TIMEOUT_SECONDS', 30),
     'cache_seconds' => (int) env('RECOMMENDER_CACHE_SECONDS', 300),
     'train_source' => env('RECOMMENDER_TRAIN_SOURCE', 'mysql'),
