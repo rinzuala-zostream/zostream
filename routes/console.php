@@ -2,6 +2,7 @@
 
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Schedule;
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
@@ -29,3 +30,9 @@ Schedule::command('app:subscription-maintenance --deactivate=0 --reminder-days=3
 Schedule::command('streams:prune-inactive')
     ->dailyAt('03:30')
     ->withoutOverlapping(30);
+
+Schedule::command('recommender:train')
+    ->cron((string) config('recommender.train_schedule', '0 3 * * *'))
+    ->timezone((string) config('recommender.train_timezone', config('app.timezone', 'UTC')))
+    ->withoutOverlapping(180)
+    ->onOneServer();

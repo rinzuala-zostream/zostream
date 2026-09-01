@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\V4\AuthController;
 use App\Http\Controllers\Api\V4\BillingController;
 use App\Http\Controllers\Api\V4\CatalogController;
 use App\Http\Controllers\Api\V4\ChannelSubscriptionController;
+use App\Http\Controllers\Api\V4\HomeRecommendationController;
 use App\Http\Controllers\Api\V4\LegalPageController;
 use App\Http\Controllers\Api\V4\LibraryController;
 use App\Http\Controllers\Api\V4\OfflineController;
@@ -131,6 +132,10 @@ Route::prefix('v4')
 
         Route::middleware('auth.token')->group(function () {
             Route::post('/auth/logout', [AuthController::class, 'logout']);
+
+            Route::get('/recommendations/home', [HomeRecommendationController::class, 'home'])
+                ->middleware('throttle:30,1')
+                ->name('v4.recommendations.home');
 
             Route::prefix('account')->group(function () {
                 Route::get('/', [AccountController::class, 'show']);
