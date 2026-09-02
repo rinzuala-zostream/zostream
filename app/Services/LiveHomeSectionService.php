@@ -21,6 +21,7 @@ class LiveHomeSectionService
         'title',
         'genre',
         'poster',
+        'cover_img',
         'isPremium',
         'isPayPerView',
         'release_on',
@@ -261,7 +262,7 @@ class LiveHomeSectionService
 
     private function movieCard($movie): array
     {
-        return ['id' => (string) $movie->id, 'title' => (string) $movie->title, 'status' => 'Published', 'genre' => (string) ($movie->genre ?? ''), 'poster' => (string) ($movie->poster ?? ''), 'premium' => (bool) $movie->isPremium, 'ppv' => (bool) $movie->isPayPerView, 'release_on' => $movie->release_on ? (string) $movie->release_on : null];
+        return ['id' => (string) $movie->id, 'title' => (string) $movie->title, 'status' => 'Published', 'genre' => (string) ($movie->genre ?? ''), 'poster' => (string) ($movie->poster ?? ''), 'cover_img' => (string) ($movie->cover_img ?? ''), 'premium' => (bool) $movie->isPremium, 'ppv' => (bool) $movie->isPayPerView, 'release_on' => $movie->release_on ? (string) $movie->release_on : null];
     }
 
     private function episodeCard($episode): array
