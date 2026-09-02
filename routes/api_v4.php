@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\V4\LegalPageController;
 use App\Http\Controllers\Api\V4\LibraryController;
 use App\Http\Controllers\Api\V4\OfflineController;
 use App\Http\Controllers\Api\V4\PlaybackController;
+use App\Http\Controllers\Api\V4\PollController as V4PollController;
 use App\Http\Controllers\Api\V4\QrSessionController as V4QrSessionController;
 use App\Http\Controllers\Api\V4\SupportController;
 use App\Http\Controllers\Api\V4\WhatsAppWebhookController;
@@ -167,6 +168,17 @@ Route::prefix('v4')
                 Route::delete('/wishlist/{contentId}', [LibraryController::class, 'removeFromWishlist']);
                 Route::get('/history', [LibraryController::class, 'history']);
                 Route::put('/progress', [LibraryController::class, 'saveProgress']);
+            });
+
+            Route::prefix('polls')->group(function () {
+                Route::get('/', [V4PollController::class, 'index'])
+                    ->middleware('throttle:60,1');
+                Route::get('/{poll}', [V4PollController::class, 'show'])
+                    ->middleware('throttle:60,1');
+                Route::post('/{poll}/vote', [V4PollController::class, 'vote'])
+                    ->middleware('throttle:30,1');
+                Route::delete('/{poll}/vote', [V4PollController::class, 'removeVote'])
+                    ->middleware('throttle:30,1');
             });
 
             Route::prefix('playback/sessions')->group(function () {
