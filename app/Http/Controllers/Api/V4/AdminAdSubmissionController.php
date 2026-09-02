@@ -29,7 +29,7 @@ class AdminAdSubmissionController extends Controller
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
 
-        $query = AdSubmission::query()->with('assets')->latest();
+        $query = AdSubmission::query()->with(['assets', 'campaign.invoices'])->latest();
         if (! empty($data['status'])) {
             $query->where('status', $data['status']);
         }
@@ -63,7 +63,9 @@ class AdminAdSubmissionController extends Controller
 
     public function show(AdSubmission $adSubmission)
     {
-        return V4Response::success($adSubmission->load(['assets', 'events']));
+        return V4Response::success($adSubmission->load([
+            'assets', 'events', 'campaign.creatives', 'campaign.invoices.items', 'campaign.invoices.payments',
+        ]));
     }
 
     public function approve(Request $request, AdSubmission $adSubmission)
@@ -73,6 +75,7 @@ class AdminAdSubmissionController extends Controller
             'period_days' => ['nullable', 'integer', 'min:1', 'max:366'],
             'media_url' => ['nullable', 'url:https', 'max:2048'],
             'review_note' => ['nullable', 'string', 'max:3000'],
+            'priority' => ['nullable', 'integer', 'min:0', 'max:100000'],
         ]);
 
         $effectiveMedia = $data['media_url'] ?? $adSubmission->media_url;
@@ -86,7 +89,7 @@ class AdminAdSubmissionController extends Controller
             (string) $request->input('auth_user_id')
         );
 
-        return V4Response::success($submission, 'Ad approved and published.');
+        return V4Response::success($submission, 'Ad approved and campaign invoice created.');
     }
 
     public function reject(Request $request, AdSubmission $adSubmission)

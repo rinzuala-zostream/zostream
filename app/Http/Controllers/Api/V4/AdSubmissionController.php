@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V4;
 
 use App\Http\Controllers\Controller;
 use App\Models\AdSubmission;
+use App\Services\AdPricingService;
 use App\Support\Api\V4Response;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -14,14 +15,17 @@ use Illuminate\Validation\ValidationException;
 
 class AdSubmissionController extends Controller
 {
+    public function __construct(private readonly AdPricingService $pricing) {}
+
     public function store(Request $request)
     {
         $data = $request->validate($this->submissionRules());
         $this->validateMedia($request, $data);
+        $quote = $this->pricing->quote($data);
 
         $token = Str::random(48);
 
-        $submission = DB::transaction(function () use ($request, $data, $token) {
+        $submission = DB::transaction(function () use ($request, $data, $quote, $token) {
             $submission = AdSubmission::create([
                 'reference_no' => $this->newReferenceNumber(),
                 'public_token_hash' => hash('sha256', $token),
@@ -33,6 +37,13 @@ class AdSubmissionController extends Controller
                 'ads_name' => $data['ads_name'],
                 'description' => $data['description'] ?? null,
                 'type' => $data['type'],
+                'placement_code' => $quote['placement_code'],
+                'billing_model' => $quote['billing_model'],
+                'target_quantity' => $quote['target_quantity'],
+                'quoted_rate' => $quote['rate'],
+                'quoted_amount' => $quote['amount'],
+                'currency' => $quote['currency'],
+                'daily_budget' => $data['daily_budget'] ?? null,
                 'media_url' => $data['media_url'] ?? null,
                 'destination_url' => $data['destination_url'] ?? null,
                 'requested_start_date' => $data['requested_start_date'] ?? null,
@@ -73,7 +84,9 @@ class AdSubmissionController extends Controller
 
     public function status(string $token)
     {
-        $submission = $this->findByToken($token)->load(['assets', 'events']);
+        $submission = $this->findByToken($token)->load([
+            'assets', 'events', 'campaign.creatives', 'campaign.invoices.items', 'campaign.invoices.payments',
+        ]);
 
         return V4Response::success($this->publicSubmission($submission));
     }
@@ -98,6 +111,10 @@ class AdSubmissionController extends Controller
             'ads_name' => ['sometimes', 'required', 'string', 'max:255'],
             'description' => ['sometimes', 'nullable', 'string', 'max:5000'],
             'type' => ['sometimes', 'required', 'in:website,video,image'],
+            'placement_code' => ['sometimes', 'required', 'string', 'max:60'],
+            'billing_model' => ['sometimes', 'required', 'in:FLAT,CPM,CPC,CPV'],
+            'target_quantity' => ['sometimes', 'nullable', 'integer', 'min:1', 'max:1000000000'],
+            'daily_budget' => ['sometimes', 'nullable', 'numeric', 'min:1', 'max:100000000'],
             'media_url' => ['sometimes', 'nullable', 'url:https', 'max:2048'],
             'destination_url' => ['sometimes', 'nullable', 'url:https', 'max:2048'],
             'requested_start_date' => ['sometimes', 'nullable', 'date', 'after_or_equal:today'],
@@ -105,8 +122,20 @@ class AdSubmissionController extends Controller
             'response_note' => ['nullable', 'string', 'max:3000'],
         ]);
 
+        $quoteInput = array_merge($submission->only([
+            'type', 'placement_code', 'billing_model', 'target_quantity', 'requested_period_days',
+        ]), collect($data)->except('response_note')->all());
+        $quote = $this->pricing->quote($quoteInput);
         $fromStatus = $submission->status;
         $submission->fill(collect($data)->except('response_note')->all());
+        $submission->fill([
+            'placement_code' => $quote['placement_code'],
+            'billing_model' => $quote['billing_model'],
+            'target_quantity' => $quote['target_quantity'],
+            'quoted_rate' => $quote['rate'],
+            'quoted_amount' => $quote['amount'],
+            'currency' => $quote['currency'],
+        ]);
         $submission->status = AdSubmission::STATUS_PENDING;
         $submission->reviewed_by = null;
         $submission->reviewed_at = null;
@@ -136,6 +165,10 @@ class AdSubmissionController extends Controller
             'ads_name' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:5000'],
             'type' => ['required', 'in:website,video,image'],
+            'placement_code' => ['required', 'string', 'max:60'],
+            'billing_model' => ['required', 'in:FLAT,CPM,CPC,CPV'],
+            'target_quantity' => ['nullable', 'integer', 'min:1', 'max:1000000000'],
+            'daily_budget' => ['nullable', 'numeric', 'min:1', 'max:100000000'],
             'media_url' => ['nullable', 'url:https', 'max:2048'],
             'media_file' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp,mp4,mov,webm', 'max:51200'],
             'feature_image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
@@ -219,6 +252,13 @@ class AdSubmissionController extends Controller
             'ads_name' => $submission->ads_name,
             'description' => $submission->description,
             'type' => $submission->type,
+            'placement_code' => $submission->placement_code,
+            'billing_model' => $submission->billing_model,
+            'target_quantity' => $submission->target_quantity,
+            'quoted_rate' => (float) $submission->quoted_rate,
+            'quoted_amount' => (float) $submission->quoted_amount,
+            'currency' => $submission->currency,
+            'daily_budget' => $submission->daily_budget ? (float) $submission->daily_budget : null,
             'media_url' => $submission->media_url,
             'destination_url' => $submission->destination_url,
             'requested_start_date' => $submission->requested_start_date?->format('Y-m-d'),
@@ -250,6 +290,40 @@ class AdSubmissionController extends Controller
                 : [],
             'submitted_at' => $submission->created_at?->toIso8601String(),
             'reviewed_at' => $submission->reviewed_at?->toIso8601String(),
+            'campaign' => $submission->relationLoaded('campaign') && $submission->campaign
+                ? $this->publicCampaign($submission->campaign)
+                : null,
+        ];
+    }
+
+    private function publicCampaign($campaign): array
+    {
+        $invoice = $campaign->relationLoaded('invoices') ? $campaign->invoices->sortByDesc('id')->first() : null;
+
+        return [
+            'id' => $campaign->id,
+            'status' => $campaign->status,
+            'billing_model' => $campaign->billing_model,
+            'requires_prepayment' => $campaign->requires_prepayment,
+            'target_quantity' => $campaign->target_quantity,
+            'consumed_quantity' => $campaign->consumed_quantity,
+            'estimated_amount' => (float) $campaign->estimated_amount,
+            'accrued_amount' => (float) $campaign->accrued_amount,
+            'currency' => $campaign->currency,
+            'start_at' => $campaign->start_at?->toIso8601String(),
+            'end_at' => $campaign->end_at?->toIso8601String(),
+            'invoice' => $invoice ? [
+                'id' => $invoice->id,
+                'invoice_no' => $invoice->invoice_no,
+                'subtotal' => (float) $invoice->subtotal,
+                'tax' => (float) $invoice->tax,
+                'total' => (float) $invoice->total,
+                'paid_amount' => (float) $invoice->paid_amount,
+                'currency' => $invoice->currency,
+                'status' => $invoice->status,
+                'due_at' => $invoice->due_at?->toIso8601String(),
+                'paid_at' => $invoice->paid_at?->toIso8601String(),
+            ] : null,
         ];
     }
 }

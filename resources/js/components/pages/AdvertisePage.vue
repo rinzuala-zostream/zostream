@@ -1,5 +1,5 @@
 <script setup>
-import { reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 
 const submitting = ref(false);
 const error = ref('');
@@ -7,12 +7,49 @@ const result = ref(null);
 const form = reactive({
     business_name: '', contact_name: '', contact_phone: '', contact_email: '',
     ads_name: '', description: '', type: 'image', media_url: '', destination_url: '',
-    requested_start_date: '', requested_period_days: 30, terms_accepted: false, website: '',
+    requested_start_date: '', requested_period_days: 30, placement_code: 'home_top',
+    billing_model: 'FLAT', target_quantity: 10000, daily_budget: '', terms_accepted: false, website: '',
 });
 const mediaFile = ref(null);
 const featureImage = ref(null);
 const galleryImages = ref([]);
+const pricing = ref([]);
+const pricingLoading = ref(true);
 const today = new Date().toISOString().slice(0, 10);
+
+const mediaType = computed(() => form.type === 'video' ? 'video' : 'image');
+const placements = computed(() => pricing.value.filter((slot) => slot.media_type === mediaType.value));
+const selectedPlacement = computed(() => placements.value.find((slot) => slot.code === form.placement_code));
+const rateOptions = computed(() => selectedPlacement.value?.rates || []);
+const selectedRate = computed(() => rateOptions.value.find((rate) => rate.billing_model === form.billing_model));
+const estimate = computed(() => {
+    if (!selectedRate.value) return 0;
+    const quantity = form.billing_model === 'FLAT' ? Number(form.requested_period_days || 0) : Number(form.target_quantity || 0);
+    const units = form.billing_model === 'CPM' ? quantity / 1000 : quantity;
+    return Math.max(Number(selectedRate.value.minimum_charge || 0), Math.round(units * Number(selectedRate.value.rate) * 100) / 100);
+});
+const targetLabel = computed(() => ({ CPM: 'Target impressions', CPC: 'Target clicks', CPV: 'Target valid views' }[form.billing_model] || 'Target'));
+const money = (value) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: selectedRate.value?.currency || 'INR', maximumFractionDigits: 2 }).format(value || 0);
+
+function syncPricingSelection() {
+    if (!placements.value.some((slot) => slot.code === form.placement_code)) form.placement_code = placements.value[0]?.code || '';
+    const rates = selectedPlacement.value?.rates || [];
+    if (!rates.some((rate) => rate.billing_model === form.billing_model)) form.billing_model = rates[0]?.billing_model || '';
+}
+
+async function loadPricing() {
+    try {
+        const response = await fetch('/api/v4/ad-pricing', { headers: { Accept: 'application/json', 'X-Client-Platform': 'web', 'X-Client-Version': '1.0' } });
+        const payload = await response.json();
+        pricing.value = payload?.data?.placements || [];
+        syncPricingSelection();
+    } catch { error.value = 'Pricing load theih lo. Page refresh leh rawh.'; }
+    finally { pricingLoading.value = false; }
+}
+
+watch(() => form.type, syncPricingSelection);
+watch(() => form.placement_code, syncPricingSelection);
+onMounted(loadPricing);
 
 function files(event, target) {
     if (target === 'gallery') galleryImages.value = [...event.target.files].slice(0, 4);
@@ -94,9 +131,15 @@ async function submit() {
                     <label class="wide">Description<textarea v-model.trim="form.description" rows="5" maxlength="5000"></textarea></label>
                     <label>Ad type *<select v-model="form.type"><option value="image">Image/Banner</option><option value="video">Video</option><option value="website">Website</option></select></label>
                     <label>Period (days) *<input v-model.number="form.requested_period_days" type="number" min="1" max="366" required></label>
+                    <label>Placement *<select v-model="form.placement_code" :disabled="pricingLoading"><option v-for="slot in placements" :key="slot.code" :value="slot.code">{{ slot.label }}</option></select></label>
+                    <label>Billing model *<select v-model="form.billing_model"><option v-for="rate in rateOptions" :key="rate.billing_model" :value="rate.billing_model">{{ rate.billing_model }} — {{ rate.unit_label }}</option></select></label>
+                    <label v-if="form.billing_model !== 'FLAT'">{{ targetLabel }} *<input v-model.number="form.target_quantity" type="number" min="1" max="1000000000" required></label>
+                    <label>Daily budget (optional)<input v-model.number="form.daily_budget" type="number" min="1" step="0.01"></label>
                     <label>Preferred start date<input v-model="form.requested_start_date" type="date" :min="today"></label>
                     <label>Destination URL<input v-model.trim="form.destination_url" type="url" placeholder="https://example.com"></label>
                 </div></fieldset>
+
+                <section class="ad-price-quote"><div><span>Estimated campaign price</span><strong>{{ money(estimate) }}</strong><small v-if="selectedRate">{{ money(selectedRate.rate) }} {{ selectedRate.unit_label }} · minimum {{ money(selectedRate.minimum_charge) }}</small></div><p>Final rate server-in verify leh ang. Admin approval hnuah invoice siam a ni ang a, prepaid campaign chu payment success hnuah activate a ni ang.</p></section>
 
                 <fieldset><legend>Creative media</legend><div class="ad-form-grid">
                     <label class="wide">Media URL<input v-model.trim="form.media_url" type="url" placeholder="https://... image or video URL"><small>Media URL emaw media file pakhat tal required.</small></label>
@@ -113,5 +156,5 @@ async function submit() {
 </template>
 
 <style scoped>
-.ad-public-page{padding-top:90px}.ad-public-hero{display:flex;min-height:430px;align-items:center;border-bottom:1px solid var(--line);background:radial-gradient(circle at 80% 20%,rgba(23,191,243,.14),transparent 31%)}.ad-public-hero>div{width:min(100%,1050px);margin:auto}.ad-public-hero span,.ad-submit-form header span,.ad-form-layout aside>span,.ad-success-card>span{color:var(--cyan);font-size:10px;font-weight:900;letter-spacing:2.3px;text-transform:uppercase}.ad-public-hero h1{margin:20px 0;font:800 clamp(45px,6vw,82px)/.98 var(--display);letter-spacing:-4px}.ad-public-hero h1 b{color:var(--cyan)}.ad-public-hero p{max-width:650px;color:var(--muted);font-size:16px;line-height:1.75}.ad-form-layout{display:grid;width:min(100%,1280px);grid-template-columns:310px minmax(0,1fr);gap:32px;margin:auto;padding-top:65px;padding-bottom:110px}.ad-form-layout aside{position:sticky;top:100px;height:max-content;padding:28px;border:1px solid var(--line);border-radius:20px;background:rgba(255,255,255,.035)}.ad-form-layout ol{display:grid;gap:19px;margin:26px 0;padding:0;list-style:none}.ad-form-layout li{display:flex;align-items:center;gap:13px;color:#c7cdd4;font-size:13px}.ad-form-layout li b{display:grid;width:38px;height:38px;place-items:center;border-radius:11px;background:rgba(23,191,243,.1);color:var(--cyan);font-size:10px}.ad-form-layout aside p{margin:25px 0 0;padding-top:20px;border-top:1px solid var(--line);color:var(--muted);font-size:12px;line-height:1.65}.ad-submit-form{padding:clamp(24px,4vw,48px);border:1px solid var(--glass-line);border-radius:25px;background:rgba(16,21,29,.65);box-shadow:var(--glass-shadow);backdrop-filter:blur(20px)}.ad-submit-form header h2{margin:10px 0 3px;font:750 34px var(--display)}.ad-submit-form header p{margin:0;color:var(--muted);font-size:12px}.ad-submit-form header p b{color:#ff7780}.ad-submit-form fieldset{margin:32px 0 0;padding:26px 0 0;border:0;border-top:1px solid var(--line)}.ad-submit-form legend{padding:0;color:#e7edf1;font:750 17px var(--display)}.ad-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:19px;margin-top:20px}.ad-form-grid label{display:grid;gap:8px;color:#afb6bf;font-size:12px;font-weight:700}.ad-form-grid .wide{grid-column:1/-1}.ad-form-grid input,.ad-form-grid select,.ad-form-grid textarea{width:100%;min-height:48px;padding:12px 14px;border:1px solid var(--line);border-radius:11px;outline:0;background:#0b0e13;color:#fff;font:inherit}.ad-form-grid textarea{resize:vertical}.ad-form-grid input:focus,.ad-form-grid select:focus,.ad-form-grid textarea:focus{border-color:var(--cyan);box-shadow:0 0 0 3px rgba(23,191,243,.08)}.ad-form-grid small{color:#68717c;font-size:10px;font-weight:500}.ad-file input{padding:10px}.ad-terms{display:flex;align-items:flex-start;gap:11px;margin:28px 0;color:#9fa7b1;font-size:12px;line-height:1.6}.ad-terms input{margin-top:3px;accent-color:var(--cyan)}.ad-submit-button{width:100%}.ad-submit-button:disabled{cursor:wait;opacity:.55}.ad-form-error{margin:22px 0 0;padding:13px 15px;border:1px solid rgba(255,100,110,.28);border-radius:10px;background:rgba(255,100,110,.09);color:#ffb5ba;font-size:12px}.ad-honeypot{position:absolute!important;left:-10000px!important}.ad-success{display:grid;min-height:650px;place-items:center;padding-top:70px;padding-bottom:100px}.ad-success-card{width:min(100%,660px);padding:55px;text-align:center;border:1px solid rgba(23,191,243,.25);border-radius:27px;background:rgba(16,21,29,.7);box-shadow:var(--glass-shadow)}.ad-success-card i{display:grid;width:66px;height:66px;margin:0 auto 22px;place-items:center;border-radius:50%;background:var(--cyan);color:#00141b;font-size:30px;font-style:normal;font-weight:900}.ad-success-card h2{margin:14px 0;font:800 clamp(28px,5vw,44px) var(--display);letter-spacing:-1px}.ad-success-card p{margin:0 auto 28px;color:var(--muted);line-height:1.7}.ad-copy{display:block;margin:17px auto 0;background:transparent;color:var(--cyan);cursor:pointer;font-size:12px;font-weight:800}@media(max-width:800px){.ad-form-layout{grid-template-columns:1fr}.ad-form-layout aside{position:static}.ad-public-hero{min-height:380px}.ad-form-grid{grid-template-columns:1fr}.ad-form-grid .wide{grid-column:auto}}@media(max-width:550px){.ad-public-page{padding-top:68px}.ad-public-hero h1{letter-spacing:-2.7px}.ad-form-layout{padding-top:30px}.ad-submit-form{padding:23px;border-radius:19px}.ad-success-card{padding:35px 22px}}
+.ad-public-page{padding-top:90px}.ad-public-hero{display:flex;min-height:430px;align-items:center;border-bottom:1px solid var(--line);background:radial-gradient(circle at 80% 20%,rgba(23,191,243,.14),transparent 31%)}.ad-public-hero>div{width:min(100%,1050px);margin:auto}.ad-public-hero span,.ad-submit-form header span,.ad-form-layout aside>span,.ad-success-card>span{color:var(--cyan);font-size:10px;font-weight:900;letter-spacing:2.3px;text-transform:uppercase}.ad-public-hero h1{margin:20px 0;font:800 clamp(45px,6vw,82px)/.98 var(--display);letter-spacing:-4px}.ad-public-hero h1 b{color:var(--cyan)}.ad-public-hero p{max-width:650px;color:var(--muted);font-size:16px;line-height:1.75}.ad-form-layout{display:grid;width:min(100%,1280px);grid-template-columns:310px minmax(0,1fr);gap:32px;margin:auto;padding-top:65px;padding-bottom:110px}.ad-form-layout aside{position:sticky;top:100px;height:max-content;padding:28px;border:1px solid var(--line);border-radius:20px;background:rgba(255,255,255,.035)}.ad-form-layout ol{display:grid;gap:19px;margin:26px 0;padding:0;list-style:none}.ad-form-layout li{display:flex;align-items:center;gap:13px;color:#c7cdd4;font-size:13px}.ad-form-layout li b{display:grid;width:38px;height:38px;place-items:center;border-radius:11px;background:rgba(23,191,243,.1);color:var(--cyan);font-size:10px}.ad-form-layout aside p{margin:25px 0 0;padding-top:20px;border-top:1px solid var(--line);color:var(--muted);font-size:12px;line-height:1.65}.ad-submit-form{padding:clamp(24px,4vw,48px);border:1px solid var(--glass-line);border-radius:25px;background:rgba(16,21,29,.65);box-shadow:var(--glass-shadow);backdrop-filter:blur(20px)}.ad-submit-form header h2{margin:10px 0 3px;font:750 34px var(--display)}.ad-submit-form header p{margin:0;color:var(--muted);font-size:12px}.ad-submit-form header p b{color:#ff7780}.ad-submit-form fieldset{margin:32px 0 0;padding:26px 0 0;border:0;border-top:1px solid var(--line)}.ad-submit-form legend{padding:0;color:#e7edf1;font:750 17px var(--display)}.ad-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:19px;margin-top:20px}.ad-form-grid label{display:grid;gap:8px;color:#afb6bf;font-size:12px;font-weight:700}.ad-form-grid .wide{grid-column:1/-1}.ad-form-grid input,.ad-form-grid select,.ad-form-grid textarea{width:100%;min-height:48px;padding:12px 14px;border:1px solid var(--line);border-radius:11px;outline:0;background:#0b0e13;color:#fff;font:inherit}.ad-form-grid textarea{resize:vertical}.ad-form-grid input:focus,.ad-form-grid select:focus,.ad-form-grid textarea:focus{border-color:var(--cyan);box-shadow:0 0 0 3px rgba(23,191,243,.08)}.ad-form-grid small{color:#68717c;font-size:10px;font-weight:500}.ad-file input{padding:10px}.ad-price-quote{display:grid;grid-template-columns:1fr 1.25fr;gap:25px;margin-top:25px;padding:22px;border:1px solid rgba(23,191,243,.25);border-radius:15px;background:rgba(23,191,243,.07)}.ad-price-quote div{display:grid;gap:6px}.ad-price-quote span{color:var(--cyan);font-size:9px;font-weight:900;letter-spacing:1.5px;text-transform:uppercase}.ad-price-quote strong{font:800 32px var(--display)}.ad-price-quote small,.ad-price-quote p{color:#89949f;font-size:10px;line-height:1.6}.ad-price-quote p{margin:0}.ad-terms{display:flex;align-items:flex-start;gap:11px;margin:28px 0;color:#9fa7b1;font-size:12px;line-height:1.6}.ad-terms input{margin-top:3px;accent-color:var(--cyan)}.ad-submit-button{width:100%}.ad-submit-button:disabled{cursor:wait;opacity:.55}.ad-form-error{margin:22px 0 0;padding:13px 15px;border:1px solid rgba(255,100,110,.28);border-radius:10px;background:rgba(255,100,110,.09);color:#ffb5ba;font-size:12px}.ad-honeypot{position:absolute!important;left:-10000px!important}.ad-success{display:grid;min-height:650px;place-items:center;padding-top:70px;padding-bottom:100px}.ad-success-card{width:min(100%,660px);padding:55px;text-align:center;border:1px solid rgba(23,191,243,.25);border-radius:27px;background:rgba(16,21,29,.7);box-shadow:var(--glass-shadow)}.ad-success-card i{display:grid;width:66px;height:66px;margin:0 auto 22px;place-items:center;border-radius:50%;background:var(--cyan);color:#00141b;font-size:30px;font-style:normal;font-weight:900}.ad-success-card h2{margin:14px 0;font:800 clamp(28px,5vw,44px) var(--display);letter-spacing:-1px}.ad-success-card p{margin:0 auto 28px;color:var(--muted);line-height:1.7}.ad-copy{display:block;margin:17px auto 0;background:transparent;color:var(--cyan);cursor:pointer;font-size:12px;font-weight:800}@media(max-width:800px){.ad-form-layout{grid-template-columns:1fr}.ad-form-layout aside{position:static}.ad-public-hero{min-height:380px}.ad-form-grid{grid-template-columns:1fr}.ad-form-grid .wide{grid-column:auto}}@media(max-width:650px){.ad-price-quote{grid-template-columns:1fr}}@media(max-width:550px){.ad-public-page{padding-top:68px}.ad-public-hero h1{letter-spacing:-2.7px}.ad-form-layout{padding-top:30px}.ad-submit-form{padding:23px;border-radius:19px}.ad-success-card{padding:35px 22px}}
 </style>

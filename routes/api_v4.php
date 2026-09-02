@@ -1,10 +1,15 @@
 <?php
 
 use App\Http\Controllers\Api\V4\AccountController;
+use App\Http\Controllers\Api\V4\AdminAdBillingController;
 use App\Http\Controllers\Api\V4\AdminAdSubmissionController;
 use App\Http\Controllers\Api\V4\AdminRealtimeConfigController;
 use App\Http\Controllers\Api\V4\AdminWhatsAppInboxController;
+use App\Http\Controllers\Api\V4\AdPaymentController;
+use App\Http\Controllers\Api\V4\AdPricingController;
+use App\Http\Controllers\Api\V4\AdServingController;
 use App\Http\Controllers\Api\V4\AdSubmissionController;
+use App\Http\Controllers\Api\V4\AdTrackingController;
 use App\Http\Controllers\Api\V4\AuthController;
 use App\Http\Controllers\Api\V4\BillingController;
 use App\Http\Controllers\Api\V4\CatalogController;
@@ -109,6 +114,17 @@ Route::prefix('v4')
             ->middleware('throttle:60,1');
         Route::post('/ad-submissions/status/{token}/resubmit', [AdSubmissionController::class, 'resubmit'])
             ->middleware('throttle:10,1');
+        Route::get('/ad-pricing', [AdPricingController::class, 'index']);
+        Route::post('/ad-pricing/quote', [AdPricingController::class, 'quote'])
+            ->middleware('throttle:60,1');
+        Route::post('/ad-submissions/status/{token}/payments/razorpay/order', [AdPaymentController::class, 'createOrder'])
+            ->middleware('throttle:10,1');
+        Route::post('/ad-submissions/status/{token}/payments/razorpay/verify', [AdPaymentController::class, 'verify'])
+            ->middleware('throttle:20,1');
+        Route::get('/ads/serve', [AdServingController::class, 'serve'])
+            ->middleware('throttle:120,1');
+        Route::post('/ads/events', [AdTrackingController::class, 'store'])
+            ->middleware('throttle:300,1');
 
         Route::get('/catalog/items/{movieId}/seasons', [SeasonController::class, 'index']);
         Route::get('/catalog/seasons/{id}', [SeasonController::class, 'show']);
@@ -121,6 +137,7 @@ Route::prefix('v4')
             ->withoutMiddleware('api.v4')
             ->name('v4.external.subscription-history.store');
         Route::post('/webhooks/razorpay', [PaymentController::class, 'razorpayWebhook']);
+        Route::post('/webhooks/ads/razorpay', [AdPaymentController::class, 'webhook']);
         Route::get('/webhooks/whatsapp', [WhatsAppWebhookController::class, 'verify'])
             ->middleware('throttle:60,1');
         Route::post('/webhooks/whatsapp', [WhatsAppWebhookController::class, 'receive'])
@@ -284,6 +301,13 @@ Route::prefix('v4')
                     Route::post('/ad-submissions/{adSubmission}/approve', [AdminAdSubmissionController::class, 'approve']);
                     Route::post('/ad-submissions/{adSubmission}/reject', [AdminAdSubmissionController::class, 'reject']);
                     Route::post('/ad-submissions/{adSubmission}/request-changes', [AdminAdSubmissionController::class, 'requestChanges']);
+
+                    Route::get('/ads/billing-rates', [AdminAdBillingController::class, 'rates']);
+                    Route::put('/ads/billing-rates/{rate}', [AdminAdBillingController::class, 'updateRate']);
+                    Route::put('/ads/placements/{placement}', [AdminAdBillingController::class, 'updatePlacement']);
+                    Route::get('/ads/billing-dashboard', [AdminAdBillingController::class, 'dashboard']);
+                    Route::post('/ads/invoices/{invoice}/mark-paid', [AdminAdBillingController::class, 'markInvoicePaid']);
+                    Route::put('/ads/campaigns/{campaign}/status', [AdminAdBillingController::class, 'updateCampaignStatus']);
 
                     Route::get('/subscriptions', [SubscriptionController::class, 'index']);
                     Route::get('/subscriptions/search', [SubscriptionController::class, 'searchSubscribers']);

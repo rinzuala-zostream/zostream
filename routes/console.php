@@ -10,7 +10,7 @@ Artisan::command('inspire', function () {
 
 Schedule::command('birthday:send')->hourly()->between('9:00', '13:00');
 
-Schedule::command("app:queue-today-birthdays")->daily();
+Schedule::command('app:queue-today-birthdays')->daily();
 
 Schedule::command('app:movie-schedule')
     ->hourly()
@@ -30,6 +30,10 @@ Schedule::command('app:subscription-maintenance --deactivate=0 --reminder-days=3
 Schedule::command('streams:prune-inactive')
     ->dailyAt('03:30')
     ->withoutOverlapping(30);
+
+Schedule::command('ads:maintain-campaigns')
+    ->hourly()
+    ->withoutOverlapping(10);
 
 Schedule::command('recommender:train-sql-backup')
     ->cron((string) config('recommender.train_schedule', '0 3 * * *'))

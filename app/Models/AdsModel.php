@@ -27,6 +27,8 @@ class AdsModel extends Model
         'video_url',
         'ads_url',
         'target_url',
+        'campaign_id',
+        'is_active',
         'feature_img',
         'img1',
         'img2',
@@ -36,5 +38,7 @@ class AdsModel extends Model
 
     protected $casts = [
         'period' => 'integer',
+        'campaign_id' => 'integer',
+        'is_active' => 'boolean',
     ];
 }

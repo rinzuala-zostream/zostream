@@ -14,6 +14,7 @@ const filters = [
     ['approved', 'Approved'], ['rejected', 'Rejected'], ['', 'All'],
 ];
 const labels = Object.fromEntries(filters);
+const money = (value, currency = 'INR') => new Intl.NumberFormat('en-IN', { style: 'currency', currency, maximumFractionDigits: 2 }).format(value || 0);
 
 async function load(page = 1) {
     loading.value = true; error.value = '';
@@ -41,7 +42,7 @@ onMounted(load);
         <section class="admin-table-card">
             <div v-if="loading" class="admin-loading">Loading ad submissions…</div>
             <div v-else-if="!items.length" class="admin-empty-state"><AdminIcon name="image" /><h2>No submissions found</h2><p>This review queue is empty.</p></div>
-            <div v-else class="admin-table-scroll"><table><thead><tr><th>Reference</th><th>Advertiser</th><th>Campaign</th><th>Type</th><th>Submitted</th><th>Status</th><th>Action</th></tr></thead><tbody><tr v-for="item in items" :key="item.id"><td><b>{{ item.reference_no }}</b></td><td>{{ item.business_name }}<small>{{ item.contact_name }} · {{ item.contact_phone }}</small></td><td>{{ item.ads_name }}<small>{{ item.requested_period_days }} days</small></td><td>{{ item.type }}</td><td>{{ formatAdminDate(item.created_at) }}</td><td><span class="admin-pill" :class="`is-${item.status}`">{{ labels[item.status] || item.status }}</span></td><td><RouterLink class="ad-review-link" :to="`/ads/submissions/${item.id}`">Review →</RouterLink></td></tr></tbody></table></div>
+            <div v-else class="admin-table-scroll"><table><thead><tr><th>Reference</th><th>Advertiser</th><th>Campaign</th><th>Pricing</th><th>Submitted</th><th>Status</th><th>Action</th></tr></thead><tbody><tr v-for="item in items" :key="item.id"><td><b>{{ item.reference_no }}</b></td><td>{{ item.business_name }}<small>{{ item.contact_name }} · {{ item.contact_phone }}</small></td><td>{{ item.ads_name }}<small>{{ item.type }} · {{ item.placement_code }}</small></td><td><b>{{ money(item.quoted_amount, item.currency) }}</b><small>{{ item.billing_model }} · {{ item.requested_period_days }} days</small></td><td>{{ formatAdminDate(item.created_at) }}</td><td><span class="admin-pill" :class="`is-${item.status}`">{{ labels[item.status] || item.status }}</span></td><td><RouterLink class="ad-review-link" :to="`/ads/submissions/${item.id}`">Review →</RouterLink></td></tr></tbody></table></div>
             <footer v-if="pagination.last_page > 1" class="admin-pagination"><button :disabled="pagination.current_page <= 1" @click="load(pagination.current_page - 1)">Previous</button><span>Page {{ pagination.current_page }} / {{ pagination.last_page }}</span><button :disabled="pagination.current_page >= pagination.last_page" @click="load(pagination.current_page + 1)">Next</button></footer>
         </section>
     </div>

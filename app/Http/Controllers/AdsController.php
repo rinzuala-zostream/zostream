@@ -47,6 +47,9 @@ class AdsController extends Controller
             return response()->json(['status' => 'error', 'message' => 'Invalid API key'], 401);
         }
         $query = AdsModel::query();
+        if (\Illuminate\Support\Facades\Schema::hasColumn('ads', 'is_active')) {
+            $query->where('is_active', true);
+        }
         if ($request->has('video_url')) {
             $query->where('video_url', $request->query('video_url'));
         }
@@ -78,6 +81,8 @@ class AdsController extends Controller
                 // keep for backward compat; will be ignored & overwritten
                 'ads_url' => 'nullable|url',
                 'target_url' => 'nullable|url',
+                'campaign_id' => 'nullable|integer',
+                'is_active' => 'sometimes|boolean',
                 'feature_img' => 'nullable|url',
                 'img1' => 'nullable|url',
                 'img2' => 'nullable|url',
@@ -110,6 +115,8 @@ class AdsController extends Controller
                 'video_url' => $validated['video_url'] ?? null,
                 'ads_url' => null, // set after permalink generation
                 'target_url' => $validated['target_url'] ?? null,
+                'campaign_id' => $validated['campaign_id'] ?? null,
+                'is_active' => $validated['is_active'] ?? true,
                 'feature_img' => $validated['feature_img'] ?? null,
                 'img1' => $validated['img1'] ?? null,
                 'img2' => $validated['img2'] ?? null,
@@ -165,6 +172,8 @@ class AdsController extends Controller
             'video_url' => 'sometimes|nullable|url',
             'ads_url' => 'sometimes|nullable|url',
             'target_url' => 'sometimes|nullable|url',
+            'campaign_id' => 'sometimes|nullable|integer',
+            'is_active' => 'sometimes|boolean',
             'feature_img' => 'sometimes|nullable|url',
             'img1' => 'sometimes|nullable|url',
             'img2' => 'sometimes|nullable|url',
@@ -191,6 +200,8 @@ class AdsController extends Controller
             'video_url',
             'ads_url',
             'target_url',
+            'campaign_id',
+            'is_active',
             'feature_img',
             'img1',
             'img2',

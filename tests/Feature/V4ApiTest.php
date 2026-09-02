@@ -267,9 +267,14 @@ class V4ApiTest extends TestCase
             'api/v4/admin/qr-sessions',
             'api/v4/external/subscription-history',
             'api/v4/webhooks/razorpay',
+            'api/v4/webhooks/ads/razorpay',
             'api/v4/webhooks/whatsapp',
             'api/v4/ad-submissions',
             'api/v4/ad-submissions/status/{token}/resubmit',
+            'api/v4/ad-pricing/quote',
+            'api/v4/ad-submissions/status/{token}/payments/razorpay/order',
+            'api/v4/ad-submissions/status/{token}/payments/razorpay/verify',
+            'api/v4/ads/events',
         ];
 
         $mutationRoutes = collect(Route::getRoutes()->getRoutes())
