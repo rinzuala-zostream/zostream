@@ -39,6 +39,7 @@ export const links = {
 
 export const legalLinks = [
     { label: 'Terms & Conditions', href: '/terms-and-conditions' },
+    { label: 'Advertising Terms', href: '/advertising-terms' },
     { label: 'Privacy Policy', href: '/privacy-policy' },
     { label: 'Refund & Cancellation', href: '/refund-and-cancellation' },
     { label: 'Return Policy', href: '/return-policy' },

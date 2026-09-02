@@ -19,6 +19,7 @@ class PublicPagesTest extends TestCase
             '/return-policy',
             '/shipping-policy',
             '/copyright-policy',
+            '/advertising-terms',
             '/faq',
             '/advertise',
             '/advertise/status/'.str_repeat('a', 48),

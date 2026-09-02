@@ -23,7 +23,9 @@ const scrolled = ref(false);
 const currentPath = window.location.pathname.replace(/\/$/, '') || '/';
 const isHome = currentPath === '/';
 const policyPage = policyPages[currentPath];
-const dynamicLegalSlug = currentPath.startsWith('/legal/') ? currentPath.slice(7) : '';
+const dynamicLegalSlug = currentPath === '/advertising-terms'
+    ? 'advertising-terms'
+    : currentPath.startsWith('/legal/') ? currentPath.slice(7) : '';
 const legalSlug = policyPage ? currentPath.slice(1) : dynamicLegalSlug;
 const isLegalPage = Boolean(policyPage || dynamicLegalSlug);
 const livePolicyPage = ref(policyPage || { eyebrow: 'Legal', title: 'Legal page', date: '', intro: '', sections: [] });

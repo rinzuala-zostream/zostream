@@ -148,7 +148,7 @@ async function submit() {
                     <label class="ad-file wide">Gallery images<input type="file" multiple accept="image/jpeg,image/png,image/webp" @change="files($event, 'gallery')"><small>Maximum 4 images, file tin 10 MB</small></label>
                 </div></fieldset>
 
-                <label class="ad-terms"><input v-model="form.terms_accepted" type="checkbox" required><span>Ka submit content hman phalna ka nei tih ka confirm a, <a href="/legal/advertising-terms" target="_blank" rel="noopener noreferrer">Advertising Terms</a> leh <a href="/privacy-policy" target="_blank" rel="noopener noreferrer">Privacy Policy</a> ka chhiar a, ka pawm.</span></label>
+                <label class="ad-terms"><input v-model="form.terms_accepted" type="checkbox" required><span>Ka submit content hman phalna ka nei tih ka confirm a, <a href="/advertising-terms" target="_blank" rel="noopener noreferrer">Advertising Terms</a> leh <a href="/privacy-policy" target="_blank" rel="noopener noreferrer">Privacy Policy</a> ka chhiar a, ka pawm.</span></label>
                 <button class="primary-button ad-submit-button" :disabled="submitting">{{ submitting ? 'Submitting…' : 'Submit for review' }}</button>
             </form>
         </section>
