@@ -18,17 +18,29 @@ class HomeRecommendationService
         string $userId,
         int $limit,
         string $contentMode = 'adult',
-        bool $includeAgeRestricted = false
+        bool $includeAgeRestricted = false,
+        ?array $requestedSections = null
     ): array {
         $script = (string) config('recommender.script');
         $model = (string) config('recommender.model');
 
+        $needsAi = $requestedSections === null || array_intersect($requestedSections, [
+            'because_you_watched',
+            'top_picks_for_you',
+            'similar_movies',
+        ]) !== [];
         $live = $this->liveSections->snapshot(
             $userId,
             $limit,
             $contentMode,
-            $includeAgeRestricted
+            $includeAgeRestricted,
+            $requestedSections,
+            $needsAi
         );
+
+        if (! $needsAi) {
+            return $this->liveOnlyPayload($live);
+        }
 
         if (! is_file($script) || ! is_readable($script) || ! is_file($model) || ! is_readable($model)) {
             Log::warning('Recommendation model is unavailable to the web worker; serving live sections only.', [
@@ -53,14 +65,25 @@ class HomeRecommendationService
 
         try {
             if ($cacheSeconds === 0) {
-                return $this->run($userId, $limit, $contentMode, $includeAgeRestricted, $script, $model, $live);
+                $payload = $this->run($userId, $limit, $contentMode, $includeAgeRestricted, $script, $model, $live['signals']);
+            } else {
+                $payload = Cache::remember(
+                    $cacheKey,
+                    now()->addSeconds($cacheSeconds),
+                    fn (): array => $this->run($userId, $limit, $contentMode, $includeAgeRestricted, $script, $model, $live['signals'])
+                );
             }
 
-            return Cache::remember(
-                $cacheKey,
-                now()->addSeconds($cacheSeconds),
-                fn (): array => $this->run($userId, $limit, $contentMode, $includeAgeRestricted, $script, $model, $live)
+            $payload = $this->liveSections->filterAiSections(
+                $payload,
+                $contentMode,
+                $includeAgeRestricted
             );
+            foreach ($live['sections'] as $section => $items) {
+                $payload[$section] = $items;
+            }
+
+            return $payload;
         } catch (Throwable $exception) {
             Log::warning('Recommendation model execution failed; serving live sections only.', [
                 'exception' => $exception,
@@ -77,7 +100,7 @@ class HomeRecommendationService
         bool $includeAgeRestricted,
         string $script,
         string $model,
-        array $live
+        array $signals
     ): array {
         $command = [
             (string) config('recommender.python', 'python3'),
@@ -100,7 +123,7 @@ class HomeRecommendationService
         $process = new Process($command, base_path());
         $process->setTimeout(max(1.0, (float) config('recommender.timeout_seconds', 30)));
         $process->setIdleTimeout(null);
-        $process->setInput(json_encode($live['signals'], JSON_THROW_ON_ERROR));
+        $process->setInput(json_encode($signals, JSON_THROW_ON_ERROR));
         $process->run();
 
         if (! $process->isSuccessful()) {
@@ -118,15 +141,6 @@ class HomeRecommendationService
 
         if (! is_array($payload) || ! isset($payload['history_size'])) {
             throw new RuntimeException('Recommendation process returned an invalid payload.');
-        }
-
-        $payload = $this->liveSections->filterAiSections(
-            $payload,
-            $contentMode,
-            $includeAgeRestricted
-        );
-        foreach ($live['sections'] as $section => $items) {
-            $payload[$section] = $items;
         }
 
         return $payload;

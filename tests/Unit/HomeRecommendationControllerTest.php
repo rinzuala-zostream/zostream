@@ -15,7 +15,7 @@ class HomeRecommendationControllerTest extends TestCase
         $service = Mockery::mock(HomeRecommendationService::class);
         $service->shouldReceive('homepage')
             ->once()
-            ->with('trusted-user', 5, 'kids', true)
+            ->with('trusted-user', 5, 'kids', true, ['top_picks_for_you'])
             ->andReturn([
                 'user' => 'trusted-user',
                 'history_size' => 12,

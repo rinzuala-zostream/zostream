@@ -8,38 +8,88 @@ use Illuminate\Support\Facades\DB;
 
 class LiveHomeSectionService
 {
-    public function snapshot(string $userId, int $limit, string $mode, bool $includeAgeRestricted): array
-    {
-        $fetchLimit = min(max($limit, 20), 1251);
-        $watch = DB::table('watch_position')
-            ->where('user_id', $userId)
-            ->orderByRaw('COALESCE(updated_at, created_at) DESC')
-            ->limit(1000)
-            ->get(['movie_id', 'movie_type', 'position', 'duration', 'created_at', 'updated_at'])
-            ->map(fn ($row) => (array) $row)->all();
-        $wishlist = DB::table('wist_list')
-            ->where('uid', $userId)
-            ->orderByRaw('COALESCE(updated_at, created_at) DESC')
-            ->limit(max($fetchLimit, 200))
-            ->get(['movie_id', 'created_at', 'updated_at'])
-            ->map(fn ($row) => (array) $row)->all();
+    private const LIVE_SECTIONS = [
+        'continue_watching',
+        'trending_now',
+        'new_releases',
+        'your_wishlist',
+        'next_episode',
+    ];
 
-        $sections = [
-            'continue_watching' => $this->continueWatching($watch, $fetchLimit, $mode, $includeAgeRestricted),
-            'trending_now' => $this->movies(
-                $this->allowedMovies($mode, $includeAgeRestricted)->orderByDesc('views')->orderByDesc('num')->limit($fetchLimit)->get()
-            ),
-            'new_releases' => $this->movies(
-                $this->allowedMovies($mode, $includeAgeRestricted)->whereNotNull('release_on')->orderByDesc('release_on')->orderByDesc('num')->limit($fetchLimit)->get()
-            ),
-            'your_wishlist' => $this->wishlist($userId, $fetchLimit, $mode, $includeAgeRestricted),
-            'next_episode' => $this->nextEpisodes($watch, $fetchLimit, $mode, $includeAgeRestricted),
-        ];
+    private const MOVIE_CARD_COLUMNS = [
+        'id',
+        'title',
+        'genre',
+        'poster',
+        'isPremium',
+        'isPayPerView',
+        'release_on',
+    ];
+
+    public function snapshot(
+        string $userId,
+        int $limit,
+        string $mode,
+        bool $includeAgeRestricted,
+        ?array $requestedSections = null,
+        bool $includeRecommendationSignals = true
+    ): array {
+        $fetchLimit = min(max($limit, 20), 1251);
+        $requested = $requestedSections === null
+            ? self::LIVE_SECTIONS
+            : array_values(array_intersect(self::LIVE_SECTIONS, $requestedSections));
+        $needsWatch = $includeRecommendationSignals
+            || in_array('continue_watching', $requested, true)
+            || in_array('next_episode', $requested, true);
+        $needsWishlist = $includeRecommendationSignals
+            || in_array('your_wishlist', $requested, true);
+
+        $watch = $needsWatch
+            ? DB::table('watch_position')
+                ->where('user_id', $userId)
+                ->orderByRaw('COALESCE(updated_at, created_at) DESC')
+                ->limit(1000)
+                ->get(['movie_id', 'movie_type', 'position', 'duration', 'created_at', 'updated_at'])
+                ->map(fn ($row) => (array) $row)->all()
+            : [];
+        $wishlist = $needsWishlist
+            ? DB::table('wist_list')
+                ->where('uid', $userId)
+                ->orderByRaw('COALESCE(updated_at, created_at) DESC')
+                ->limit(max($fetchLimit, 200))
+                ->get(['movie_id', 'created_at', 'updated_at'])
+                ->map(fn ($row) => (array) $row)->all()
+            : [];
+
+        $sections = [];
+        if (in_array('continue_watching', $requested, true)) {
+            $sections['continue_watching'] = $this->continueWatching($watch, $fetchLimit, $mode, $includeAgeRestricted);
+        }
+        if (in_array('trending_now', $requested, true)) {
+            $sections['trending_now'] = $this->movies(
+                $this->allowedMovies($mode, $includeAgeRestricted)->orderByDesc('views')->orderByDesc('num')->limit($fetchLimit)->get(self::MOVIE_CARD_COLUMNS)
+            );
+        }
+        if (in_array('new_releases', $requested, true)) {
+            $sections['new_releases'] = $this->movies(
+                $this->allowedMovies($mode, $includeAgeRestricted)->whereNotNull('release_on')->orderByDesc('release_on')->orderByDesc('num')->limit($fetchLimit)->get(self::MOVIE_CARD_COLUMNS)
+            );
+        }
+        if (in_array('your_wishlist', $requested, true)) {
+            $sections['your_wishlist'] = $this->wishlist($wishlist, $fetchLimit, $mode, $includeAgeRestricted);
+        }
+        if (in_array('next_episode', $requested, true)) {
+            $sections['next_episode'] = $this->nextEpisodes($watch, $fetchLimit, $mode, $includeAgeRestricted);
+        }
+
+        $signals = ['watch_position' => $watch, 'wishlist' => $wishlist];
 
         return [
-            'signals' => ['watch_position' => $watch, 'wishlist' => $wishlist],
+            'signals' => $signals,
             'sections' => $sections,
-            'version' => hash('sha256', json_encode([$watch, $wishlist, $sections], JSON_UNESCAPED_UNICODE)),
+            // AI output only depends on user signals. Keeping volatile live shelves
+            // out of this version prevents view counters from defeating the cache.
+            'version' => hash('sha256', json_encode($signals, JSON_UNESCAPED_UNICODE)),
         ];
     }
 
@@ -92,28 +142,36 @@ class LiveHomeSectionService
             ->when($mode === 'kids' || ! $includeAgeRestricted, fn (Builder $query) => $query->where('isAgeRestricted', 0));
     }
 
-    private function wishlist(string $userId, int $limit, string $mode, bool $includeAgeRestricted): array
+    private function wishlist(array $wishlist, int $limit, string $mode, bool $includeAgeRestricted): array
     {
-        return $this->movies($this->allowedMovies($mode, $includeAgeRestricted)
-            ->join('wist_list', 'wist_list.movie_id', '=', 'movie.id')
-            ->where('wist_list.uid', $userId)
-            ->select('movie.*')
-            ->orderByRaw('COALESCE(wist_list.updated_at, wist_list.created_at) DESC')
-            ->limit($limit)->get());
+        $movieIds = collect($wishlist)->pluck('movie_id')->unique();
+        $movies = $this->allowedMovies($mode, $includeAgeRestricted)
+            ->whereIn('id', $movieIds)->get(self::MOVIE_CARD_COLUMNS)->keyBy('id');
+        $cards = [];
+        foreach ($movieIds as $movieId) {
+            if ($movie = $movies->get($movieId)) {
+                $cards[] = $this->movieCard($movie);
+            }
+            if (count($cards) >= $limit) {
+                break;
+            }
+        }
+
+        return $cards;
     }
 
     private function continueWatching(array $watch, int $limit, string $mode, bool $includeAgeRestricted): array
     {
         $movieIds = collect($watch)->where('movie_type', '!=', 'episode')->pluck('movie_id')->unique();
         $episodeIds = collect($watch)->where('movie_type', 'episode')->pluck('movie_id')->unique();
-        $movies = $this->allowedMovies($mode, $includeAgeRestricted)->whereIn('id', $movieIds)->get()->keyBy('id');
+        $movies = $this->allowedMovies($mode, $includeAgeRestricted)->whereIn('id', $movieIds)->get(self::MOVIE_CARD_COLUMNS)->keyBy('id');
         $episodes = DB::table('episodes')->join('seasons', 'seasons.id', '=', 'episodes.season_id')
             ->join('movie', 'movie.num', '=', 'seasons.movie_id')
             ->whereIn('episodes.id', $episodeIds)->where('episodes.status', 'Published')->where('episodes.is_active', 1)
             ->where('movie.status', 'Published')->where('movie.isEnable', 1)
             ->when($mode === 'kids', fn ($q) => $q->where('movie.isChildMode', 1))
             ->when($mode === 'kids' || ! $includeAgeRestricted, fn ($q) => $q->where('movie.isAgeRestricted', 0))
-            ->select('episodes.*', 'seasons.season_number', 'movie.id as parent_id', 'movie.title as series_title', 'movie.isPremium as parent_premium', 'movie.isPayPerView as parent_ppv')
+            ->select('episodes.id', 'episodes.title', 'episodes.thumbnail', 'episodes.episode_number', 'seasons.season_number', 'movie.id as parent_id', 'movie.title as series_title', 'movie.isPremium as parent_premium', 'movie.isPayPerView as parent_ppv')
             ->get()->keyBy('id');
         $cards = [];
         foreach ($watch as $row) {
@@ -153,18 +211,39 @@ class LiveHomeSectionService
             ->whereIn('episodes.id', $episodeIds)
             ->select('episodes.id', 'episodes.episode_number', 'seasons.season_number', 'seasons.movie_id')
             ->orderByDesc('seasons.season_number')->orderByDesc('episodes.episode_number')->get()->unique('movie_id');
+        if ($watched->isEmpty()) {
+            return [];
+        }
+
+        // Fetch future episodes for every watched series in one query, then keep
+        // the first result per series. This replaces up to 100 queries.
+        $candidates = DB::table('episodes')->join('seasons', 'seasons.id', '=', 'episodes.season_id')
+            ->join('movie', 'movie.num', '=', 'seasons.movie_id')
+            ->where('episodes.status', 'Published')->where('episodes.is_active', 1)
+            ->where('movie.status', 'Published')->where('movie.isEnable', 1)
+            ->when($mode === 'kids', fn ($q) => $q->where('movie.isChildMode', 1))
+            ->when($mode === 'kids' || ! $includeAgeRestricted, fn ($q) => $q->where('movie.isAgeRestricted', 0))
+            ->where(function ($query) use ($watched) {
+                foreach ($watched as $current) {
+                    $query->orWhere(function ($series) use ($current) {
+                        $series->where('seasons.movie_id', $current->movie_id)
+                            ->where(function ($later) use ($current) {
+                                $later->where('seasons.season_number', '>', $current->season_number)
+                                    ->orWhere(function ($sameSeason) use ($current) {
+                                        $sameSeason->where('seasons.season_number', $current->season_number)
+                                            ->where('episodes.episode_number', '>', $current->episode_number);
+                                    });
+                            });
+                    });
+                }
+            })
+            ->select('episodes.id', 'episodes.title', 'episodes.thumbnail', 'episodes.episode_number', 'seasons.movie_id as series_id', 'seasons.season_number', 'movie.id as parent_id', 'movie.title as series_title', 'movie.isPremium as parent_premium', 'movie.isPayPerView as parent_ppv')
+            ->orderBy('seasons.movie_id')->orderBy('seasons.season_number')->orderBy('episodes.episode_number')
+            ->get()->unique('series_id')->keyBy('series_id');
+
         $cards = [];
         foreach ($watched as $current) {
-            $next = DB::table('episodes')->join('seasons', 'seasons.id', '=', 'episodes.season_id')
-                ->join('movie', 'movie.num', '=', 'seasons.movie_id')
-                ->where('seasons.movie_id', $current->movie_id)->where('episodes.status', 'Published')->where('episodes.is_active', 1)
-                ->where(fn ($q) => $q->where('seasons.season_number', '>', $current->season_number)->orWhere(fn ($q2) => $q2->where('seasons.season_number', $current->season_number)->where('episodes.episode_number', '>', $current->episode_number)))
-                ->where('movie.status', 'Published')->where('movie.isEnable', 1)
-                ->when($mode === 'kids', fn ($q) => $q->where('movie.isChildMode', 1))
-                ->when($mode === 'kids' || ! $includeAgeRestricted, fn ($q) => $q->where('movie.isAgeRestricted', 0))
-                ->select('episodes.*', 'seasons.season_number', 'movie.id as parent_id', 'movie.title as series_title', 'movie.isPremium as parent_premium', 'movie.isPayPerView as parent_ppv')
-                ->orderBy('seasons.season_number')->orderBy('episodes.episode_number')->first();
-            if ($next) {
+            if ($next = $candidates->get($current->movie_id)) {
                 $cards[] = $this->episodeCard($next) + ['reason' => 'Next unwatched episode'];
             }
             if (count($cards) >= $limit) {

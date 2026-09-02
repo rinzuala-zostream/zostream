@@ -68,13 +68,17 @@ class HomeRecommendationController extends Controller
         $fetchLimit = min(($page * $perPage) + 1, 1251);
         $contentMode = $validated['content_mode'];
         $includeAgeRestricted = $request->boolean('age_restriction');
+        $requestedSections = isset($validated['section'])
+            ? [$validated['section']]
+            : self::SECTIONS;
 
         try {
             $homepage = $this->recommendations->homepage(
                 $userId,
                 $fetchLimit,
                 $contentMode,
-                $includeAgeRestricted
+                $includeAgeRestricted,
+                $requestedSections
             );
         } catch (Throwable $exception) {
             Log::warning('Home recommendation service unavailable', [
@@ -89,9 +93,6 @@ class HomeRecommendationController extends Controller
             );
         }
 
-        $requestedSections = isset($validated['section'])
-            ? [$validated['section']]
-            : self::SECTIONS;
         $sections = [];
 
         foreach ($requestedSections as $section) {
