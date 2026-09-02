@@ -2,6 +2,7 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 import AppFooter from './components/AppFooter.vue';
 import AppHeader from './components/AppHeader.vue';
+import AdBannerSlot from './components/AdBannerSlot.vue';
 import DownloadSection from './components/DownloadSection.vue';
 import FeaturedSection from './components/FeaturedSection.vue';
 import FeaturesSection from './components/FeaturesSection.vue';
@@ -88,7 +89,7 @@ onBeforeUnmount(() => {
 <template>
     <div class="site-shell">
         <AppHeader :active-section="activeSection" :current-path="currentPath" :scrolled="scrolled" @navigate="navigate" />
-        <main v-if="isHome"><HeroSection @navigate="navigate" /><PlatformStats /><FeaturesSection /><FeaturedSection /><PricingSection /><DownloadSection /></main>
+        <main v-if="isHome"><HeroSection @navigate="navigate" /><AdBannerSlot placement="home_top" /><PlatformStats /><FeaturesSection /><AdBannerSlot placement="home_middle" /><FeaturedSection /><PricingSection /><DownloadSection /></main>
         <AboutPage v-else-if="currentPath === '/about-us'" />
         <AccountDeletePage v-else-if="currentPath === '/account-delete'" />
         <ContactPage v-else-if="currentPath === '/contact-us'" />
