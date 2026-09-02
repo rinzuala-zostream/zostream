@@ -1,0 +1,53 @@
+<script setup>
+import { computed, onMounted, reactive, ref } from 'vue';
+import { useRoute } from 'vue-router';
+import PageHeader from '../components/PageHeader.vue';
+import StatusPanel from '../components/StatusPanel.vue';
+import { api } from '../lib/api';
+import { formatAdminDate } from '../lib/adminDate';
+
+const route = useRoute(); const item = ref(null); const loading = ref(true); const busy = ref(false); const error = ref(''); const notice = ref('');
+const decision = reactive({ start_date: '', period_days: 30, media_url: '', review_note: '', reason: '' });
+const labels = { pending_review: 'Pending review', changes_requested: 'Changes requested', approved: 'Approved', rejected: 'Rejected' };
+const canReview = computed(() => item.value?.status === 'pending_review');
+
+function sync() { if (!item.value) return; decision.start_date = item.value.requested_start_date || new Date().toISOString().slice(0, 10); decision.period_days = item.value.requested_period_days || 30; decision.media_url = item.value.media_url || ''; }
+async function load() { loading.value = true; error.value = ''; try { item.value = await api(`/admin/ad-submissions/${encodeURIComponent(route.params.id)}`); sync(); } catch (reason) { error.value = reason.message; } finally { loading.value = false; } }
+async function act(action) {
+    if (!canReview.value) return;
+    if (['reject','request-changes'].includes(action) && !decision.reason.trim()) { error.value = 'Reason is required for this action.'; return; }
+    const messages = { approve: 'Approve and publish this ad?', reject: 'Reject this submission?', 'request-changes': 'Send this change request?' };
+    if (!confirm(messages[action])) return;
+    busy.value = true; error.value = ''; notice.value = '';
+    const body = action === 'approve' ? { start_date: decision.start_date || null, period_days: Number(decision.period_days), media_url: decision.media_url || null, review_note: decision.review_note || null } : { reason: decision.reason };
+    try { item.value = await api(`/admin/ad-submissions/${item.value.id}/${action}`, { method: 'POST', body }); notice.value = action === 'approve' ? 'Ad approved and published.' : 'Submission status updated.'; }
+    catch (reason) { error.value = reason.message; }
+    finally { busy.value = false; }
+}
+onMounted(load);
+</script>
+
+<template>
+    <div class="admin-page ad-review-page">
+        <PageHeader eyebrow="Advertising review" :title="item?.reference_no || 'Ad submission'" :description="item ? `${item.business_name} · ${labels[item.status] || item.status}` : 'Loading submission details'" back="/ads/submissions" />
+        <StatusPanel tone="success" :message="notice" /><StatusPanel tone="error" :message="error" />
+        <div v-if="loading" class="admin-loading">Loading submission…</div>
+        <div v-else-if="item" class="ad-review-layout">
+            <div class="ad-review-content">
+                <section class="admin-panel ad-campaign-preview"><header><div><p>Campaign creative</p><h2>{{ item.ads_name }}</h2></div><span class="admin-pill" :class="`is-${item.status}`">{{ labels[item.status] || item.status }}</span></header><div class="ad-preview-body"><video v-if="item.type === 'video' && item.media_url" :src="item.media_url" controls preload="metadata"></video><img v-else-if="item.assets?.find(asset => asset.kind === 'feature')?.file_url || item.media_url" :src="item.assets?.find(asset => asset.kind === 'feature')?.file_url || item.media_url" alt="Ad preview"><div v-else class="ad-no-preview">No media preview</div><p>{{ item.description || 'No description supplied.' }}</p><a v-if="item.destination_url" :href="item.destination_url" target="_blank" rel="noopener">Destination URL ↗</a></div></section>
+                <section class="admin-panel ad-detail-panel"><header><div><p>Submitted details</p><h2>Campaign information</h2></div></header><dl><div><dt>Type</dt><dd>{{ item.type }}</dd></div><div><dt>Requested start</dt><dd>{{ item.requested_start_date || 'Not specified' }}</dd></div><div><dt>Period</dt><dd>{{ item.requested_period_days }} days</dd></div><div><dt>Submitted</dt><dd>{{ formatAdminDate(item.created_at) }}</dd></div><div><dt>Media URL</dt><dd><a v-if="item.media_url" :href="item.media_url" target="_blank">Open media ↗</a><span v-else>—</span></dd></div><div><dt>Approved ad</dt><dd>{{ item.approved_ad_num || '—' }}</dd></div></dl></section>
+                <section v-if="item.assets?.length" class="admin-panel ad-assets"><header><div><p>Uploads</p><h2>Submission assets</h2></div></header><div><a v-for="asset in item.assets" :key="asset.id" :href="asset.file_url" target="_blank"><img v-if="asset.mime_type?.startsWith('image/')" :src="asset.file_url" alt=""><span>{{ asset.kind }} · {{ asset.mime_type || 'file' }}</span></a></div></section>
+                <section class="admin-panel ad-events"><header><div><p>Audit trail</p><h2>Review timeline</h2></div></header><div><article v-for="event in item.events" :key="event.id"><i></i><span><b>{{ labels[event.to_status] || event.action }}</b><small>{{ event.note || 'No note' }}</small><time>{{ formatAdminDate(event.created_at) }} · {{ event.actor_type }}</time></span></article></div></section>
+            </div>
+            <aside>
+                <section class="admin-panel ad-contact"><header><div><p>Advertiser</p><h2>Contact</h2></div></header><div><b>{{ item.business_name }}</b><span>{{ item.contact_name }}</span><a :href="`tel:${item.contact_phone}`">{{ item.contact_phone }}</a><a v-if="item.contact_email" :href="`mailto:${item.contact_email}`">{{ item.contact_email }}</a></div></section>
+                <section v-if="canReview" class="admin-panel ad-decision"><header><div><p>Decision</p><h2>Review submission</h2></div></header><form @submit.prevent><label>Publish start date<input v-model="decision.start_date" type="date"></label><label>Period (days)<input v-model.number="decision.period_days" type="number" min="1" max="366"></label><label>Final media URL<input v-model.trim="decision.media_url" type="url"></label><label>Approval note<textarea v-model.trim="decision.review_note" rows="3"></textarea></label><button class="admin-primary" :disabled="busy" @click="act('approve')">Approve & publish</button><hr><label>Change/rejection reason<textarea v-model.trim="decision.reason" rows="4" placeholder="Required"></textarea></label><div><button class="admin-secondary" :disabled="busy" @click="act('request-changes')">Request changes</button><button class="admin-danger" :disabled="busy" @click="act('reject')">Reject</button></div></form></section>
+                <section v-else class="admin-panel ad-reviewed"><header><div><p>Decision complete</p><h2>{{ labels[item.status] }}</h2></div></header><div><p>{{ item.review_note || item.rejection_reason || 'No review note.' }}</p><small>Reviewed {{ formatAdminDate(item.reviewed_at) }} by {{ item.reviewed_by || 'admin' }}</small><a v-if="item.approved_ad_num" :href="`/ads/${item.approved_ad_num}`" target="_blank">Open published ad ↗</a></div></section>
+            </aside>
+        </div>
+    </div>
+</template>
+
+<style scoped>
+.ad-review-layout{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:15px}.ad-review-content{display:grid;gap:15px;min-width:0}.ad-review-layout aside{display:grid;height:max-content;gap:15px}.admin-panel header p{margin:0 0 6px;color:var(--a-cyan);font-size:9px;font-weight:900;letter-spacing:1.5px;text-transform:uppercase}.admin-pill.is-approved{background:rgba(178,255,75,.1);color:var(--a-lime)}.admin-pill.is-rejected{background:rgba(255,115,123,.11);color:var(--a-red)}.admin-pill.is-changes_requested{background:rgba(255,196,80,.1);color:#ffd071}.ad-preview-body{padding:20px}.ad-preview-body img,.ad-preview-body video{display:block;width:100%;max-height:480px;border-radius:13px;background:#030708;object-fit:contain}.ad-preview-body p{color:#b5c0c4;font-size:13px;line-height:1.7}.ad-preview-body>a,.ad-detail-panel a,.ad-contact a,.ad-reviewed a{color:var(--a-cyan);font-size:12px;font-weight:800;overflow-wrap:anywhere}.ad-no-preview{display:grid;min-height:230px;place-items:center;border:1px dashed var(--a-line);border-radius:13px;color:var(--a-muted)}.ad-detail-panel dl{display:grid;grid-template-columns:1fr 1fr;margin:0;padding:10px}.ad-detail-panel dl>div{padding:14px;border-bottom:1px solid var(--a-line)}.ad-detail-panel dt{color:var(--a-muted);font-size:9px;font-weight:800;text-transform:uppercase}.ad-detail-panel dd{margin:7px 0 0;color:var(--a-text);font-size:12px;overflow-wrap:anywhere}.ad-contact>div,.ad-reviewed>div{display:grid;gap:8px;padding:20px}.ad-contact b{font-size:17px}.ad-contact span,.ad-reviewed p,.ad-reviewed small{color:var(--a-muted);font-size:12px;line-height:1.6}.ad-decision form{display:grid;gap:14px;padding:19px}.ad-decision label{display:grid;gap:7px;color:var(--a-muted);font-size:11px;font-weight:700}.ad-decision input,.ad-decision textarea{width:100%;padding:11px;border:1px solid var(--a-line);border-radius:9px;outline:0;background:rgba(4,12,15,.65);color:var(--a-text);font-size:12px}.ad-decision hr{width:100%;margin:3px 0;border:0;border-top:1px solid var(--a-line)}.ad-decision form>div{display:grid;grid-template-columns:1fr 1fr;gap:8px}.ad-assets>div{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:16px}.ad-assets a{overflow:hidden;border:1px solid var(--a-line);border-radius:11px;color:var(--a-muted);font-size:9px}.ad-assets img{display:block;width:100%;height:130px;object-fit:cover}.ad-assets span{display:block;padding:9px}.ad-events>div{display:grid;padding:18px}.ad-events article{display:flex;gap:13px;padding-bottom:17px}.ad-events i{width:9px;height:9px;margin-top:4px;border-radius:50%;background:var(--a-cyan)}.ad-events span{display:grid;gap:4px}.ad-events b{font-size:12px}.ad-events small,.ad-events time{color:var(--a-muted);font-size:10px}.ad-reviewed a{margin-top:8px}@media(max-width:1050px){.ad-review-layout{grid-template-columns:1fr}.ad-review-layout aside{grid-template-columns:1fr 1fr}}@media(max-width:650px){.ad-review-layout aside{grid-template-columns:1fr}.ad-detail-panel dl{grid-template-columns:1fr}.ad-assets>div{grid-template-columns:1fr 1fr}}
+</style>

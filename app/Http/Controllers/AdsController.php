@@ -3,9 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\AdsModel;
-use Illuminate\Http\Request;
 use Carbon\Carbon;
-use Exception;
+use Illuminate\Http\Request;
 use Str;
 
 class AdsController extends Controller
@@ -23,9 +22,9 @@ class AdsController extends Controller
     private function success($message, $data = null, $statusCode = 200)
     {
         return response()->json([
-            "status" => "success",
-            "message" => $message,
-            "data" => $data
+            'status' => 'success',
+            'message' => $message,
+            'data' => $data,
         ], $statusCode);
     }
 
@@ -35,9 +34,9 @@ class AdsController extends Controller
     private function error($message, $statusCode = 400, $errors = null)
     {
         return response()->json([
-            "status" => "error",
-            "message" => $message,
-            "errors" => $errors
+            'status' => 'error',
+            'message' => $message,
+            'errors' => $errors,
         ], $statusCode);
     }
 
@@ -45,7 +44,7 @@ class AdsController extends Controller
     {
         $apiKey = $request->header('X-Api-Key');
         if ($apiKey !== $this->validApiKey) {
-            return response()->json(["status" => "error", "message" => "Invalid API key"], 401);
+            return response()->json(['status' => 'error', 'message' => 'Invalid API key'], 401);
         }
         $query = AdsModel::query();
         if ($request->has('video_url')) {
@@ -56,15 +55,17 @@ class AdsController extends Controller
             $createDate = Carbon::parse($ad->create_date);
             $endDate = $createDate->copy()->addDays($ad->period);
             $now = Carbon::now();
+
             return $now->between($createDate, $endDate);
         });
+
         return response()->json(array_values($filtered->toArray()));
     }
 
     public function store(Request $request)
     {
         if ($request->header('X-Api-Key') !== $this->validApiKey) {
-            return $this->error("Invalid API key", 401);
+            return $this->error('Invalid API key', 401);
         }
 
         try {
@@ -76,6 +77,7 @@ class AdsController extends Controller
                 'video_url' => 'nullable|url',
                 // keep for backward compat; will be ignored & overwritten
                 'ads_url' => 'nullable|url',
+                'target_url' => 'nullable|url',
                 'feature_img' => 'nullable|url',
                 'img1' => 'nullable|url',
                 'img2' => 'nullable|url',
@@ -93,7 +95,7 @@ class AdsController extends Controller
             $createDate = $validated['create_date'] ?? Carbon::now()->format('F j, Y');
 
             // If client sends images[], spread into img1..img4
-            if (!empty($validated['images'])) {
+            if (! empty($validated['images'])) {
                 $pad = array_pad($validated['images'], 4, null);
                 [$validated['img1'], $validated['img2'], $validated['img3'], $validated['img4']] = $pad;
             }
@@ -107,6 +109,7 @@ class AdsController extends Controller
                 'type' => $validated['type'],
                 'video_url' => $validated['video_url'] ?? null,
                 'ads_url' => null, // set after permalink generation
+                'target_url' => $validated['target_url'] ?? null,
                 'feature_img' => $validated['feature_img'] ?? null,
                 'img1' => $validated['img1'] ?? null,
                 'img2' => $validated['img2'] ?? null,
@@ -121,9 +124,9 @@ class AdsController extends Controller
             $ad->ads_url = $permalink;
             $ad->save();
 
-            return $this->success("Ad created successfully", $ad->fresh(), 201);
+            return $this->success('Ad created successfully', $ad->fresh(), 201);
         } catch (\Throwable $e) {
-            return $this->error("Failed to create ad", 500, $e->getMessage());
+            return $this->error('Failed to create ad', 500, $e->getMessage());
         }
     }
 
@@ -136,21 +139,21 @@ class AdsController extends Controller
             abort(404); // no numeric id/num in URL
         }
         $adModel = AdsModel::findOrFail($numPart);
+
         return view('ads.show', ['ad' => $adModel]);
     }
-
 
     public function update(Request $request, $num)
     {
         // API key check
         if ($request->header('X-Api-Key') !== $this->validApiKey) {
-            return $this->error("Invalid API key", 401);
+            return $this->error('Invalid API key', 401);
         }
 
         // Find the ad (404 if not found)
         $ad = AdsModel::find($num);
-        if (!$ad) {
-            return $this->error("Ad not found", 404);
+        if (! $ad) {
+            return $this->error('Ad not found', 404);
         }
 
         // Validate only provided fields (PATCH-friendly)
@@ -161,6 +164,7 @@ class AdsController extends Controller
             'type' => 'sometimes|required|string', // e.g., "image" | "video" | ...
             'video_url' => 'sometimes|nullable|url',
             'ads_url' => 'sometimes|nullable|url',
+            'target_url' => 'sometimes|nullable|url',
             'feature_img' => 'sometimes|nullable|url',
             'img1' => 'sometimes|nullable|url',
             'img2' => 'sometimes|nullable|url',
@@ -186,12 +190,13 @@ class AdsController extends Controller
             'type',
             'video_url',
             'ads_url',
+            'target_url',
             'feature_img',
             'img1',
             'img2',
             'img3',
             'img4',
-            'create_date'
+            'create_date',
         ];
 
         $updates = [];
@@ -206,6 +211,6 @@ class AdsController extends Controller
         $ad->fill($updates);
         $ad->save();
 
-        return $this->success("Ad updated successfully", $ad);
+        return $this->success('Ad updated successfully', $ad);
     }
 }

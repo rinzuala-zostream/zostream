@@ -16,6 +16,7 @@ const theme = ref(savedTheme || (window.matchMedia('(prefers-color-scheme: light
 const item = (key) => ({ label: resources[key].label, to: `/manage/${key}`, icon: resources[key].icon });
 const groups = [
     { label: 'Overview', items: [{ label: 'Dashboard', to: '/dashboard', icon: 'grid' }] },
+    { label: 'Advertising', items: [{ label: 'Ad submissions', to: '/ads/submissions', icon: 'image' }] },
     { label: 'Content', items: ['movies', 'seasons', 'episodes', 'banners'].map(item) },
     { label: 'Audience', items: ['users', 'subscriptions', 'plans', 'devices'].map(item) },
     { label: 'Engagement', items: ['polls', 'legal'].map(item).concat([

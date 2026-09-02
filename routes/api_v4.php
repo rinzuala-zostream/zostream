@@ -1,8 +1,10 @@
 <?php
 
 use App\Http\Controllers\Api\V4\AccountController;
+use App\Http\Controllers\Api\V4\AdminAdSubmissionController;
 use App\Http\Controllers\Api\V4\AdminRealtimeConfigController;
 use App\Http\Controllers\Api\V4\AdminWhatsAppInboxController;
+use App\Http\Controllers\Api\V4\AdSubmissionController;
 use App\Http\Controllers\Api\V4\AuthController;
 use App\Http\Controllers\Api\V4\BillingController;
 use App\Http\Controllers\Api\V4\CatalogController;
@@ -100,6 +102,13 @@ Route::prefix('v4')
 
         Route::get('/legal-pages', [LegalPageController::class, 'publicIndex']);
         Route::get('/legal-pages/{slug}', [LegalPageController::class, 'publicShow']);
+
+        Route::post('/ad-submissions', [AdSubmissionController::class, 'store'])
+            ->middleware('throttle:10,1');
+        Route::get('/ad-submissions/status/{token}', [AdSubmissionController::class, 'status'])
+            ->middleware('throttle:60,1');
+        Route::post('/ad-submissions/status/{token}/resubmit', [AdSubmissionController::class, 'resubmit'])
+            ->middleware('throttle:10,1');
 
         Route::get('/catalog/items/{movieId}/seasons', [SeasonController::class, 'index']);
         Route::get('/catalog/seasons/{id}', [SeasonController::class, 'show']);
@@ -269,6 +278,12 @@ Route::prefix('v4')
                     Route::get('/banners/{id}', [BannerController::class, 'show']);
                     Route::put('/banners/{id}', [BannerController::class, 'update']);
                     Route::delete('/banners/{id}', [BannerController::class, 'destroy']);
+
+                    Route::get('/ad-submissions', [AdminAdSubmissionController::class, 'index']);
+                    Route::get('/ad-submissions/{adSubmission}', [AdminAdSubmissionController::class, 'show']);
+                    Route::post('/ad-submissions/{adSubmission}/approve', [AdminAdSubmissionController::class, 'approve']);
+                    Route::post('/ad-submissions/{adSubmission}/reject', [AdminAdSubmissionController::class, 'reject']);
+                    Route::post('/ad-submissions/{adSubmission}/request-changes', [AdminAdSubmissionController::class, 'requestChanges']);
 
                     Route::get('/subscriptions', [SubscriptionController::class, 'index']);
                     Route::get('/subscriptions/search', [SubscriptionController::class, 'searchSubscribers']);

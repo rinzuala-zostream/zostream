@@ -1,6 +1,7 @@
 <?php
 
 // app/Models/AdsModel.php
+
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
@@ -8,9 +9,13 @@ use Illuminate\Database\Eloquent\Model;
 class AdsModel extends Model
 {
     protected $table = 'ads';
+
     protected $primaryKey = 'num';
+
     public $incrementing = true;
+
     protected $keyType = 'int';
+
     public $timestamps = false;
 
     protected $fillable = [
@@ -21,6 +26,7 @@ class AdsModel extends Model
         'type',
         'video_url',
         'ads_url',
+        'target_url',
         'feature_img',
         'img1',
         'img2',
@@ -29,6 +35,6 @@ class AdsModel extends Model
     ];
 
     protected $casts = [
-        'period'      => 'integer',
+        'period' => 'integer',
     ];
 }

@@ -2,8 +2,6 @@
 
 use App\Http\Controllers\AdsController;
 use App\Http\Controllers\InvoiceController;
-use App\Http\Controllers\SubscriptionController;
-use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
@@ -26,6 +24,8 @@ Route::view('/return-policy', 'welcome');
 Route::view('/shipping-policy', 'welcome');
 Route::view('/copyright-policy', 'welcome');
 Route::view('/faq', 'welcome');
+Route::view('/advertise', 'welcome');
+Route::view('/advertise/status/{token}', 'welcome')->where('token', '[A-Za-z0-9]{48}');
 Route::view('/account-delete', 'welcome');
 Route::view('/legal/{slug}', 'welcome')->where('slug', '[a-z0-9-]+');
 
@@ -45,6 +45,7 @@ Route::get('/invoices/payments/{payment}/pdf', [InvoiceController::class, 'pdf']
 
 Route::get('/redis-test', function () {
     Redis::set('mykey', 'Hello Redis!');
+
     return Redis::get('mykey'); // Should return "Hello Redis!"
 });
 
@@ -57,10 +58,10 @@ Route::get('/firebase-test', function () {
     $database = $firebase->createDatabase();
 
     $database->getReference('test')->set([
-        'status' => 'connected'
+        'status' => 'connected',
     ]);
 
-    return "Firebase connected";
+    return 'Firebase connected';
 });
 
 Route::get('/upload-test', function () {
@@ -69,5 +70,6 @@ Route::get('/upload-test', function () {
 
 Route::get('/test-r2', function () {
     Storage::disk('r2')->put('test.txt', 'hello world');
+
     return 'OK';
 });

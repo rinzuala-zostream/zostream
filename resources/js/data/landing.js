@@ -3,6 +3,7 @@ export const navigation = [
     { label: 'Experience', target: '/#featured' },
     { label: 'About us', target: '/about-us' },
     { label: 'Plans', target: '/#plans' },
+    { label: 'Advertise', target: '/advertise' },
     { label: 'Download', target: '/download' },
     { label: 'Contact us', target: '/contact-us' },
 ];

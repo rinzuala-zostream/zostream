@@ -161,6 +161,12 @@
 
                     {{-- Actions (hidden on mobile) --}}
                     <div class="mt-6 flex flex-wrap gap-3">
+                        @if ($ad->target_url)
+                            <a href="{{ $ad->target_url }}" target="_blank" rel="noopener noreferrer"
+                                class="inline-flex px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 transition shadow-lg">
+                                Visit advertiser ↗
+                            </a>
+                        @endif
                         <button id="copyBtn"
                             class="hidden sm:inline-flex px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 transition shadow-lg shadow-indigo-900/30"
                             data-link="{{ $ad->ads_url }}">

@@ -20,11 +20,12 @@ class PublicPagesTest extends TestCase
             '/shipping-policy',
             '/copyright-policy',
             '/faq',
+            '/advertise',
+            '/advertise/status/'.str_repeat('a', 48),
         ];
 
         foreach ($pages as $page) {
             $this->get($page)->assertOk();
         }
     }
-
 }

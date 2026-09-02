@@ -13,6 +13,8 @@ import AccountDeletePage from './components/pages/AccountDeletePage.vue';
 import ContactPage from './components/pages/ContactPage.vue';
 import DownloadPage from './components/pages/DownloadPage.vue';
 import FaqPage from './components/pages/FaqPage.vue';
+import AdvertisePage from './components/pages/AdvertisePage.vue';
+import AdSubmissionStatusPage from './components/pages/AdSubmissionStatusPage.vue';
 import PolicyPage from './components/pages/PolicyPage.vue';
 import { policyPages } from './data/pages';
 
@@ -25,7 +27,8 @@ const dynamicLegalSlug = currentPath.startsWith('/legal/') ? currentPath.slice(7
 const legalSlug = policyPage ? currentPath.slice(1) : dynamicLegalSlug;
 const isLegalPage = Boolean(policyPage || dynamicLegalSlug);
 const livePolicyPage = ref(policyPage || { eyebrow: 'Legal', title: 'Legal page', date: '', intro: '', sections: [] });
-const pageTitles = { '/about-us': 'About us', '/account-delete': 'Delete account', '/contact-us': 'Contact us', '/download': 'Download', '/faq': 'FAQ' };
+const isAdStatusPage = currentPath.startsWith('/advertise/status/');
+const pageTitles = { '/about-us': 'About us', '/account-delete': 'Delete account', '/contact-us': 'Contact us', '/download': 'Download', '/faq': 'FAQ', '/advertise': 'Advertise' };
 let sectionObserver;
 let revealObserver;
 
@@ -37,7 +40,7 @@ const navigate = (target) => {
 const handleScroll = () => { scrolled.value = window.scrollY > 30; };
 
 onMounted(() => {
-    document.title = `${policyPage?.title || pageTitles[currentPath] || 'All in Mizo'} — Zo Stream`;
+    document.title = `${policyPage?.title || pageTitles[currentPath] || (isAdStatusPage ? 'Ad submission status' : 'All in Mizo')} — Zo Stream`;
     if (legalSlug) {
         fetch(`/api/v4/legal-pages/${encodeURIComponent(legalSlug)}`, {
             headers: { 'X-Client-Platform': 'web', 'X-Client-Version': '1.0' },
@@ -89,6 +92,8 @@ onBeforeUnmount(() => {
         <ContactPage v-else-if="currentPath === '/contact-us'" />
         <DownloadPage v-else-if="currentPath === '/download'" />
         <FaqPage v-else-if="currentPath === '/faq'" />
+        <AdvertisePage v-else-if="currentPath === '/advertise'" />
+        <AdSubmissionStatusPage v-else-if="isAdStatusPage" />
         <PolicyPage v-else-if="isLegalPage" :page="livePolicyPage" />
         <AppFooter @navigate="navigate" />
     </div>
