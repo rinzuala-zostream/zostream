@@ -30,7 +30,7 @@ const dynamicLegalSlug = currentPath === '/advertising-terms'
 const legalSlug = policyPage ? currentPath.slice(1) : dynamicLegalSlug;
 const isLegalPage = Boolean(policyPage || dynamicLegalSlug);
 const livePolicyPage = ref(policyPage || { eyebrow: 'Legal', title: 'Legal page', date: '', intro: '', sections: [] });
-const isAdStatusPage = currentPath.startsWith('/advertise/status/');
+const isAdStatusPage = currentPath.startsWith('/advertise/status/') || currentPath.startsWith('/advertise/payment/');
 const pageTitles = { '/about-us': 'About us', '/account-delete': 'Delete account', '/contact-us': 'Contact us', '/download': 'Download', '/faq': 'FAQ', '/advertise': 'Advertise' };
 let sectionObserver;
 let revealObserver;

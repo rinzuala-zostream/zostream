@@ -4,10 +4,12 @@ namespace App\Http\Controllers\Api\V4;
 
 use App\Http\Controllers\Controller;
 use App\Models\AdSubmission;
+use App\Models\UserModel;
 use App\Services\AdPricingService;
 use App\Support\Api\V4Response;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -19,16 +21,26 @@ class AdSubmissionController extends Controller
 
     public function store(Request $request)
     {
+        $userId = (string) $request->input('auth_user_id');
+        $user = UserModel::where('uid', $userId)->firstOrFail();
+        if (blank($user->auth_phone)) {
+            throw ValidationException::withMessages([
+                'account' => ['Add and verify your WhatsApp phone number before submitting an ad.'],
+            ]);
+        }
+
         $data = $request->validate($this->submissionRules());
         $this->validateMedia($request, $data);
         $quote = $this->pricing->quote($data);
 
         $token = Str::random(48);
 
-        $submission = DB::transaction(function () use ($request, $data, $quote, $token) {
+        $submission = DB::transaction(function () use ($request, $data, $quote, $token, $userId) {
             $submission = AdSubmission::create([
+                'user_id' => $userId,
                 'reference_no' => $this->newReferenceNumber(),
                 'public_token_hash' => hash('sha256', $token),
+                'public_token_encrypted' => Crypt::encryptString($token),
                 'status' => AdSubmission::STATUS_PENDING,
                 'business_name' => $data['business_name'],
                 'contact_name' => $data['contact_name'],
@@ -71,6 +83,7 @@ class AdSubmissionController extends Controller
                 'action' => 'submitted',
                 'to_status' => AdSubmission::STATUS_PENDING,
                 'actor_type' => 'advertiser',
+                'actor_id' => $userId,
             ]);
 
             return $submission->fresh('assets');
@@ -82,9 +95,9 @@ class AdSubmissionController extends Controller
         ], 'Your ad was submitted for review.', status: 201);
     }
 
-    public function status(string $token)
+    public function status(Request $request, string $token)
     {
-        $submission = $this->findByToken($token)->load([
+        $submission = $this->findByToken($token, (string) $request->input('auth_user_id'))->load([
             'assets', 'events', 'campaign.creatives', 'campaign.invoices.items', 'campaign.invoices.payments',
         ]);
 
@@ -93,7 +106,8 @@ class AdSubmissionController extends Controller
 
     public function resubmit(Request $request, string $token)
     {
-        $submission = $this->findByToken($token);
+        $userId = (string) $request->input('auth_user_id');
+        $submission = $this->findByToken($token, $userId);
 
         if ($submission->status !== AdSubmission::STATUS_CHANGES_REQUESTED) {
             return V4Response::error(
@@ -147,6 +161,7 @@ class AdSubmissionController extends Controller
             'to_status' => AdSubmission::STATUS_PENDING,
             'note' => $data['response_note'] ?? null,
             'actor_type' => 'advertiser',
+            'actor_id' => $userId,
         ]);
 
         return V4Response::success(
@@ -234,17 +249,20 @@ class AdSubmissionController extends Controller
         return $reference;
     }
 
-    private function findByToken(string $token): AdSubmission
+    private function findByToken(string $token, string $userId): AdSubmission
     {
         $lookupToken = strlen($token) === 48 ? $token : Str::random(48);
 
-        return AdSubmission::where('public_token_hash', hash('sha256', $lookupToken))->firstOrFail();
+        return AdSubmission::where('public_token_hash', hash('sha256', $lookupToken))
+            ->where('user_id', $userId)
+            ->firstOrFail();
     }
 
     private function publicSubmission(AdSubmission $submission): array
     {
         return [
             'reference_no' => $submission->reference_no,
+            'user_id' => $submission->user_id,
             'status' => $submission->status,
             'business_name' => $submission->business_name,
             'contact_name' => $submission->contact_name,
@@ -290,6 +308,7 @@ class AdSubmissionController extends Controller
                 : [],
             'submitted_at' => $submission->created_at?->toIso8601String(),
             'reviewed_at' => $submission->reviewed_at?->toIso8601String(),
+            'approval_whatsapp_sent_at' => $submission->approval_whatsapp_sent_at?->toIso8601String(),
             'campaign' => $submission->relationLoaded('campaign') && $submission->campaign
                 ? $this->publicCampaign($submission->campaign)
                 : null,

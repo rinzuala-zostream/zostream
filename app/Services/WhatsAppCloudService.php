@@ -34,6 +34,59 @@ class WhatsAppCloudService
         ]);
     }
 
+    public function sendTemplate(
+        string $to,
+        string $template,
+        array $bodyParameters = [],
+        ?string $buttonParameter = null,
+        string $language = 'en',
+    ): WhatsAppMessage {
+        $components = [];
+        if ($bodyParameters !== []) {
+            $components[] = [
+                'type' => 'body',
+                'parameters' => array_map(
+                    static fn ($value) => ['type' => 'text', 'text' => (string) $value],
+                    $bodyParameters,
+                ),
+            ];
+        }
+        if (filled($buttonParameter)) {
+            $components[] = [
+                'type' => 'button',
+                'sub_type' => 'url',
+                'index' => '0',
+                'parameters' => [['type' => 'text', 'text' => $buttonParameter]],
+            ];
+        }
+
+        $payload = [
+            'messaging_product' => 'whatsapp',
+            'recipient_type' => 'individual',
+            'to' => preg_replace('/\D+/', '', $to),
+            'type' => 'template',
+            'template' => [
+                'name' => $template,
+                'language' => ['code' => $language],
+                'components' => $components,
+            ],
+        ];
+
+        $response = $this->postMessage($payload);
+        $wamid = data_get($response->json(), 'messages.0.id');
+
+        return WhatsAppMessage::create([
+            'wamid' => $wamid,
+            'contact_phone' => $payload['to'],
+            'direction' => 'outbound',
+            'type' => 'template',
+            'body' => "Template: {$template}",
+            'status' => $wamid ? 'accepted' : 'sent',
+            'payload' => $response->json(),
+            'message_at' => now(),
+        ]);
+    }
+
     public function postMessage(array $payload): Response
     {
         $phoneNumberId = config('app.whatsapp_phone_id');

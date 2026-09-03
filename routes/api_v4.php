@@ -108,19 +108,9 @@ Route::prefix('v4')
         Route::get('/legal-pages', [LegalPageController::class, 'publicIndex']);
         Route::get('/legal-pages/{slug}', [LegalPageController::class, 'publicShow']);
 
-        Route::post('/ad-submissions', [AdSubmissionController::class, 'store'])
-            ->middleware('throttle:10,1');
-        Route::get('/ad-submissions/status/{token}', [AdSubmissionController::class, 'status'])
-            ->middleware('throttle:60,1');
-        Route::post('/ad-submissions/status/{token}/resubmit', [AdSubmissionController::class, 'resubmit'])
-            ->middleware('throttle:10,1');
         Route::get('/ad-pricing', [AdPricingController::class, 'index']);
         Route::post('/ad-pricing/quote', [AdPricingController::class, 'quote'])
             ->middleware('throttle:60,1');
-        Route::post('/ad-submissions/status/{token}/payments/razorpay/order', [AdPaymentController::class, 'createOrder'])
-            ->middleware('throttle:10,1');
-        Route::post('/ad-submissions/status/{token}/payments/razorpay/verify', [AdPaymentController::class, 'verify'])
-            ->middleware('throttle:20,1');
         Route::get('/ads/serve', [AdServingController::class, 'serve'])
             ->middleware('throttle:120,1');
         Route::post('/ads/events', [AdTrackingController::class, 'store'])
@@ -159,6 +149,17 @@ Route::prefix('v4')
 
         Route::middleware('auth.token')->group(function () {
             Route::post('/auth/logout', [AuthController::class, 'logout']);
+
+            Route::post('/ad-submissions', [AdSubmissionController::class, 'store'])
+                ->middleware('throttle:10,1');
+            Route::get('/ad-submissions/status/{token}', [AdSubmissionController::class, 'status'])
+                ->middleware('throttle:60,1');
+            Route::post('/ad-submissions/status/{token}/resubmit', [AdSubmissionController::class, 'resubmit'])
+                ->middleware('throttle:10,1');
+            Route::post('/ad-submissions/status/{token}/payments/razorpay/order', [AdPaymentController::class, 'createOrder'])
+                ->middleware('throttle:10,1');
+            Route::post('/ad-submissions/status/{token}/payments/razorpay/verify', [AdPaymentController::class, 'verify'])
+                ->middleware('throttle:20,1');
 
             Route::get('/recommendations/home', [HomeRecommendationController::class, 'home'])
                 ->middleware('throttle:30,1')
@@ -301,6 +302,7 @@ Route::prefix('v4')
                     Route::post('/ad-submissions/{adSubmission}/approve', [AdminAdSubmissionController::class, 'approve']);
                     Route::post('/ad-submissions/{adSubmission}/reject', [AdminAdSubmissionController::class, 'reject']);
                     Route::post('/ad-submissions/{adSubmission}/request-changes', [AdminAdSubmissionController::class, 'requestChanges']);
+                    Route::post('/ad-submissions/{adSubmission}/resend-payment-link', [AdminAdSubmissionController::class, 'resendPaymentLink']);
 
                     Route::get('/ads/billing-rates', [AdminAdBillingController::class, 'rates']);
                     Route::put('/ads/billing-rates/{rate}', [AdminAdBillingController::class, 'updateRate']);

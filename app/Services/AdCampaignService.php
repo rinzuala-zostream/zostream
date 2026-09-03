@@ -24,6 +24,11 @@ class AdCampaignService
             if (! in_array($locked->status, ['pending_payment', 'approved', 'scheduled'], true)) {
                 throw ValidationException::withMessages(['campaign' => ['This campaign cannot be activated.']]);
             }
+            if ($locked->requires_prepayment && ! $locked->invoices()->where('status', 'paid')->exists()) {
+                throw ValidationException::withMessages([
+                    'payment' => ['The campaign invoice must be paid before activation.'],
+                ]);
+            }
 
             $submission = $locked->submission;
             $startAt = $locked->start_at ?: now();

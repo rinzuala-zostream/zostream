@@ -10,6 +10,7 @@ const route = useRoute(); const item = ref(null); const loading = ref(true); con
 const decision = reactive({ start_date: '', period_days: 30, media_url: '', review_note: '', reason: '' });
 const labels = { pending_review: 'Pending review', changes_requested: 'Changes requested', approved: 'Approved', rejected: 'Rejected' };
 const canReview = computed(() => item.value?.status === 'pending_review');
+const canResendPayment = computed(() => item.value?.status === 'approved' && item.value?.campaign?.invoices?.at(-1)?.status !== 'paid');
 const money = (value, currency = 'INR') => new Intl.NumberFormat('en-IN', { style: 'currency', currency, maximumFractionDigits: 2 }).format(value || 0);
 
 function sync() { if (!item.value) return; decision.start_date = item.value.requested_start_date || new Date().toISOString().slice(0, 10); decision.period_days = item.value.requested_period_days || 30; decision.media_url = item.value.media_url || ''; }
@@ -21,7 +22,14 @@ async function act(action) {
     if (!confirm(messages[action])) return;
     busy.value = true; error.value = ''; notice.value = '';
     const body = action === 'approve' ? { start_date: decision.start_date || null, period_days: Number(decision.period_days), media_url: decision.media_url || null, review_note: decision.review_note || null } : { reason: decision.reason };
-    try { item.value = await api(`/admin/ad-submissions/${item.value.id}/${action}`, { method: 'POST', body }); notice.value = action === 'approve' ? 'Ad approved and invoice created.' : 'Submission status updated.'; }
+    try { item.value = await api(`/admin/ad-submissions/${item.value.id}/${action}`, { method: 'POST', body }); notice.value = action === 'approve' ? (item.value.approval_whatsapp_sent_at ? 'Ad approved. WhatsApp payment link sent.' : 'Ad approved, but WhatsApp delivery failed. Check the error below.') : 'Submission status updated.'; }
+    catch (reason) { error.value = reason.message; }
+    finally { busy.value = false; }
+}
+async function resendPaymentLink() {
+    if (!canResendPayment.value || !confirm('Resend the WhatsApp payment link?')) return;
+    busy.value = true; error.value = ''; notice.value = '';
+    try { item.value = await api(`/admin/ad-submissions/${item.value.id}/resend-payment-link`, { method: 'POST' }); notice.value = item.value.approval_whatsapp_sent_at ? 'WhatsApp payment link sent.' : 'WhatsApp delivery failed.'; }
     catch (reason) { error.value = reason.message; }
     finally { busy.value = false; }
 }
@@ -41,9 +49,9 @@ onMounted(load);
                 <section class="admin-panel ad-events"><header><div><p>Audit trail</p><h2>Review timeline</h2></div></header><div><article v-for="event in item.events" :key="event.id"><i></i><span><b>{{ labels[event.to_status] || event.action }}</b><small>{{ event.note || 'No note' }}</small><time>{{ formatAdminDate(event.created_at) }} · {{ event.actor_type }}</time></span></article></div></section>
             </div>
             <aside>
-                <section class="admin-panel ad-contact"><header><div><p>Advertiser</p><h2>Contact</h2></div></header><div><b>{{ item.business_name }}</b><span>{{ item.contact_name }}</span><a :href="`tel:${item.contact_phone}`">{{ item.contact_phone }}</a><a v-if="item.contact_email" :href="`mailto:${item.contact_email}`">{{ item.contact_email }}</a></div></section>
+                <section class="admin-panel ad-contact"><header><div><p>Advertiser</p><h2>Contact</h2></div></header><div><b>{{ item.business_name }}</b><span>{{ item.contact_name }}</span><a :href="`tel:${item.contact_phone}`">{{ item.contact_phone }}</a><a v-if="item.contact_email" :href="`mailto:${item.contact_email}`">{{ item.contact_email }}</a><span>User ID: {{ item.user_id || 'Legacy submission' }}</span><span v-if="item.user">Auth WhatsApp: {{ item.user.country_code }} {{ item.user.auth_phone }}</span></div></section>
                 <section v-if="canReview" class="admin-panel ad-decision"><header><div><p>Decision</p><h2>Review submission</h2></div></header><form @submit.prevent><label>Publish start date<input v-model="decision.start_date" type="date"></label><label>Period (days)<input v-model.number="decision.period_days" type="number" min="1" max="366"></label><label>Final media URL<input v-model.trim="decision.media_url" type="url"></label><label>Approval note<textarea v-model.trim="decision.review_note" rows="3"></textarea></label><button class="admin-primary" :disabled="busy" @click="act('approve')">Approve & create invoice</button><hr><label>Change/rejection reason<textarea v-model.trim="decision.reason" rows="4" placeholder="Required"></textarea></label><div><button class="admin-secondary" :disabled="busy" @click="act('request-changes')">Request changes</button><button class="admin-danger" :disabled="busy" @click="act('reject')">Reject</button></div></form></section>
-                <section v-else class="admin-panel ad-reviewed"><header><div><p>Decision complete</p><h2>{{ labels[item.status] }}</h2></div></header><div><p>{{ item.review_note || item.rejection_reason || 'No review note.' }}</p><small>Reviewed {{ formatAdminDate(item.reviewed_at) }} by {{ item.reviewed_by || 'admin' }}</small><template v-if="item.campaign"><b>Campaign: {{ item.campaign.status }}</b><span v-if="item.campaign.invoices?.length">Invoice {{ item.campaign.invoices.at(-1).invoice_no }} · {{ money(item.campaign.invoices.at(-1).total,item.campaign.currency) }} · {{ item.campaign.invoices.at(-1).status }}</span></template><a v-if="item.approved_ad_num" :href="`/ads/${item.approved_ad_num}`" target="_blank">Open published ad ↗</a></div></section>
+                <section v-else class="admin-panel ad-reviewed"><header><div><p>Decision complete</p><h2>{{ labels[item.status] }}</h2></div></header><div><p>{{ item.review_note || item.rejection_reason || 'No review note.' }}</p><small>Reviewed {{ formatAdminDate(item.reviewed_at) }} by {{ item.reviewed_by || 'admin' }}</small><template v-if="item.campaign"><b>Campaign: {{ item.campaign.status }}</b><span v-if="item.campaign.invoices?.length">Invoice {{ item.campaign.invoices.at(-1).invoice_no }} · {{ money(item.campaign.invoices.at(-1).total,item.campaign.currency) }} · {{ item.campaign.invoices.at(-1).status }}</span></template><span v-if="item.approval_whatsapp_sent_at">✓ Payment link sent {{ formatAdminDate(item.approval_whatsapp_sent_at) }}</span><span v-else-if="item.approval_whatsapp_error" class="ad-whatsapp-error">WhatsApp failed: {{ item.approval_whatsapp_error }}</span><button v-if="canResendPayment" class="admin-secondary" :disabled="busy" @click="resendPaymentLink">Resend WhatsApp payment link</button><a v-if="item.approved_ad_num" :href="`/ads/${item.approved_ad_num}`" target="_blank">Open published ad ↗</a></div></section>
             </aside>
         </div>
     </div>

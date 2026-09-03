@@ -9,17 +9,16 @@ use App\Models\AdInvoice;
 use App\Models\AdPlacementSlot;
 use App\Models\AdSubmission;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class AdApprovalService
 {
-    public function __construct(private readonly AdCampaignService $campaigns) {}
-
     public function approve(AdSubmission $submission, array $overrides, string $adminId): AdSubmission
     {
-        [$approved, $activateCampaignId] = DB::transaction(function () use ($submission, $overrides, $adminId) {
+        $approved = DB::transaction(function () use ($submission, $overrides, $adminId) {
             $locked = AdSubmission::query()->lockForUpdate()->findOrFail($submission->getKey());
 
             if ($locked->status !== AdSubmission::STATUS_PENDING) {
@@ -45,6 +44,13 @@ class AdApprovalService
                 default => (int) $locked->target_quantity,
             };
             $amount = max((float) $rateConfig->minimum_charge, round($billingQuantity * (float) $locked->quoted_rate, 2));
+            if (blank($locked->public_token_encrypted)) {
+                $publicToken = Str::random(48);
+                $locked->forceFill([
+                    'public_token_hash' => hash('sha256', $publicToken),
+                    'public_token_encrypted' => Crypt::encryptString($publicToken),
+                ])->save();
+            }
 
             $advertiserQuery = AdAdvertiser::query();
             if ($locked->contact_email) {
@@ -67,14 +73,14 @@ class AdApprovalService
                 'name' => $locked->ads_name,
                 'billing_model' => $locked->billing_model,
                 'rate' => $locked->quoted_rate,
-                'requires_prepayment' => $rateConfig->requires_prepayment,
+                'requires_prepayment' => true,
                 'target_quantity' => $locked->target_quantity,
                 'estimated_amount' => $amount,
                 'daily_budget' => $locked->daily_budget,
                 'currency' => $locked->currency,
                 'start_at' => $startDate->startOfDay(),
                 'end_at' => $startDate->copy()->startOfDay()->addDays($period),
-                'status' => $rateConfig->requires_prepayment ? 'pending_payment' : 'approved',
+                'status' => 'pending_payment',
             ]);
             $creative = $campaign->creatives()->create([
                 'name' => $locked->ads_name,
@@ -137,16 +143,8 @@ class AdApprovalService
                 'actor_id' => $adminId,
             ]);
 
-            return [
-                $locked->fresh(['assets', 'events', 'campaign.creatives', 'campaign.invoices.items']),
-                $rateConfig->requires_prepayment ? null : $campaign->id,
-            ];
+            return $locked->fresh(['assets', 'events', 'campaign.creatives', 'campaign.invoices.items']);
         });
-
-        if ($activateCampaignId) {
-            $this->campaigns->activate(AdCampaign::findOrFail($activateCampaignId));
-            $approved->refresh();
-        }
 
         return $approved->load(['assets', 'events', 'campaign.creatives', 'campaign.invoices.items']);
     }

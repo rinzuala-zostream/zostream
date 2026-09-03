@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class AdSubmission extends Model
@@ -16,8 +17,10 @@ class AdSubmission extends Model
     public const STATUS_REJECTED = 'rejected';
 
     protected $fillable = [
+        'user_id',
         'reference_no',
         'public_token_hash',
+        'public_token_encrypted',
         'status',
         'business_name',
         'contact_name',
@@ -41,12 +44,15 @@ class AdSubmission extends Model
         'rejection_reason',
         'reviewed_by',
         'reviewed_at',
+        'approval_whatsapp_sent_at',
+        'approval_whatsapp_error',
         'approved_ad_num',
         'submitted_ip_hash',
     ];
 
     protected $hidden = [
         'public_token_hash',
+        'public_token_encrypted',
         'submitted_ip_hash',
     ];
 
@@ -58,6 +64,7 @@ class AdSubmission extends Model
         'quoted_amount' => 'decimal:2',
         'daily_budget' => 'decimal:2',
         'reviewed_at' => 'datetime',
+        'approval_whatsapp_sent_at' => 'datetime',
         'approved_ad_num' => 'integer',
     ];
 
@@ -74,5 +81,10 @@ class AdSubmission extends Model
     public function campaign()
     {
         return $this->hasOne(AdCampaign::class, 'submission_id');
+    }
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(UserModel::class, 'user_id', 'uid');
     }
 }

@@ -27,6 +27,7 @@ Route::view('/advertising-terms', 'welcome');
 Route::view('/faq', 'welcome');
 Route::view('/advertise', 'welcome');
 Route::view('/advertise/status/{token}', 'welcome')->where('token', '[A-Za-z0-9]{48}');
+Route::view('/advertise/payment/{token}', 'welcome')->where('token', '[A-Za-z0-9]{48}');
 Route::view('/account-delete', 'welcome');
 Route::redirect('/legal/advertising-terms', '/advertising-terms', 301);
 Route::view('/legal/{slug}', 'welcome')->where('slug', '[a-z0-9-]+');

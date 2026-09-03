@@ -3,12 +3,21 @@
 namespace Tests\Feature;
 
 use App\Models\AdSubmission;
+use App\Models\SessionTokenModel;
+use App\Models\UserModel;
+use App\Models\WhatsAppMessage;
+use App\Services\AdApprovalNotificationService;
 use App\Services\AdApprovalService;
 use App\Services\AdBillingService;
+use App\Services\AdCampaignService;
+use App\Services\WhatsAppCloudService;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
+use Mockery;
 use Tests\TestCase;
 
 class AdSubmissionWorkflowTest extends TestCase
@@ -32,14 +41,33 @@ class AdSubmissionWorkflowTest extends TestCase
             $table->text('img3')->nullable();
             $table->text('img4')->nullable();
         });
+        Schema::create('user', function (Blueprint $table) {
+            $table->increments('num');
+            $table->uuid('uid')->unique();
+            $table->string('auth_phone')->nullable();
+            $table->string('country_code')->nullable();
+        });
+        Schema::create('session_tokens', function (Blueprint $table) {
+            $table->id();
+            $table->string('user_id');
+            $table->string('access_token');
+            $table->string('refresh_token');
+            $table->timestamp('access_expires_at');
+            $table->timestamp('refresh_expires_at');
+            $table->string('device_name')->nullable();
+            $table->string('device_id')->nullable();
+            $table->timestamps();
+        });
 
         (require database_path('migrations/2026_09_02_000001_create_ad_submission_workflow.php'))->up();
         (require database_path('migrations/2026_09_02_000002_create_ad_campaign_billing_system.php'))->up();
+        (require database_path('migrations/2026_09_03_000001_add_user_and_payment_notification_to_ad_submissions.php'))->up();
     }
 
     public function test_public_ad_can_be_submitted_and_checked_with_private_token(): void
     {
-        $response = $this->withHeaders($this->clientHeaders())->postJson('/api/v4/ad-submissions', [
+        $headers = $this->authenticatedClientHeaders();
+        $response = $this->withHeaders($headers)->postJson('/api/v4/ad-submissions', [
             'business_name' => 'Example Store',
             'contact_name' => 'Lalruata',
             'contact_phone' => '+919876543210',
@@ -57,17 +85,23 @@ class AdSubmissionWorkflowTest extends TestCase
 
         $response->assertCreated()
             ->assertJsonPath('success', true)
-            ->assertJsonPath('data.submission.status', AdSubmission::STATUS_PENDING);
+            ->assertJsonPath('data.submission.status', AdSubmission::STATUS_PENDING)
+            ->assertJsonPath('data.submission.user_id', '11111111-1111-4111-8111-111111111111');
 
         $statusUrl = $response->json('data.status_url');
         $token = basename(parse_url($statusUrl, PHP_URL_PATH));
 
         $this->assertSame(48, strlen($token));
-        $this->withHeaders($this->clientHeaders())
+        $this->withHeaders($headers)
             ->getJson('/api/v4/ad-submissions/status/'.$token)
             ->assertOk()
             ->assertJsonPath('data.business_name', 'Example Store')
             ->assertJsonMissingPath('data.public_token_hash');
+
+        $this->withHeaders($this->authenticatedClientHeaders(
+            '33333333-3333-4333-8333-333333333333',
+            'other-user-access',
+        ))->getJson('/api/v4/ad-submissions/status/'.$token)->assertNotFound();
     }
 
     public function test_approval_invoices_then_payment_activates_the_live_ad(): void
@@ -99,6 +133,16 @@ class AdSubmissionWorkflowTest extends TestCase
         $this->assertSame('pending_payment', $approved->campaign->status);
         $invoice = $approved->campaign->invoices->first();
         $this->assertSame('pending', $invoice->status);
+        $this->withHeaders($this->clientHeaders())
+            ->getJson('/api/v4/ads/serve?placement=pre_roll&platform=web')
+            ->assertOk()
+            ->assertJsonPath('data', null);
+        try {
+            app(AdCampaignService::class)->activate($approved->campaign);
+            $this->fail('An unpaid campaign was activated.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('payment', $exception->errors());
+        }
 
         app(AdBillingService::class)->markPaid($invoice, [
             'amount' => 2000,
@@ -159,7 +203,7 @@ class AdSubmissionWorkflowTest extends TestCase
 
     public function test_video_submission_requires_video_media(): void
     {
-        $this->withHeaders($this->clientHeaders())->postJson('/api/v4/ad-submissions', [
+        $this->withHeaders($this->authenticatedClientHeaders())->postJson('/api/v4/ad-submissions', [
             'business_name' => 'Example Store',
             'contact_name' => 'Lalruata',
             'contact_phone' => '9876543210',
@@ -173,6 +217,55 @@ class AdSubmissionWorkflowTest extends TestCase
         ])->assertUnprocessable()
             ->assertJsonPath('error.code', 'VALIDATION_FAILED')
             ->assertJsonValidationErrors('media', 'error.details');
+    }
+
+    public function test_approval_notification_uses_the_submitting_users_auth_phone_and_payment_link(): void
+    {
+        $token = str_repeat('p', 48);
+        $user = UserModel::create([
+            'uid' => '22222222-2222-4222-8222-222222222222',
+            'auth_phone' => '9876501234',
+            'country_code' => '+91',
+        ]);
+        $submission = AdSubmission::create([
+            'user_id' => $user->uid,
+            'reference_no' => 'ADS-TEST-0002',
+            'public_token_hash' => hash('sha256', $token),
+            'public_token_encrypted' => Crypt::encryptString($token),
+            'status' => AdSubmission::STATUS_PENDING,
+            'business_name' => 'Authenticated Store',
+            'contact_name' => 'Advertiser',
+            'contact_phone' => '0000000000',
+            'ads_name' => 'Home campaign',
+            'type' => 'image',
+            'placement_code' => 'home_top',
+            'billing_model' => 'FLAT',
+            'quoted_rate' => 500,
+            'quoted_amount' => 15000,
+            'currency' => 'INR',
+            'media_url' => 'https://cdn.example.com/banner.webp',
+            'requested_period_days' => 30,
+        ]);
+        $approved = app(AdApprovalService::class)->approve($submission, [], 'admin-uid');
+
+        config(['ads.payment_whatsapp_template' => null]);
+        $whatsApp = Mockery::mock(WhatsAppCloudService::class);
+        $whatsApp->shouldReceive('sendText')
+            ->once()
+            ->with('919876501234', Mockery::on(fn ($message) => str_contains(
+                $message,
+                '/advertise/payment/'.$token,
+            )))
+            ->andReturn(new WhatsAppMessage);
+
+        $sent = (new AdApprovalNotificationService($whatsApp))->sendPaymentLink($approved);
+
+        $this->assertTrue($sent);
+        $this->assertNotNull($approved->fresh()->approval_whatsapp_sent_at);
+        $this->assertDatabaseHas('ad_submission_events', [
+            'ad_submission_id' => $submission->id,
+            'action' => 'payment_link_sent',
+        ]);
     }
 
     public function test_public_pricing_quote_is_calculated_from_admin_rates(): void
@@ -201,6 +294,7 @@ class AdSubmissionWorkflowTest extends TestCase
             ['POST', 'api/v4/admin/ad-submissions/{adSubmission}/approve'],
             ['POST', 'api/v4/admin/ad-submissions/{adSubmission}/reject'],
             ['POST', 'api/v4/admin/ad-submissions/{adSubmission}/request-changes'],
+            ['POST', 'api/v4/admin/ad-submissions/{adSubmission}/resend-payment-link'],
             ['GET', 'api/v4/admin/ads/billing-rates'],
             ['PUT', 'api/v4/admin/ads/billing-rates/{rate}'],
             ['PUT', 'api/v4/admin/ads/placements/{placement}'],
@@ -218,11 +312,51 @@ class AdSubmissionWorkflowTest extends TestCase
         }
     }
 
+    public function test_submission_routes_require_login(): void
+    {
+        foreach ([
+            ['POST', 'api/v4/ad-submissions'],
+            ['GET', 'api/v4/ad-submissions/status/{token}'],
+            ['POST', 'api/v4/ad-submissions/status/{token}/resubmit'],
+            ['POST', 'api/v4/ad-submissions/status/{token}/payments/razorpay/order'],
+            ['POST', 'api/v4/ad-submissions/status/{token}/payments/razorpay/verify'],
+        ] as [$method, $uri]) {
+            $route = collect(Route::getRoutes()->getRoutes())->first(
+                fn ($route) => in_array($method, $route->methods(), true) && $route->uri() === $uri
+            );
+
+            $this->assertNotNull($route, "Missing {$method} {$uri}");
+            $this->assertContains('auth.token', $route->gatherMiddleware());
+        }
+    }
+
     private function clientHeaders(): array
     {
         return [
             'X-Client-Platform' => 'web',
             'X-Client-Version' => '1.0',
         ];
+    }
+
+    private function authenticatedClientHeaders(
+        string $uid = '11111111-1111-4111-8111-111111111111',
+        string $accessToken = 'ad-workflow-access',
+    ): array {
+        UserModel::firstOrCreate(['uid' => $uid], [
+            'auth_phone' => '9876543210',
+            'country_code' => '+91',
+        ]);
+        SessionTokenModel::updateOrCreate(['user_id' => $uid], [
+            'access_token' => SessionTokenModel::digest($accessToken),
+            'refresh_token' => SessionTokenModel::digest($accessToken.'-refresh'),
+            'access_expires_at' => now()->addHour(),
+            'refresh_expires_at' => now()->addDay(),
+            'device_name' => 'PHPUnit browser',
+            'device_id' => 'phpunit-ad-device',
+        ]);
+
+        return array_merge($this->clientHeaders(), [
+            'Authorization' => 'Bearer '.$accessToken,
+        ]);
     }
 }

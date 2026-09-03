@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V4;
 
 use App\Http\Controllers\Controller;
 use App\Models\AdSubmission;
+use App\Services\AdApprovalNotificationService;
 use App\Services\AdApprovalService;
 use App\Support\Api\V4Response;
 use Illuminate\Http\Request;
@@ -13,7 +14,10 @@ use Illuminate\Validation\ValidationException;
 
 class AdminAdSubmissionController extends Controller
 {
-    public function __construct(private readonly AdApprovalService $approvalService) {}
+    public function __construct(
+        private readonly AdApprovalService $approvalService,
+        private readonly AdApprovalNotificationService $notifications,
+    ) {}
 
     public function index(Request $request)
     {
@@ -29,7 +33,11 @@ class AdminAdSubmissionController extends Controller
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
 
-        $query = AdSubmission::query()->with(['assets', 'campaign.invoices'])->latest();
+        $query = AdSubmission::query()->with([
+            'user:num,uid,name,mail,country_code,auth_phone',
+            'assets',
+            'campaign.invoices',
+        ])->latest();
         if (! empty($data['status'])) {
             $query->where('status', $data['status']);
         }
@@ -64,6 +72,7 @@ class AdminAdSubmissionController extends Controller
     public function show(AdSubmission $adSubmission)
     {
         return V4Response::success($adSubmission->load([
+            'user:num,uid,name,mail,country_code,auth_phone',
             'assets', 'events', 'campaign.creatives', 'campaign.invoices.items', 'campaign.invoices.payments',
         ]));
     }
@@ -88,8 +97,17 @@ class AdminAdSubmissionController extends Controller
             $data,
             (string) $request->input('auth_user_id')
         );
+        $this->notifications->sendPaymentLink($submission);
 
-        return V4Response::success($submission, 'Ad approved and campaign invoice created.');
+        return V4Response::success(
+            $submission->fresh([
+                'user:num,uid,name,mail,country_code,auth_phone',
+                'assets', 'events', 'campaign.creatives', 'campaign.invoices.items',
+            ]),
+            $submission->approval_whatsapp_sent_at
+                ? 'Ad approved. The payment link was sent by WhatsApp.'
+                : 'Ad approved, but the WhatsApp payment link could not be sent.',
+        );
     }
 
     public function reject(Request $request, AdSubmission $adSubmission)
@@ -119,6 +137,29 @@ class AdminAdSubmissionController extends Controller
             'changes_requested',
             $data['reason'],
             (string) $request->input('auth_user_id')
+        );
+    }
+
+    public function resendPaymentLink(AdSubmission $adSubmission)
+    {
+        $adSubmission->load('campaign.invoices');
+        $invoice = $adSubmission->campaign?->invoices->sortByDesc('id')->first();
+        if ($adSubmission->status !== AdSubmission::STATUS_APPROVED || ! $invoice || $invoice->status === 'paid') {
+            return V4Response::error(
+                'AD_PAYMENT_LINK_NOT_AVAILABLE',
+                'A payment link can be sent only for an approved unpaid campaign.',
+                409,
+            );
+        }
+
+        $sent = $this->notifications->sendPaymentLink($adSubmission);
+
+        return V4Response::success(
+            $adSubmission->fresh([
+                'user:num,uid,name,mail,country_code,auth_phone',
+                'assets', 'events', 'campaign.creatives', 'campaign.invoices.items',
+            ]),
+            $sent ? 'The WhatsApp payment link was sent.' : 'The WhatsApp payment link could not be sent.',
         );
     }
 
