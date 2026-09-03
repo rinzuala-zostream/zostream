@@ -268,6 +268,56 @@ class AdSubmissionWorkflowTest extends TestCase
         ]);
     }
 
+    public function test_approval_template_uses_amount_currency_and_button_token(): void
+    {
+        $token = str_repeat('t', 48);
+        $user = UserModel::create([
+            'uid' => '33333333-3333-4333-8333-333333333333',
+            'auth_phone' => '9876505678',
+            'country_code' => '+91',
+        ]);
+        $submission = AdSubmission::create([
+            'user_id' => $user->uid,
+            'reference_no' => 'ADS-TEST-0003',
+            'public_token_hash' => hash('sha256', $token),
+            'public_token_encrypted' => Crypt::encryptString($token),
+            'status' => AdSubmission::STATUS_PENDING,
+            'business_name' => 'Template Store',
+            'contact_name' => 'Advertiser',
+            'contact_phone' => '0000000000',
+            'ads_name' => 'Template campaign',
+            'type' => 'image',
+            'placement_code' => 'home_top',
+            'billing_model' => 'FLAT',
+            'quoted_rate' => 500,
+            'quoted_amount' => 15000,
+            'currency' => 'INR',
+            'media_url' => 'https://cdn.example.com/banner.webp',
+            'requested_period_days' => 30,
+        ]);
+        $approved = app(AdApprovalService::class)->approve($submission, [], 'admin-uid');
+
+        config([
+            'ads.payment_whatsapp_template' => 'ad_payment_link',
+            'ads.payment_whatsapp_template_language' => 'en',
+        ]);
+        $whatsApp = Mockery::mock(WhatsAppCloudService::class);
+        $whatsApp->shouldReceive('sendTemplate')
+            ->once()
+            ->with(
+                '919876505678',
+                'ad_payment_link',
+                ['ADS-TEST-0003', '15000.00', 'INR'],
+                $token,
+                'en',
+            )
+            ->andReturn(new WhatsAppMessage);
+
+        $sent = (new AdApprovalNotificationService($whatsApp))->sendPaymentLink($approved);
+
+        $this->assertTrue($sent);
+    }
+
     public function test_public_pricing_quote_is_calculated_from_admin_rates(): void
     {
         $this->withHeaders($this->clientHeaders())

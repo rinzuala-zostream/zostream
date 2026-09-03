@@ -42,7 +42,7 @@ class AdApprovalNotificationService
                 $this->whatsApp->sendTemplate(
                     $phone,
                     $template,
-                    [$submission->reference_no, $amount.' '.$invoice->currency, $paymentUrl],
+                    [$submission->reference_no, $amount, $invoice->currency],
                     $token,
                     (string) config('ads.payment_whatsapp_template_language', 'en'),
                 );
