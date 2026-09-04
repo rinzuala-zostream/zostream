@@ -123,11 +123,9 @@ class AdTrackingController extends Controller
 
         $todaySpend = (float) DB::table('ad_billing_events')
             ->where('campaign_id', $campaign->id)->whereDate('created_at', today())->sum('amount');
-        $targetReached = $campaign->target_quantity && $campaign->consumed_quantity >= $campaign->target_quantity;
         $dailyBudgetReached = $campaign->daily_budget && $todaySpend >= (float) $campaign->daily_budget;
-        if ($targetReached || $dailyBudgetReached) {
-            $status = $targetReached ? 'completed' : 'paused';
-            $campaign->update(['status' => $status, 'completed_at' => $targetReached ? now() : null]);
+        if ($dailyBudgetReached) {
+            $campaign->update(['status' => 'paused']);
             AdsModel::where('campaign_id', $campaign->id)->update(['is_active' => false]);
         }
     }

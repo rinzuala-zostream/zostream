@@ -325,6 +325,7 @@ class AdSubmissionController extends Controller
             'billing_model' => $campaign->billing_model,
             'requires_prepayment' => $campaign->requires_prepayment,
             'target_quantity' => $campaign->target_quantity,
+            'served_quantity' => $campaign->served_quantity,
             'consumed_quantity' => $campaign->consumed_quantity,
             'estimated_amount' => (float) $campaign->estimated_amount,
             'accrued_amount' => (float) $campaign->accrued_amount,

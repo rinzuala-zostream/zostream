@@ -46,7 +46,7 @@ class AdServingController extends Controller
                 ->where('campaign.status', 'active')
                 ->where(fn ($query) => $query->whereNull('campaign.start_at')->orWhere('campaign.start_at', '<=', $now))
                 ->where(fn ($query) => $query->whereNull('campaign.end_at')->orWhere('campaign.end_at', '>=', $now))
-                ->where(fn ($query) => $query->whereNull('campaign.target_quantity')->orWhereColumn('campaign.consumed_quantity', '<', 'campaign.target_quantity'))
+                ->where(fn ($query) => $query->whereNull('campaign.target_quantity')->orWhereColumn('campaign.served_quantity', '<', 'campaign.target_quantity'))
                 ->when($data['platform'] ?? null, fn ($query, $platform) => $query->whereIn('slot.platform', ['all', $platform]))
                 ->orderByDesc('assignment.priority')
                 ->inRandomOrder();
@@ -76,6 +76,22 @@ class AdServingController extends Controller
         }
 
         if (! $creative) {
+            return V4Response::success(null, 'No eligible ad is available.');
+        }
+
+        // Reserve the delivery before returning a creative. This makes a requested
+        // quantity (e.g. 10 displays) a hard cap for image and video placements,
+        // including concurrent client requests and failed client-side tracking.
+        $reserved = DB::table('ad_campaigns')
+            ->where('id', $creative->campaign_id)
+            ->where('status', 'active')
+            ->where(fn ($query) => $query->whereNull('target_quantity')->orWhereColumn('served_quantity', '<', 'target_quantity'))
+            ->update([
+                'served_quantity' => DB::raw('served_quantity + 1'),
+                'updated_at' => now(),
+            ]);
+
+        if ($reserved !== 1) {
             return V4Response::success(null, 'No eligible ad is available.');
         }
 
@@ -193,7 +209,7 @@ class AdServingController extends Controller
     {
         $requiredColumns = [
             'ad_campaign_placements' => ['campaign_id', 'creative_id', 'placement_slot_id', 'priority', 'is_active'],
-            'ad_campaigns' => ['id', 'billing_model', 'status', 'start_at', 'end_at', 'target_quantity', 'consumed_quantity'],
+            'ad_campaigns' => ['id', 'billing_model', 'status', 'start_at', 'end_at', 'target_quantity', 'served_quantity', 'consumed_quantity'],
             'ad_creatives' => ['id', 'name', 'type', 'media_url', 'thumbnail_url', 'target_url', 'duration_seconds', 'skip_after_seconds', 'is_skippable', 'existing_ad_num', 'is_active'],
             'ad_placement_slots' => ['id', 'code', 'platform', 'is_active'],
         ];

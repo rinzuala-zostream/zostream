@@ -651,8 +651,13 @@ class NewStreamController extends Controller
         $platform = $platform ?: 'android';
         $deviceType = $deviceType ?: 'mobile';
         $ads = [];
+        $maxAdsPerStream = 2;
 
         foreach (['pre_roll', 'mid_roll', 'post_roll'] as $placement) {
+            if (count($ads) >= $maxAdsPerStream) {
+                break;
+            }
+
             try {
                 $request = Request::create('/api/v4/ads/serve', 'GET', [
                     'placement' => $placement,
