@@ -28,6 +28,14 @@ class AdPaymentController extends Controller
             return V4Response::error('AD_INVOICE_NOT_READY', 'The invoice is not ready for payment.', 409);
         }
 
+        // A payment can be captured even if the browser closes or a legacy
+        // mirror write temporarily fails. Visiting the WhatsApp payment link
+        // must therefore recover a paid pending campaign, without attempting
+        // to charge the advertiser a second time.
+        $activationPending = $this->reconcilePaidInvoice($invoice, $submission);
+        $submission->load('campaign.invoices');
+        $invoice = $submission->campaign?->invoices->sortByDesc('id')->first();
+
         return V4Response::success([
             'reference_no' => $submission->reference_no,
             'status' => $submission->status,
@@ -44,6 +52,7 @@ class AdPaymentController extends Controller
             'requested_period_days' => $submission->requested_period_days,
             'campaign' => [
                 'status' => $submission->campaign->status,
+                'activation_pending' => $activationPending,
                 'invoice' => [
                     'invoice_no' => $invoice->invoice_no,
                     'status' => $invoice->status,
@@ -63,7 +72,14 @@ class AdPaymentController extends Controller
             return V4Response::error('AD_INVOICE_NOT_READY', 'The invoice is not ready for payment.', 409);
         }
         if ($invoice->status === 'paid') {
-            return V4Response::success(['invoice_status' => 'paid'], 'This invoice is already paid.');
+            $activationPending = $this->reconcilePaidInvoice($invoice, $submission);
+            $campaignStatus = $submission->campaign->fresh()?->status;
+
+            return V4Response::success([
+                'invoice_status' => 'paid',
+                'campaign_status' => $campaignStatus,
+                'activation_pending' => $activationPending,
+            ], 'This invoice is already paid.');
         }
 
         $gatewayRequest = new Request([
@@ -216,5 +232,29 @@ class AdPaymentController extends Controller
         $mode = strtoupper((string) config('razorpay.env', 'SANDBOX')) === 'PRODUCTION' ? 'live' : 'test';
 
         return (string) config("razorpay.{$mode}.key_secret", '');
+    }
+
+    private function reconcilePaidInvoice(\App\Models\AdInvoice $invoice, AdSubmission $submission): bool
+    {
+        $campaign = $submission->campaign;
+        if ($invoice->status !== 'paid' || ! $campaign || ! in_array($campaign->status, ['pending_payment', 'approved', 'scheduled'], true)) {
+            return false;
+        }
+
+        try {
+            $this->billing->activatePaidCampaign($campaign);
+
+            return false;
+        } catch (\Throwable $exception) {
+            // Do not turn a valid payment into an error state. The next page
+            // load, webhook, or admin-dashboard visit will retry this action.
+            Log::error('Could not reconcile a paid ad campaign from the payment page.', [
+                'invoice_id' => $invoice->id,
+                'campaign_id' => $campaign->id,
+                'exception' => $exception,
+            ]);
+
+            return true;
+        }
     }
 }

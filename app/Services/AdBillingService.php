@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\AdInvoice;
 use App\Models\AdPayment;
+use App\Models\AdCampaign;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -48,8 +49,20 @@ class AdBillingService
             return $locked->campaign_id;
         });
 
-        $this->campaigns->activate(\App\Models\AdCampaign::findOrFail($campaignId));
+        $this->activatePaidCampaign(AdCampaign::findOrFail($campaignId));
 
         return $invoice->fresh(['items', 'payments', 'campaign.creatives']);
+    }
+
+    /**
+     * Activates an already-paid invoice without creating another payment.
+     *
+     * Gateway callbacks and a browser response can arrive in either order.
+     * Keeping this recovery action separate from markPaid makes retries safe:
+     * it never changes the invoice amount, payment record, or gateway state.
+     */
+    public function activatePaidCampaign(AdCampaign $campaign): AdCampaign
+    {
+        return $this->campaigns->activate($campaign);
     }
 }

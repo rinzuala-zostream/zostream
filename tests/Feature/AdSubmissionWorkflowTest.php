@@ -62,6 +62,7 @@ class AdSubmissionWorkflowTest extends TestCase
         (require database_path('migrations/2026_09_02_000001_create_ad_submission_workflow.php'))->up();
         (require database_path('migrations/2026_09_02_000002_create_ad_campaign_billing_system.php'))->up();
         (require database_path('migrations/2026_09_03_000001_add_user_and_payment_notification_to_ad_submissions.php'))->up();
+        (require database_path('migrations/2026_09_04_000001_add_served_quantity_to_ad_campaigns.php'))->up();
     }
 
     public function test_legacy_whatsapp_payment_button_url_redirects_to_the_payment_page(): void

@@ -6,6 +6,7 @@ use App\Models\AdCampaign;
 use App\Models\AdsModel;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -41,27 +42,39 @@ class AdCampaignService
                     continue;
                 }
 
-                $ad = AdsModel::create([
-                    'ads_name' => $creative->name,
-                    'create_date' => Carbon::parse($startAt)->format('F j, Y'),
-                    'description' => $submission->description,
-                    'period' => $period,
-                    'type' => $creative->type,
-                    'video_url' => $creative->type === 'video' ? $creative->media_url : null,
-                    'ads_url' => null,
-                    'target_url' => $creative->target_url,
-                    'campaign_id' => $locked->id,
-                    'is_active' => true,
-                    'feature_img' => $feature?->file_url ?: $creative->thumbnail_url,
-                    'img1' => $gallery->get(0)?->file_url,
-                    'img2' => $gallery->get(1)?->file_url,
-                    'img3' => $gallery->get(2)?->file_url,
-                    'img4' => $gallery->get(3)?->file_url,
-                ]);
-                $ad->ads_url = route('ads.show', ['ad' => $ad->getKey().'-'.Str::slug($ad->ads_name)]);
-                $ad->save();
-                $creative->update(['existing_ad_num' => $ad->getKey()]);
-                $submission->update(['approved_ad_num' => $ad->getKey()]);
+                try {
+                    // This is a legacy AdsModel mirror. V4 serving uses the
+                    // campaign + creative records, so a legacy table mismatch
+                    // must never prevent a successfully paid campaign from
+                    // becoming active.
+                    $ad = AdsModel::create([
+                        'ads_name' => $creative->name,
+                        'create_date' => Carbon::parse($startAt)->format('F j, Y'),
+                        'description' => $submission->description,
+                        'period' => $period,
+                        'type' => $creative->type,
+                        'video_url' => $creative->type === 'video' ? $creative->media_url : null,
+                        'ads_url' => null,
+                        'target_url' => $creative->target_url,
+                        'campaign_id' => $locked->id,
+                        'is_active' => true,
+                        'feature_img' => $feature?->file_url ?: $creative->thumbnail_url,
+                        'img1' => $gallery->get(0)?->file_url,
+                        'img2' => $gallery->get(1)?->file_url,
+                        'img3' => $gallery->get(2)?->file_url,
+                        'img4' => $gallery->get(3)?->file_url,
+                    ]);
+                    $ad->ads_url = route('ads.show', ['ad' => $ad->getKey().'-'.Str::slug($ad->ads_name)]);
+                    $ad->save();
+                    $creative->update(['existing_ad_num' => $ad->getKey()]);
+                    $submission->update(['approved_ad_num' => $ad->getKey()]);
+                } catch (\Throwable $exception) {
+                    Log::error('Legacy ad mirror creation failed; activating the paid V4 campaign anyway.', [
+                        'campaign_id' => $locked->id,
+                        'creative_id' => $creative->id,
+                        'exception' => $exception,
+                    ]);
+                }
             }
 
             $locked->update(['status' => 'active', 'activated_at' => $locked->activated_at ?: now()]);
