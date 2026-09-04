@@ -9,14 +9,19 @@ use App\Models\AdInvoice;
 use App\Models\AdPlacementSlot;
 use App\Models\AdsModel;
 use App\Services\AdBillingService;
+use App\Services\AdCampaignService;
 use App\Support\Api\V4Response;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 
 class AdminAdBillingController extends Controller
 {
-    public function __construct(private readonly AdBillingService $billing) {}
+    public function __construct(
+        private readonly AdBillingService $billing,
+        private readonly AdCampaignService $campaigns,
+    ) {}
 
     public function rates()
     {
@@ -58,6 +63,12 @@ class AdminAdBillingController extends Controller
             'status' => ['nullable', 'string', 'max:32'],
             'page' => ['nullable', 'integer', 'min:1'],
         ]);
+        // A gateway may capture a payment after the request that activates its
+        // campaign times out. Reconcile those already-paid invoices whenever
+        // the billing dashboard is opened, instead of leaving them indefinitely
+        // in pending_payment.
+        $this->reconcilePaidCampaigns();
+
         $campaigns = AdCampaign::query()
             ->with(['advertiser', 'submission', 'creatives', 'invoices.payments'])
             ->when($data['status'] ?? null, fn ($query, $status) => $query->where('status', $status))
@@ -129,5 +140,26 @@ class AdminAdBillingController extends Controller
         AdsModel::where('campaign_id', $campaign->id)->update(['is_active' => $data['status'] === 'active']);
 
         return V4Response::success($campaign->fresh(), 'Campaign status updated.');
+    }
+
+    private function reconcilePaidCampaigns(): void
+    {
+        AdCampaign::query()
+            ->where('status', 'pending_payment')
+            ->whereHas('invoices', fn ($query) => $query->where('status', 'paid'))
+            ->cursor()
+            ->each(function (AdCampaign $campaign): void {
+                try {
+                    $this->campaigns->activate($campaign);
+                } catch (\Throwable $exception) {
+                    // Keep the campaign pending so the next dashboard refresh
+                    // can retry; the invoice remains paid and is never charged
+                    // a second time.
+                    Log::error('Could not activate a paid ad campaign during reconciliation.', [
+                        'campaign_id' => $campaign->id,
+                        'exception' => $exception,
+                    ]);
+                }
+            });
     }
 }

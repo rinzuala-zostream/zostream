@@ -9,6 +9,8 @@ use App\Models\AdSubmission;
 use App\Services\AdBillingService;
 use App\Support\Api\V4Response;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 
 class AdPaymentController extends Controller
 {
@@ -128,16 +130,38 @@ class AdPaymentController extends Controller
             return V4Response::error('AD_PAYMENT_SIGNATURE_INVALID', 'Payment signature verification failed.', 422);
         }
 
-        $updated = $this->billing->markPaid($invoice, [
-            'amount' => $payment->amount,
-            'payment_method' => 'razorpay',
-            'gateway' => 'razorpay',
-            'gateway_order_id' => $data['razorpay_order_id'],
-            'gateway_payment_id' => $data['razorpay_payment_id'],
-            'metadata' => $payment->metadata,
-        ]);
+        try {
+            $updated = $this->billing->markPaid($invoice, [
+                'amount' => $payment->amount,
+                'payment_method' => 'razorpay',
+                'gateway' => 'razorpay',
+                'gateway_order_id' => $data['razorpay_order_id'],
+                'gateway_payment_id' => $data['razorpay_payment_id'],
+                'metadata' => $payment->metadata,
+            ]);
+        } catch (ValidationException $exception) {
+            throw $exception;
+        } catch (\Throwable $exception) {
+            Log::error('Ad Razorpay payment was captured but campaign activation failed.', [
+                'invoice_id' => $invoice->id,
+                'order_id' => $data['razorpay_order_id'],
+                'payment_id' => $data['razorpay_payment_id'],
+                'exception' => $exception,
+            ]);
 
-        return V4Response::success(['invoice' => $updated, 'campaign_status' => $updated->campaign->status], 'Payment verified and campaign activated.');
+            return V4Response::error(
+                'AD_PAYMENT_ACTIVATION_FAILED',
+                'Payment was received, but the campaign could not be activated yet. Please contact support with your payment ID.',
+                409,
+            );
+        }
+
+        // The billing service reloads the relation, but use null-safe access
+        // here so a successful payment response itself can never become a 500.
+        return V4Response::success([
+            'invoice' => $updated,
+            'campaign_status' => $updated->campaign?->status,
+        ], 'Payment verified and campaign activated.');
     }
 
     public function webhook(Request $request)
