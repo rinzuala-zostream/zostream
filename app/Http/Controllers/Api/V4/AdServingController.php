@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V4;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\HlsFolderController;
 use App\Support\Api\V4Response;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
@@ -13,6 +14,10 @@ use Illuminate\Support\Facades\Schema;
 
 class AdServingController extends Controller
 {
+    public function __construct(private readonly HlsFolderController $hlsFolderController)
+    {
+    }
+
     public function serve(Request $request)
     {
         $data = $request->validate([
@@ -79,6 +84,29 @@ class AdServingController extends Controller
             return V4Response::success(null, 'No eligible ad is available.');
         }
 
+        $mediaUrl = $creative->media_url;
+        if (($data['platform'] ?? null) === 'ios'
+            && strtolower((string) $creative->type) === 'video'
+            && str_contains(strtolower((string) $mediaUrl), '.mpd')) {
+            try {
+                $hlsRequest = Request::create('/hls/check', 'GET', ['url' => $mediaUrl]);
+                $hlsPayload = $this->hlsFolderController->check($hlsRequest)->getData(true);
+                $mediaUrl = $hlsPayload['data']['stream_url'] ?? null;
+            } catch (\Throwable $exception) {
+                Log::warning('iOS DASH ad conversion failed.', [
+                    'creative_id' => $creative->creative_id,
+                    'error' => $exception->getMessage(),
+                ]);
+                $mediaUrl = null;
+            }
+
+            // Do not consume a delivery quota for an iOS creative that cannot
+            // be converted into an AVPlayer-compatible HLS stream.
+            if (! $mediaUrl) {
+                return V4Response::success(null, 'No eligible ad is available.');
+            }
+        }
+
         // Reserve the delivery before returning a creative. This makes a requested
         // quantity (e.g. 10 displays) a hard cap for image and video placements,
         // including concurrent client requests and failed client-side tracking.
@@ -109,7 +137,7 @@ class AdServingController extends Controller
             'creative_id' => $creative->creative_id,
             'name' => $creative->name,
             'type' => $creative->type,
-            'media_url' => $creative->media_url,
+            'media_url' => $mediaUrl,
             'thumbnail_url' => $creative->thumbnail_url,
             'target_url' => $creative->target_url,
             'ad_url' => $creative->ads_url,
@@ -120,7 +148,7 @@ class AdServingController extends Controller
             'tracking_token' => $trackingToken,
             // The iOS client can use this same-origin delivery URL when a
             // device network cannot establish a connection to the CDN domain.
-            'proxy_media_url' => $this->proxyMediaUrl($creative->media_url, $trackingToken),
+            'proxy_media_url' => $this->proxyMediaUrl($mediaUrl, $trackingToken),
         ]);
     }
 
