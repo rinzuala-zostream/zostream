@@ -113,6 +113,8 @@ Route::prefix('v4')
             ->middleware('throttle:60,1');
         Route::get('/ads/serve', [AdServingController::class, 'serve'])
             ->middleware('throttle:120,1');
+        Route::get('/ads/media', [AdServingController::class, 'media'])
+            ->middleware('throttle:120,1');
         Route::post('/ads/events', [AdTrackingController::class, 'store'])
             ->middleware('throttle:300,1');
 
