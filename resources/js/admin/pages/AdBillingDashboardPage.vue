@@ -8,7 +8,7 @@ import { formatAdminDate } from '../lib/adminDate';
 const data = ref({ summary: {}, items: [], pagination: {} }); const loading = ref(true); const error = ref(''); const notice = ref(''); const status = ref('');
 const money = (value, currency='INR') => new Intl.NumberFormat('en-IN', { style:'currency', currency, maximumFractionDigits:2 }).format(value || 0);
 async function load() { loading.value=true; error.value=''; try { data.value = await api(`/admin/ads/billing-dashboard${queryString({ status: status.value })}`); } catch(reason){ error.value=reason.message; } finally{loading.value=false;} }
-async function markPaid(campaign) { const invoice=campaign.invoices?.at(-1); if(!invoice) return; const reference=prompt('Payment reference (UTR/order ID):'); if(reference===null) return; try { await api(`/admin/ads/invoices/${invoice.id}/mark-paid`, {method:'POST',body:{payment_method:'manual',reference:reference||undefined}}); notice.value='Invoice paid; campaign activated.'; await load(); } catch(reason){error.value=reason.message;} }
+async function markPaid(campaign) { const invoice=campaign.invoices?.at(-1); if(!invoice) return; try { await api(`/admin/ads/invoices/${invoice.id}/mark-paid`, {method:'POST',body:{payment_method:'manual'}}); notice.value='Invoice paid; campaign activated.'; await load(); } catch(reason){error.value=reason.message;} }
 async function setStatus(campaign,next){ if(!confirm(`Set campaign to ${next}?`)) return; try{await api(`/admin/ads/campaigns/${campaign.id}/status`,{method:'PUT',body:{status:next}});notice.value=`Campaign ${next}.`;await load();}catch(reason){error.value=reason.message;} }
 onMounted(load);
 </script>
