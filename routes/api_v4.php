@@ -128,6 +128,14 @@ Route::prefix('v4')
             ->name('v4.external.subscription-history.store');
         Route::post('/webhooks/razorpay', [PaymentController::class, 'razorpayWebhook']);
         Route::post('/webhooks/ads/razorpay', [AdPaymentController::class, 'webhook']);
+        // The high-entropy payment token in the approved WhatsApp link is the
+        // authorization for this narrowly scoped payment flow.
+        Route::get('/ad-submissions/status/{token}/payment', [AdPaymentController::class, 'show'])
+            ->middleware('throttle:60,1');
+        Route::post('/ad-submissions/status/{token}/payments/razorpay/order', [AdPaymentController::class, 'createOrder'])
+            ->middleware('throttle:10,1');
+        Route::post('/ad-submissions/status/{token}/payments/razorpay/verify', [AdPaymentController::class, 'verify'])
+            ->middleware('throttle:20,1');
         Route::get('/webhooks/whatsapp', [WhatsAppWebhookController::class, 'verify'])
             ->middleware('throttle:60,1');
         Route::post('/webhooks/whatsapp', [WhatsAppWebhookController::class, 'receive'])
@@ -156,11 +164,6 @@ Route::prefix('v4')
                 ->middleware('throttle:60,1');
             Route::post('/ad-submissions/status/{token}/resubmit', [AdSubmissionController::class, 'resubmit'])
                 ->middleware('throttle:10,1');
-            Route::post('/ad-submissions/status/{token}/payments/razorpay/order', [AdPaymentController::class, 'createOrder'])
-                ->middleware('throttle:10,1');
-            Route::post('/ad-submissions/status/{token}/payments/razorpay/verify', [AdPaymentController::class, 'verify'])
-                ->middleware('throttle:20,1');
-
             Route::get('/recommendations/home', [HomeRecommendationController::class, 'home'])
                 ->middleware('throttle:30,1')
                 ->name('v4.recommendations.home');

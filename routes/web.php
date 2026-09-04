@@ -27,6 +27,13 @@ Route::view('/advertising-terms', 'welcome');
 Route::view('/faq', 'welcome');
 Route::view('/advertise', 'welcome');
 Route::view('/advertise/status/{token}', 'welcome')->where('token', '[A-Za-z0-9]{48}');
+// Backwards compatibility for the original WhatsApp template URL. The template
+// treated `{{1}}` as literal text and appended the dynamic token after `/open`.
+// Keep links already delivered to customers working while the Meta template is
+// updated to use a dynamic URL ending in `/advertise/payment/{{1}}`.
+Route::get('/advertise/payment/{legacy}/open{token}', fn (string $legacy, string $token) => redirect('/advertise/payment/'.$token))
+    ->where('legacy', '\\{\\{1\\}\\}')
+    ->where('token', '[A-Za-z0-9]{48}');
 Route::view('/advertise/payment/{token}', 'welcome')->where('token', '[A-Za-z0-9]{48}');
 Route::get('/advertise/payment/{token}/open', fn (string $token) => redirect('/advertise/payment/'.$token))
     ->where('token', '[A-Za-z0-9]{48}');

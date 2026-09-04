@@ -64,6 +64,14 @@ class AdSubmissionWorkflowTest extends TestCase
         (require database_path('migrations/2026_09_03_000001_add_user_and_payment_notification_to_ad_submissions.php'))->up();
     }
 
+    public function test_legacy_whatsapp_payment_button_url_redirects_to_the_payment_page(): void
+    {
+        $token = str_repeat('w', 48);
+
+        $this->get('/advertise/payment/%7B%7B1%7D%7D/open'.$token)
+            ->assertRedirect('/advertise/payment/'.$token);
+    }
+
     public function test_public_ad_can_be_submitted_and_checked_with_private_token(): void
     {
         $headers = $this->authenticatedClientHeaders();
@@ -368,6 +376,20 @@ class AdSubmissionWorkflowTest extends TestCase
             ['POST', 'api/v4/ad-submissions'],
             ['GET', 'api/v4/ad-submissions/status/{token}'],
             ['POST', 'api/v4/ad-submissions/status/{token}/resubmit'],
+        ] as [$method, $uri]) {
+            $route = collect(Route::getRoutes()->getRoutes())->first(
+                fn ($route) => in_array($method, $route->methods(), true) && $route->uri() === $uri
+            );
+
+            $this->assertNotNull($route, "Missing {$method} {$uri}");
+            $this->assertContains('auth.token', $route->gatherMiddleware());
+        }
+    }
+
+    public function test_payment_link_routes_do_not_require_login(): void
+    {
+        foreach ([
+            ['GET', 'api/v4/ad-submissions/status/{token}/payment'],
             ['POST', 'api/v4/ad-submissions/status/{token}/payments/razorpay/order'],
             ['POST', 'api/v4/ad-submissions/status/{token}/payments/razorpay/verify'],
         ] as [$method, $uri]) {
@@ -376,7 +398,7 @@ class AdSubmissionWorkflowTest extends TestCase
             );
 
             $this->assertNotNull($route, "Missing {$method} {$uri}");
-            $this->assertContains('auth.token', $route->gatherMiddleware());
+            $this->assertNotContains('auth.token', $route->gatherMiddleware());
         }
     }
 

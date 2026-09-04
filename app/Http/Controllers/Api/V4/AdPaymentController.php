@@ -17,9 +17,45 @@ class AdPaymentController extends Controller
         private readonly AdBillingService $billing,
     ) {}
 
+    public function show(string $token)
+    {
+        $submission = $this->submission($token)->load('campaign.invoices');
+        $invoice = $submission->campaign?->invoices->sortByDesc('id')->first();
+
+        if (! $invoice) {
+            return V4Response::error('AD_INVOICE_NOT_READY', 'The invoice is not ready for payment.', 409);
+        }
+
+        return V4Response::success([
+            'reference_no' => $submission->reference_no,
+            'status' => $submission->status,
+            'business_name' => $submission->business_name,
+            'contact_name' => $submission->contact_name,
+            'contact_email' => $submission->contact_email,
+            'ads_name' => $submission->ads_name,
+            'type' => $submission->type,
+            'placement_code' => $submission->placement_code,
+            'billing_model' => $submission->billing_model,
+            'quoted_rate' => (float) $submission->quoted_rate,
+            'quoted_amount' => (float) $submission->quoted_amount,
+            'currency' => $submission->currency,
+            'requested_period_days' => $submission->requested_period_days,
+            'campaign' => [
+                'status' => $submission->campaign->status,
+                'invoice' => [
+                    'invoice_no' => $invoice->invoice_no,
+                    'status' => $invoice->status,
+                    'total' => (float) $invoice->total,
+                    'currency' => $invoice->currency,
+                ],
+            ],
+            'events' => [],
+        ]);
+    }
+
     public function createOrder(Request $request, string $token)
     {
-        $submission = $this->submission($request, $token)->load('campaign.invoices');
+        $submission = $this->submission($token)->load('campaign.invoices');
         $invoice = $submission->campaign?->invoices->sortByDesc('id')->first();
         if (! $invoice) {
             return V4Response::error('AD_INVOICE_NOT_READY', 'The invoice is not ready for payment.', 409);
@@ -74,7 +110,7 @@ class AdPaymentController extends Controller
             'razorpay_payment_id' => ['required', 'string', 'max:255'],
             'razorpay_signature' => ['required', 'string', 'max:255'],
         ]);
-        $submission = $this->submission($request, $token)->load('campaign.invoices');
+        $submission = $this->submission($token)->load('campaign.invoices');
         $invoice = $submission->campaign?->invoices->sortByDesc('id')->first();
         if (! $invoice) {
             return V4Response::error('AD_INVOICE_NOT_READY', 'The invoice is not ready for payment.', 409);
@@ -145,10 +181,9 @@ class AdPaymentController extends Controller
         return V4Response::success(['invoice_no' => $updated->invoice_no], 'Ad payment processed.');
     }
 
-    private function submission(Request $request, string $token): AdSubmission
+    private function submission(string $token): AdSubmission
     {
         return AdSubmission::where('public_token_hash', hash('sha256', strlen($token) === 48 ? $token : 'invalid'))
-            ->where('user_id', (string) $request->input('auth_user_id'))
             ->firstOrFail();
     }
 
