@@ -88,6 +88,10 @@ class AdApprovalService
                 'media_url' => $mainMediaUrl,
                 'thumbnail_url' => $feature?->file_url ?: ($locked->type !== 'video' ? $mainMediaUrl : null),
                 'target_url' => $locked->destination_url,
+                'is_skippable' => $locked->type === 'video',
+                'skip_after_seconds' => $locked->type === 'video'
+                    ? 10
+                    : null,
                 'is_active' => true,
             ]);
             DB::table('ad_campaign_placements')->insert([

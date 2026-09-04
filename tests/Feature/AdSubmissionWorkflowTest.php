@@ -197,7 +197,7 @@ class AdSubmissionWorkflowTest extends TestCase
             'event_id' => (string) Str::uuid(),
             'event' => 'video_complete',
             'impression_event_id' => $impressionEvent,
-            'watched_seconds' => 30,
+            'watched_seconds' => 10,
         ])->assertOk()->assertJsonPath('data.recorded', true);
 
         $this->assertDatabaseHas('ad_billing_events', [

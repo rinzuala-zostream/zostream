@@ -150,6 +150,8 @@ class AdServingController extends Controller
 
         $trackingToken = $this->sign($payload);
 
+        $isVideo = strtolower((string) $creative->type) === 'video';
+
         return V4Response::success([
             'campaign_id' => $creative->campaign_id,
             'creative_id' => $creative->creative_id,
@@ -160,8 +162,13 @@ class AdServingController extends Controller
             'target_url' => $creative->target_url,
             'ad_url' => $creative->ads_url,
             'duration_seconds' => $creative->duration_seconds,
-            'skip_after_seconds' => $creative->skip_after_seconds,
-            'is_skippable' => (bool) $creative->is_skippable,
+            // Older creatives have null skip settings. Return the same safe
+            // default as new video creatives so every client can show Skip
+            // after 10 seconds without a data migration.
+            'skip_after_seconds' => $isVideo
+                ? ($creative->skip_after_seconds ?? 10)
+                : null,
+            'is_skippable' => $isVideo ? true : (bool) $creative->is_skippable,
             'placement' => $creative->placement,
             'tracking_token' => $trackingToken,
             // The iOS client can use this same-origin delivery URL when a
