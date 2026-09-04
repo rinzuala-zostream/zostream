@@ -15,6 +15,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class AdminAdBillingController extends Controller
 {
@@ -113,13 +114,29 @@ class AdminAdBillingController extends Controller
             'payment_method' => ['required', Rule::in(['cash', 'bank_transfer', 'upi', 'manual', 'razorpay'])],
             'reference' => ['nullable', 'string', 'max:255'],
         ]);
-        $updated = $this->billing->markPaid($invoice, [
-            'amount' => $data['amount'] ?? $invoice->total,
-            'payment_method' => $data['payment_method'],
-            'gateway' => 'manual',
-            'gateway_order_id' => $data['reference'] ?? 'manual-'.$invoice->id.'-'.now()->timestamp,
-            'metadata' => ['recorded_by' => (string) $request->input('auth_user_id')],
-        ]);
+        try {
+            $updated = $this->billing->markPaid($invoice, [
+                'amount' => $data['amount'] ?? $invoice->total,
+                'payment_method' => $data['payment_method'],
+                'gateway' => 'manual',
+                'gateway_order_id' => $data['reference'] ?? 'manual-'.$invoice->id.'-'.now()->timestamp,
+                'metadata' => ['recorded_by' => (string) $request->input('auth_user_id')],
+            ]);
+        } catch (ValidationException $exception) {
+            throw $exception;
+        } catch (\Throwable $exception) {
+            Log::error('Admin could not activate an ad campaign after marking its invoice paid.', [
+                'invoice_id' => $invoice->id,
+                'campaign_id' => $invoice->campaign_id,
+                'exception' => $exception,
+            ]);
+
+            return V4Response::error(
+                'AD_CAMPAIGN_ACTIVATION_FAILED',
+                'The invoice is paid, but campaign activation failed. Refresh the billing dashboard to retry; no second payment is required.',
+                409,
+            );
+        }
 
         return V4Response::success($updated, 'Invoice marked as paid and campaign activated.');
     }
