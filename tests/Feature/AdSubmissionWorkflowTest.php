@@ -68,6 +68,9 @@ class AdSubmissionWorkflowTest extends TestCase
     {
         $token = str_repeat('w', 48);
 
+        $this->get('/advertise/payment/%7B%7B1%7D%7D'.$token)
+            ->assertRedirect('/advertise/payment/'.$token);
+
         $this->get('/advertise/payment/%7B%7B1%7D%7D/open'.$token)
             ->assertRedirect('/advertise/payment/'.$token);
     }
