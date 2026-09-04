@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Controllers\New\MovieController;
+use App\Http\Controllers\Api\V4\AdServingController;
 use App\Models\MovieModel;
 use App\Models\New\Episode;
 use App\Models\New\PaymentHistory;
@@ -26,13 +27,15 @@ class NewStreamController extends Controller
     public $movieController;
     public $hlsFolderController;
     public $watchPositionController;
+    public $adServingController;
 
-    public function __construct(HlsFolderController $hlsFolderController, MovieController $movieController, WatchPositionController $watchPositionController)
+    public function __construct(HlsFolderController $hlsFolderController, MovieController $movieController, WatchPositionController $watchPositionController, AdServingController $adServingController)
     {
         $this->streamTimeout = max(60, (int) config('playback.stream_timeout_seconds', 500));
         $this->hlsFolderController = $hlsFolderController;
         $this->movieController = $movieController;
         $this->watchPositionController = $watchPositionController;
+        $this->adServingController = $adServingController;
     }
 
     // 🧩 Start streaming
@@ -626,6 +629,10 @@ class NewStreamController extends Controller
             return response()->json($payload, 503);
         }
 
+        // Optional delivery plan. Existing start-stream keys remain unchanged, and
+        // clients that do not understand `ads` simply ignore it.
+        $ads = $this->streamAds($platform, (string) $request->input('device_type', 'mobile'));
+
         return response()->json([
             'status' => 'success',
             'stream_token' => $streamToken,
@@ -634,8 +641,36 @@ class NewStreamController extends Controller
             'device_limit' => $limit,
             'watch_position' => $watchPosition,
             'remaining_slots' => $remainingSlots,
-            'movie_links' => $movieLinks
+            'movie_links' => $movieLinks,
+            'ads' => $ads,
         ]);
+    }
+
+    private function streamAds(string $platform, string $deviceType): array
+    {
+        $platform = $platform ?: 'android';
+        $deviceType = $deviceType ?: 'mobile';
+        $ads = [];
+
+        foreach (['pre_roll', 'mid_roll', 'post_roll'] as $placement) {
+            try {
+                $request = Request::create('/api/v4/ads/serve', 'GET', [
+                    'placement' => $placement,
+                    'platform' => $platform,
+                ], [], [], [
+                    'HTTP_X_CLIENT_PLATFORM' => $platform,
+                    'HTTP_X_DEVICE_TYPE' => $deviceType,
+                ]);
+                $payload = $this->adServingController->serve($request)->getData(true);
+                if (($payload['success'] ?? false) && !empty($payload['data'])) {
+                    $ads[$placement] = $payload['data'];
+                }
+            } catch (\Throwable $exception) {
+                Log::warning('Start stream ad planning failed.', ['placement' => $placement, 'error' => $exception->getMessage()]);
+            }
+        }
+
+        return $ads;
     }
 
     // 🔁 Ping stream
