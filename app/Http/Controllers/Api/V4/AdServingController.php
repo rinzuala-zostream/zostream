@@ -51,7 +51,18 @@ class AdServingController extends Controller
                 ->where('campaign.status', 'active')
                 ->where(fn ($query) => $query->whereNull('campaign.start_at')->orWhere('campaign.start_at', '<=', $now))
                 ->where(fn ($query) => $query->whereNull('campaign.end_at')->orWhere('campaign.end_at', '>=', $now))
-                ->where(fn ($query) => $query->whereNull('campaign.target_quantity')->orWhereColumn('campaign.served_quantity', '<', 'campaign.target_quantity'))
+                // Only CPM is capped at serve time: its billable unit is an
+                // impression. CPC and CPV need to remain eligible until their
+                // clicks/views reach the target in the tracking endpoint.
+                ->where(function ($query) {
+                    $query->where(function ($cpm) {
+                        $cpm->where('campaign.billing_model', 'CPM')
+                            ->where(fn ($target) => $target->whereNull('campaign.target_quantity')->orWhereColumn('campaign.served_quantity', '<', 'campaign.target_quantity'));
+                    })->orWhere(function ($eventBased) {
+                        $eventBased->where('campaign.billing_model', '!=', 'CPM')
+                            ->where(fn ($target) => $target->whereNull('campaign.target_quantity')->orWhereColumn('campaign.consumed_quantity', '<', 'campaign.target_quantity'));
+                    });
+                })
                 ->when($data['platform'] ?? null, fn ($query, $platform) => $query->whereIn('slot.platform', ['all', $platform]))
                 ->orderByDesc('assignment.priority')
                 ->inRandomOrder();
@@ -107,13 +118,20 @@ class AdServingController extends Controller
             }
         }
 
-        // Reserve the delivery before returning a creative. This makes a requested
-        // quantity (e.g. 10 displays) a hard cap for image and video placements,
-        // including concurrent client requests and failed client-side tracking.
+        // Reserve CPM impressions before returning a creative. CPC/CPV are
+        // capped when their respective billable events are recorded instead.
         $reserved = DB::table('ad_campaigns')
             ->where('id', $creative->campaign_id)
             ->where('status', 'active')
-            ->where(fn ($query) => $query->whereNull('target_quantity')->orWhereColumn('served_quantity', '<', 'target_quantity'))
+            ->where(function ($query) {
+                $query->where(function ($cpm) {
+                    $cpm->where('billing_model', 'CPM')
+                        ->where(fn ($target) => $target->whereNull('target_quantity')->orWhereColumn('served_quantity', '<', 'target_quantity'));
+                })->orWhere(function ($eventBased) {
+                    $eventBased->where('billing_model', '!=', 'CPM')
+                        ->where(fn ($target) => $target->whereNull('target_quantity')->orWhereColumn('consumed_quantity', '<', 'target_quantity'));
+                });
+            })
             ->update([
                 'served_quantity' => DB::raw('served_quantity + 1'),
                 'updated_at' => now(),

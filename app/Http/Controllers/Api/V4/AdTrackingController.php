@@ -110,6 +110,19 @@ class AdTrackingController extends Controller
             return;
         }
 
+        // The campaign row is locked by store(). A CPC/CPV event that arrives
+        // after the purchased quantity was delivered can still be recorded as
+        // analytics, but it must never become an additional billable delivery.
+        if ($campaign->target_quantity !== null && $campaign->consumed_quantity >= $campaign->target_quantity) {
+            $campaign->update([
+                'status' => 'completed',
+                'completed_at' => $campaign->completed_at ?: now(),
+            ]);
+            AdsModel::where('campaign_id', $campaign->id)->update(['is_active' => false]);
+
+            return;
+        }
+
         $amount = $campaign->billing_model === 'CPM' ? (float) $campaign->rate / 1000 : (float) $campaign->rate;
         DB::table('ad_billing_events')->insert([
             'advertiser_id' => $campaign->advertiser_id, 'campaign_id' => $campaign->id,
@@ -124,8 +137,13 @@ class AdTrackingController extends Controller
         $todaySpend = (float) DB::table('ad_billing_events')
             ->where('campaign_id', $campaign->id)->whereDate('created_at', today())->sum('amount');
         $dailyBudgetReached = $campaign->daily_budget && $todaySpend >= (float) $campaign->daily_budget;
-        if ($dailyBudgetReached) {
-            $campaign->update(['status' => 'paused']);
+        $targetReached = $campaign->target_quantity !== null
+            && $campaign->consumed_quantity >= $campaign->target_quantity;
+        if ($targetReached || $dailyBudgetReached) {
+            $campaign->update([
+                'status' => $targetReached ? 'completed' : 'paused',
+                'completed_at' => $targetReached ? ($campaign->completed_at ?: now()) : $campaign->completed_at,
+            ]);
             AdsModel::where('campaign_id', $campaign->id)->update(['is_active' => false]);
         }
     }

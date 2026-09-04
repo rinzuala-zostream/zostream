@@ -10,7 +10,7 @@ class MaintainAdCampaigns extends Command
 {
     protected $signature = 'ads:maintain-campaigns';
 
-    protected $description = 'Complete expired ad campaigns and remove them from ad serving';
+    protected $description = 'Complete expired or fully delivered ad campaigns and remove them from ad serving';
 
     public function handle(): int
     {
@@ -18,8 +18,10 @@ class MaintainAdCampaigns extends Command
 
         AdCampaign::query()
             ->where('status', 'active')
-            ->whereNotNull('end_at')
-            ->where('end_at', '<', now())
+            ->where(function ($query) {
+                $query->where(fn ($expired) => $expired->whereNotNull('end_at')->where('end_at', '<', now()))
+                    ->orWhere(fn ($delivered) => $delivered->whereNotNull('target_quantity')->whereColumn('consumed_quantity', '>=', 'target_quantity'));
+            })
             ->select('id')
             ->chunkById(100, function ($campaigns) use (&$completed) {
                 $ids = $campaigns->pluck('id');
