@@ -92,12 +92,12 @@ class AdTrackingController extends Controller
             ]);
             // A CPV view becomes valid at the exact point the viewer can
             // skip this creative. Older creatives without that setting use
-            // the product default of 10 seconds.
+            // the product default of 5 seconds.
             $validViewSeconds = (int) DB::table('ad_creatives')
                 ->where('id', $token['creative_id'])
                 ->where('campaign_id', $campaign->id)
                 ->value('skip_after_seconds');
-            $validViewSeconds = max(1, $validViewSeconds ?: 10);
+            $validViewSeconds = max(1, $validViewSeconds ?: 5);
             if ($event === 'video_complete' || ($data['watched_seconds'] ?? 0) >= $validViewSeconds) {
                 $billingSourceId = $impressionId ?: $sourceId;
                 $this->bill($campaign, $token['creative_id'], 'video_view', 'ad_video_views', $billingSourceId);

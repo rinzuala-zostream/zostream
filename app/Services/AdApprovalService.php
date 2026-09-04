@@ -90,7 +90,7 @@ class AdApprovalService
                 'target_url' => $locked->destination_url,
                 'is_skippable' => $locked->type === 'video',
                 'skip_after_seconds' => $locked->type === 'video'
-                    ? 10
+                    ? 5
                     : null,
                 'is_active' => true,
             ]);

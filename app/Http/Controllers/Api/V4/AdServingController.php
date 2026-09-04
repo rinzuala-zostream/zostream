@@ -164,9 +164,9 @@ class AdServingController extends Controller
             'duration_seconds' => $creative->duration_seconds,
             // Older creatives have null skip settings. Return the same safe
             // default as new video creatives so every client can show Skip
-            // after 10 seconds without a data migration.
+            // after 5 seconds without a data migration.
             'skip_after_seconds' => $isVideo
-                ? ($creative->skip_after_seconds ?? 10)
+                ? ($creative->skip_after_seconds ?? 5)
                 : null,
             'is_skippable' => $isVideo ? true : (bool) $creative->is_skippable,
             'placement' => $creative->placement,
