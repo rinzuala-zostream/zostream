@@ -14,6 +14,7 @@ use Throwable;
 class HomeRecommendationController extends Controller
 {
     private const SECTIONS = [
+        'latest_update',
         'continue_watching',
         'because_you_watched',
         'top_picks_for_you',

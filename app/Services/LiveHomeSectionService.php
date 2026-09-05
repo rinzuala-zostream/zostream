@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 class LiveHomeSectionService
 {
     private const LIVE_SECTIONS = [
+        'latest_update',
         'continue_watching',
         'trending_now',
         'new_releases',
@@ -63,6 +64,14 @@ class LiveHomeSectionService
             : [];
 
         $sections = [];
+        if (in_array('latest_update', $requested, true)) {
+            $sections['latest_update'] = $this->latestUpdates(
+                $userId,
+                $fetchLimit,
+                $mode,
+                $includeAgeRestricted
+            );
+        }
         if (in_array('continue_watching', $requested, true)) {
             $sections['continue_watching'] = $this->continueWatching($watch, $fetchLimit, $mode, $includeAgeRestricted);
         }
@@ -159,6 +168,24 @@ class LiveHomeSectionService
         }
 
         return $cards;
+    }
+
+    /**
+     * Keep this shelf aligned with the legacy Home API's "Latest Update"
+     * category: newest update first, with creation date and movie number as
+     * fallbacks. It is deliberately live data rather than an AI result.
+     */
+    private function latestUpdates(string $userId, int $limit, string $mode, bool $includeAgeRestricted): array
+    {
+        $movies = $this->allowedMovies($mode, $includeAgeRestricted)
+            // The legacy Home endpoint serves Mizo-only titles for this
+            // legacy account, so preserve that established behaviour here.
+            ->when($userId === 'AW7ovVnTdgWuvE1Uke7QTQ5OEQt1', fn (Builder $query) => $query->where('isMizo', 1))
+            ->orderByRaw('COALESCE(movie.updated_at, movie.create_date) DESC, movie.num DESC')
+            ->limit($limit)
+            ->get(self::MOVIE_CARD_COLUMNS);
+
+        return $this->movies($movies);
     }
 
     private function continueWatching(array $watch, int $limit, string $mode, bool $includeAgeRestricted): array
