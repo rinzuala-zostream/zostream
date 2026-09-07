@@ -120,27 +120,64 @@ class LiveHomeSectionService
         }
         $allowed = $this->allowedMovies($mode, $includeAgeRestricted)
             ->whereIn('id', array_values(array_unique($ids)))
-            ->pluck('id')->mapWithKeys(fn ($id) => [(string) $id => true])->all();
+            ->get(['id', 'poster', 'cover_img', 'isPremium', 'isPayPerView'])
+            ->keyBy(fn ($movie) => (string) $movie->id);
 
         foreach (['because_you_watched', 'top_picks_for_you', 'similar_movies'] as $key) {
             if (! isset($homepage[$key])) {
                 continue;
             }
             if (isset($homepage[$key]['items'])) {
-                $homepage[$key]['items'] = array_values(array_filter(
-                    $homepage[$key]['items'], fn ($item) => isset($allowed[(string) ($item['id'] ?? '')])
-                ));
-                if (isset($homepage[$key]['anchor']['id']) && ! isset($allowed[(string) $homepage[$key]['anchor']['id']])) {
-                    $homepage[$key]['anchor'] = null;
+                $homepage[$key]['items'] = $this->hydrateAiCards(
+                    $homepage[$key]['items'],
+                    $allowed
+                );
+                if (isset($homepage[$key]['anchor']['id'])) {
+                    $anchor = $allowed->get((string) $homepage[$key]['anchor']['id']);
+                    if ($anchor) {
+                        $homepage[$key]['anchor'] = $this->hydrateAiCard(
+                            $homepage[$key]['anchor'],
+                            $anchor
+                        );
+                    } else {
+                        $homepage[$key]['anchor'] = null;
+                    }
                 }
             } else {
-                $homepage[$key] = array_values(array_filter(
-                    $homepage[$key], fn ($item) => isset($allowed[(string) ($item['id'] ?? '')])
-                ));
+                $homepage[$key] = $this->hydrateAiCards($homepage[$key], $allowed);
             }
         }
 
         return $homepage;
+    }
+
+    private function hydrateAiCards(array $items, $allowed): array
+    {
+        $cards = [];
+        foreach ($items as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $movie = $allowed->get((string) ($item['id'] ?? ''));
+            if (! $movie) {
+                continue;
+            }
+            $cards[] = $this->hydrateAiCard($item, $movie);
+        }
+
+        return $cards;
+    }
+
+    private function hydrateAiCard(array $item, $movie): array
+    {
+        // AI model artifacts historically contain poster only. The API card must
+        // carry the database cover image so every client renders the landscape cover.
+        $item['cover_img'] = (string) ($movie->cover_img ?: $movie->poster ?: '');
+        $item['poster'] = (string) ($movie->poster ?? '');
+        $item['premium'] = (bool) $movie->isPremium;
+        $item['ppv'] = (bool) $movie->isPayPerView;
+
+        return $item;
     }
 
     private function allowedMovies(string $mode, bool $includeAgeRestricted): Builder

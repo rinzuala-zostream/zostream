@@ -33,7 +33,7 @@ STOP_WORDS = {
 MYSQL_COLUMNS = {
     "movie": (
         "id", "num", "title", "status", "isEnable", "description", "director",
-        "genre", "release_on", "create_date", "poster", "isPremium",
+        "genre", "release_on", "create_date", "poster", "cover_img", "isPremium",
         "isPayPerView", "isChildMode", "isAgeRestricted", "isMizo", "isKorean",
         "isHollywood", "isBollywood", "isDocumentary",
     ),
@@ -355,6 +355,7 @@ def load_catalog(source):
             "release_on": clean(row.get("release_on")),
             "created_on": clean(row.get("create_date")),
             "poster": clean(row.get("poster")),
+            "cover_img": clean(row.get("cover_img")),
             "premium": clean(row.get("isPremium")) == "1",
             "ppv": clean(row.get("isPayPerView")) == "1",
             "child_mode": clean(row.get("isChildMode")) == "1",
@@ -881,6 +882,7 @@ def recommend(model, user_id: str, limit=10, mode="adult", include_age_restricte
             "status": "Published",
             "genre": item["genre"],
             "poster": item["poster"],
+            "cover_img": item.get("cover_img", ""),
             "premium": item["premium"],
             "ppv": item["ppv"],
             "score": round(score, 6),
@@ -901,6 +903,7 @@ def movie_card(model, item_id: str, mode="adult", include_age_restricted=False, 
         "status": "Published",
         "genre": item["genre"],
         "poster": item["poster"],
+        "cover_img": item.get("cover_img", ""),
         "premium": item["premium"],
         "ppv": item["ppv"],
     }
