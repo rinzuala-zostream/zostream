@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V4;
 
 use App\Http\Controllers\Controller;
 use App\Services\HomeRecommendationService;
+use App\Services\HomeSectionLayoutService;
 use App\Support\Api\V4Response;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -13,20 +14,9 @@ use Throwable;
 
 class HomeRecommendationController extends Controller
 {
-    private const SECTIONS = [
-        'latest_update',
-        'continue_watching',
-        'because_you_watched',
-        'top_picks_for_you',
-        'similar_movies',
-        'trending_now',
-        'new_releases',
-        'your_wishlist',
-        'next_episode',
-    ];
-
     public function __construct(
         private readonly HomeRecommendationService $recommendations,
+        private readonly HomeSectionLayoutService $layout,
     ) {}
 
     public function home(Request $request): JsonResponse
@@ -48,7 +38,7 @@ class HomeRecommendationController extends Controller
         ]);
 
         $validated = $request->validate([
-            'section' => ['nullable', 'string', Rule::in(self::SECTIONS)],
+            'section' => ['nullable', 'string', Rule::in(HomeSectionLayoutService::keys())],
             'page' => ['nullable', 'integer', 'min:1', 'max:25'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
             'content_mode' => ['required', 'string', Rule::in(['adult', 'kids'])],
@@ -69,9 +59,10 @@ class HomeRecommendationController extends Controller
         $fetchLimit = min(($page * $perPage) + 1, 1251);
         $contentMode = $validated['content_mode'];
         $includeAgeRestricted = $request->boolean('age_restriction');
-        $requestedSections = isset($validated['section'])
-            ? [$validated['section']]
-            : self::SECTIONS;
+        $sectionLayout = isset($validated['section'])
+            ? [$this->layout->definition($validated['section'])]
+            : $this->layout->enabled();
+        $requestedSections = array_column($sectionLayout, 'key');
 
         try {
             $homepage = $this->recommendations->homepage(
@@ -117,6 +108,11 @@ class HomeRecommendationController extends Controller
             'history_size' => (int) ($homepage['history_size'] ?? 0),
             'content_mode' => $contentMode,
             'age_restriction' => $includeAgeRestricted,
+            'section_order' => array_map(fn (array $section): array => [
+                'key' => $section['key'],
+                'title' => $section['title'],
+                'position' => $section['position'],
+            ], $sectionLayout),
             'sections' => $sections,
         ]);
     }

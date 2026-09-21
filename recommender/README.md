@@ -160,6 +160,11 @@ Production API-ah section responsibility:
 - Live MySQL rule/query: `continue_watching`, `trending_now`, `new_releases`,
   `your_wishlist`, `next_episode`.
 
+Homepage response-ah `section_order` metadata a tel. Admin dashboard-a **Home → Arrange
+Sections** atangin section position, display title, add leh remove/disable theih a ni. Hei hian
+recommendation algorithm a thlak lo va; API-in section engte nge a calculate leh eng order-a
+frontend-ah a thawn tih chauh a control.
+
 Laravel-in request user-a current `watch_position` leh `wist_list` chauh a la a, stdin JSON-in
 Python model-ah a pass. AI result pawh response hmain live movie `Published`, `isEnable`, kids
 leh age flags-in a verify leh. Backup hnu lama movie thar chu live New Releases-ah a lang thei;

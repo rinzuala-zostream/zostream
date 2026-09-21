@@ -4,6 +4,7 @@ namespace Tests\Unit;
 
 use App\Http\Controllers\Api\V4\HomeRecommendationController;
 use App\Services\HomeRecommendationService;
+use App\Services\HomeSectionLayoutService;
 use Illuminate\Http\Request;
 use Mockery;
 use Tests\TestCase;
@@ -13,6 +14,16 @@ class HomeRecommendationControllerTest extends TestCase
     public function test_it_uses_trusted_identity_and_paginates_one_section(): void
     {
         $service = Mockery::mock(HomeRecommendationService::class);
+        $layout = Mockery::mock(HomeSectionLayoutService::class);
+        $layout->shouldReceive('definition')
+            ->once()
+            ->with('top_picks_for_you')
+            ->andReturn([
+                'key' => 'top_picks_for_you',
+                'title' => 'Top Picks for You',
+                'position' => 3,
+                'is_enabled' => true,
+            ]);
         $service->shouldReceive('homepage')
             ->once()
             ->with('trusted-user', 5, 'kids', true, ['top_picks_for_you'])
@@ -38,7 +49,7 @@ class HomeRecommendationControllerTest extends TestCase
         $request->headers->set('X-Mode', 'kids');
         $request->merge(['auth_user_id' => 'trusted-user']);
 
-        $response = (new HomeRecommendationController($service))->home($request);
+        $response = (new HomeRecommendationController($service, $layout))->home($request);
         $payload = $response->getData(true);
         $section = $payload['data']['sections']['top_picks_for_you'];
 
@@ -46,6 +57,7 @@ class HomeRecommendationControllerTest extends TestCase
         $this->assertSame('trusted-user', $payload['data']['user']);
         $this->assertSame('kids', $payload['data']['content_mode']);
         $this->assertTrue($payload['data']['age_restriction']);
+        $this->assertSame('top_picks_for_you', $payload['data']['section_order'][0]['key']);
         $this->assertSame(['c', 'd'], array_column($section['items'], 'id'));
         $this->assertSame([
             'current_page' => 2,

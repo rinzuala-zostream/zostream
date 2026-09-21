@@ -17,6 +17,7 @@ import {
   Images,
   Layers3,
   LayoutGrid,
+  ListOrdered,
   List,
   ListVideo,
   PanelLeftClose,
@@ -85,6 +86,19 @@ const topNavItems = [
 ] as const;
 
 const sidebarGroups: readonly SidebarGroupConfig[] = [
+  {
+    id: "home",
+    title: "Home",
+    icon: LayoutGrid,
+    items: [
+      {
+        title: "Arrange Sections",
+        href: "/home/sections",
+        icon: ListOrdered,
+      },
+    ],
+    maxHeightClass: "max-h-[6rem]",
+  },
   {
     id: "movie",
     title: "Movie",
