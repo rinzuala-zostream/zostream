@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import PublicLoginCard from '../PublicLoginCard.vue';
 import { authenticatedFetch, clearPublicSession, getPublicSession, publicHeaders } from '../../lib/publicAuth';
 
@@ -18,6 +18,9 @@ const featureImage = ref(null);
 const galleryImages = ref([]);
 const pricing = ref([]);
 const pricingLoading = ref(true);
+const previewDevice = ref('desktop');
+const mediaObjectUrl = ref('');
+const featureObjectUrl = ref('');
 const today = new Date().toISOString().slice(0, 10);
 
 const mediaType = computed(() => form.type === 'video' ? 'video' : 'image');
@@ -33,6 +36,13 @@ const estimate = computed(() => {
 });
 const targetLabel = computed(() => ({ CPM: 'Target impressions', CPC: 'Target clicks', CPV: 'Target valid views' }[form.billing_model] || 'Target'));
 const money = (value) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: selectedRate.value?.currency || 'INR', maximumFractionDigits: 2 }).format(value || 0);
+const previewSource = computed(() => mediaObjectUrl.value || form.media_url || featureObjectUrl.value);
+const previewIsVideo = computed(() => form.type === 'video' || mediaFile.value?.type?.startsWith('video/'));
+const previewIsWebsite = computed(() => form.type === 'website');
+const previewTitle = computed(() => form.ads_name || form.business_name || 'Your campaign title');
+const previewDescription = computed(() => form.description || 'Your campaign message will appear here as your audience browses Zo Stream.');
+const previewPlacement = computed(() => selectedPlacement.value?.label || 'Home placement');
+const previewAtTop = computed(() => String(form.placement_code).includes('top'));
 
 function syncPricingSelection() {
     if (!placements.value.some((slot) => slot.code === form.placement_code)) form.placement_code = placements.value[0]?.code || '';
@@ -52,7 +62,19 @@ async function loadPricing() {
 
 watch(() => form.type, syncPricingSelection);
 watch(() => form.placement_code, syncPricingSelection);
+watch(mediaFile, (file) => {
+    if (mediaObjectUrl.value) URL.revokeObjectURL(mediaObjectUrl.value);
+    mediaObjectUrl.value = file ? URL.createObjectURL(file) : '';
+});
+watch(featureImage, (file) => {
+    if (featureObjectUrl.value) URL.revokeObjectURL(featureObjectUrl.value);
+    featureObjectUrl.value = file ? URL.createObjectURL(file) : '';
+});
 onMounted(loadPricing);
+onBeforeUnmount(() => {
+    if (mediaObjectUrl.value) URL.revokeObjectURL(mediaObjectUrl.value);
+    if (featureObjectUrl.value) URL.revokeObjectURL(featureObjectUrl.value);
+});
 
 function files(event, target) {
     if (target === 'gallery') galleryImages.value = [...event.target.files].slice(0, 4);
@@ -120,12 +142,6 @@ function logout() { clearPublicSession(); session.value = null; result.value = n
         </section>
 
         <section v-else class="ad-form-layout section-pad">
-            <aside>
-                <div class="ad-signed-in"><small>Logged in</small><b>{{ session.uid }}</b><button type="button" @click="logout">Logout</button></div>
-                <span>How it works</span>
-                <ol><li><b>01</b>Campaign details fill up</li><li><b>02</b>Admin review</li><li><b>03</b>WhatsApp payment link</li><li><b>04</b>Payment hnuah publish</li></ol>
-                <p>Admin approve mah se payment complete hma chuan ad chu Zo Stream apps-ah a serve lo vang.</p>
-            </aside>
             <form class="ad-submit-form" @submit.prevent="submit">
                 <header><span>Campaign submission</span><h2>Ad details</h2><p><b>*</b> mark field te fill vek tur.</p></header>
                 <p v-if="error" class="ad-form-error">{{ error }}</p>
@@ -163,6 +179,40 @@ function logout() { clearPublicSession(); session.value = null; result.value = n
                 <label class="ad-terms"><input v-model="form.terms_accepted" type="checkbox" required><span>Ka submit content hman phalna ka nei tih ka confirm a, <a href="/advertising-terms" target="_blank" rel="noopener noreferrer">Advertising Terms</a> leh <a href="/privacy-policy" target="_blank" rel="noopener noreferrer">Privacy Policy</a> ka chhiar a, ka pawm.</span></label>
                 <button class="primary-button ad-submit-button" :disabled="submitting">{{ submitting ? 'Submitting…' : 'Submit for review' }}</button>
             </form>
+
+            <aside class="ad-preview-panel">
+                <div class="ad-preview-heading">
+                    <div><span>Live preview</span><h2>{{ previewDevice === 'mobile' ? 'Mobile' : 'Desktop' }} home</h2></div>
+                    <div class="ad-device-toggle" aria-label="Preview device">
+                        <button type="button" :class="{ active: previewDevice === 'desktop' }" @click="previewDevice = 'desktop'">Desktop</button>
+                        <button type="button" :class="{ active: previewDevice === 'mobile' }" @click="previewDevice = 'mobile'">Mobile</button>
+                    </div>
+                </div>
+
+                <div class="ad-device-wrap" :class="previewDevice">
+                    <div class="ad-device-frame">
+                        <div class="ad-device-camera" />
+                        <div class="ad-preview-app">
+                            <header><b>ZO</b><span>HOME</span><i>⌕</i></header>
+                            <div class="ad-preview-hero"><small>Featured in Mizo</small><strong>Stories worth watching.</strong></div>
+                            <div v-if="!previewAtTop" class="ad-preview-rail"><b /><b /><b /></div>
+                            <article class="ad-live-creative">
+                                <video v-if="previewSource && previewIsVideo" :src="previewSource" muted autoplay loop playsinline />
+                                <img v-else-if="previewSource && !previewIsWebsite" :src="previewSource" alt="Ad creative preview">
+                                <div v-else-if="previewIsWebsite" class="ad-website-preview"><i>↗</i><small>WEBSITE CAMPAIGN</small><b>{{ form.destination_url || 'https://your-website.com' }}</b></div>
+                                <div v-else class="ad-preview-placeholder"><i>＋</i><span>Upload creative media</span></div>
+                                <em>Sponsored</em>
+                                <div class="ad-preview-copy"><small>{{ form.business_name || 'YOUR BRAND' }}</small><strong>{{ previewTitle }}</strong><p>{{ previewDescription }}</p><button type="button">{{ form.destination_url ? 'Visit now' : 'Learn more' }} ↗</button></div>
+                            </article>
+                            <div class="ad-preview-rail after"><b /><b /><b /></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="ad-preview-meta"><span>{{ previewPlacement }}</span><b>{{ form.type }} · {{ form.billing_model || 'Billing' }}</b></div>
+                <div class="ad-signed-in"><small>Logged in</small><b>{{ session.uid }}</b><button type="button" @click="logout">Logout</button></div>
+                <details class="ad-how" open><summary>How it works</summary><ol><li><b>01</b>Campaign details fill up</li><li><b>02</b>Admin review</li><li><b>03</b>WhatsApp payment link</li><li><b>04</b>Payment hnuah publish</li></ol><p>Payment complete hnuah chauh ad chu publish a ni ang.</p></details>
+            </aside>
         </section>
     </main>
 </template>
@@ -176,4 +226,39 @@ function logout() { clearPublicSession(); session.value = null; result.value = n
 .ad-signed-in small{color:var(--cyan);font-size:9px;font-weight:900;text-transform:uppercase}
 .ad-signed-in b{overflow:hidden;color:#dce5e9;font-size:11px;text-overflow:ellipsis}
 .ad-signed-in button{width:max-content;padding:0;border:0;background:transparent;color:#87929c;cursor:pointer;font-size:10px;text-decoration:underline}
+</style>
+
+<style scoped>
+.ad-form-layout{width:min(100%,1360px);grid-template-columns:minmax(0,1fr) 390px;align-items:start;gap:28px}
+.ad-preview-panel{position:sticky!important;top:100px!important;min-width:0;height:max-content!important;padding:18px!important;border:1px solid var(--glass-line)!important;border-radius:24px!important;background:rgba(11,16,22,.86)!important;box-shadow:var(--glass-shadow);backdrop-filter:blur(22px)}
+.ad-preview-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:17px}
+.ad-preview-heading span{color:var(--cyan);font-size:9px;font-weight:900;letter-spacing:1.8px;text-transform:uppercase}
+.ad-preview-heading h2{margin:5px 0 0;font:750 19px var(--display)}
+.ad-device-toggle{display:flex;padding:3px;border:1px solid var(--line);border-radius:10px;background:#080c11}
+.ad-device-toggle button{padding:7px 8px;border:0;border-radius:7px;background:transparent;color:#77818b;cursor:pointer;font-size:9px;font-weight:800}
+.ad-device-toggle button.active{background:var(--cyan);color:#021217}
+.ad-device-wrap{display:grid;min-height:310px;place-items:center;padding:12px;border-radius:18px;background:radial-gradient(circle at 50% 0,rgba(23,191,243,.16),transparent 48%),#070a0e}
+.ad-device-frame{position:relative;width:100%;overflow:hidden;border:5px solid #20262e;border-radius:15px;background:#090d12;box-shadow:0 25px 45px rgba(0,0,0,.42)}
+.ad-device-wrap.desktop .ad-device-frame{aspect-ratio:16/10}
+.ad-device-wrap.mobile .ad-device-frame{width:185px;aspect-ratio:9/16;border-width:6px;border-radius:25px}
+.ad-device-camera{position:absolute;z-index:3;top:4px;left:50%;width:35px;height:4px;transform:translateX(-50%);border-radius:9px;background:#333a42}
+.ad-preview-app{height:100%;overflow:hidden;background:#080c11;color:#fff}
+.ad-preview-app>header{display:flex;height:13%;align-items:center;gap:6px;padding:6px 9px;border-bottom:1px solid rgba(255,255,255,.07);font-size:7px}
+.ad-preview-app>header b{color:var(--cyan);font-size:11px}.ad-preview-app>header span{color:#65717d;letter-spacing:1px}.ad-preview-app>header i{margin-left:auto;font-style:normal}
+.ad-preview-hero{display:grid;height:25%;align-content:end;padding:10px;background:linear-gradient(0deg,#080c11,transparent),radial-gradient(circle at 75% 35%,rgba(23,191,243,.4),transparent 35%),#15202a}
+.ad-preview-hero small{color:var(--cyan);font-size:5px;text-transform:uppercase}.ad-preview-hero strong{margin-top:3px;font:700 12px var(--display)}
+.ad-preview-rail{display:flex;height:18%;gap:5px;padding:8px}.ad-preview-rail b{flex:1;border-radius:4px;background:linear-gradient(135deg,#1b2630,#10161c)}.ad-preview-rail.after{height:16%}
+.ad-live-creative{position:relative;min-height:31%;overflow:hidden;margin:0 8px;border:1px solid rgba(255,255,255,.13);border-radius:7px;background:linear-gradient(135deg,#142c37,#0c1117)}
+.ad-live-creative>img,.ad-live-creative>video{position:absolute;width:100%;height:100%;object-fit:cover}
+.ad-live-creative:after{position:absolute;inset:0;background:linear-gradient(90deg,rgba(2,6,9,.92),rgba(2,6,9,.2) 75%);content:''}
+.ad-live-creative>em{position:absolute;z-index:2;top:5px;right:5px;padding:2px 4px;border-radius:3px;background:rgba(0,0,0,.68);color:#c9d0d5;font-size:4px;font-style:normal;text-transform:uppercase}
+.ad-preview-copy{position:relative;z-index:2;display:grid;width:68%;gap:2px;padding:10px}.ad-preview-copy small{color:var(--cyan);font-size:4px;font-weight:900}.ad-preview-copy strong{overflow:hidden;font:750 10px var(--display);text-overflow:ellipsis;white-space:nowrap}
+.ad-preview-copy p{display:-webkit-box;overflow:hidden;margin:0!important;padding:0!important;border:0!important;color:#abb5be!important;font-size:5px!important;line-height:1.35!important;-webkit-box-orient:vertical;-webkit-line-clamp:2}.ad-preview-copy button{width:max-content;margin-top:3px;padding:3px 5px;border:0;border-radius:3px;background:var(--cyan);color:#021217;font-size:4px;font-weight:900}
+.ad-preview-placeholder,.ad-website-preview{position:absolute;inset:0;display:grid;place-content:center;gap:4px;text-align:center}.ad-preview-placeholder i,.ad-website-preview i{color:var(--cyan);font-size:18px;font-style:normal}.ad-preview-placeholder span,.ad-website-preview small{color:#81909a;font-size:6px}.ad-website-preview b{max-width:230px;overflow:hidden;color:#d9e2e7;font-size:7px;text-overflow:ellipsis;white-space:nowrap}
+.ad-device-wrap.mobile .ad-preview-hero{height:22%}.ad-device-wrap.mobile .ad-preview-rail{height:15%}.ad-device-wrap.mobile .ad-live-creative{min-height:29%}.ad-device-wrap.mobile .ad-preview-copy{width:84%;padding:9px}
+.ad-preview-meta{display:flex;justify-content:space-between;gap:8px;padding:12px 3px 16px;color:#7c8790;font-size:9px}.ad-preview-meta span{color:var(--cyan);font-weight:800}.ad-preview-meta b{text-transform:capitalize}
+.ad-how{margin-top:16px;padding-top:16px;border-top:1px solid var(--line)}.ad-how summary{cursor:pointer;color:#dce5e9;font-size:11px;font-weight:800}.ad-how ol{display:grid;gap:9px;margin:13px 0;padding:0;list-style:none}.ad-how li{display:flex;align-items:center;gap:9px;color:#aab4bc;font-size:10px}.ad-how li b{display:grid;width:26px;height:26px;place-items:center;border-radius:7px;background:rgba(23,191,243,.1);color:var(--cyan);font-size:8px}.ad-how p{margin:10px 0 0!important;padding:0!important;border:0!important;color:#75818a!important;font-size:9px!important;line-height:1.5!important}
+@media(max-width:1050px){.ad-form-layout{grid-template-columns:minmax(0,1fr) 340px}}
+@media(max-width:850px){.ad-form-layout{grid-template-columns:1fr}.ad-preview-panel{position:static!important;grid-row:1}.ad-form-grid{grid-template-columns:1fr}.ad-form-grid .wide{grid-column:auto}}
+@media(max-width:650px){.ad-device-wrap.desktop{padding:7px}.ad-preview-panel{padding:14px!important;border-radius:18px!important}}
 </style>
