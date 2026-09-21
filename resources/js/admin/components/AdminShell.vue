@@ -15,7 +15,7 @@ const savedTheme = localStorage.getItem('zostream_admin_theme');
 const theme = ref(savedTheme || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'));
 const item = (key) => ({ label: resources[key].label, to: `/manage/${key}`, icon: resources[key].icon });
 const groups = [
-    { label: 'Overview', items: [{ label: 'Dashboard', to: '/dashboard', icon: 'grid' }] },
+    { label: 'Overview', items: [{ label: 'Dashboard', to: '/dashboard', icon: 'grid' }, { label: 'Arrange home sections', to: '/home/sections', icon: 'layers' }] },
     { label: 'Advertising', items: [{ label: 'Ad submissions', to: '/ads/submissions', icon: 'image' }, { label: 'Billing & campaigns', to: '/ads/billing', icon: 'credit-card' }, { label: 'Rates & placements', to: '/ads/billing-rates', icon: 'settings' }] },
     { label: 'Content', items: ['movies', 'seasons', 'episodes', 'banners'].map(item) },
     { label: 'Audience', items: ['users', 'subscriptions', 'plans', 'devices'].map(item) },

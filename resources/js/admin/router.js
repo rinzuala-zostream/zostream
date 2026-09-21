@@ -15,6 +15,7 @@ import AdSubmissionsPage from './pages/AdSubmissionsPage.vue';
 import AdSubmissionReviewPage from './pages/AdSubmissionReviewPage.vue';
 import AdBillingRatesPage from './pages/AdBillingRatesPage.vue';
 import AdBillingDashboardPage from './pages/AdBillingDashboardPage.vue';
+import HomeSectionsPage from './pages/HomeSectionsPage.vue';
 
 const aliases = [
     ['/movies/add', '/manage/movies/new'], ['/movies/update', '/manage/movies'], ['/movies/update/:id', '/manage/movies/:id'],
@@ -38,6 +39,7 @@ const router = createRouter({
         {
             path: '/', component: AdminShell, children: [
                 { path: 'dashboard', component: DashboardPage },
+                { path: 'home/sections', component: HomeSectionsPage },
                 { path: 'manage/:resource', component: ResourceListPage },
                 { path: 'manage/:resource/new', component: ResourceEditorPage },
                 { path: 'manage/:resource/:id', component: ResourceEditorPage },
