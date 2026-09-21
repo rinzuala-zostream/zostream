@@ -10,6 +10,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Throwable;
 
 class HomeRecommendationController extends Controller
@@ -38,7 +39,7 @@ class HomeRecommendationController extends Controller
         ]);
 
         $validated = $request->validate([
-            'section' => ['nullable', 'string', Rule::in(HomeSectionLayoutService::keys())],
+            'section' => ['nullable', 'string', 'max:100', 'regex:/\A[a-z][a-z0-9_]*\z/'],
             'page' => ['nullable', 'integer', 'min:1', 'max:25'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
             'content_mode' => ['required', 'string', Rule::in(['adult', 'kids'])],
@@ -59,10 +60,16 @@ class HomeRecommendationController extends Controller
         $fetchLimit = min(($page * $perPage) + 1, 1251);
         $contentMode = $validated['content_mode'];
         $includeAgeRestricted = $request->boolean('age_restriction');
-        $sectionLayout = isset($validated['section'])
-            ? [$this->layout->definition($validated['section'])]
-            : $this->layout->enabled();
-        $requestedSections = array_column($sectionLayout, 'key');
+        if (isset($validated['section'])) {
+            $definition = $this->layout->definition($validated['section']);
+            if ($definition === null) {
+                throw ValidationException::withMessages(['section' => ['The selected section is invalid.']]);
+            }
+            $sectionLayout = [$definition];
+        } else {
+            $sectionLayout = $this->layout->enabled();
+        }
+        $requestedSources = array_values(array_unique(array_column($sectionLayout, 'source_key')));
 
         try {
             $homepage = $this->recommendations->homepage(
@@ -70,7 +77,7 @@ class HomeRecommendationController extends Controller
                 $fetchLimit,
                 $contentMode,
                 $includeAgeRestricted,
-                $requestedSections
+                $requestedSources
             );
         } catch (Throwable $exception) {
             Log::warning('Home recommendation service unavailable', [
@@ -87,8 +94,9 @@ class HomeRecommendationController extends Controller
 
         $sections = [];
 
-        foreach ($requestedSections as $section) {
-            $rawSection = $homepage[$section] ?? [];
+        foreach ($sectionLayout as $definition) {
+            $section = $definition['key'];
+            $rawSection = $homepage[$definition['source_key']] ?? [];
             $anchor = null;
             if (is_array($rawSection) && array_key_exists('items', $rawSection)) {
                 $anchor = $rawSection['anchor'] ?? null;
@@ -110,6 +118,7 @@ class HomeRecommendationController extends Controller
             'age_restriction' => $includeAgeRestricted,
             'section_order' => array_map(fn (array $section): array => [
                 'key' => $section['key'],
+                'source_key' => $section['source_key'],
                 'title' => $section['title'],
                 'position' => $section['position'],
             ], $sectionLayout),

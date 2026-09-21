@@ -8,6 +8,7 @@ class HomeSection extends Model
 {
     protected $fillable = [
         'section_key',
+        'source_key',
         'title',
         'position',
         'is_enabled',

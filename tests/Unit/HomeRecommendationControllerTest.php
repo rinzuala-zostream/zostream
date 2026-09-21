@@ -20,6 +20,7 @@ class HomeRecommendationControllerTest extends TestCase
             ->with('top_picks_for_you')
             ->andReturn([
                 'key' => 'top_picks_for_you',
+                'source_key' => 'top_picks_for_you',
                 'title' => 'Top Picks for You',
                 'position' => 3,
                 'is_enabled' => true,
@@ -67,5 +68,41 @@ class HomeRecommendationControllerTest extends TestCase
             'next_page' => 3,
             'previous_page' => 1,
         ], $section['pagination']);
+    }
+
+    public function test_custom_section_uses_its_selected_function_but_keeps_its_own_key(): void
+    {
+        $service = Mockery::mock(HomeRecommendationService::class);
+        $layout = Mockery::mock(HomeSectionLayoutService::class);
+        $layout->shouldReceive('enabled')->once()->andReturn([
+            [
+                'key' => 'custom_weekend_picks',
+                'source_key' => 'trending_now',
+                'title' => 'Weekend Picks',
+                'position' => 0,
+                'is_enabled' => true,
+                'is_custom' => true,
+            ],
+        ]);
+        $service->shouldReceive('homepage')
+            ->once()
+            ->with('trusted-user', 11, 'adult', false, ['trending_now'])
+            ->andReturn([
+                'history_size' => 1,
+                'trending_now' => [
+                    ['id' => 'movie-1', 'title' => 'Movie 1', 'status' => 'Published'],
+                ],
+            ]);
+
+        $request = Request::create('/api/v4/recommendations/home', 'GET');
+        $request->headers->set('X-Mode', 'adult');
+        $request->merge(['auth_user_id' => 'trusted-user']);
+
+        $response = (new HomeRecommendationController($service, $layout))->home($request);
+        $payload = $response->getData(true)['data'];
+
+        $this->assertSame('custom_weekend_picks', $payload['section_order'][0]['key']);
+        $this->assertSame('trending_now', $payload['section_order'][0]['source_key']);
+        $this->assertSame('movie-1', $payload['sections']['custom_weekend_picks']['items'][0]['id']);
     }
 }

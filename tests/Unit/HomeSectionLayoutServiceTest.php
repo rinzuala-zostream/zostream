@@ -26,6 +26,7 @@ class HomeSectionLayoutServiceTest extends TestCase
         Schema::create('home_sections', function (Blueprint $table): void {
             $table->id();
             $table->string('section_key')->unique();
+            $table->string('source_key')->nullable();
             $table->string('title');
             $table->unsignedSmallInteger('position')->default(0);
             $table->boolean('is_enabled')->default(true);
@@ -38,8 +39,8 @@ class HomeSectionLayoutServiceTest extends TestCase
         $service = app(HomeSectionLayoutService::class);
 
         $service->replace([
-            ['key' => 'trending_now', 'title' => 'Trending First'],
-            ['key' => 'latest_update', 'title' => 'Fresh Today'],
+            ['key' => 'trending_now', 'source_key' => 'trending_now', 'title' => 'Trending First'],
+            ['key' => 'latest_update', 'source_key' => 'latest_update', 'title' => 'Fresh Today'],
         ]);
 
         $enabled = $service->enabled();
@@ -50,13 +51,14 @@ class HomeSectionLayoutServiceTest extends TestCase
         $this->assertFalse($all->get('top_picks_for_you')['is_enabled']);
 
         $service->replace([
-            ['key' => 'top_picks_for_you', 'title' => 'My Picks'],
-            ['key' => 'trending_now', 'title' => 'Trending First'],
+            ['key' => 'custom_weekend_picks', 'source_key' => 'top_picks_for_you', 'title' => 'Weekend Picks'],
+            ['key' => 'trending_now', 'source_key' => 'trending_now', 'title' => 'Trending First'],
         ]);
 
         $this->assertSame(
-            ['top_picks_for_you', 'trending_now'],
+            ['custom_weekend_picks', 'trending_now'],
             array_column($service->enabled(), 'key')
         );
+        $this->assertSame('top_picks_for_you', $service->enabled()[0]['source_key']);
     }
 }
