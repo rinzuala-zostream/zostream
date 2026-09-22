@@ -161,12 +161,15 @@ class AdTrackingController extends Controller
         $targetReached = $campaign->target_quantity !== null
             && $campaign->consumed_quantity >= $campaign->target_quantity;
         if ($targetReached || $dailyBudgetReached) {
-            $campaign->update([
+            $statusUpdate = [
                 'status' => $targetReached ? 'completed' : 'paused',
-                'pause_reason' => $targetReached ? null : 'daily_budget',
-                'resume_at' => $targetReached ? null : now()->addDay()->startOfDay(),
                 'completed_at' => $targetReached ? ($campaign->completed_at ?: now()) : $campaign->completed_at,
-            ]);
+            ];
+            if (! $targetReached) {
+                $statusUpdate['pause_reason'] = 'daily_budget';
+                $statusUpdate['resume_at'] = now()->addDay()->startOfDay();
+            }
+            $campaign->update($statusUpdate);
             AdsModel::where('campaign_id', $campaign->id)->update(['is_active' => false]);
         }
 
