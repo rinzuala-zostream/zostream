@@ -14,6 +14,7 @@ use App\Support\Api\V4Response;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -156,7 +157,19 @@ class AdminAdBillingController extends Controller
             'resume_at' => null,
             'completed_at' => $data['status'] === 'completed' ? now() : $campaign->completed_at,
         ]);
-        AdsModel::where('campaign_id', $campaign->id)->update(['is_active' => $data['status'] === 'active']);
+        try {
+            if (Schema::hasTable('ads')
+                && Schema::hasColumn('ads', 'campaign_id')
+                && Schema::hasColumn('ads', 'is_active')) {
+                AdsModel::where('campaign_id', $campaign->id)->update(['is_active' => $data['status'] === 'active']);
+            }
+        } catch (\Throwable $exception) {
+            Log::warning('Legacy ad mirror status could not be synchronized by an administrator.', [
+                'campaign_id' => $campaign->id,
+                'status' => $data['status'],
+                'error' => $exception->getMessage(),
+            ]);
+        }
 
         return V4Response::success($campaign->fresh(), 'Campaign status updated.');
     }

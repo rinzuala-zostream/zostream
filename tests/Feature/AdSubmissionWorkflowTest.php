@@ -517,6 +517,60 @@ class AdSubmissionWorkflowTest extends TestCase
         $this->assertDatabaseCount('ad_billing_events', 1);
     }
 
+    public function test_flat_campaign_expires_when_the_legacy_ads_schema_has_no_campaign_column(): void
+    {
+        $approved = $this->activateImageCampaign([
+            'reference_no' => 'ADS-FLAT-LEGACY-SCHEMA',
+            'billing_model' => 'FLAT',
+            'target_quantity' => null,
+            'quoted_rate' => 500,
+            'quoted_amount' => 500,
+            'requested_period_days' => 1,
+        ]);
+        $approved->campaign->update(['end_at' => now()->subMinute()]);
+
+        Schema::table('ads', fn (Blueprint $table) => $table->dropIndex(['campaign_id']));
+        Schema::table('ads', fn (Blueprint $table) => $table->dropColumn('campaign_id'));
+
+        $this->artisan('ads:maintain-campaigns')
+            ->assertSuccessful();
+
+        $campaign = $approved->campaign->fresh();
+        $this->assertSame('completed', $campaign->status);
+        $this->assertNotNull($campaign->completed_at);
+    }
+
+    public function test_final_cpv_view_reaches_its_exact_target(): void
+    {
+        $approved = $this->activateImageCampaign([
+            'reference_no' => 'ADS-CPV-EXACT-TARGET',
+            'billing_model' => 'CPC',
+            'target_quantity' => 1,
+            'quoted_rate' => 2,
+            'quoted_amount' => 100,
+        ]);
+        $campaign = $approved->campaign;
+        $campaign->update(['billing_model' => 'CPV']);
+        $campaign->creatives()->update(['type' => 'video', 'skip_after_seconds' => 5]);
+        [$trackingToken, $impressionEvent] = $this->serveAndTrackImpression($campaign->id);
+
+        $this->withHeaders($this->clientHeaders())->postJson('/api/v4/ads/events', [
+            'tracking_token' => $trackingToken,
+            'event_id' => (string) Str::uuid(),
+            'event' => 'video_complete',
+            'impression_event_id' => $impressionEvent,
+            'watched_seconds' => 5,
+        ])->assertOk()->assertJsonPath('data.recorded', true);
+
+        $campaign->refresh();
+        $this->assertSame(1, $campaign->consumed_quantity);
+        $this->assertSame('completed', $campaign->status);
+        $this->assertDatabaseHas('ad_billing_events', [
+            'campaign_id' => $campaign->id,
+            'event_type' => 'video_view',
+        ]);
+    }
+
     public function test_cpm_continues_serving_until_an_impression_is_confirmed(): void
     {
         $approved = $this->activateImageCampaign([

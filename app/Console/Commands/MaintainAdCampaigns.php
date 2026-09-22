@@ -5,6 +5,8 @@ namespace App\Console\Commands;
 use App\Models\AdCampaign;
 use App\Models\AdsModel;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class MaintainAdCampaigns extends Command
 {
@@ -29,7 +31,7 @@ class MaintainAdCampaigns extends Command
                 'pause_reason' => null,
                 'resume_at' => null,
             ]);
-            AdsModel::whereIn('campaign_id', $resumedIds)->update(['is_active' => true]);
+            $this->setLegacyAdsActive($resumedIds, true);
         }
 
         $completed = 0;
@@ -47,11 +49,29 @@ class MaintainAdCampaigns extends Command
                     'status' => 'completed',
                     'completed_at' => now(),
                 ]);
-                AdsModel::whereIn('campaign_id', $ids)->update(['is_active' => false]);
+                $this->setLegacyAdsActive($ids, false);
             });
 
         $this->info("Resumed {$resumedIds->count()} and completed {$completed} ad campaign(s).");
 
         return self::SUCCESS;
+    }
+
+    private function setLegacyAdsActive(iterable $campaignIds, bool $active): void
+    {
+        try {
+            if (! Schema::hasTable('ads')
+                || ! Schema::hasColumn('ads', 'campaign_id')
+                || ! Schema::hasColumn('ads', 'is_active')) {
+                return;
+            }
+
+            AdsModel::whereIn('campaign_id', $campaignIds)->update(['is_active' => $active]);
+        } catch (\Throwable $exception) {
+            Log::warning('Legacy ad mirror status could not be synchronized during campaign maintenance.', [
+                'active' => $active,
+                'error' => $exception->getMessage(),
+            ]);
+        }
     }
 }
