@@ -163,6 +163,7 @@ class OfflineAccessTest extends TestCase
             'format' => 'hls',
             'content_id' => 'movie-1',
             'content_type' => 'movie',
+            'max_quality' => 'FULL_HD',
         ], $response->getData(true));
     }
 

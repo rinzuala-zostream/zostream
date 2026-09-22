@@ -52,6 +52,7 @@ class OfflineController extends Controller
 
         $isPayPerView = (bool) ($content->isPayPerView ?? false);
         $requiresSubscription = (bool) ($content->isPremium ?? false) && ! $isPayPerView;
+        $maxQuality = 'FULL_HD';
 
         $deviceQuery = Devices::where('device_token', $deviceToken)
             ->where('user_id', $userId);
@@ -121,6 +122,8 @@ class OfflineController extends Controller
                 ], 500);
             }
 
+            $maxQuality = $plan->quality ?? 'FULL_HD';
+
             $planType = strtolower(trim((string) $plan->device_type));
 
             if ($planType !== $type) {
@@ -162,7 +165,7 @@ class OfflineController extends Controller
         }
 
         if ($platform === 'ios') {
-            return $this->iosOfflineResponse($sourceUrl, $movieId, $movieType);
+            return $this->iosOfflineResponse($sourceUrl, $movieId, $movieType, $maxQuality);
         }
 
         try {
@@ -224,6 +227,7 @@ class OfflineController extends Controller
                 'format' => 'dash',
                 'content_id' => (string) $movieId,
                 'content_type' => $movieType,
+                'max_quality' => $maxQuality,
             ]);
 
         } catch (\Throwable $e) {
@@ -235,7 +239,7 @@ class OfflineController extends Controller
         }
     }
 
-    private function iosOfflineResponse(string $sourceUrl, $movieId, string $movieType)
+    private function iosOfflineResponse(string $sourceUrl, $movieId, string $movieType, string $maxQuality)
     {
         $hlsUrl = Str::contains(strtolower($sourceUrl), 'm3u8') ? $sourceUrl : null;
 
@@ -261,6 +265,7 @@ class OfflineController extends Controller
             'format' => 'hls',
             'content_id' => (string) $movieId,
             'content_type' => $movieType,
+            'max_quality' => $maxQuality,
         ]);
     }
 
