@@ -8,6 +8,8 @@ use App\Models\AdsModel;
 use App\Support\Api\V4Response;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 
 class AdTrackingController extends Controller
@@ -154,7 +156,7 @@ class AdTrackingController extends Controller
                 'status' => 'completed',
                 'completed_at' => $campaign->completed_at ?: now(),
             ]);
-            AdsModel::where('campaign_id', $campaign->id)->update(['is_active' => false]);
+            $this->deactivateLegacyAds($campaign->id);
 
             return false;
         }
@@ -185,10 +187,30 @@ class AdTrackingController extends Controller
                 $statusUpdate['resume_at'] = now()->addDay()->startOfDay();
             }
             $campaign->update($statusUpdate);
-            AdsModel::where('campaign_id', $campaign->id)->update(['is_active' => false]);
+            $this->deactivateLegacyAds($campaign->id);
         }
 
         return true;
+    }
+
+    private function deactivateLegacyAds(int $campaignId): void
+    {
+        try {
+            if (! Schema::hasTable('ads')
+                || ! Schema::hasColumn('ads', 'campaign_id')
+                || ! Schema::hasColumn('ads', 'is_active')) {
+                return;
+            }
+
+            AdsModel::where('campaign_id', $campaignId)->update(['is_active' => false]);
+        } catch (\Throwable $exception) {
+            // V4 campaign delivery is authoritative. A legacy mirror schema
+            // mismatch must never roll back the final billable event.
+            Log::warning('Legacy ad mirror could not be deactivated.', [
+                'campaign_id' => $campaignId,
+                'error' => $exception->getMessage(),
+            ]);
+        }
     }
 
     private function verify(string $token): array

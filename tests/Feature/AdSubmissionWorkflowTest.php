@@ -488,6 +488,35 @@ class AdSubmissionWorkflowTest extends TestCase
         $this->assertSame('completed', $campaign->status);
     }
 
+    public function test_final_cpc_click_completes_when_the_legacy_ads_schema_has_no_campaign_column(): void
+    {
+        $approved = $this->activateImageCampaign([
+            'reference_no' => 'ADS-CPC-LEGACY-SCHEMA',
+            'billing_model' => 'CPC',
+            'target_quantity' => 1,
+            'quoted_rate' => 4,
+            'quoted_amount' => 100,
+        ]);
+        [$trackingToken, $impressionEvent] = $this->serveAndTrackImpression($approved->campaign->id);
+
+        Schema::table('ads', fn (Blueprint $table) => $table->dropIndex(['campaign_id']));
+        Schema::table('ads', fn (Blueprint $table) => $table->dropColumn('campaign_id'));
+
+        $this->withHeaders($this->clientHeaders())->postJson('/api/v4/ads/events', [
+            'tracking_token' => $trackingToken,
+            'event_id' => (string) Str::uuid(),
+            'event' => 'click',
+            'impression_event_id' => $impressionEvent,
+        ])->assertOk()
+            ->assertJsonPath('data.recorded', true)
+            ->assertJsonPath('data.billable', true);
+
+        $campaign = $approved->campaign->fresh();
+        $this->assertSame(1, $campaign->consumed_quantity);
+        $this->assertSame('completed', $campaign->status);
+        $this->assertDatabaseCount('ad_billing_events', 1);
+    }
+
     public function test_cpm_continues_serving_until_an_impression_is_confirmed(): void
     {
         $approved = $this->activateImageCampaign([
