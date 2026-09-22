@@ -200,6 +200,46 @@ class OfflineAccessTest extends TestCase
         $this->assertSame('episode', $response->getData(true)['content_type']);
     }
 
+    public function test_dash_quality_parser_supports_namespaced_content_type_manifests(): void
+    {
+        $xml = simplexml_load_string(<<<'XML'
+            <?xml version="1.0" encoding="UTF-8"?>
+            <MPD xmlns="urn:mpeg:dash:schema:mpd:2011">
+              <Period>
+                <AdaptationSet contentType="audio">
+                  <Representation id="audio-1" bandwidth="128000" />
+                </AdaptationSet>
+                <AdaptationSet contentType="video">
+                  <Representation id="video-360" bandwidth="600000" width="640" height="360" />
+                  <Representation id="video-720-low" bandwidth="1200000" width="1280" height="720" />
+                  <Representation id="video-720-high" bandwidth="2400000" width="1280" height="720" />
+                </AdaptationSet>
+              </Period>
+            </MPD>
+            XML);
+
+        $controller = new OfflineController(
+            Mockery::mock(HlsFolderController::class),
+            Mockery::mock(MovieController::class),
+        );
+        $method = new \ReflectionMethod($controller, 'parseDashQualities');
+
+        $this->assertSame([
+            [
+                'label' => '360p',
+                'height' => 360,
+                'bitrate' => 600000,
+                'rep_id' => 'video-360',
+            ],
+            [
+                'label' => '720p',
+                'height' => 720,
+                'bitrate' => 2400000,
+                'rep_id' => 'video-720-high',
+            ],
+        ], $method->invoke($controller, $xml));
+    }
+
     public function test_premium_offline_access_still_requires_a_subscription(): void
     {
         DB::table('movie')->insert([

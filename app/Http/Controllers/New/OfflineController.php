@@ -188,38 +188,7 @@ class OfflineController extends Controller
                 ], 502);
             }
 
-            $qualities = [];
-            $trackIndex = 0;
-
-            foreach ($xml->Period->AdaptationSet as $adaptationSet) {
-
-                // Only video tracks
-                if ((string) $adaptationSet['mimeType'] !== 'video/mp4') {
-                    continue;
-                }
-
-                foreach ($adaptationSet->Representation as $rep) {
-
-                    $height = (int) $rep['height'];
-                    $bandwidth = (int) $rep['bandwidth'];
-
-                    if ($height > 0) {
-                        $qualities[] = [
-                            'label' => $height.'p',
-                            'height' => $height,
-                            'bitrate' => $bandwidth,
-                            'rep_id' => (string) $rep['id'],
-                        ];
-
-                        $trackIndex++;
-                    }
-                }
-            }
-
-            // Sort by quality (low → high)
-            usort($qualities, function ($a, $b) {
-                return $a['height'] <=> $b['height'];
-            });
+            $qualities = $this->parseDashQualities($xml);
 
             return response()->json([
                 'video_url' => $mpdUrl,
@@ -267,6 +236,47 @@ class OfflineController extends Controller
             'content_type' => $movieType,
             'max_quality' => $maxQuality,
         ]);
+    }
+
+    /**
+     * Read video variants from namespaced and non-namespaced DASH manifests.
+     *
+     * Some encoders declare video with contentType="video" instead of placing
+     * mimeType="video/mp4" on the AdaptationSet. A positive height is the most
+     * reliable discriminator here because audio Representations have no height.
+     */
+    private function parseDashQualities(\SimpleXMLElement $xml): array
+    {
+        $representations = $xml->xpath('//*[local-name()="Representation"]') ?: [];
+        $qualitiesByHeight = [];
+
+        foreach ($representations as $representation) {
+            $height = (int) $representation['height'];
+
+            if ($height <= 0) {
+                continue;
+            }
+
+            $bitrate = (int) $representation['bandwidth'];
+            $current = $qualitiesByHeight[$height] ?? null;
+
+            // Keep the highest-bitrate representation when a manifest exposes
+            // more than one video track at the same resolution.
+            if ($current !== null && $current['bitrate'] >= $bitrate) {
+                continue;
+            }
+
+            $qualitiesByHeight[$height] = [
+                'label' => $height.'p',
+                'height' => $height,
+                'bitrate' => $bitrate,
+                'rep_id' => (string) $representation['id'],
+            ];
+        }
+
+        ksort($qualitiesByHeight, SORT_NUMERIC);
+
+        return array_values($qualitiesByHeight);
     }
 
     private function selectSourceUrl($links, string $platform): ?string
