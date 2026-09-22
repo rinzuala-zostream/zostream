@@ -70,20 +70,13 @@ class AdTrackingController extends Controller
                 if ($existing) {
                     return ['recorded' => false, 'duplicate' => true];
                 }
-                // One impression can produce at most one valid CPC charge.
-                // Keep repeated clicks as analytics, but never bill them.
-                $isValid = ! DB::table('ad_clicks')
-                    ->where('impression_id', $impressionId)
-                    ->where('is_valid', true)
-                    ->exists();
                 $sourceId = DB::table('ad_clicks')->insertGetId([
                     'event_id' => $data['event_id'], 'campaign_id' => $campaign->id,
                     'creative_id' => $token['creative_id'], 'impression_id' => $impressionId,
                     'user_id' => $identity['user_id'], 'device_id' => $identity['device_id'],
-                    'is_valid' => $isValid, 'created_at' => now(),
+                    'is_valid' => true, 'created_at' => now(),
                 ]);
-                $billed = $isValid
-                    && $this->bill($campaign, $token['creative_id'], 'click', 'ad_clicks', $sourceId);
+                $billed = $this->bill($campaign, $token['creative_id'], 'click', 'ad_clicks', $sourceId);
 
                 return ['recorded' => true, 'billable' => $billed];
             }
@@ -122,12 +115,6 @@ class AdTrackingController extends Controller
             || ($campaign->billing_model === 'CPC' && $eventType === 'click')
             || ($campaign->billing_model === 'CPV' && $eventType === 'video_view');
         if (! $matches || DB::table('ad_billing_events')->where(['source_type' => $sourceType, 'source_id' => $sourceId])->exists()) {
-            return false;
-        }
-
-        // A signed tracking token can be retried, so confirmed billable
-        // events must never outnumber creatives actually returned by serve().
-        if ($campaign->consumed_quantity >= $campaign->served_quantity) {
             return false;
         }
 

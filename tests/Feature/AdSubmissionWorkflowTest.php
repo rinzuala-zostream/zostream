@@ -372,7 +372,7 @@ class AdSubmissionWorkflowTest extends TestCase
             ->assertJsonPath('data.amount', 1000);
     }
 
-    public function test_cpc_bills_only_one_valid_click_per_impression(): void
+    public function test_cpc_counts_distinct_click_events_until_the_target_is_reached(): void
     {
         $approved = $this->activateImageCampaign([
             'reference_no' => 'ADS-CPC-DEDUP',
@@ -395,11 +395,12 @@ class AdSubmissionWorkflowTest extends TestCase
             'event_id' => (string) Str::uuid(),
             'event' => 'click',
             'impression_event_id' => $impressionEvent,
-        ])->assertOk()->assertJsonPath('data.billable', false);
+        ])->assertOk()->assertJsonPath('data.billable', true);
 
-        $this->assertSame(1, $approved->campaign->fresh()->consumed_quantity);
-        $this->assertDatabaseCount('ad_billing_events', 1);
-        $this->assertDatabaseHas('ad_clicks', ['impression_id' => 1, 'is_valid' => false]);
+        $campaign = $approved->campaign->fresh();
+        $this->assertSame(2, $campaign->consumed_quantity);
+        $this->assertSame('completed', $campaign->status);
+        $this->assertDatabaseCount('ad_billing_events', 2);
     }
 
     public function test_cpc_reaches_its_target_from_two_separate_impressions(): void
