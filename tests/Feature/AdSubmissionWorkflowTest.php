@@ -402,6 +402,46 @@ class AdSubmissionWorkflowTest extends TestCase
         $this->assertDatabaseHas('ad_clicks', ['impression_id' => 1, 'is_valid' => false]);
     }
 
+    public function test_cpc_reaches_its_target_from_two_separate_impressions(): void
+    {
+        $approved = $this->activateImageCampaign([
+            'reference_no' => 'ADS-CPC-TWO-DEVICES',
+            'billing_model' => 'CPC',
+            'target_quantity' => 2,
+            'quoted_rate' => 4,
+            'quoted_amount' => 100,
+        ]);
+
+        foreach (['device-one', 'device-two'] as $device) {
+            $headers = array_merge($this->clientHeaders(), ['Device-Token' => $device]);
+            $served = $this->withHeaders($headers)
+                ->getJson('/api/v4/ads/serve?placement=home_top&platform=web')
+                ->assertOk()
+                ->assertJsonPath('data.campaign_id', $approved->campaign->id);
+            $impressionEvent = (string) Str::uuid();
+            $this->withHeaders($headers)->postJson('/api/v4/ads/events', [
+                'tracking_token' => $served->json('data.tracking_token'),
+                'event_id' => $impressionEvent,
+                'event' => 'impression',
+            ])->assertOk();
+            $this->withHeaders($headers)->postJson('/api/v4/ads/events', [
+                'tracking_token' => $served->json('data.tracking_token'),
+                'event_id' => (string) Str::uuid(),
+                'event' => 'click',
+                'impression_event_id' => $impressionEvent,
+            ])->assertOk()->assertJsonPath('data.billable', true);
+        }
+
+        $campaign = $approved->campaign->fresh();
+        $this->assertSame(2, $campaign->consumed_quantity);
+        $this->assertSame('completed', $campaign->status);
+        $this->assertDatabaseCount('ad_billing_events', 2);
+        $this->withHeaders($this->clientHeaders())
+            ->getJson('/api/v4/ads/serve?placement=home_top&platform=web')
+            ->assertOk()
+            ->assertJsonPath('data', null);
+    }
+
     public function test_cpm_continues_serving_until_an_impression_is_confirmed(): void
     {
         $approved = $this->activateImageCampaign([

@@ -85,7 +85,10 @@ async function openAdvertiser() {
         visible.value = true;
         const recorded = await recordImpression();
         if (recorded) {
-            void sendEvent('click', { impression_event_id: impressionEventId }).catch(() => false);
+            // Wait for CPC tracking before a popup-blocked browser navigates
+            // this page away. A fire-and-forget request can be cancelled by
+            // mobile and embedded browsers even when keepalive is requested.
+            await sendEvent('click', { impression_event_id: impressionEventId }).catch(() => false);
         }
     } finally {
         if (popup) popup.location.href = destination;
