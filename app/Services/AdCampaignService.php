@@ -77,7 +77,12 @@ class AdCampaignService
                 }
             }
 
-            $locked->update(['status' => 'active', 'activated_at' => $locked->activated_at ?: now()]);
+            $locked->update([
+                'status' => 'active',
+                'pause_reason' => null,
+                'resume_at' => null,
+                'activated_at' => $locked->activated_at ?: now(),
+            ]);
 
             return $locked->fresh(['creatives', 'invoices']);
         });

@@ -152,6 +152,8 @@ class AdminAdBillingController extends Controller
         }
         $campaign->update([
             'status' => $data['status'],
+            'pause_reason' => $data['status'] === 'paused' ? 'manual' : null,
+            'resume_at' => null,
             'completed_at' => $data['status'] === 'completed' ? now() : $campaign->completed_at,
         ]);
         AdsModel::where('campaign_id', $campaign->id)->update(['is_active' => $data['status'] === 'active']);

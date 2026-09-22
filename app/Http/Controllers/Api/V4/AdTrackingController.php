@@ -70,15 +70,22 @@ class AdTrackingController extends Controller
                 if ($existing) {
                     return ['recorded' => false, 'duplicate' => true];
                 }
+                // One impression can produce at most one valid CPC charge.
+                // Keep repeated clicks as analytics, but never bill them.
+                $isValid = ! DB::table('ad_clicks')
+                    ->where('impression_id', $impressionId)
+                    ->where('is_valid', true)
+                    ->exists();
                 $sourceId = DB::table('ad_clicks')->insertGetId([
                     'event_id' => $data['event_id'], 'campaign_id' => $campaign->id,
                     'creative_id' => $token['creative_id'], 'impression_id' => $impressionId,
                     'user_id' => $identity['user_id'], 'device_id' => $identity['device_id'],
-                    'is_valid' => true, 'created_at' => now(),
+                    'is_valid' => $isValid, 'created_at' => now(),
                 ]);
-                $this->bill($campaign, $token['creative_id'], 'click', 'ad_clicks', $sourceId);
+                $billed = $isValid
+                    && $this->bill($campaign, $token['creative_id'], 'click', 'ad_clicks', $sourceId);
 
-                return ['recorded' => true];
+                return ['recorded' => true, 'billable' => $billed];
             }
 
             if (DB::table('ad_video_events')->where('event_id', $data['event_id'])->exists()) {
@@ -109,13 +116,19 @@ class AdTrackingController extends Controller
         return V4Response::success($result, 'Ad event processed.');
     }
 
-    private function bill(AdCampaign $campaign, int $creativeId, string $eventType, string $sourceType, int $sourceId): void
+    private function bill(AdCampaign $campaign, int $creativeId, string $eventType, string $sourceType, int $sourceId): bool
     {
         $matches = ($campaign->billing_model === 'CPM' && $eventType === 'impression')
             || ($campaign->billing_model === 'CPC' && $eventType === 'click')
             || ($campaign->billing_model === 'CPV' && $eventType === 'video_view');
         if (! $matches || DB::table('ad_billing_events')->where(['source_type' => $sourceType, 'source_id' => $sourceId])->exists()) {
-            return;
+            return false;
+        }
+
+        // A signed tracking token can be retried, so confirmed billable
+        // events must never outnumber creatives actually returned by serve().
+        if ($campaign->consumed_quantity >= $campaign->served_quantity) {
+            return false;
         }
 
         // The campaign row is locked by store(). A CPC/CPV event that arrives
@@ -128,7 +141,7 @@ class AdTrackingController extends Controller
             ]);
             AdsModel::where('campaign_id', $campaign->id)->update(['is_active' => false]);
 
-            return;
+            return false;
         }
 
         $amount = $campaign->billing_model === 'CPM' ? (float) $campaign->rate / 1000 : (float) $campaign->rate;
@@ -150,10 +163,14 @@ class AdTrackingController extends Controller
         if ($targetReached || $dailyBudgetReached) {
             $campaign->update([
                 'status' => $targetReached ? 'completed' : 'paused',
+                'pause_reason' => $targetReached ? null : 'daily_budget',
+                'resume_at' => $targetReached ? null : now()->addDay()->startOfDay(),
                 'completed_at' => $targetReached ? ($campaign->completed_at ?: now()) : $campaign->completed_at,
             ]);
             AdsModel::where('campaign_id', $campaign->id)->update(['is_active' => false]);
         }
+
+        return true;
     }
 
     private function verify(string $token): array

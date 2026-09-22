@@ -63,6 +63,7 @@ class AdSubmissionWorkflowTest extends TestCase
         (require database_path('migrations/2026_09_02_000002_create_ad_campaign_billing_system.php'))->up();
         (require database_path('migrations/2026_09_03_000001_add_user_and_payment_notification_to_ad_submissions.php'))->up();
         (require database_path('migrations/2026_09_04_000001_add_served_quantity_to_ad_campaigns.php'))->up();
+        (require database_path('migrations/2026_09_22_000001_add_pause_metadata_to_ad_campaigns.php'))->up();
     }
 
     public function test_legacy_whatsapp_payment_button_url_redirects_to_the_payment_page(): void
@@ -348,6 +349,158 @@ class AdSubmissionWorkflowTest extends TestCase
             ->assertJsonPath('data.amount', 1200);
     }
 
+    public function test_flat_and_cpc_quotes_use_days_and_clicks(): void
+    {
+        $this->withHeaders($this->clientHeaders())->postJson('/api/v4/ad-pricing/quote', [
+            'type' => 'image',
+            'placement_code' => 'home_top',
+            'billing_model' => 'FLAT',
+            'requested_period_days' => 30,
+        ])->assertOk()
+            ->assertJsonPath('data.billing_quantity', 30)
+            ->assertJsonPath('data.target_quantity', null)
+            ->assertJsonPath('data.amount', 15000);
+
+        $this->withHeaders($this->clientHeaders())->postJson('/api/v4/ad-pricing/quote', [
+            'type' => 'image',
+            'placement_code' => 'home_top',
+            'billing_model' => 'CPC',
+            'target_quantity' => 250,
+            'requested_period_days' => 30,
+        ])->assertOk()
+            ->assertJsonPath('data.billing_quantity', 250)
+            ->assertJsonPath('data.amount', 1000);
+    }
+
+    public function test_cpc_bills_only_one_valid_click_per_impression(): void
+    {
+        $approved = $this->activateImageCampaign([
+            'reference_no' => 'ADS-CPC-DEDUP',
+            'billing_model' => 'CPC',
+            'target_quantity' => 2,
+            'quoted_rate' => 4,
+            'quoted_amount' => 100,
+        ]);
+        [$trackingToken, $impressionEvent] = $this->serveAndTrackImpression($approved->campaign->id);
+
+        $this->withHeaders($this->clientHeaders())->postJson('/api/v4/ads/events', [
+            'tracking_token' => $trackingToken,
+            'event_id' => (string) Str::uuid(),
+            'event' => 'click',
+            'impression_event_id' => $impressionEvent,
+        ])->assertOk()->assertJsonPath('data.billable', true);
+
+        $this->withHeaders($this->clientHeaders())->postJson('/api/v4/ads/events', [
+            'tracking_token' => $trackingToken,
+            'event_id' => (string) Str::uuid(),
+            'event' => 'click',
+            'impression_event_id' => $impressionEvent,
+        ])->assertOk()->assertJsonPath('data.billable', false);
+
+        $this->assertSame(1, $approved->campaign->fresh()->consumed_quantity);
+        $this->assertDatabaseCount('ad_billing_events', 1);
+        $this->assertDatabaseHas('ad_clicks', ['impression_id' => 1, 'is_valid' => false]);
+    }
+
+    public function test_cpm_continues_serving_until_an_impression_is_confirmed(): void
+    {
+        $approved = $this->activateImageCampaign([
+            'reference_no' => 'ADS-CPM-DELIVERY',
+            'billing_model' => 'CPM',
+            'target_quantity' => 1,
+            'quoted_rate' => 120,
+            'quoted_amount' => 100,
+        ]);
+
+        $first = $this->withHeaders($this->clientHeaders())
+            ->getJson('/api/v4/ads/serve?placement=home_top&platform=web')
+            ->assertOk()
+            ->assertJsonPath('data.campaign_id', $approved->campaign->id);
+        $this->withHeaders($this->clientHeaders())
+            ->getJson('/api/v4/ads/serve?placement=home_top&platform=web')
+            ->assertOk()
+            ->assertJsonPath('data.campaign_id', $approved->campaign->id);
+
+        $this->assertSame(2, $approved->campaign->fresh()->served_quantity);
+        $this->withHeaders($this->clientHeaders())->postJson('/api/v4/ads/events', [
+            'tracking_token' => $first->json('data.tracking_token'),
+            'event_id' => (string) Str::uuid(),
+            'event' => 'impression',
+        ])->assertOk();
+
+        $campaign = $approved->campaign->fresh();
+        $this->assertSame(1, $campaign->consumed_quantity);
+        $this->assertSame('completed', $campaign->status);
+        $this->assertDatabaseHas('ad_billing_events', [
+            'campaign_id' => $campaign->id,
+            'event_type' => 'impression',
+            'amount' => 0.12,
+        ]);
+    }
+
+    public function test_non_prepaid_rate_activates_immediately_with_an_open_invoice(): void
+    {
+        $slotId = \App\Models\AdPlacementSlot::where('code', 'home_top')->value('id');
+        \App\Models\AdBillingRate::where('placement_slot_id', $slotId)
+            ->where('billing_model', 'CPC')
+            ->update(['requires_prepayment' => false]);
+
+        $submission = $this->makeImageSubmission([
+            'reference_no' => 'ADS-NO-PREPAY',
+            'billing_model' => 'CPC',
+            'target_quantity' => 10,
+            'quoted_rate' => 4,
+            'quoted_amount' => 100,
+        ]);
+        $approved = app(AdApprovalService::class)->approve($submission, [], 'admin-uid');
+
+        $this->assertFalse($approved->campaign->requires_prepayment);
+        $this->assertSame('active', $approved->campaign->status);
+        $this->assertSame('pending', $approved->campaign->invoices->first()->status);
+        $this->withHeaders($this->clientHeaders())
+            ->getJson('/api/v4/ads/serve?placement=home_top&platform=web')
+            ->assertOk()
+            ->assertJsonPath('data.campaign_id', $approved->campaign->id);
+    }
+
+    public function test_daily_budget_pause_resumes_on_the_next_day(): void
+    {
+        $approved = $this->activateImageCampaign([
+            'reference_no' => 'ADS-DAILY-BUDGET',
+            'billing_model' => 'CPC',
+            'target_quantity' => 3,
+            'quoted_rate' => 4,
+            'quoted_amount' => 100,
+            'daily_budget' => 4,
+        ]);
+        [$trackingToken, $impressionEvent] = $this->serveAndTrackImpression($approved->campaign->id);
+
+        $this->withHeaders($this->clientHeaders())->postJson('/api/v4/ads/events', [
+            'tracking_token' => $trackingToken,
+            'event_id' => (string) Str::uuid(),
+            'event' => 'click',
+            'impression_event_id' => $impressionEvent,
+        ])->assertOk();
+
+        $campaign = $approved->campaign->fresh();
+        $this->assertSame('paused', $campaign->status);
+        $this->assertSame('daily_budget', $campaign->pause_reason);
+        $this->assertNotNull($campaign->resume_at);
+
+        $this->travelTo($campaign->resume_at->copy()->addMinute(), function () use ($campaign) {
+            $this->artisan('ads:maintain-campaigns')->assertSuccessful();
+            $resumed = $campaign->fresh();
+            $this->assertSame('active', $resumed->status);
+            $this->assertNull($resumed->pause_reason);
+            $this->assertNull($resumed->resume_at);
+
+            $resumed->update(['status' => 'paused', 'pause_reason' => 'manual']);
+            $this->travel(1)->day();
+            $this->artisan('ads:maintain-campaigns')->assertSuccessful();
+            $this->assertSame('paused', $resumed->fresh()->status);
+        });
+    }
+
     public function test_admin_submission_routes_are_admin_protected(): void
     {
         foreach ([
@@ -412,6 +565,62 @@ class AdSubmissionWorkflowTest extends TestCase
             'X-Client-Platform' => 'web',
             'X-Client-Version' => '1.0',
         ];
+    }
+
+    private function makeImageSubmission(array $overrides = []): AdSubmission
+    {
+        return AdSubmission::create(array_merge([
+            'reference_no' => 'ADS-'.Str::upper(Str::random(12)),
+            'public_token_hash' => hash('sha256', Str::random(48)),
+            'status' => AdSubmission::STATUS_PENDING,
+            'business_name' => 'Billing Test Store',
+            'contact_name' => 'Advertiser',
+            'contact_phone' => '9876543210',
+            'ads_name' => 'Billing campaign',
+            'type' => 'image',
+            'placement_code' => 'home_top',
+            'billing_model' => 'CPC',
+            'target_quantity' => 10,
+            'quoted_rate' => 4,
+            'quoted_amount' => 100,
+            'currency' => 'INR',
+            'media_url' => 'https://cdn.example.com/banner.webp',
+            'destination_url' => 'https://example.com',
+            'requested_period_days' => 14,
+        ], $overrides));
+    }
+
+    private function activateImageCampaign(array $overrides = []): AdSubmission
+    {
+        $approved = app(AdApprovalService::class)->approve(
+            $this->makeImageSubmission($overrides),
+            [],
+            'admin-uid',
+        );
+        app(AdBillingService::class)->markPaid($approved->campaign->invoices->first(), [
+            'amount' => (float) $approved->campaign->invoices->first()->total,
+            'payment_method' => 'manual',
+            'gateway' => 'manual',
+            'gateway_order_id' => 'UTR-'.Str::upper(Str::random(12)),
+        ]);
+
+        return $approved->fresh(['campaign.invoices']);
+    }
+
+    private function serveAndTrackImpression(int $campaignId): array
+    {
+        $served = $this->withHeaders($this->clientHeaders())
+            ->getJson('/api/v4/ads/serve?placement=home_top&platform=web')
+            ->assertOk()
+            ->assertJsonPath('data.campaign_id', $campaignId);
+        $impressionEvent = (string) Str::uuid();
+        $this->withHeaders($this->clientHeaders())->postJson('/api/v4/ads/events', [
+            'tracking_token' => $served->json('data.tracking_token'),
+            'event_id' => $impressionEvent,
+            'event' => 'impression',
+        ])->assertOk();
+
+        return [$served->json('data.tracking_token'), $impressionEvent];
     }
 
     private function authenticatedClientHeaders(

@@ -10,10 +10,28 @@ class MaintainAdCampaigns extends Command
 {
     protected $signature = 'ads:maintain-campaigns';
 
-    protected $description = 'Complete expired or fully delivered ad campaigns and remove them from ad serving';
+    protected $description = 'Resume daily-budget campaigns and complete expired or fully delivered campaigns';
 
     public function handle(): int
     {
+        $resumedIds = AdCampaign::query()
+            ->where('status', 'paused')
+            ->where('pause_reason', 'daily_budget')
+            ->whereNotNull('resume_at')
+            ->where('resume_at', '<=', now())
+            ->where(fn ($query) => $query->whereNull('end_at')->orWhere('end_at', '>=', now()))
+            ->where(fn ($query) => $query->whereNull('target_quantity')->orWhereColumn('consumed_quantity', '<', 'target_quantity'))
+            ->pluck('id');
+
+        if ($resumedIds->isNotEmpty()) {
+            AdCampaign::whereIn('id', $resumedIds)->update([
+                'status' => 'active',
+                'pause_reason' => null,
+                'resume_at' => null,
+            ]);
+            AdsModel::whereIn('campaign_id', $resumedIds)->update(['is_active' => true]);
+        }
+
         $completed = 0;
 
         AdCampaign::query()
@@ -32,7 +50,7 @@ class MaintainAdCampaigns extends Command
                 AdsModel::whereIn('campaign_id', $ids)->update(['is_active' => false]);
             });
 
-        $this->info("Completed {$completed} expired ad campaign(s).");
+        $this->info("Resumed {$resumedIds->count()} and completed {$completed} ad campaign(s).");
 
         return self::SUCCESS;
     }

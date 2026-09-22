@@ -16,6 +16,8 @@ use Illuminate\Validation\ValidationException;
 
 class AdApprovalService
 {
+    public function __construct(private readonly AdCampaignService $campaigns) {}
+
     public function approve(AdSubmission $submission, array $overrides, string $adminId): AdSubmission
     {
         $approved = DB::transaction(function () use ($submission, $overrides, $adminId) {
@@ -44,6 +46,7 @@ class AdApprovalService
                 default => (int) $locked->target_quantity,
             };
             $amount = max((float) $rateConfig->minimum_charge, round($billingQuantity * (float) $locked->quoted_rate, 2));
+            $requiresPrepayment = (bool) $rateConfig->requires_prepayment;
             if (blank($locked->public_token_encrypted)) {
                 $publicToken = Str::random(48);
                 $locked->forceFill([
@@ -73,14 +76,14 @@ class AdApprovalService
                 'name' => $locked->ads_name,
                 'billing_model' => $locked->billing_model,
                 'rate' => $locked->quoted_rate,
-                'requires_prepayment' => true,
+                'requires_prepayment' => $requiresPrepayment,
                 'target_quantity' => $locked->target_quantity,
                 'estimated_amount' => $amount,
                 'daily_budget' => $locked->daily_budget,
                 'currency' => $locked->currency,
                 'start_at' => $startDate->startOfDay(),
                 'end_at' => $startDate->copy()->startOfDay()->addDays($period),
-                'status' => 'pending_payment',
+                'status' => $requiresPrepayment ? 'pending_payment' : 'approved',
             ]);
             $creative = $campaign->creatives()->create([
                 'name' => $locked->ads_name,
@@ -150,7 +153,12 @@ class AdApprovalService
             return $locked->fresh(['assets', 'events', 'campaign.creatives', 'campaign.invoices.items']);
         });
 
-        return $approved->load(['assets', 'events', 'campaign.creatives', 'campaign.invoices.items']);
+        $approved->load(['assets', 'events', 'campaign.creatives', 'campaign.invoices.items']);
+        if (! $approved->campaign->requires_prepayment) {
+            $this->campaigns->activate($approved->campaign);
+        }
+
+        return $approved->fresh(['assets', 'events', 'campaign.creatives', 'campaign.invoices.items']);
     }
 
     private function newInvoiceNumber(): string

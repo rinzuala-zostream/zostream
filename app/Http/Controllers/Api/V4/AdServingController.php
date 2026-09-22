@@ -14,9 +14,7 @@ use Illuminate\Support\Facades\Schema;
 
 class AdServingController extends Controller
 {
-    public function __construct(private readonly HlsFolderController $hlsFolderController)
-    {
-    }
+    public function __construct(private readonly HlsFolderController $hlsFolderController) {}
 
     public function serve(Request $request)
     {
@@ -51,18 +49,12 @@ class AdServingController extends Controller
                 ->where('campaign.status', 'active')
                 ->where(fn ($query) => $query->whereNull('campaign.start_at')->orWhere('campaign.start_at', '<=', $now))
                 ->where(fn ($query) => $query->whereNull('campaign.end_at')->orWhere('campaign.end_at', '>=', $now))
-                // Only CPM is capped at serve time: its billable unit is an
-                // impression. CPC and CPV need to remain eligible until their
-                // clicks/views reach the target in the tracking endpoint.
-                ->where(function ($query) {
-                    $query->where(function ($cpm) {
-                        $cpm->where('campaign.billing_model', 'CPM')
-                            ->where(fn ($target) => $target->whereNull('campaign.target_quantity')->orWhereColumn('campaign.served_quantity', '<', 'campaign.target_quantity'));
-                    })->orWhere(function ($eventBased) {
-                        $eventBased->where('campaign.billing_model', '!=', 'CPM')
-                            ->where(fn ($target) => $target->whereNull('campaign.target_quantity')->orWhereColumn('campaign.consumed_quantity', '<', 'campaign.target_quantity'));
-                    });
-                })
+                // Delivery targets count confirmed billable events. A serve
+                // whose client never reports an impression must not consume a
+                // prepaid CPM impression or strand the campaign below target.
+                ->where(fn ($target) => $target
+                    ->whereNull('campaign.target_quantity')
+                    ->orWhereColumn('campaign.consumed_quantity', '<', 'campaign.target_quantity'))
                 ->when($data['platform'] ?? null, fn ($query, $platform) => $query->whereIn('slot.platform', ['all', $platform]))
                 ->orderByDesc('assignment.priority')
                 ->inRandomOrder();
@@ -118,20 +110,14 @@ class AdServingController extends Controller
             }
         }
 
-        // Reserve CPM impressions before returning a creative. CPC/CPV are
-        // capped when their respective billable events are recorded instead.
+        // Record every successful serve for delivery diagnostics. All billing
+        // models are capped by confirmed billable events in the tracker.
         $reserved = DB::table('ad_campaigns')
             ->where('id', $creative->campaign_id)
             ->where('status', 'active')
-            ->where(function ($query) {
-                $query->where(function ($cpm) {
-                    $cpm->where('billing_model', 'CPM')
-                        ->where(fn ($target) => $target->whereNull('target_quantity')->orWhereColumn('served_quantity', '<', 'target_quantity'));
-                })->orWhere(function ($eventBased) {
-                    $eventBased->where('billing_model', '!=', 'CPM')
-                        ->where(fn ($target) => $target->whereNull('target_quantity')->orWhereColumn('consumed_quantity', '<', 'target_quantity'));
-                });
-            })
+            ->where(fn ($target) => $target
+                ->whereNull('target_quantity')
+                ->orWhereColumn('consumed_quantity', '<', 'target_quantity'))
             ->update([
                 'served_quantity' => DB::raw('served_quantity + 1'),
                 'updated_at' => now(),

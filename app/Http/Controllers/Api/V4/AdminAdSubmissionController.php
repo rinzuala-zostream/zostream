@@ -97,16 +97,20 @@ class AdminAdSubmissionController extends Controller
             $data,
             (string) $request->input('auth_user_id')
         );
-        $this->notifications->sendPaymentLink($submission);
+        $paymentLinkSent = $submission->campaign->requires_prepayment
+            ? $this->notifications->sendPaymentLink($submission)
+            : false;
 
         return V4Response::success(
             $submission->fresh([
                 'user:num,uid,name,mail,country_code,auth_phone',
                 'assets', 'events', 'campaign.creatives', 'campaign.invoices.items',
             ]),
-            $submission->approval_whatsapp_sent_at
-                ? 'Ad approved. The payment link was sent by WhatsApp.'
-                : 'Ad approved, but the WhatsApp payment link could not be sent.',
+            ! $submission->campaign->requires_prepayment
+                ? 'Ad approved and activated. Payment is not required before delivery.'
+                : ($paymentLinkSent
+                    ? 'Ad approved. The payment link was sent by WhatsApp.'
+                    : 'Ad approved, but the WhatsApp payment link could not be sent.'),
         );
     }
 
