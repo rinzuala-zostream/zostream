@@ -452,12 +452,23 @@ class AdSubmissionWorkflowTest extends TestCase
             'quoted_rate' => 4,
             'quoted_amount' => 100,
         ]);
-        $served = $this->withHeaders($this->clientHeaders())
+        [$firstTrackingToken, $firstImpressionEvent] = $this->serveAndTrackImpression($approved->campaign->id);
+        $this->withHeaders(array_merge($this->clientHeaders(), ['Device-Token' => 'first-device']))
+            ->postJson('/api/v4/ads/events', [
+                'tracking_token' => $firstTrackingToken,
+                'event_id' => (string) Str::uuid(),
+                'event' => 'click',
+                'impression_event_id' => $firstImpressionEvent,
+            ])->assertOk()->assertJsonPath('data.billable', true);
+        $this->assertSame(1, $approved->campaign->fresh()->consumed_quantity);
+
+        $served = $this->withHeaders(array_merge($this->clientHeaders(), ['Device-Token' => 'second-device']))
             ->getJson('/api/v4/ads/serve?placement=home_top&platform=web')
             ->assertOk();
         $lostImpressionEvent = (string) Str::uuid();
 
-        $this->withHeaders($this->clientHeaders())->postJson('/api/v4/ads/events', [
+        $this->withHeaders(array_merge($this->clientHeaders(), ['Device-Token' => 'second-device']))
+            ->postJson('/api/v4/ads/events', [
             'tracking_token' => $served->json('data.tracking_token'),
             'event_id' => (string) Str::uuid(),
             'event' => 'click',
@@ -471,8 +482,10 @@ class AdSubmissionWorkflowTest extends TestCase
             'event_id' => $lostImpressionEvent,
             'campaign_id' => $approved->campaign->id,
         ]);
-        $this->assertDatabaseHas('ad_clicks', ['campaign_id' => $approved->campaign->id]);
-        $this->assertSame(1, $approved->campaign->fresh()->consumed_quantity);
+        $this->assertDatabaseCount('ad_clicks', 2);
+        $campaign = $approved->campaign->fresh();
+        $this->assertSame(2, $campaign->consumed_quantity);
+        $this->assertSame('completed', $campaign->status);
     }
 
     public function test_cpm_continues_serving_until_an_impression_is_confirmed(): void
