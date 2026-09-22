@@ -443,6 +443,38 @@ class AdSubmissionWorkflowTest extends TestCase
             ->assertJsonPath('data', null);
     }
 
+    public function test_cpc_recovers_a_lost_impression_before_recording_the_click(): void
+    {
+        $approved = $this->activateImageCampaign([
+            'reference_no' => 'ADS-CPC-LOST-IMPRESSION',
+            'billing_model' => 'CPC',
+            'target_quantity' => 2,
+            'quoted_rate' => 4,
+            'quoted_amount' => 100,
+        ]);
+        $served = $this->withHeaders($this->clientHeaders())
+            ->getJson('/api/v4/ads/serve?placement=home_top&platform=web')
+            ->assertOk();
+        $lostImpressionEvent = (string) Str::uuid();
+
+        $this->withHeaders($this->clientHeaders())->postJson('/api/v4/ads/events', [
+            'tracking_token' => $served->json('data.tracking_token'),
+            'event_id' => (string) Str::uuid(),
+            'event' => 'click',
+            'impression_event_id' => $lostImpressionEvent,
+        ])->assertOk()
+            ->assertJsonPath('data.recorded', true)
+            ->assertJsonPath('data.billable', true)
+            ->assertJsonPath('data.impression_recovered', true);
+
+        $this->assertDatabaseHas('ad_impressions', [
+            'event_id' => $lostImpressionEvent,
+            'campaign_id' => $approved->campaign->id,
+        ]);
+        $this->assertDatabaseHas('ad_clicks', ['campaign_id' => $approved->campaign->id]);
+        $this->assertSame(1, $approved->campaign->fresh()->consumed_quantity);
+    }
+
     public function test_cpm_continues_serving_until_an_impression_is_confirmed(): void
     {
         $approved = $this->activateImageCampaign([

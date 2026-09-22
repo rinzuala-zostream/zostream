@@ -41,6 +41,7 @@ class AdTrackingController extends Controller
                     ->where('creative_id', $token['creative_id'])
                     ->value('id')
                 : null;
+            $impressionRecovered = false;
 
             if ($event === 'impression') {
                 $existing = DB::table('ad_impressions')->where('event_id', $data['event_id'])->first();
@@ -57,6 +58,29 @@ class AdTrackingController extends Controller
                 $this->bill($campaign, $token['creative_id'], 'impression', 'ad_impressions', $sourceId);
 
                 return ['recorded' => true, 'impression_id' => $sourceId];
+            }
+
+            // Mobile and TV clients can lose the fire-and-forget impression
+            // request immediately before a real click or video event. The
+            // signed serve token still proves which campaign, creative and
+            // placement were returned, so recover that missing impression
+            // instead of discarding the subsequent engagement.
+            if (! $impressionId && isset($data['impression_event_id'])) {
+                $conflictingImpression = DB::table('ad_impressions')
+                    ->where('event_id', $data['impression_event_id'])
+                    ->exists();
+
+                if (! $conflictingImpression) {
+                    $impressionId = DB::table('ad_impressions')->insertGetId([
+                        'event_id' => $data['impression_event_id'], 'campaign_id' => $campaign->id,
+                        'creative_id' => $token['creative_id'], 'placement_slot_id' => $token['placement_slot_id'],
+                        'user_id' => $identity['user_id'], 'device_id' => $identity['device_id'],
+                        'platform' => $request->header('X-Client-Platform'),
+                        'ip_hash' => $this->hashIdentity($request->ip()), 'is_valid' => true, 'created_at' => now(),
+                    ]);
+                    $this->bill($campaign, $token['creative_id'], 'impression', 'ad_impressions', $impressionId);
+                    $impressionRecovered = true;
+                }
             }
 
             if (! $impressionId) {
@@ -78,7 +102,11 @@ class AdTrackingController extends Controller
                 ]);
                 $billed = $this->bill($campaign, $token['creative_id'], 'click', 'ad_clicks', $sourceId);
 
-                return ['recorded' => true, 'billable' => $billed];
+                return [
+                    'recorded' => true,
+                    'billable' => $billed,
+                    'impression_recovered' => $impressionRecovered,
+                ];
             }
 
             if (DB::table('ad_video_events')->where('event_id', $data['event_id'])->exists()) {
@@ -103,7 +131,7 @@ class AdTrackingController extends Controller
                 $this->bill($campaign, $token['creative_id'], 'video_view', 'ad_video_views', $billingSourceId);
             }
 
-            return ['recorded' => true];
+            return ['recorded' => true, 'impression_recovered' => $impressionRecovered];
         });
 
         return V4Response::success($result, 'Ad event processed.');

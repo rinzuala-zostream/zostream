@@ -104,7 +104,7 @@ class AdminAdBillingController extends Controller
                 'last_page' => $campaigns->lastPage(),
                 'total' => $campaigns->total(),
             ],
-        ]);
+        ])->header('Cache-Control', 'no-store, no-cache, must-revalidate');
     }
 
     public function markInvoicePaid(Request $request, AdInvoice $invoice)
