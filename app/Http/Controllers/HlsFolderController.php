@@ -26,7 +26,10 @@ class HlsFolderController extends Controller
             $source = 'plaintext';
         } else {
             // Not a valid URL → try decrypt
-            $rawParam = str_replace(' ', '+', $raw); // common “space becomes +” fix
+            // Episode sources may have been persisted as URL-encoded Base64.
+            // Restore encoded "+", "/" and padding before strict decoding.
+            $rawParam = rawurldecode(trim($raw));
+            $rawParam = str_replace(' ', '+', $rawParam); // common “space becomes +” fix
 
             $shaKey = 'd4c6198dabafb243b0d043a3c33a9fe171f81605158c267c7dfe5f66df29559a';
 

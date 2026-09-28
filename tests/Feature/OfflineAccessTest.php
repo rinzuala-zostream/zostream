@@ -13,6 +13,7 @@ use Carbon\Carbon;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Schema;
 use Mockery;
 use Tests\TestCase;
@@ -253,6 +254,59 @@ class OfflineAccessTest extends TestCase
         ], $method->invoke($controller, $xml));
     }
 
+    public function test_android_episode_resolver_accepts_url_encoded_encrypted_sources(): void
+    {
+        $mpdUrl = 'https://cdn.example.test/Series Name/Season 1/Episode 1/manifest.mpd';
+        $encrypted = $this->encryptOfflineSource($mpdUrl);
+        $encoded = str_replace(
+            ['+', '/', '='],
+            ['%2B', '%2F', '%3D'],
+            $encrypted,
+        );
+
+        $controller = new OfflineController(
+            Mockery::mock(HlsFolderController::class),
+            Mockery::mock(MovieController::class),
+        );
+        $method = new \ReflectionMethod($controller, 'resolveMpdUrl');
+        $resolved = $method->invoke($controller, $encoded);
+
+        $this->assertSame($mpdUrl, $resolved['url']);
+        $this->assertSame('decrypted', $resolved['source']);
+    }
+
+    public function test_ios_hls_resolver_accepts_url_encoded_encrypted_episode_sources(): void
+    {
+        $mpdUrl = 'https://cdn.example.test/Series Name/Season 1/Episode 1/manifest.mpd';
+        $encrypted = $this->encryptOfflineSource($mpdUrl);
+        $encoded = str_replace(
+            ['+', '/', '='],
+            ['%2B', '%2F', '%3D'],
+            $encrypted,
+        );
+        $hlsRoot = storage_path('framework/testing/offline-hls-'.bin2hex(random_bytes(4)));
+        $episodeDirectory = $hlsRoot.'/Series Name/Season 1/Episode 1';
+        File::ensureDirectoryExists($episodeDirectory);
+        File::put($episodeDirectory.'/master.m3u8', "#EXTM3U\n#EXT-X-ENDLIST\n");
+        touch($episodeDirectory.'/master.m3u8', time() + 3600);
+        config(['streaming.hls_root' => $hlsRoot]);
+
+        try {
+            $response = (new HlsFolderController)->check(Request::create('', 'GET', [
+                'url' => $encoded,
+            ]));
+            $data = $response->getData(true);
+
+            $this->assertSame(200, $response->getStatusCode());
+            $this->assertSame('success', $data['status']);
+            $this->assertSame('decrypted', $data['data']['source']);
+            $this->assertSame($mpdUrl, $data['data']['resolved_mpd']);
+            $this->assertStringContainsString('/master.m3u8', $data['data']['stream_url']);
+        } finally {
+            File::deleteDirectory($hlsRoot);
+        }
+    }
+
     public function test_premium_offline_access_still_requires_a_subscription(): void
     {
         DB::table('movie')->insert([
@@ -380,5 +434,20 @@ class OfflineAccessTest extends TestCase
             'user_id' => 'user-a',
             'platform' => 'ios',
         ]);
+    }
+
+    private function encryptOfflineSource(string $url): string
+    {
+        $key = hash(
+            'sha256',
+            'd4c6198dabafb243b0d043a3c33a9fe171f81605158c267c7dfe5f66df29559a',
+            true,
+        );
+        $iv = random_bytes(16);
+        $cipherText = openssl_encrypt($url, 'aes-256-cbc', $key, OPENSSL_RAW_DATA, $iv);
+
+        $this->assertNotFalse($cipherText);
+
+        return base64_encode($iv.$cipherText);
     }
 }

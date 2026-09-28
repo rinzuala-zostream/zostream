@@ -395,7 +395,11 @@ class OfflineController extends Controller
         }
 
         // Try decrypt
-        $rawParam = str_replace(' ', '+', $raw);
+        // Episode URLs imported by the admin/API can be stored as an encoded
+        // query value (for example, Base64 "+" and "/" become %2B and %2F).
+        // Decode that transport encoding before attempting strict Base64.
+        $rawParam = rawurldecode(trim($raw));
+        $rawParam = str_replace(' ', '+', $rawParam);
 
         $shaKey = 'd4c6198dabafb243b0d043a3c33a9fe171f81605158c267c7dfe5f66df29559a';
 
