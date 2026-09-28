@@ -10,6 +10,7 @@ use App\Models\New\Episode;
 use App\Models\New\PaymentHistory;
 use App\Models\New\Plan;
 use App\Models\New\Subscription;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
@@ -53,6 +54,8 @@ class OfflineController extends Controller
         $isPayPerView = (bool) ($content->isPayPerView ?? false);
         $requiresSubscription = (bool) ($content->isPremium ?? false) && ! $isPayPerView;
         $maxQuality = 'FULL_HD';
+        $accessType = 'free';
+        $expiresAt = now()->addDays(30);
 
         $deviceQuery = Devices::where('device_token', $deviceToken)
             ->where('user_id', $userId);
@@ -69,12 +72,19 @@ class OfflineController extends Controller
 
         $type = strtolower(trim((string) $device->device_type));
 
-        if ($isPayPerView && ! $this->hasActiveRental($userId, $device, $content, $movieType)) {
-            return response()->json([
-                'status' => 'error',
-                'title' => 'Rental Required',
-                'message' => 'Please rent this content before downloading it.',
-            ], 403);
+        if ($isPayPerView) {
+            $rental = $this->activeRental($userId, $device, $content, $movieType);
+
+            if (! $rental) {
+                return response()->json([
+                    'status' => 'error',
+                    'title' => 'Rental Required',
+                    'message' => 'Please rent this content for this device type before downloading it.',
+                ], 403);
+            }
+
+            $accessType = 'ppv';
+            $expiresAt = Carbon::parse($rental->expiry_date);
         }
 
         if ($requiresSubscription) {
@@ -122,7 +132,21 @@ class OfflineController extends Controller
                 ], 500);
             }
 
+            if (preg_match('/^kar\s*1$/i', trim((string) $plan->name))) {
+                return response()->json([
+                    'status' => 'error',
+                    'code' => 'OFFLINE_PLAN_UPGRADE_REQUIRED',
+                    'title' => 'Upgrade Required',
+                    'message' => 'Offline downloads are not included in the Kar 1 plan. Upgrade to Thla 1 or a longer plan to download premium content.',
+                ], 403);
+            }
+
             $maxQuality = $plan->quality ?? 'FULL_HD';
+            $accessType = 'subscription';
+            $planExpiry = Carbon::parse($subscription->end_at);
+            if ($planExpiry->lessThan($expiresAt)) {
+                $expiresAt = $planExpiry;
+            }
 
             $planType = strtolower(trim((string) $plan->device_type));
 
@@ -165,7 +189,14 @@ class OfflineController extends Controller
         }
 
         if ($platform === 'ios') {
-            return $this->iosOfflineResponse($sourceUrl, $movieId, $movieType, $maxQuality);
+            return $this->iosOfflineResponse(
+                $sourceUrl,
+                $movieId,
+                $movieType,
+                $maxQuality,
+                $expiresAt,
+                $accessType,
+            );
         }
 
         try {
@@ -197,6 +228,8 @@ class OfflineController extends Controller
                 'content_id' => (string) $movieId,
                 'content_type' => $movieType,
                 'max_quality' => $maxQuality,
+                'expires_at' => $this->formatExpiry($expiresAt),
+                'access_type' => $accessType,
             ]);
 
         } catch (\Throwable $e) {
@@ -208,7 +241,14 @@ class OfflineController extends Controller
         }
     }
 
-    private function iosOfflineResponse(string $sourceUrl, $movieId, string $movieType, string $maxQuality)
+    private function iosOfflineResponse(
+        string $sourceUrl,
+        $movieId,
+        string $movieType,
+        string $maxQuality,
+        Carbon $expiresAt,
+        string $accessType,
+    )
     {
         $hlsUrl = Str::contains(strtolower($sourceUrl), 'm3u8') ? $sourceUrl : null;
 
@@ -235,7 +275,14 @@ class OfflineController extends Controller
             'content_id' => (string) $movieId,
             'content_type' => $movieType,
             'max_quality' => $maxQuality,
+            'expires_at' => $this->formatExpiry($expiresAt),
+            'access_type' => $accessType,
         ]);
+    }
+
+    private function formatExpiry(Carbon $expiresAt): string
+    {
+        return $expiresAt->copy()->utc()->toIso8601ZuluString();
     }
 
     /**
@@ -319,7 +366,7 @@ class OfflineController extends Controller
             ->first();
     }
 
-    private function hasActiveRental($userId, Devices $device, MovieModel|Episode $content, string $contentType): bool
+    private function activeRental($userId, Devices $device, MovieModel|Episode $content, string $contentType): ?PaymentHistory
     {
         $contentIds = [(string) $content->id];
 
@@ -333,7 +380,8 @@ class OfflineController extends Controller
             ->where('device_type', $device->device_type)
             ->where('app_payment_type', 'ppv')
             ->whereIn('movie_id', $contentIds)
-            ->exists();
+            ->orderByDesc('expiry_date')
+            ->first();
     }
 
     private function resolveMpdUrl(string $raw): array

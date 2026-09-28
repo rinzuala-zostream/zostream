@@ -7,7 +7,9 @@ use App\Http\Controllers\New\MovieController;
 use App\Http\Controllers\New\OfflineController;
 use App\Models\New\Devices;
 use App\Models\New\Plan;
+use App\Models\New\PaymentHistory;
 use App\Models\New\Subscription;
+use Carbon\Carbon;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -85,6 +87,16 @@ class OfflineAccessTest extends TestCase
             $table->string('status')->default('active');
             $table->timestamps();
         });
+        Schema::create('n_payment_histories', function (Blueprint $table) {
+            $table->id();
+            $table->string('user_id');
+            $table->string('movie_id')->nullable();
+            $table->string('device_type');
+            $table->string('app_payment_type');
+            $table->string('status');
+            $table->dateTime('expiry_date')->nullable();
+            $table->timestamps();
+        });
 
         $plan = Plan::create([
             'name' => 'Mobile',
@@ -157,14 +169,15 @@ class OfflineAccessTest extends TestCase
             ->requestOffline($this->iosRequest('movie-1', 'movie', false));
 
         $this->assertSame(200, $response->getStatusCode());
-        $this->assertSame([
-            'video_url' => 'https://cdn.example.test/movie/master.m3u8',
-            'qualities' => [],
-            'format' => 'hls',
-            'content_id' => 'movie-1',
-            'content_type' => 'movie',
-            'max_quality' => 'FULL_HD',
-        ], $response->getData(true));
+        $data = $response->getData(true);
+        $this->assertSame('https://cdn.example.test/movie/master.m3u8', $data['video_url']);
+        $this->assertSame([], $data['qualities']);
+        $this->assertSame('hls', $data['format']);
+        $this->assertSame('movie-1', $data['content_id']);
+        $this->assertSame('movie', $data['content_type']);
+        $this->assertSame('FULL_HD', $data['max_quality']);
+        $this->assertSame('free', $data['access_type']);
+        $this->assertEqualsWithDelta(now()->addDays(30)->timestamp, Carbon::parse($data['expires_at'])->timestamp, 5);
     }
 
     public function test_ios_episode_offline_access_converts_the_episode_source_with_the_existing_hls_flow(): void
@@ -259,6 +272,102 @@ class OfflineAccessTest extends TestCase
 
         $this->assertSame(403, $response->getStatusCode());
         $this->assertSame('Subscription Required', $response->getData(true)['title']);
+    }
+
+    public function test_kar_one_plan_must_upgrade_before_downloading_premium_content(): void
+    {
+        DB::table('movie')->insert([
+            'id' => 'weekly-premium',
+            'title' => 'Weekly premium movie',
+            'isPremium' => true,
+            'isPayPerView' => false,
+        ]);
+        Plan::query()->update(['name' => 'Kar 1']);
+
+        $movies = Mockery::mock(MovieController::class);
+        $movies->shouldNotReceive('getLink');
+
+        $response = (new OfflineController(
+            Mockery::mock(HlsFolderController::class),
+            $movies,
+        ))->requestOffline($this->iosRequest('weekly-premium', 'movie'));
+
+        $this->assertSame(403, $response->getStatusCode());
+        $this->assertSame('OFFLINE_PLAN_UPGRADE_REQUIRED', $response->getData(true)['code']);
+        $this->assertStringContainsString('Upgrade to Thla 1', $response->getData(true)['message']);
+    }
+
+    public function test_ppv_download_requires_a_rental_for_the_current_device_type_and_uses_rental_expiry(): void
+    {
+        DB::table('movie')->insert([
+            'id' => 'ppv-movie',
+            'title' => 'PPV movie',
+            'isPremium' => false,
+            'isPayPerView' => true,
+        ]);
+        $rentalExpiry = now()->addHours(12)->startOfSecond();
+        PaymentHistory::create([
+            'user_id' => 'user-a',
+            'movie_id' => 'ppv-movie',
+            'device_type' => 'tv',
+            'app_payment_type' => 'ppv',
+            'status' => 'success',
+            'expiry_date' => $rentalExpiry,
+        ]);
+
+        $movies = Mockery::mock(MovieController::class);
+        $movies->shouldNotReceive('getLink');
+        $controller = new OfflineController(Mockery::mock(HlsFolderController::class), $movies);
+        $denied = $controller->requestOffline($this->iosRequest('ppv-movie', 'movie', false));
+
+        $this->assertSame(403, $denied->getStatusCode());
+        $this->assertSame('Rental Required', $denied->getData(true)['title']);
+
+        PaymentHistory::create([
+            'user_id' => 'user-a',
+            'movie_id' => 'ppv-movie',
+            'device_type' => 'mobile',
+            'app_payment_type' => 'ppv',
+            'status' => 'success',
+            'expiry_date' => $rentalExpiry,
+        ]);
+        $movies = Mockery::mock(MovieController::class);
+        $movies->shouldReceive('getLink')->once()->andReturn(response()->json([
+            'status' => 'success',
+            'links' => ['hls_url' => 'https://cdn.example.test/ppv/master.m3u8'],
+        ]));
+        $controller = new OfflineController(Mockery::mock(HlsFolderController::class), $movies);
+        $allowed = $controller->requestOffline($this->iosRequest('ppv-movie', 'movie', false));
+        $data = $allowed->getData(true);
+
+        $this->assertSame(200, $allowed->getStatusCode());
+        $this->assertSame('ppv', $data['access_type']);
+        $this->assertSame($rentalExpiry->timestamp, Carbon::parse($data['expires_at'])->timestamp);
+    }
+
+    public function test_premium_download_expires_at_plan_end_when_less_than_thirty_days_remain(): void
+    {
+        DB::table('movie')->insert([
+            'id' => 'premium-expiry',
+            'title' => 'Premium expiry movie',
+            'isPremium' => true,
+            'isPayPerView' => false,
+        ]);
+        $planExpiry = now()->addDays(5)->startOfSecond();
+        Subscription::query()->update(['end_at' => $planExpiry]);
+
+        $movies = Mockery::mock(MovieController::class);
+        $movies->shouldReceive('getLink')->once()->andReturn(response()->json([
+            'status' => 'success',
+            'links' => ['hls_url' => 'https://cdn.example.test/premium/master.m3u8'],
+        ]));
+        $controller = new OfflineController(Mockery::mock(HlsFolderController::class), $movies);
+        $response = $controller->requestOffline($this->iosRequest('premium-expiry', 'movie'));
+        $data = $response->getData(true);
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertSame('subscription', $data['access_type']);
+        $this->assertSame($planExpiry->timestamp, Carbon::parse($data['expires_at'])->timestamp);
     }
 
     private function iosRequest(string $contentId, string $contentType, bool $withSubscription = true): Request
