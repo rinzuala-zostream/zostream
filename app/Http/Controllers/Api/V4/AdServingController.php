@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V4;
 
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\HlsFolderController;
+use App\Services\PlanAdPolicy;
 use App\Support\Api\V4Response;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
@@ -14,7 +15,10 @@ use Illuminate\Support\Facades\Schema;
 
 class AdServingController extends Controller
 {
-    public function __construct(private readonly HlsFolderController $hlsFolderController) {}
+    public function __construct(
+        private readonly HlsFolderController $hlsFolderController,
+        private readonly PlanAdPolicy $planAdPolicy,
+    ) {}
 
     public function serve(Request $request)
     {
@@ -22,6 +26,13 @@ class AdServingController extends Controller
             'placement' => ['required', 'string', 'max:60'],
             'platform' => ['nullable', 'string', 'max:30'],
         ]);
+
+        // Authenticated mobile clients receive ads according to their active
+        // plan feature. Anonymous clients and users without a mobile plan keep
+        // the standard 100% ad experience.
+        if (! $this->planAdPolicy->shouldServe($request)) {
+            return V4Response::success(null, 'This ad slot is disabled by the active subscription plan.');
+        }
 
         if (! $this->servingSchemaIsReady()) {
             Log::warning('Ad serving skipped because the campaign schema is incomplete.', [

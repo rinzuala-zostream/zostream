@@ -318,7 +318,12 @@ class SubscriptionController extends Controller
             $perPage = $request->get('per_page', 15);
             $deviceType = strtolower(trim($request->get('device_type')));
 
-            $query = Subscription::with(['plan', 'devices'])
+            $query = Subscription::with([
+                'plan.features' => fn ($query) => $query
+                    ->where('is_active', true)
+                    ->orderBy('sort_order'),
+                'devices',
+            ])
                 ->where('user_id', $userId)
                 ->where('is_active', true)
                 ->orderBy('created_at', 'desc');

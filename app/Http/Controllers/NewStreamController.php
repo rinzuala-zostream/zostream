@@ -631,7 +631,11 @@ class NewStreamController extends Controller
 
         // Optional delivery plan. Existing start-stream keys remain unchanged, and
         // clients that do not understand `ads` simply ignore it.
-        $ads = $this->streamAds($platform, (string) $request->input('device_type', 'mobile'));
+        $ads = $this->streamAds(
+            $platform,
+            (string) $request->input('device_type', 'mobile'),
+            (string) $userId,
+        );
 
         return response()->json([
             'status' => 'success',
@@ -646,7 +650,7 @@ class NewStreamController extends Controller
         ]);
     }
 
-    private function streamAds(string $platform, string $deviceType): array
+    private function streamAds(string $platform, string $deviceType, string $userId): array
     {
         $platform = $platform ?: 'android';
         $deviceType = $deviceType ?: 'mobile';
@@ -666,6 +670,7 @@ class NewStreamController extends Controller
                     'HTTP_X_CLIENT_PLATFORM' => $platform,
                     'HTTP_X_DEVICE_TYPE' => $deviceType,
                 ]);
+                $request->attributes->set('auth_user_id', $userId);
                 $payload = $this->adServingController->serve($request)->getData(true);
                 if (($payload['success'] ?? false) && !empty($payload['data'])) {
                     $ads[$placement] = $payload['data'];
