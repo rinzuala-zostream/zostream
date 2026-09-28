@@ -1,0 +1,699 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Count 12 /Kids [8 0 R 10 0 R 12 0 R 14 0 R 16 0 R 18 0 R 20 0 R 22 0 R 24 0 R 26 0 R 28 0 R 30 0 R] >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Courier /Encoding /WinAnsiEncoding >>
+endobj
+6 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Oblique /Encoding /WinAnsiEncoding >>
+endobj
+7 0 obj
+<< /Length 4507 >>
+stream
+1 1 1 rg 0 0 595.28 841.89 re f
+0.04 0.36 0.62 rg 0 829.89 595.28 12 re f
+BT /F1 7.50 Tf 0.420 0.420 0.420 rg 1 0 0 1 54.00 806.89 Tm (ZO STREAM  |  AI RECOMMENDATION SYSTEM) Tj ET
+BT /F1 7.50 Tf 0.420 0.420 0.420 rg 1 0 0 1 399.28 28.00 Tm (Internal technical guide  |  Page 1) Tj ET
+BT /F2 23.00 Tf 0.055 0.145 0.250 rg 1 0 0 1 54.00 772.89 Tm (ZO STREAM AI RECOMMENDATION SYSTEM) Tj ET
+BT /F2 15.50 Tf 0.040 0.360 0.620 rg 1 0 0 1 54.00 725.89 Tm (Hnathawh Dan Leh Kalphung - Technical Explanation \(Mizo\)) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 699.89 Tm (Document date: 26 September 2026) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 681.54 Tm (System scope: Zo Stream API v4 homepage movie/series recommendation) Tj ET
+0.78 0.82 0.86 RG 0.6 w 54.00 657.19 m 541.28 657.19 l S
+BT /F2 15.50 Tf 0.040 0.360 0.620 rg 1 0 0 1 54.00 636.19 Tm (1. Executive Summary) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 610.19 Tm (Zo Stream recommendation system hi ChatGPT ang text siamtu Generative AI a ni lo. He system hi) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 596.85 Tm (user-te movie/series an en dan, eng content nge an duh, movie metadata leh overall popularity) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 583.50 Tm (te zirchhuaka content remchang ber ranking siamtu hybrid machine-learning recommender a ni.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 562.15 Tm (System-in method pathum a blend:) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 540.80 Tm (- Collaborative filtering: "He movie entu dangte'n eng nge an en tel?") Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 525.95 Tm (- Content similarity: "He movie nen genre, description, director leh category-ah eng nge) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 512.61 Tm (  inang?") Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 497.76 Tm (- Popularity: "Zo Stream user-te zingah eng content nge ngaihhlut hlawm?") Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 479.91 Tm (Homepage response zawng zawng AI model-in a siam lo. Section pathum chauh trained model-in a) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 466.56 Tm (rank; section paruk chu current MySQL database atanga live rules-in a siam.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 445.21 Tm (AI/model sections:) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 423.87 Tm (- Because You Watched) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 409.02 Tm (- Top Picks for You) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 394.17 Tm (- Similar Movies) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 376.32 Tm (Live database sections:) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 354.97 Tm (- Latest Update) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 340.13 Tm (- Continue Watching) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 325.28 Tm (- Trending Now) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 310.43 Tm (- New Releases) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 295.58 Tm (- Your Wishlist) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 280.73 Tm (- Next Episode) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 262.89 Tm (He design avang hian personalized discovery chu AI model-in a pe a, watch progress, wishlist,) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 249.54 Tm (latest update leh episode dawt leh ang current information chu live database-in a pe.) Tj ET
+0.78 0.82 0.86 RG 0.6 w 54.00 225.19 m 541.28 225.19 l S
+BT /F2 15.50 Tf 0.040 0.360 0.620 rg 1 0 0 1 54.00 204.19 Tm (2. System Architecture) Tj ET
+BT /F2 11.20 Tf 0.055 0.145 0.250 rg 1 0 0 1 54.00 172.19 Tm (2.1 Request flow) Tj ET
+0.95 0.96 0.97 rg 54.00 68.99 487.28 88.20 re f
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 144.19 Tm (Mobile / TV / Web Client) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 133.59 Tm (          |) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 122.99 Tm (          | GET /api/v4/recommendations/home) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 112.39 Tm (          v) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 101.79 Tm (HomeRecommendationController) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 91.19 Tm (  - authentication check) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 80.59 Tm (  - adult/kids mode validation) Tj ET
+endstream
+endobj
+8 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R >> >> /Contents 7 0 R >>
+endobj
+9 0 obj
+<< /Length 6071 >>
+stream
+1 1 1 rg 0 0 595.28 841.89 re f
+0.04 0.36 0.62 rg 0 829.89 595.28 12 re f
+BT /F1 7.50 Tf 0.420 0.420 0.420 rg 1 0 0 1 54.00 806.89 Tm (ZO STREAM  |  AI RECOMMENDATION SYSTEM) Tj ET
+BT /F1 7.50 Tf 0.420 0.420 0.420 rg 1 0 0 1 399.28 28.00 Tm (Internal technical guide  |  Page 2) Tj ET
+0.95 0.96 0.97 rg 54.00 537.69 487.28 247.20 re f
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 771.89 Tm (  - pagination and requested section) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 761.29 Tm (          |) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 750.69 Tm (          v) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 740.09 Tm (HomeRecommendationService) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 729.49 Tm (          |) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 718.89 Tm (          +-------------------------------+) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 708.29 Tm (          |                               |) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 697.69 Tm (          v                               v) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 687.09 Tm (LiveHomeSectionService             Python hybrid.py) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 676.49 Tm (  - current watch history            - load trained model) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 665.89 Tm (  - current wishlist                 - build live user profile) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 655.29 Tm (  - live shelves                     - calculate AI ranking) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 644.69 Tm (          |                               |) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 634.09 Tm (          +---------------+---------------+) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 623.49 Tm (                          v) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 612.89 Tm (             live validation + merge) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 602.29 Tm (                          |) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 591.69 Tm (                          v) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 581.09 Tm (                   cache + paginate) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 570.49 Tm (                          |) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 559.89 Tm (                          v) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 549.29 Tm (                     JSON response) Tj ET
+BT /F2 11.20 Tf 0.055 0.145 0.250 rg 1 0 0 1 54.00 522.69 Tm (2.2 Main components) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 502.69 Tm (- HomeRecommendationController: API request validate, user authenticate, section layout leh) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 489.34 Tm (  pagination handle.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 474.49 Tm (- HomeRecommendationService: Live data leh Python model coordinate, cache leh fallback) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 461.15 Tm (  handle.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 446.30 Tm (- LiveHomeSectionService: Current MySQL data atangin live shelves leh current user signals) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 432.95 Tm (  la.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 418.10 Tm (- recommender/hybrid.py: Model train, load leh personalized ranking calculate.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 403.25 Tm (- hybrid_model.json.gz: Trained catalog, vectors, neighbours, popularity leh user-derived) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 389.91 Tm (  preferences vawng.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 375.06 Tm (- HomeSectionLayoutService: Section enable/disable, title leh display order control.) Tj ET
+0.78 0.82 0.86 RG 0.6 w 54.00 354.21 m 541.28 354.21 l S
+BT /F2 15.50 Tf 0.040 0.360 0.620 rg 1 0 0 1 54.00 333.21 Tm (3. System Lifecycle Pahnih) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 307.21 Tm (Recommendation engine hi phase pahnihah hriat hran a pawimawh.) Tj ET
+BT /F2 11.20 Tf 0.055 0.145 0.250 rg 1 0 0 1 54.00 279.86 Tm (3.1 Training-time - model siam hun) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 259.86 Tm (Training chu request tinah a run lo. Scheduled job emaw manual command-in a run a,) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 246.51 Tm (database/backup data tam tak chhiarin model file pakhat a siam.) Tj ET
+0.95 0.96 0.97 rg 54.00 67.77 487.28 162.40 re f
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 217.17 Tm (MySQL / CSV / SQL backup) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 206.57 Tm (          |) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 195.97 Tm (          v) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 185.37 Tm (Published + enabled catalog filter) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 174.77 Tm (          |) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 164.17 Tm (          +--> movie metadata tokenize --> TF-IDF content vectors) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 153.57 Tm (          |) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 142.97 Tm (          +--> watch/wishlist signals --> user preference strength) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 132.37 Tm (          |) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 121.77 Tm (          +--> users' co-watch pattern --> collaborative neighbours) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 111.17 Tm (          |) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 100.57 Tm (          +--> total preference --> popularity score) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 89.97 Tm (          v) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 79.37 Tm (hybrid_model.json.gz) Tj ET
+endstream
+endobj
+10 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R >> >> /Contents 9 0 R >>
+endobj
+11 0 obj
+<< /Length 4912 >>
+stream
+1 1 1 rg 0 0 595.28 841.89 re f
+0.04 0.36 0.62 rg 0 829.89 595.28 12 re f
+BT /F1 7.50 Tf 0.420 0.420 0.420 rg 1 0 0 1 54.00 806.89 Tm (ZO STREAM  |  AI RECOMMENDATION SYSTEM) Tj ET
+BT /F1 7.50 Tf 0.420 0.420 0.420 rg 1 0 0 1 399.28 28.00 Tm (Internal technical guide  |  Page 3) Tj ET
+BT /F2 11.20 Tf 0.055 0.145 0.250 rg 1 0 0 1 54.00 773.89 Tm (3.2 Request-time - user-in homepage dil hun) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 753.89 Tm (Request a lo kalin model pum train leh a ni lo. Model awmsa chu load a ni a, current user) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 740.54 Tm (watch history leh wishlist chauh live database atangin lak a ni.) Tj ET
+0.95 0.96 0.97 rg 54.00 593.59 487.28 130.60 re f
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 711.19 Tm (Trained shared model) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 700.59 Tm (       +) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 689.99 Tm (Current user's watch_position) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 679.39 Tm (       +) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 668.79 Tm (Current user's wist_list) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 658.19 Tm (       |) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 647.59 Tm (       v) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 636.99 Tm (User profile + ranking + filters) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 626.39 Tm (       |) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 615.79 Tm (       v) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 605.19 Tm (Personalized AI sections) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 584.59 Tm (Hei avang hian user-in tun maia movie a en emaw wishlist-ah a dah emaw chu personalization-ah) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 571.25 Tm (model retrain hmaa signal atan hman theih a ni. Mahse movie thar pakhat content) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 557.90 Tm (vector/collaborative neighbours-ah tel tur chuan training thar a ngai.) Tj ET
+0.78 0.82 0.86 RG 0.6 w 54.00 533.55 m 541.28 533.55 l S
+BT /F2 15.50 Tf 0.040 0.360 0.620 rg 1 0 0 1 54.00 512.55 Tm (4. Training Data Leh Cleaning) Tj ET
+BT /F2 11.20 Tf 0.055 0.145 0.250 rg 1 0 0 1 54.00 480.55 Tm (4.1 Tables hman) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 460.55 Tm (- movie: title, description, genre, director, release date, poster, flags leh access) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 447.20 Tm (  attributes.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 432.35 Tm (- watch_position: user, movie/episode, playback position, duration, created/updated time.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 417.51 Tm (- wist_list: user-in movie a save/wishlist-a dah signal.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 402.66 Tm (- seasons: series leh season mapping.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 387.81 Tm (- episodes and legacy episode: episode ID, season, order leh parent series mapping.) Tj ET
+BT /F2 11.20 Tf 0.055 0.145 0.250 rg 1 0 0 1 54.00 363.96 Tm (4.2 Catalog eligibility) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 343.96 Tm (Model-ah movie tel tur chuan:) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 322.61 Tm (- status = Published) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 307.77 Tm (- isEnable = 1) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 292.92 Tm (- ID a awm tur) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 278.07 Tm (- Title chu Test, Testing, Demo emaw Sample a ni lo tur) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 260.22 Tm (Episode pawh published leh active/enabled a nih a ngai. Episode watch chu a parent) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 246.87 Tm (movie/series preference-ah map a ni.) Tj ET
+BT /F2 11.20 Tf 0.055 0.145 0.250 rg 1 0 0 1 54.00 219.53 Tm (4.3 ID mapping) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 199.53 Tm (Codebase-ah movie.id, movie.num, current episode ID leh legacy episode ID te an awm avangin) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 186.18 Tm (aliases a siam. Hei hian watch row hlui leh schema thar chu parent content dik takah a inzawm) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 172.83 Tm (tir.) Tj ET
+BT /F2 11.20 Tf 0.055 0.145 0.250 rg 1 0 0 1 54.00 145.48 Tm (4.4 Privacy note) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 125.48 Tm (Model file-ah user ID leh user-derived preferences an awm. Chuvangin model artifact chu source) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 112.13 Tm (database ang bawka private data niin ngaih tur a ni; public download path-ah dah tur a ni lo.) Tj ET
+0.78 0.82 0.86 RG 0.6 w 54.00 87.79 m 541.28 87.79 l S
+endstream
+endobj
+12 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R >> >> /Contents 11 0 R >>
+endobj
+13 0 obj
+<< /Length 4424 >>
+stream
+1 1 1 rg 0 0 595.28 841.89 re f
+0.04 0.36 0.62 rg 0 829.89 595.28 12 re f
+BT /F1 7.50 Tf 0.420 0.420 0.420 rg 1 0 0 1 54.00 806.89 Tm (ZO STREAM  |  AI RECOMMENDATION SYSTEM) Tj ET
+BT /F1 7.50 Tf 0.420 0.420 0.420 rg 1 0 0 1 399.28 28.00 Tm (Internal technical guide  |  Page 4) Tj ET
+BT /F2 15.50 Tf 0.040 0.360 0.620 rg 1 0 0 1 54.00 770.89 Tm (5. User Preference Signal Siam Dan) Tj ET
+BT /F2 11.20 Tf 0.055 0.145 0.250 rg 1 0 0 1 54.00 738.89 Tm (5.1 Watch completion strength) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 718.89 Tm (Duration hriat a nih chuan:) Tj ET
+0.95 0.96 0.97 rg 54.00 667.34 487.28 35.20 re f
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 689.54 Tm (completion = position / duration) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 678.94 Tm (watch_strength = 0.25 + \(2.0 x completion\)) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 658.34 Tm (Completion 80% emaw a aia sang a nih chuan bonus +0.75 a dawng.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 636.99 Tm (Example:) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 615.65 Tm (- 10% en: 0.25 + 2 x 0.10 = 0.45) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 600.80 Tm (- 50% en: 0.25 + 2 x 0.50 = 1.25) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 585.95 Tm (- 90% en: 0.25 + 2 x 0.90 + 0.75 = 2.80) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 568.10 Tm (Chuvangin movie click ringawt aiin a tawp thleng hnaih en chu interest signal chak zawk a ni.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 546.75 Tm (Duration hriat lohva position > 0 a nih chuan strength 1.0; position pawh awm loh chuan 0.25 a) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 533.41 Tm (ni.) Tj ET
+BT /F2 11.20 Tf 0.055 0.145 0.250 rg 1 0 0 1 54.00 506.06 Tm (5.2 Wishlist strength) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 486.06 Tm (Wishlist item pakhat chuan preference strength +3.0 a dawng. Hei hi user-in content chu en lo) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 472.71 Tm (mah se a duh tih explicit intent signal chak tak a ni.) Tj ET
+BT /F2 11.20 Tf 0.055 0.145 0.250 rg 1 0 0 1 54.00 445.36 Tm (5.3 Repeated watch) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 425.36 Tm (Same parent movie/series watch signal tamte chu add khawm a ni. Log compression leh cap hman a) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 412.01 Tm (nih avangin episode tam tak enna khan other preferences zawng zawng a nek lo.) Tj ET
+BT /F2 11.20 Tf 0.055 0.145 0.250 rg 1 0 0 1 54.00 384.67 Tm (5.4 Recency) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 364.67 Tm (Signal thar chu signal hlui aiin a chak zawk. Recency half-life chu ni 180:) Tj ET
+0.95 0.96 0.97 rg 54.00 323.72 487.28 24.60 re f
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 335.32 Tm (recency = 0.65 + 0.35 x exp\(-age / 180 days\)) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 314.72 Tm (Preference final chu roughly:) Tj ET
+0.95 0.96 0.97 rg 54.00 273.77 487.28 24.60 re f
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 285.37 Tm (preference = min\(5, 1 + log\(1 + accumulated_strength\)\) x recency) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 264.77 Tm (Old preference chu zero vek a ni lo; long-term taste vawn nan minimum influence a nei reng.) Tj ET
+0.78 0.82 0.86 RG 0.6 w 54.00 240.42 m 541.28 240.42 l S
+BT /F2 15.50 Tf 0.040 0.360 0.620 rg 1 0 0 1 54.00 219.42 Tm (6. Content Similarity \(TF-IDF\)) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 193.42 Tm (Content method hian movie text leh flags atangin mathematical vector a siam.) Tj ET
+BT /F2 11.20 Tf 0.055 0.145 0.250 rg 1 0 0 1 54.00 166.07 Tm (6.1 Field weights) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 146.07 Tm (- Description token: weight 1) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 131.23 Tm (- Title token: weight 2) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 116.38 Tm (- Director token: weight 2) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 101.53 Tm (- Genre token: weight 4) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 86.68 Tm (- Mizo/Korean/Hollywood/Bollywood/Documentary flag: weight 5) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 68.83 Tm (Genre leh category flag-te chu movie identity sawi chiangtu an nih avangin description word) Tj ET
+endstream
+endobj
+14 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R >> >> /Contents 13 0 R >>
+endobj
+15 0 obj
+<< /Length 4634 >>
+stream
+1 1 1 rg 0 0 595.28 841.89 re f
+0.04 0.36 0.62 rg 0 829.89 595.28 12 re f
+BT /F1 7.50 Tf 0.420 0.420 0.420 rg 1 0 0 1 54.00 806.89 Tm (ZO STREAM  |  AI RECOMMENDATION SYSTEM) Tj ET
+BT /F1 7.50 Tf 0.420 0.420 0.420 rg 1 0 0 1 399.28 28.00 Tm (Internal technical guide  |  Page 5) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 779.89 Tm (aiin weight sang zawk an nei.) Tj ET
+BT /F2 11.20 Tf 0.055 0.145 0.250 rg 1 0 0 1 54.00 752.54 Tm (6.2 Token cleaning) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 732.54 Tm (Text chu lowercase/case-fold a ni a, punctuation leh common stop words te paih a ni. Token) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 719.19 Tm (character pahnih aia tlem pawh paih a ni.) Tj ET
+BT /F2 11.20 Tf 0.055 0.145 0.250 rg 1 0 0 1 54.00 691.85 Tm (6.3 TF-IDF) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 671.85 Tm (TF-IDF hian:) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 650.50 Tm (- Movie pakhat chhunga term pawimawh a chawikan.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 635.65 Tm (- Catalog zawng zawnga word common lutuk a hnuk hniam.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 620.80 Tm (- Catalog 65% aia tama awm term chu noise angin a paih.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 605.95 Tm (- Movie tin token/vector component chak ber 160 a vawng.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 588.11 Tm (Movie pahnih vector dot-product hmangin similarity a calculate. Genre, director, description) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 574.76 Tm (leh flags inang chuan content score a sang.) Tj ET
+0.78 0.82 0.86 RG 0.6 w 54.00 550.41 m 541.28 550.41 l S
+BT /F2 15.50 Tf 0.040 0.360 0.620 rg 1 0 0 1 54.00 529.41 Tm (7. Collaborative Filtering) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 503.41 Tm (Collaborative filtering hian movie text a en lo; user-te behaviour a en.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 482.06 Tm (Question a chhan chu:) Tj ET
+BT /F4 9.80 Tf 0.040 0.360 0.620 rg 1 0 0 1 67.00 460.71 Tm (""Content A entu user-te'n Content B pawh an en fo em?"") Tj ET
+BT /F2 11.20 Tf 0.055 0.145 0.250 rg 1 0 0 1 54.00 430.80 Tm (7.1 Neighbour building) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 410.80 Tm (- User tin preference chak ber 30 a la.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 395.95 Tm (- Movie pair tin common viewers a count.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 381.10 Tm (- Cosine similarity a calculate.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 366.25 Tm (- Common viewers tlem lutuk chu overconfidence lo turin shrinkage a apply.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 351.41 Tm (- Movie tin neighbour chak ber 80 a save.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 333.56 Tm (Simplified score:) Tj ET
+0.95 0.96 0.97 rg 54.00 271.41 487.28 45.80 re f
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 304.21 Tm (cosine = common_users / sqrt\(viewers_A x viewers_B\)) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 293.61 Tm (confidence = common_users / \(common_users + 5\)) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 283.01 Tm (similarity = cosine x confidence) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 262.41 Tm (Example: User tam takin Film A leh Film B an en dun chuan B chu A neighbour a ni. User pakhat) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 249.06 Tm (chauhin an en dun chuan score sang lutuk a nei lo, confidence factor-in a tihniam.) Tj ET
+BT /F2 11.20 Tf 0.055 0.145 0.250 rg 1 0 0 1 54.00 221.71 Tm (7.2 Request-time collaborative score) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 201.71 Tm (User history item tin preference strength chu neighbour similarity nen multiply a, candidate) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 188.37 Tm (movie tinah add khawm a ni.) Tj ET
+0.95 0.96 0.97 rg 54.00 147.42 487.28 24.60 re f
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 159.02 Tm (candidate_behavior_score += user_preference x neighbour_similarity) Tj ET
+0.78 0.82 0.86 RG 0.6 w 54.00 135.42 m 541.28 135.42 l S
+BT /F2 15.50 Tf 0.040 0.360 0.620 rg 1 0 0 1 54.00 114.42 Tm (8. Popularity Score) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 88.42 Tm (Training-time popularity chu user preference strength total atangin siam a ni. Log scale leh) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 75.07 Tm (normalization hman a nih avangin blockbuster pakhatin candidate dang zawng zawng a nek lo.) Tj ET
+endstream
+endobj
+16 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R >> >> /Contents 15 0 R >>
+endobj
+17 0 obj
+<< /Length 4718 >>
+stream
+1 1 1 rg 0 0 595.28 841.89 re f
+0.04 0.36 0.62 rg 0 829.89 595.28 12 re f
+BT /F1 7.50 Tf 0.420 0.420 0.420 rg 1 0 0 1 54.00 806.89 Tm (ZO STREAM  |  AI RECOMMENDATION SYSTEM) Tj ET
+BT /F1 7.50 Tf 0.420 0.420 0.420 rg 1 0 0 1 399.28 28.00 Tm (Internal technical guide  |  Page 6) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 779.89 Tm (History nei lo user tan Top Picks score chu 100% popularity a ni. Hei hi cold-start fallback a) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 766.54 Tm (ni.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 745.19 Tm (Important distinction:) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 723.85 Tm (- Trained model popularity chu Top Picks blend-ah hman a ni.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 709.00 Tm (- Production homepage Trending Now shelf chu live database-a movie.views descending-in siam a) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 695.65 Tm (  ni.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 677.80 Tm (Chuvangin Top Picks popularity leh Trending Now shelf chu source/meaning inang lo.) Tj ET
+0.78 0.82 0.86 RG 0.6 w 54.00 653.45 m 541.28 653.45 l S
+BT /F2 15.50 Tf 0.040 0.360 0.620 rg 1 0 0 1 54.00 632.45 Tm (9. Top Picks for You Ranking) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 606.45 Tm (Candidate tinah component pathum 0-1 scale-a normalize a ni:) Tj ET
+0.95 0.96 0.97 rg 54.00 533.71 487.28 56.40 re f
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 577.11 Tm (final_score =) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 566.51 Tm (    collaborative_weight x behavior_score) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 555.91 Tm (  + content_weight       x content_score) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 545.31 Tm (  + popularity_weight    x popularity_score) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 524.71 Tm (Weights chu user history size a zirin a insiam danglam:) Tj ET
+0.95 0.96 0.97 rg 54.00 451.96 487.28 56.40 re f
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 495.36 Tm (History 0     : Collaborative 0%  | Content 0%  | Popularity 100%) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 484.76 Tm (History 1-2   : Collaborative 15% | Content 55% | Popularity 30%) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 474.16 Tm (History 3-4   : Collaborative 30% | Content 45% | Popularity 25%) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 463.56 Tm (History 5+    : Collaborative 50% | Content 35% | Popularity 15%) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 442.96 Tm (Interpretation:) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 421.61 Tm (- User thar: Taste hriat loh avangin popular content.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 406.76 Tm (- History tlem: Watched content metadata nen inang zual.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 391.91 Tm (- History tam: Similar users' behaviour reliable zawk, collaborative weight sang.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 374.07 Tm (User-in a en tawh content chu Top Picks candidate-ah paih a ni.) Tj ET
+BT /F2 11.20 Tf 0.055 0.145 0.250 rg 1 0 0 1 54.00 346.72 Tm (9.1 Reason field) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 326.72 Tm (Final score-ah contribution sang ber chu user-facing reason atan hman a ni:) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 305.37 Tm (- Users with similar watch history) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 290.52 Tm (- Similar to watched genres and content) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 275.67 Tm (- Popular with Zo Stream viewers) Tj ET
+0.78 0.82 0.86 RG 0.6 w 54.00 254.83 m 541.28 254.83 l S
+BT /F2 15.50 Tf 0.040 0.360 0.620 rg 1 0 0 1 54.00 233.83 Tm (10. AI Shelf Pathum) Tj ET
+BT /F2 11.20 Tf 0.055 0.145 0.250 rg 1 0 0 1 54.00 201.83 Tm (10.1 Because You Watched) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 181.83 Tm (Anchor chu user-in hnuhnung ber-a a en parent movie/series.) Tj ET
+0.95 0.96 0.97 rg 54.00 130.28 487.28 35.20 re f
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 152.48 Tm (65% collaborative similarity) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 141.88 Tm (35% content similarity) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 121.28 Tm (Hei hi recent interest leh co-watch behaviour a ngai pawimawh.) Tj ET
+BT /F2 11.20 Tf 0.055 0.145 0.250 rg 1 0 0 1 54.00 93.93 Tm (10.2 Similar Movies) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 73.93 Tm (Anchor chu user preference list-a item chak ber zual; possible a nih chuan recent anchor nen) Tj ET
+endstream
+endobj
+18 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R >> >> /Contents 17 0 R >>
+endobj
+19 0 obj
+<< /Length 4447 >>
+stream
+1 1 1 rg 0 0 595.28 841.89 re f
+0.04 0.36 0.62 rg 0 829.89 595.28 12 re f
+BT /F1 7.50 Tf 0.420 0.420 0.420 rg 1 0 0 1 54.00 806.89 Tm (ZO STREAM  |  AI RECOMMENDATION SYSTEM) Tj ET
+BT /F1 7.50 Tf 0.420 0.420 0.420 rg 1 0 0 1 399.28 28.00 Tm (Internal technical guide  |  Page 7) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 779.89 Tm (inang lo.) Tj ET
+0.95 0.96 0.97 rg 54.00 728.34 487.28 35.20 re f
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 750.54 Tm (20% collaborative similarity) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 739.94 Tm (80% content similarity) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 719.34 Tm (Hei hi genre, director, description leh category resemblance a ngai pawimawh zawk.) Tj ET
+BT /F2 11.20 Tf 0.055 0.145 0.250 rg 1 0 0 1 54.00 691.99 Tm (10.3 Top Picks for You) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 671.99 Tm (Anchor pakhat chauh hmang lovin user history zawng zawng atangin profile a siam. Collaborative) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 658.65 Tm (+ content + popularity adaptive weights-in final ranking a pe.) Tj ET
+BT /F2 11.20 Tf 0.055 0.145 0.250 rg 1 0 0 1 54.00 631.30 Tm (10.4 Duplicate control) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 611.30 Tm (- Same movie ID chu seen/excluded list hmangin shelf dangah a lang nawn lo.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 596.45 Tm (- Exact title duplicate a paih.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 581.60 Tm (- Title token overlap 75% emaw a aia sang, token tlem zawk count 3+ a nih chuan) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 568.25 Tm (  near-duplicate angin a paih.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 550.41 Tm (He rule hian sequel title inang lutuk te pawh a paih thei; diversity a siam mahse franchise) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 537.06 Tm (discovery tihniam theihna a nei.) Tj ET
+0.78 0.82 0.86 RG 0.6 w 54.00 512.71 m 541.28 512.71 l S
+BT /F2 15.50 Tf 0.040 0.360 0.620 rg 1 0 0 1 54.00 491.71 Tm (11. Live Database Shelves) Tj ET
+BT /F2 11.20 Tf 0.055 0.145 0.250 rg 1 0 0 1 54.00 459.71 Tm (11.1 Latest Update) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 439.71 Tm (Published/enabled movie-te updated_at, create_date, movie number order-in a pe. Special legacy) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 426.36 Tm (account pakhat tan Mizo-only rule a awm.) Tj ET
+BT /F2 11.20 Tf 0.055 0.145 0.250 rg 1 0 0 1 54.00 399.01 Tm (11.2 Continue Watching) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 379.01 Tm (Item a lang tur chuan:) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 357.67 Tm (- Position > 0) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 342.82 Tm (- Duration hriat) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 327.97 Tm (- Completion < 90%) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 310.12 Tm (Current watch rows update-time descending-a lak an nih avangin recently watched incomplete) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 296.77 Tm (item a hmasa.) Tj ET
+BT /F2 11.20 Tf 0.055 0.145 0.250 rg 1 0 0 1 54.00 269.43 Tm (11.3 Trending Now) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 249.43 Tm (Current production response-ah allowed movies chu views descending, tie-breaker num) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 236.08 Tm (descending-in a pe. User-in a en tawh item exclude lo.) Tj ET
+BT /F2 11.20 Tf 0.055 0.145 0.250 rg 1 0 0 1 54.00 208.73 Tm (11.4 New Releases) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 188.73 Tm (Published/enabled leh release_on awm movie-te release date descending-in a pe.) Tj ET
+BT /F2 11.20 Tf 0.055 0.145 0.250 rg 1 0 0 1 54.00 161.38 Tm (11.5 Your Wishlist) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 141.38 Tm (Current user's wist_list order vawngin movie card a pe. Current content eligibility filter a) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 128.03 Tm (apply.) Tj ET
+BT /F2 11.20 Tf 0.055 0.145 0.250 rg 1 0 0 1 54.00 100.69 Tm (11.6 Next Episode) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 80.69 Tm (User-in series tinah episode sang ber/hnu ber a en chu a hre a, season/episode order-a) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 67.34 Tm (published active episode dawt leh pakhat a pe.) Tj ET
+endstream
+endobj
+20 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R >> >> /Contents 19 0 R >>
+endobj
+21 0 obj
+<< /Length 4846 >>
+stream
+1 1 1 rg 0 0 595.28 841.89 re f
+0.04 0.36 0.62 rg 0 829.89 595.28 12 re f
+BT /F1 7.50 Tf 0.420 0.420 0.420 rg 1 0 0 1 54.00 806.89 Tm (ZO STREAM  |  AI RECOMMENDATION SYSTEM) Tj ET
+BT /F1 7.50 Tf 0.420 0.420 0.420 rg 1 0 0 1 399.28 28.00 Tm (Internal technical guide  |  Page 8) Tj ET
+0.78 0.82 0.86 RG 0.6 w 54.00 776.89 m 541.28 776.89 l S
+BT /F2 15.50 Tf 0.040 0.360 0.620 rg 1 0 0 1 54.00 755.89 Tm (12. Request-Time Detailed Flow) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 729.89 Tm (1. Client-in authenticated request a thawn.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 714.54 Tm (2. Controller-in auth_user_id a check; a awm loh chuan 401.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 699.19 Tm (3. X-Mode chu adult emaw kids a validate.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 683.85 Tm (4. Page, per-page, section leh age-restriction validate.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 668.50 Tm (5. Admin-configured enabled section layout a la.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 653.15 Tm (6. Requested sections zinga AI shelf a awm em tih a check.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 637.80 Tm (7. Live service-in required watch/wishlist signals leh live shelves a la.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 622.45 Tm (8. AI shelf a ngaih chuan script/model readable a nih a check.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 607.11 Tm (9. Cache key a siam.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 591.76 Tm (10. Cache miss a nih chuan Python hybrid.py homepage subprocess a run.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 576.41 Tm (11. Live user signals chu command-line-ah dah lovin JSON stdin-in a pass.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 561.06 Tm (12. Python-in model load, user profile siam leh AI shelves rank.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 545.71 Tm (13. Laravel-in AI item ID-te current database against a verify.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 530.37 Tm (14. Current poster, cover, premium leh PPV values-in card a hydrate.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 515.02 Tm (15. Python live shelves chu current MySQL live shelves-in a overwrite.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 499.67 Tm (16. Controller-in requested page slice a siam a, has_more leh next/previous page a pe.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 481.32 Tm (Default pagination chu page 1, per-page 10. Maximum per-page 50; page maximum 25.) Tj ET
+0.78 0.82 0.86 RG 0.6 w 54.00 456.97 m 541.28 456.97 l S
+BT /F2 15.50 Tf 0.040 0.360 0.620 rg 1 0 0 1 54.00 435.97 Tm (13. Cache Design) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 409.97 Tm (Default cache duration chu 300 seconds.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 388.63 Tm (Cache key-ah:) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 367.28 Tm (- Hashed user ID) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 352.43 Tm (- Fetch limit) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 337.58 Tm (- Adult/kids mode) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 322.73 Tm (- Age-restriction flag) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 307.89 Tm (- Model file modification time) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 293.04 Tm (- Current user signals hash) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 275.19 Tm (Chuvangin:) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 253.84 Tm (- User watch/wishlist thlak chuan signal hash a danglam.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 238.99 Tm (- Model retrain/replace chuan model modification time a danglam.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 224.15 Tm (- Kids leh adult results an in-mix lo.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 209.30 Tm (- User ID raw chu cache key-ah a lang lo.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 191.45 Tm (Live shelf values, entirnan views, chu AI cache version-ah tel lo. Live shelves chu request) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 178.10 Tm (tin current DB atanga lak a ni a, cached AI payload-ah overwrite a ni.) Tj ET
+0.78 0.82 0.86 RG 0.6 w 54.00 153.75 m 541.28 153.75 l S
+BT /F2 15.50 Tf 0.040 0.360 0.620 rg 1 0 0 1 54.00 132.75 Tm (14. Content Policy Leh Safety Filters) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 106.75 Tm (Recommendation serve hmain current DB-in a verify leh:) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 85.41 Tm (- Published content chauh) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 70.56 Tm (- Enabled content chauh) Tj ET
+endstream
+endobj
+22 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R >> >> /Contents 21 0 R >>
+endobj
+23 0 obj
+<< /Length 4648 >>
+stream
+1 1 1 rg 0 0 595.28 841.89 re f
+0.04 0.36 0.62 rg 0 829.89 595.28 12 re f
+BT /F1 7.50 Tf 0.420 0.420 0.420 rg 1 0 0 1 54.00 806.89 Tm (ZO STREAM  |  AI RECOMMENDATION SYSTEM) Tj ET
+BT /F1 7.50 Tf 0.420 0.420 0.420 rg 1 0 0 1 399.28 28.00 Tm (Internal technical guide  |  Page 9) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 779.89 Tm (- Kids mode-ah child-mode content chauh) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 765.04 Tm (- Kids mode-ah age-restricted content engtikah mah a lang lo) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 750.19 Tm (- Adult mode-ah age restriction request-in explicitly phal loh chuan restricted item a lang) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 736.85 Tm (  lo) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 719.00 Tm (AI artifact-a poster/cover/premium/PPV values stale thei avangin current DB value-in a update) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 705.65 Tm (leh.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 684.30 Tm (Premium leh PPV chu response card-a flags chauh an ni. He recommender layer hian user) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 670.95 Tm (subscription entitlement a check a, premium content chu automatically exclude lo.) Tj ET
+0.78 0.82 0.86 RG 0.6 w 54.00 646.61 m 541.28 646.61 l S
+BT /F2 15.50 Tf 0.040 0.360 0.620 rg 1 0 0 1 54.00 625.61 Tm (15. Failure Handling) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 599.61 Tm (Heng harsatna a awm thei:) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 578.26 Tm (- Python binary awm/readable lo) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 563.41 Tm (- hybrid.py awm/readable lo) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 548.56 Tm (- Model file awm/readable lo) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 533.71 Tm (- Python timeout) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 518.87 Tm (- Invalid JSON output) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 504.02 Tm (- Process exit failure) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 486.17 Tm (Heng a thlen chuan service-in warning log a ziak a, AI shelf pathum empty-in live shelves a) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 472.82 Tm (serve chhunzawm. Chuvangin recommender model failure hian homepage pumpui a titla lo.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 451.47 Tm (Default inference timeout chu 30 seconds. Cache awm avangin request tinah Python process run a) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 438.13 Tm (ngai kher lo.) Tj ET
+0.78 0.82 0.86 RG 0.6 w 54.00 413.78 m 541.28 413.78 l S
+BT /F2 15.50 Tf 0.040 0.360 0.620 rg 1 0 0 1 54.00 392.78 Tm (16. Model Training Operations) Tj ET
+BT /F2 11.20 Tf 0.055 0.145 0.250 rg 1 0 0 1 54.00 360.78 Tm (16.1 Sources) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 340.78 Tm (Training command hian source pathum a support:) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 319.43 Tm (- MySQL) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 304.58 Tm (- CSV) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 289.73 Tm (- Extracted SQL dump) Tj ET
+BT /F2 11.20 Tf 0.055 0.145 0.250 rg 1 0 0 1 54.00 265.89 Tm (16.2 Production schedule) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 245.89 Tm (Current scheduler chu recommender:train-sql-backup a run. Default schedule chu zan dar 3,) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 232.54 Tm (configured timezone angin.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 211.19 Tm (Pipeline:) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 189.84 Tm (1. Configured pattern atanga latest .sql.gz backup select.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 174.49 Tm (2. File freshness leh gzip integrity check.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 159.15 Tm (3. Protected temporary directory-ah extract.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 143.80 Tm (4. Required table schema/INSERT values parse.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 128.45 Tm (5. Hybrid model train.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 113.10 Tm (6. Temporary gzip JSON write.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 97.75 Tm (7. Success chauhin actual model file atomic replace.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 82.41 Tm (8. File group/permission apply \(0640\).) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 67.06 Tm (9. Temporary files cleanup.) Tj ET
+endstream
+endobj
+24 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R >> >> /Contents 23 0 R >>
+endobj
+25 0 obj
+<< /Length 4881 >>
+stream
+1 1 1 rg 0 0 595.28 841.89 re f
+0.04 0.36 0.62 rg 0 829.89 595.28 12 re f
+BT /F1 7.50 Tf 0.420 0.420 0.420 rg 1 0 0 1 54.00 806.89 Tm (ZO STREAM  |  AI RECOMMENDATION SYSTEM) Tj ET
+BT /F1 7.50 Tf 0.420 0.420 0.420 rg 1 0 0 1 399.28 28.00 Tm (Internal technical guide  |  Page 10) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 779.89 Tm (Training overlap lo turin lock a awm. Scheduler pawhin withoutOverlapping leh onOneServer a) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 766.54 Tm (hmang.) Tj ET
+BT /F2 11.20 Tf 0.055 0.145 0.250 rg 1 0 0 1 54.00 739.19 Tm (16.3 Default configuration) Tj ET
+0.95 0.96 0.97 rg 54.00 646.59 487.28 77.60 re f
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 711.19 Tm (Model path       : recommender/artifacts/hybrid_model.json.gz) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 700.59 Tm (Inference timeout: 30 seconds) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 689.99 Tm (Cache duration   : 300 seconds) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 679.39 Tm (Training timeout : 3600 seconds) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 668.79 Tm (Training schedule: 0 3 * * *) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 658.19 Tm (Backup max age   : 30 hours) Tj ET
+0.78 0.82 0.86 RG 0.6 w 54.00 634.59 m 541.28 634.59 l S
+BT /F2 15.50 Tf 0.040 0.360 0.620 rg 1 0 0 1 54.00 613.59 Tm (17. Cold Start Behaviour) Tj ET
+BT /F2 11.20 Tf 0.055 0.145 0.250 rg 1 0 0 1 54.00 581.59 Tm (New user, history nei lo) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 561.59 Tm (- Top Picks: trained popularity only.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 546.75 Tm (- Because You Watched: anchor awm lo, empty.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 531.90 Tm (- Similar Movies: anchor awm lo, empty.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 517.05 Tm (- Live Trending/New Releases/Latest Update: awm reng thei.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 502.20 Tm (- Wishlist: user-in item a save tawh chuan wishlist itself leh Top Picks preference-ah signal) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 488.85 Tm (  a pe.) Tj ET
+BT /F2 11.20 Tf 0.055 0.145 0.250 rg 1 0 0 1 54.00 465.01 Tm (Movie thar, model train hnu lama publish) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 445.01 Tm (- Live Latest Update/New Releases/Trending-ah a lang thei.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 430.16 Tm (- AI content vectors/neighbours-ah training dawt leh hma chuan a tel lo.) Tj ET
+BT /F2 11.20 Tf 0.055 0.145 0.250 rg 1 0 0 1 54.00 406.31 Tm (History tlem) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 386.31 Tm (Content similarity weight sang a ni; collaborative data tlem avanga unstable recommendation a) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 372.96 Tm (veng.) Tj ET
+0.78 0.82 0.86 RG 0.6 w 54.00 348.61 m 541.28 348.61 l S
+BT /F2 15.50 Tf 0.040 0.360 0.620 rg 1 0 0 1 54.00 327.61 Tm (18. Current Behaviour-a Hriat Tur Pawimawh) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 301.61 Tm (1. Documentation hluiin Trending Now chu recent 30-day unique viewers angin a sawi thei.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 288.27 Tm (Python model-ah chu metric a awm, mahse production homepage-in live views ordering-in a) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 274.92 Tm (overwrite.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 259.57 Tm (2. README heading-in "Homepage section 8" a tih laiin current layout-ah section 9,) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 246.22 Tm (latest_update telin, a awm.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 230.87 Tm (3. AI model output chu entitlement filter a ni lo; Premium/PPV flags chauh a pe.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 215.53 Tm (4. Model file-ah user-derived private data a awm.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 200.18 Tm (5. Python subprocess per cache miss hman a ni; persistent model server a ni lo.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 184.83 Tm (6. Item-details "You may also like" endpoint chu he hybrid model a hmang lo. Title) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 171.48 Tm (similarity, genre/category leh random fallback a hmang.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 156.13 Tm (7. Reel recommendation chu 127.0.0.1:8001 service hran; homepage movie recommender nen a) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 142.79 Tm (inang lo.) Tj ET
+0.78 0.82 0.86 RG 0.6 w 54.00 121.44 m 541.28 121.44 l S
+BT /F2 15.50 Tf 0.040 0.360 0.620 rg 1 0 0 1 54.00 100.44 Tm (19. End-to-End Example) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 74.44 Tm (User A hian:) Tj ET
+endstream
+endobj
+26 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R >> >> /Contents 25 0 R >>
+endobj
+27 0 obj
+<< /Length 5381 >>
+stream
+1 1 1 rg 0 0 595.28 841.89 re f
+0.04 0.36 0.62 rg 0 829.89 595.28 12 re f
+BT /F1 7.50 Tf 0.420 0.420 0.420 rg 1 0 0 1 54.00 806.89 Tm (ZO STREAM  |  AI RECOMMENDATION SYSTEM) Tj ET
+BT /F1 7.50 Tf 0.420 0.420 0.420 rg 1 0 0 1 399.28 28.00 Tm (Internal technical guide  |  Page 11) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 779.89 Tm (- Mizo drama Film X 90% a en.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 765.04 Tm (- Korean romance Film Y 40% a en.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 750.19 Tm (- Documentary Z wishlist-ah a dah.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 732.35 Tm (System interpretation:) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 711.00 Tm (- Film X watch strength sang, 80% bonus a dawng.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 696.15 Tm (- Film Y interest medium.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 681.30 Tm (- Documentary Z wishlist strength +3, intent signal chak.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 666.45 Tm (- Recent signal chu old signal aiin weight sang zawk.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 648.61 Tm (Top Picks candidate C tan:) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 627.26 Tm (- Similar users-in C an en: behavior score sang.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 612.41 Tm (- C chu drama/Mizo metadata a nei: content score sang.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 597.56 Tm (- Overall popular: popularity score medium.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 579.71 Tm (History size 3 a nih chuan weights 30% behavior, 45% content, 25% popularity. Candidate C) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 566.37 Tm (final score chu component weighted sum a ni. User-in C a en tawh chuan candidate list atangin) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 553.02 Tm (paih a ni.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 531.67 Tm (Because You Watched shelf chu most recent watched Film X anchor-in 65% collaborative + 35%) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 518.32 Tm (content a hmang. Similar Movies shelf chu favourite anchor atangin 80% content similarity a) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 504.97 Tm (hmang.) Tj ET
+0.78 0.82 0.86 RG 0.6 w 54.00 480.63 m 541.28 480.63 l S
+BT /F2 15.50 Tf 0.040 0.360 0.620 rg 1 0 0 1 54.00 459.63 Tm (20. Glossary) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 433.63 Tm (- Candidate: Recommend tur movie possible pakhat.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 418.78 Tm (- Anchor: Similar items zawng nan starting movie.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 403.93 Tm (- Feature/vector: Movie attribute-te number representation-a siam.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 389.08 Tm (- TF-IDF: Movie pakhat tana word pawimawh, catalog zawng tana rare/common dan measure.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 374.23 Tm (- Collaborative filtering: Similar user behaviour atanga recommendation.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 359.39 Tm (- Content-based: Movie metadata similarity atanga recommendation.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 344.54 Tm (- Hybrid: Method pahnih emaw a aia tam blend.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 329.69 Tm (- Cold start: User/movie history la awm lohna.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 314.84 Tm (- Inference: Model awmsa hmanga ranking calculate.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 299.99 Tm (- Training: Historical data atanga model artifact siam.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 285.15 Tm (- Normalization: Different score scale-te 0-1 range hnaihva siam.) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 270.30 Tm (- Atomic replace: Model thar complete taka write zawh hnu chauha old model thlak.) Tj ET
+0.78 0.82 0.86 RG 0.6 w 54.00 249.45 m 541.28 249.45 l S
+BT /F2 15.50 Tf 0.040 0.360 0.620 rg 1 0 0 1 54.00 228.45 Tm (21. Code Reference Map) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 202.45 Tm (- Configuration: config/recommender.php) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 187.60 Tm (- API controller: app/Http/Controllers/Api/V4/HomeRecommendationController.php) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 172.75 Tm (- Orchestration/cache/fallback: app/Services/HomeRecommendationService.php) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 157.91 Tm (- Live shelves and validation: app/Services/LiveHomeSectionService.php) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 143.06 Tm (- Section arrangement: app/Services/HomeSectionLayoutService.php) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 128.21 Tm (- AI training/ranking: recommender/hybrid.py) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 113.36 Tm (- Training command: app/Console/Commands/TrainRecommender.php) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 98.51 Tm (- SQL backup pipeline: app/Console/Commands/TrainRecommenderFromSqlBackup.php) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 66.00 83.67 Tm (- Scheduler: routes/console.php) Tj ET
+endstream
+endobj
+28 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R >> >> /Contents 27 0 R >>
+endobj
+29 0 obj
+<< /Length 3459 >>
+stream
+1 1 1 rg 0 0 595.28 841.89 re f
+0.04 0.36 0.62 rg 0 829.89 595.28 12 re f
+BT /F1 7.50 Tf 0.420 0.420 0.420 rg 1 0 0 1 54.00 806.89 Tm (ZO STREAM  |  AI RECOMMENDATION SYSTEM) Tj ET
+BT /F1 7.50 Tf 0.420 0.420 0.420 rg 1 0 0 1 399.28 28.00 Tm (Internal technical guide  |  Page 12) Tj ET
+0.78 0.82 0.86 RG 0.6 w 54.00 776.89 m 541.28 776.89 l S
+BT /F2 15.50 Tf 0.040 0.360 0.620 rg 1 0 0 1 54.00 755.89 Tm (22. One-Page Mental Model) Tj ET
+0.95 0.96 0.97 rg 54.00 455.89 487.28 279.00 re f
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 721.89 Tm (HISTORICAL DATA \(daily training\)) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 711.29 Tm (  movie metadata + all users' watch/wishlist) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 700.69 Tm (                 |) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 690.09 Tm (                 v) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 679.49 Tm (  content vectors + co-watch neighbours + popularity) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 668.89 Tm (                 |) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 658.29 Tm (                 v) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 647.69 Tm (          compressed model file) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 637.09 Tm () Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 626.49 Tm (CURRENT REQUEST) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 615.89 Tm (  trained model + this user's current signals) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 605.29 Tm (                 |) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 594.69 Tm (                 v) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 584.09 Tm (  adaptive hybrid scoring) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 573.49 Tm (                 |) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 562.89 Tm (                 v) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 552.29 Tm (  Because You Watched / Top Picks / Similar Movies) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 541.69 Tm (                 |) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 531.09 Tm (                 + current DB live shelves) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 520.49 Tm (                 |) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 509.89 Tm (                 v) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 499.29 Tm (  policy validation + fresh artwork/flags + pagination) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 488.69 Tm (                 |) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 478.09 Tm (                 v) Tj ET
+BT /F3 7.70 Tf 0.055 0.145 0.250 rg 1 0 0 1 62.00 467.49 Tm (             client response) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 446.89 Tm (Final summary: Zo Stream AI recommender chu shared historical learning leh current individual) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 433.54 Tm (behaviour a inzawm tir. Model hian discovery ranking a siam; live Laravel queries hian current) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 420.19 Tm (state, progress leh catalog safety a vawng. Failure a awm pawhin live homepage a function) Tj ET
+BT /F1 9.40 Tf 0.250 0.250 0.250 rg 1 0 0 1 54.00 406.85 Tm (chhunzawm turin graceful fallback a nei.) Tj ET
+endstream
+endobj
+30 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R >> >> /Contents 29 0 R >>
+endobj
+31 0 obj
+<< /Title (Zo Stream AI Recommendation System - Mizo) /Author (Zo Stream Engineering) /Subject (Recommendation architecture and workflow) >>
+endobj
+xref
+0 32
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000199 00000 n 
+0000000296 00000 n 
+0000000398 00000 n 
+0000000493 00000 n 
+0000000598 00000 n 
+0000005156 00000 n 
+0000005318 00000 n 
+0000011440 00000 n 
+0000011603 00000 n 
+0000016567 00000 n 
+0000016731 00000 n 
+0000021207 00000 n 
+0000021371 00000 n 
+0000026057 00000 n 
+0000026221 00000 n 
+0000030991 00000 n 
+0000031155 00000 n 
+0000035654 00000 n 
+0000035818 00000 n 
+0000040716 00000 n 
+0000040880 00000 n 
+0000045580 00000 n 
+0000045744 00000 n 
+0000050677 00000 n 
+0000050841 00000 n 
+0000056274 00000 n 
+0000056438 00000 n 
+0000059949 00000 n 
+0000060113 00000 n 
+trailer
+<< /Size 32 /Root 1 0 R /Info 31 0 R >>
+startxref
+60270
+%%EOF

@@ -40,6 +40,8 @@ class AdServingController extends Controller
         try {
             $query = DB::table('ad_campaign_placements as assignment')
                 ->join('ad_campaigns as campaign', 'campaign.id', '=', 'assignment.campaign_id')
+                ->join('ad_advertisers as advertiser', 'advertiser.id', '=', 'campaign.advertiser_id')
+                ->join('ad_submissions as submission', 'submission.id', '=', 'campaign.submission_id')
                 ->join('ad_creatives as creative', 'creative.id', '=', 'assignment.creative_id')
                 ->join('ad_placement_slots as slot', 'slot.id', '=', 'assignment.placement_slot_id')
                 ->where('slot.code', $data['placement'])
@@ -65,9 +67,12 @@ class AdServingController extends Controller
 
             $creative = $query->select([
                 'campaign.id as campaign_id', 'campaign.billing_model', 'creative.id as creative_id',
+                'campaign.submission_id', 'campaign.start_at', 'campaign.end_at',
                 'creative.name', 'creative.type', 'creative.media_url', 'creative.thumbnail_url',
                 'creative.target_url', 'creative.duration_seconds', 'creative.skip_after_seconds',
+                'submission.description', 'advertiser.business_name as advertiser_name',
                 'creative.is_skippable', 'slot.id as placement_slot_id', 'slot.code as placement',
+                'slot.label as placement_label',
                 $hasLegacyAdUrl ? 'live_ad.ads_url' : DB::raw('NULL as ads_url'),
             ])
                 ->first();
@@ -137,17 +142,35 @@ class AdServingController extends Controller
         $trackingToken = $this->sign($payload);
 
         $isVideo = strtolower((string) $creative->type) === 'video';
+        $assets = DB::table('ad_submission_assets')
+            ->where('ad_submission_id', $creative->submission_id)
+            ->whereNotNull('file_url')
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get(['kind', 'file_url'])
+            ->map(fn ($asset) => [
+                'kind' => $asset->kind,
+                'url' => $asset->file_url,
+            ])
+            ->values()
+            ->all();
 
         return V4Response::success([
             'campaign_id' => $creative->campaign_id,
             'creative_id' => $creative->creative_id,
             'name' => $creative->name,
+            'description' => $creative->description,
+            'advertiser_name' => $creative->advertiser_name,
             'type' => $creative->type,
             'media_url' => $mediaUrl,
             'thumbnail_url' => $creative->thumbnail_url,
             'target_url' => $creative->target_url,
             'ad_url' => $creative->ads_url,
             'duration_seconds' => $creative->duration_seconds,
+            'assets' => $assets,
+            'placement_label' => $creative->placement_label,
+            'starts_at' => $creative->start_at,
+            'ends_at' => $creative->end_at,
             // Older creatives have null skip settings. Return the same safe
             // default as new video creatives so every client can show Skip
             // after 5 seconds without a data migration.
@@ -248,7 +271,10 @@ class AdServingController extends Controller
     {
         $requiredColumns = [
             'ad_campaign_placements' => ['campaign_id', 'creative_id', 'placement_slot_id', 'priority', 'is_active'],
-            'ad_campaigns' => ['id', 'billing_model', 'status', 'start_at', 'end_at', 'target_quantity', 'served_quantity', 'consumed_quantity'],
+            'ad_campaigns' => ['id', 'advertiser_id', 'submission_id', 'billing_model', 'status', 'start_at', 'end_at', 'target_quantity', 'served_quantity', 'consumed_quantity'],
+            'ad_advertisers' => ['id', 'business_name'],
+            'ad_submissions' => ['id', 'description'],
+            'ad_submission_assets' => ['id', 'ad_submission_id', 'kind', 'file_url', 'sort_order'],
             'ad_creatives' => ['id', 'name', 'type', 'media_url', 'thumbnail_url', 'target_url', 'duration_seconds', 'skip_after_seconds', 'is_skippable', 'existing_ad_num', 'is_active'],
             'ad_placement_slots' => ['id', 'code', 'platform', 'is_active'],
         ];

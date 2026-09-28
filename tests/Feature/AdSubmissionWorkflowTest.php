@@ -127,6 +127,7 @@ class AdSubmissionWorkflowTest extends TestCase
             'contact_name' => 'Lalruata',
             'contact_phone' => '9876543210',
             'ads_name' => 'Video campaign',
+            'description' => 'Stream the newest collection from Example Store.',
             'type' => 'video',
             'placement_code' => 'pre_roll',
             'billing_model' => 'CPV',
@@ -137,6 +138,11 @@ class AdSubmissionWorkflowTest extends TestCase
             'media_url' => 'https://cdn.example.com/ad.mp4',
             'destination_url' => 'https://example.com',
             'requested_period_days' => 14,
+        ]);
+        $submission->assets()->create([
+            'kind' => 'feature',
+            'file_url' => 'https://cdn.example.com/video-feature.webp',
+            'sort_order' => 0,
         ]);
 
         $approved = app(AdApprovalService::class)->approve($submission, [], 'admin-uid');
@@ -183,7 +189,11 @@ class AdSubmissionWorkflowTest extends TestCase
             ->getJson('/api/v4/ads/serve?placement=pre_roll&platform=web')
             ->assertOk()
             ->assertJsonPath('data.campaign_id', $approved->campaign->id)
-            ->assertJsonPath('data.type', 'video');
+            ->assertJsonPath('data.type', 'video')
+            ->assertJsonPath('data.description', 'Stream the newest collection from Example Store.')
+            ->assertJsonPath('data.advertiser_name', 'Example Store')
+            ->assertJsonPath('data.assets.0.kind', 'feature')
+            ->assertJsonPath('data.assets.0.url', 'https://cdn.example.com/video-feature.webp');
         $trackingToken = $served->json('data.tracking_token');
         $impressionEvent = (string) Str::uuid();
 
