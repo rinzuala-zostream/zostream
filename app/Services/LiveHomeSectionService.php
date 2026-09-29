@@ -12,6 +12,7 @@ class LiveHomeSectionService
         'latest_update',
         'continue_watching',
         'trending_now',
+        'last_month_top_10',
         'new_releases',
         'your_wishlist',
         'next_episode',
@@ -78,6 +79,13 @@ class LiveHomeSectionService
         if (in_array('trending_now', $requested, true)) {
             $sections['trending_now'] = $this->movies(
                 $this->allowedMovies($mode, $includeAgeRestricted)->orderByDesc('views')->orderByDesc('num')->limit($fetchLimit)->get(self::MOVIE_CARD_COLUMNS)
+            );
+        }
+        if (in_array('last_month_top_10', $requested, true)) {
+            $sections['last_month_top_10'] = $this->lastMonthTopTen(
+                min($fetchLimit, 10),
+                $mode,
+                $includeAgeRestricted
             );
         }
         if (in_array('new_releases', $requested, true)) {
@@ -205,6 +213,79 @@ class LiveHomeSectionService
         }
 
         return $cards;
+    }
+
+    /**
+     * Rank titles by distinct watch-position records touched in the previous
+     * calendar month. Episode activity is rolled up to its parent series.
+     */
+    private function lastMonthTopTen(int $limit, string $mode, bool $includeAgeRestricted): array
+    {
+        $monthStart = now()->subMonthNoOverflow()->startOfMonth();
+        $monthEnd = now()->startOfMonth();
+
+        $movieCounts = DB::table('watch_position')
+            ->where('updated_at', '>=', $monthStart)
+            ->where('updated_at', '<', $monthEnd)
+            ->whereRaw("LOWER(COALESCE(movie_type, '')) <> 'episode'")
+            ->groupBy('movie_id')
+            ->select('movie_id', DB::raw('COUNT(*) as monthly_views'))
+            ->get();
+
+        $episodeCounts = DB::table('watch_position')
+            ->join('episodes', 'episodes.id', '=', 'watch_position.movie_id')
+            ->join('seasons', 'seasons.id', '=', 'episodes.season_id')
+            ->where('watch_position.updated_at', '>=', $monthStart)
+            ->where('watch_position.updated_at', '<', $monthEnd)
+            ->whereRaw("LOWER(COALESCE(watch_position.movie_type, '')) = 'episode'")
+            ->groupBy('seasons.movie_id')
+            ->select('seasons.movie_id', DB::raw('COUNT(*) as monthly_views'))
+            ->get();
+
+        $scores = [];
+        $movies = $this->allowedMovies($mode, $includeAgeRestricted)
+            ->whereIn('id', $movieCounts->pluck('movie_id'))
+            ->get(self::MOVIE_CARD_COLUMNS);
+        foreach ($movies as $movie) {
+            $scores[(string) $movie->id] = [
+                'movie' => $movie,
+                'views' => 0,
+            ];
+        }
+        foreach ($movieCounts as $count) {
+            $id = (string) $count->movie_id;
+            if (isset($scores[$id])) {
+                $scores[$id]['views'] += (int) $count->monthly_views;
+            }
+        }
+
+        $series = $this->allowedMovies($mode, $includeAgeRestricted)
+            ->whereIn('num', $episodeCounts->pluck('movie_id'))
+            ->get(array_merge(self::MOVIE_CARD_COLUMNS, ['num']));
+        $seriesByNumber = $series->keyBy(fn ($movie) => (string) $movie->num);
+        foreach ($episodeCounts as $count) {
+            $movie = $seriesByNumber->get((string) $count->movie_id);
+            if (! $movie) {
+                continue;
+            }
+            $id = (string) $movie->id;
+            $scores[$id] ??= ['movie' => $movie, 'views' => 0];
+            $scores[$id]['views'] += (int) $count->monthly_views;
+        }
+
+        usort($scores, function (array $left, array $right): int {
+            $byViews = $right['views'] <=> $left['views'];
+
+            return $byViews !== 0
+                ? $byViews
+                : strcmp((string) $left['movie']->title, (string) $right['movie']->title);
+        });
+
+        return array_map(function (array $ranked): array {
+            return $this->movieCard($ranked['movie']) + [
+                'monthly_views' => $ranked['views'],
+            ];
+        }, array_slice($scores, 0, $limit));
     }
 
     /**

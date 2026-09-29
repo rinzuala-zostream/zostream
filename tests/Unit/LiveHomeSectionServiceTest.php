@@ -1,0 +1,104 @@
+<?php
+
+namespace Tests\Unit;
+
+use App\Services\LiveHomeSectionService;
+use Carbon\Carbon;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Tests\TestCase;
+
+class LiveHomeSectionServiceTest extends TestCase
+{
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        config()->set('database.default', 'live-home-section-testing');
+        config()->set('database.connections.live-home-section-testing', [
+            'driver' => 'sqlite',
+            'database' => ':memory:',
+            'prefix' => '',
+            'foreign_key_constraints' => false,
+        ]);
+        DB::purge('live-home-section-testing');
+
+        Schema::create('movie', function (Blueprint $table): void {
+            $table->increments('num');
+            $table->string('id')->unique();
+            $table->string('title');
+            $table->string('genre')->nullable();
+            $table->string('poster')->nullable();
+            $table->string('cover_img')->nullable();
+            $table->boolean('isPremium')->default(false);
+            $table->boolean('isPayPerView')->default(false);
+            $table->boolean('isAgeRestricted')->default(false);
+            $table->boolean('isChildMode')->default(false);
+            $table->boolean('isEnable')->default(true);
+            $table->string('status')->default('Published');
+            $table->date('release_on')->nullable();
+        });
+        Schema::create('seasons', function (Blueprint $table): void {
+            $table->increments('num');
+            $table->string('id')->unique();
+            $table->unsignedInteger('movie_id');
+        });
+        Schema::create('episodes', function (Blueprint $table): void {
+            $table->increments('num');
+            $table->string('id')->unique();
+            $table->string('season_id');
+        });
+        Schema::create('watch_position', function (Blueprint $table): void {
+            $table->id();
+            $table->string('user_id');
+            $table->string('movie_id');
+            $table->string('movie_type')->nullable();
+            $table->timestamp('updated_at')->nullable();
+        });
+
+        Carbon::setTestNow('2026-09-29 12:00:00');
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+        DB::disconnect('live-home-section-testing');
+
+        parent::tearDown();
+    }
+
+    public function test_last_month_top_ten_ranks_movies_and_rolls_episodes_up_to_their_series(): void
+    {
+        DB::table('movie')->insert([
+            ['num' => 1, 'id' => 'movie-a', 'title' => 'Movie A'],
+            ['num' => 2, 'id' => 'series-b', 'title' => 'Series B'],
+            ['num' => 3, 'id' => 'movie-current', 'title' => 'Current Month Movie'],
+        ]);
+        DB::table('seasons')->insert(['id' => 'season-b', 'movie_id' => 2]);
+        DB::table('episodes')->insert(['id' => 'episode-b', 'season_id' => 'season-b']);
+        DB::table('watch_position')->insert([
+            ['user_id' => 'u1', 'movie_id' => 'movie-a', 'movie_type' => 'movie', 'updated_at' => '2026-08-02 10:00:00'],
+            ['user_id' => 'u2', 'movie_id' => 'movie-a', 'movie_type' => null, 'updated_at' => '2026-08-20 10:00:00'],
+            ['user_id' => 'u3', 'movie_id' => 'episode-b', 'movie_type' => 'episode', 'updated_at' => '2026-08-05 10:00:00'],
+            ['user_id' => 'u4', 'movie_id' => 'episode-b', 'movie_type' => 'EPISODE', 'updated_at' => '2026-08-25 10:00:00'],
+            ['user_id' => 'u5', 'movie_id' => 'episode-b', 'movie_type' => 'episode', 'updated_at' => '2026-08-28 10:00:00'],
+            ['user_id' => 'u6', 'movie_id' => 'movie-current', 'movie_type' => 'movie', 'updated_at' => '2026-09-01 00:00:00'],
+        ]);
+
+        $snapshot = app(LiveHomeSectionService::class)->snapshot(
+            'trusted-user',
+            50,
+            'adult',
+            false,
+            ['last_month_top_10'],
+            false
+        );
+
+        $items = $snapshot['sections']['last_month_top_10'];
+
+        $this->assertSame(['series-b', 'movie-a'], array_column($items, 'id'));
+        $this->assertSame([3, 2], array_column($items, 'monthly_views'));
+        $this->assertCount(2, $items);
+    }
+}

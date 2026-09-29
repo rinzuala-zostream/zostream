@@ -20,6 +20,7 @@ const allowedKeys = new Set([
   "top_picks_for_you",
   "similar_movies",
   "trending_now",
+  "last_month_top_10",
   "new_releases",
   "your_wishlist",
   "next_episode",
