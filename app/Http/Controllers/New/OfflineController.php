@@ -10,7 +10,9 @@ use App\Models\New\Episode;
 use App\Models\New\PaymentHistory;
 use App\Models\New\Plan;
 use App\Models\New\Subscription;
+use App\Services\OfflineDownloadQuotaService;
 use Carbon\Carbon;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
@@ -20,10 +22,16 @@ class OfflineController extends Controller
 
     public $hlsFolderController;
 
-    public function __construct(HlsFolderController $hlsFolderController, MovieController $movieController)
-    {
+    private OfflineDownloadQuotaService $quotaService;
+
+    public function __construct(
+        HlsFolderController $hlsFolderController,
+        MovieController $movieController,
+        ?OfflineDownloadQuotaService $quotaService = null,
+    ) {
         $this->hlsFolderController = $hlsFolderController;
         $this->movieController = $movieController;
+        $this->quotaService = $quotaService ?? app(OfflineDownloadQuotaService::class);
     }
 
     public function requestOffline(Request $request)
@@ -189,7 +197,7 @@ class OfflineController extends Controller
         }
 
         if ($platform === 'ios') {
-            return $this->iosOfflineResponse(
+            $response = $this->iosOfflineResponse(
                 $sourceUrl,
                 $movieId,
                 $movieType,
@@ -197,6 +205,8 @@ class OfflineController extends Controller
                 $expiresAt,
                 $accessType,
             );
+
+            return $this->applyDailyDownloadLimit($response, (string) $userId, $movieType, (string) $movieId);
         }
 
         try {
@@ -221,7 +231,7 @@ class OfflineController extends Controller
 
             $qualities = $this->parseDashQualities($xml);
 
-            return response()->json([
+            $response = response()->json([
                 'video_url' => $mpdUrl,
                 'qualities' => $qualities,
                 'format' => 'dash',
@@ -232,6 +242,8 @@ class OfflineController extends Controller
                 'access_type' => $accessType,
             ]);
 
+            return $this->applyDailyDownloadLimit($response, (string) $userId, $movieType, (string) $movieId);
+
         } catch (\Throwable $e) {
             return response()->json([
                 'status' => 'error',
@@ -241,6 +253,37 @@ class OfflineController extends Controller
         }
     }
 
+    private function applyDailyDownloadLimit(
+        JsonResponse $response,
+        string $userId,
+        string $contentType,
+        string $contentId,
+    ): JsonResponse {
+        if (! $response->isSuccessful()) {
+            return $response;
+        }
+
+        $quota = $this->quotaService->claim($userId, $contentType, $contentId);
+
+        if (! $quota['allowed']) {
+            $retryAfter = max(1, now()->diffInSeconds(Carbon::parse($quota['reset_at']), false));
+
+            return response()->json([
+                'status' => 'error',
+                'code' => 'OFFLINE_DAILY_LIMIT_REACHED',
+                'title' => 'Daily Download Limit Reached',
+                'message' => 'You can download up to 3 videos per day. Please try again tomorrow.',
+                'download_quota' => $quota,
+            ], 429)->header('Retry-After', (string) $retryAfter);
+        }
+
+        $payload = $response->getData(true);
+        $payload['download_quota'] = $quota;
+        $response->setData($payload);
+
+        return $response;
+    }
+
     private function iosOfflineResponse(
         string $sourceUrl,
         $movieId,
@@ -248,8 +291,7 @@ class OfflineController extends Controller
         string $maxQuality,
         Carbon $expiresAt,
         string $accessType,
-    )
-    {
+    ) {
         $hlsUrl = Str::contains(strtolower($sourceUrl), 'm3u8') ? $sourceUrl : null;
 
         if (! $hlsUrl) {

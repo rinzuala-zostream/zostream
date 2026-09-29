@@ -6,8 +6,8 @@ use App\Http\Controllers\HlsFolderController;
 use App\Http\Controllers\New\MovieController;
 use App\Http\Controllers\New\OfflineController;
 use App\Models\New\Devices;
-use App\Models\New\Plan;
 use App\Models\New\PaymentHistory;
+use App\Models\New\Plan;
 use App\Models\New\Subscription;
 use Carbon\Carbon;
 use Illuminate\Database\Schema\Blueprint;
@@ -98,6 +98,24 @@ class OfflineAccessTest extends TestCase
             $table->dateTime('expiry_date')->nullable();
             $table->timestamps();
         });
+        Schema::create('offline_download_daily_quotas', function (Blueprint $table) {
+            $table->id();
+            $table->char('user_key', 64);
+            $table->string('user_id', 191);
+            $table->date('quota_date');
+            $table->unsignedTinyInteger('downloads_count')->default(0);
+            $table->timestamps();
+            $table->unique(['user_key', 'quota_date']);
+        });
+        Schema::create('offline_download_grants', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('quota_id');
+            $table->char('content_key', 64);
+            $table->string('content_type', 16);
+            $table->string('content_id', 191);
+            $table->timestamps();
+            $table->unique(['quota_id', 'content_key']);
+        });
 
         $plan = Plan::create([
             'name' => 'Mobile',
@@ -143,6 +161,7 @@ class OfflineAccessTest extends TestCase
 
     protected function tearDown(): void
     {
+        Carbon::setTestNow();
         DB::purge('offline_testing');
         config(['database.default' => $this->originalConnection]);
 
@@ -422,6 +441,77 @@ class OfflineAccessTest extends TestCase
         $this->assertSame(200, $response->getStatusCode());
         $this->assertSame('subscription', $data['access_type']);
         $this->assertSame($planExpiry->timestamp, Carbon::parse($data['expires_at'])->timestamp);
+    }
+
+    public function test_daily_download_limit_allows_three_unique_items_and_does_not_charge_retries(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-29 18:00:00', 'Asia/Kolkata'));
+
+        foreach (['movie-2', 'movie-3', 'movie-4'] as $id) {
+            DB::table('movie')->insert([
+                'id' => $id,
+                'title' => $id,
+                'isPremium' => false,
+                'isPayPerView' => false,
+            ]);
+        }
+
+        $movies = Mockery::mock(MovieController::class);
+        $movies->shouldReceive('getLink')->times(5)->andReturn(response()->json([
+            'status' => 'success',
+            'links' => ['hls_url' => 'https://cdn.example.test/movie/master.m3u8'],
+        ]));
+        $controller = new OfflineController(Mockery::mock(HlsFolderController::class), $movies);
+
+        $first = $controller->requestOffline($this->iosRequest('movie-1', 'movie', false));
+        $retry = $controller->requestOffline($this->iosRequest('movie-1', 'movie', false));
+        $second = $controller->requestOffline($this->iosRequest('movie-2', 'movie', false));
+        $third = $controller->requestOffline($this->iosRequest('movie-3', 'movie', false));
+        $blocked = $controller->requestOffline($this->iosRequest('movie-4', 'movie', false));
+
+        $this->assertSame(200, $first->getStatusCode());
+        $this->assertSame(2, $first->getData(true)['download_quota']['remaining']);
+        $this->assertSame(200, $retry->getStatusCode());
+        $this->assertSame(2, $retry->getData(true)['download_quota']['remaining']);
+        $this->assertSame(200, $second->getStatusCode());
+        $this->assertSame(200, $third->getStatusCode());
+        $this->assertSame(0, $third->getData(true)['download_quota']['remaining']);
+        $this->assertSame(429, $blocked->getStatusCode());
+        $this->assertSame('OFFLINE_DAILY_LIMIT_REACHED', $blocked->getData(true)['code']);
+        $this->assertSame(3, DB::table('offline_download_grants')->count());
+        $this->assertSame(3, DB::table('offline_download_daily_quotas')->value('downloads_count'));
+    }
+
+    public function test_daily_download_limit_resets_at_local_midnight(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-29 23:55:00', 'Asia/Kolkata'));
+
+        foreach (['movie-2', 'movie-3', 'movie-4'] as $id) {
+            DB::table('movie')->insert([
+                'id' => $id,
+                'title' => $id,
+                'isPremium' => false,
+                'isPayPerView' => false,
+            ]);
+        }
+
+        $movies = Mockery::mock(MovieController::class);
+        $movies->shouldReceive('getLink')->times(4)->andReturn(response()->json([
+            'status' => 'success',
+            'links' => ['hls_url' => 'https://cdn.example.test/movie/master.m3u8'],
+        ]));
+        $controller = new OfflineController(Mockery::mock(HlsFolderController::class), $movies);
+
+        foreach (['movie-1', 'movie-2', 'movie-3'] as $id) {
+            $this->assertSame(200, $controller->requestOffline($this->iosRequest($id, 'movie', false))->getStatusCode());
+        }
+
+        Carbon::setTestNow(Carbon::parse('2026-09-30 00:01:00', 'Asia/Kolkata'));
+        $nextDay = $controller->requestOffline($this->iosRequest('movie-4', 'movie', false));
+
+        $this->assertSame(200, $nextDay->getStatusCode());
+        $this->assertSame(2, $nextDay->getData(true)['download_quota']['remaining']);
+        $this->assertSame(2, DB::table('offline_download_daily_quotas')->count());
     }
 
     private function iosRequest(string $contentId, string $contentType, bool $withSubscription = true): Request
