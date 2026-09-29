@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\V4\HomeRecommendationController;
 use App\Services\HomeRecommendationService;
 use App\Services\HomeSectionLayoutService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Mockery;
 use Tests\TestCase;
 
@@ -104,5 +105,42 @@ class HomeRecommendationControllerTest extends TestCase
         $this->assertSame('custom_weekend_picks', $payload['section_order'][0]['key']);
         $this->assertSame('trending_now', $payload['section_order'][0]['source_key']);
         $this->assertSame('movie-1', $payload['sections']['custom_weekend_picks']['items'][0]['id']);
+    }
+
+    public function test_last_month_top_ten_title_includes_the_ranked_month(): void
+    {
+        Carbon::setTestNow('2026-09-29 12:00:00');
+
+        try {
+            $service = Mockery::mock(HomeRecommendationService::class);
+            $layout = Mockery::mock(HomeSectionLayoutService::class);
+            $layout->shouldReceive('enabled')->once()->andReturn([
+                [
+                    'key' => 'last_month_top_10',
+                    'source_key' => 'last_month_top_10',
+                    'title' => 'Last Month Top 10',
+                    'position' => 0,
+                    'is_enabled' => true,
+                ],
+            ]);
+            $service->shouldReceive('homepage')
+                ->once()
+                ->with('trusted-user', 11, 'adult', false, ['last_month_top_10'])
+                ->andReturn([
+                    'history_size' => 0,
+                    'last_month_top_10' => [],
+                ]);
+
+            $request = Request::create('/api/v4/recommendations/home', 'GET');
+            $request->headers->set('X-Mode', 'adult');
+            $request->merge(['auth_user_id' => 'trusted-user']);
+
+            $response = (new HomeRecommendationController($service, $layout))->home($request);
+            $title = $response->getData(true)['data']['section_order'][0]['title'];
+
+            $this->assertSame('Last Month Top 10 (August)', $title);
+        } finally {
+            Carbon::setTestNow();
+        }
     }
 }

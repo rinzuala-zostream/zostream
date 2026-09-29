@@ -119,11 +119,29 @@ class HomeRecommendationController extends Controller
             'section_order' => array_map(fn (array $section): array => [
                 'key' => $section['key'],
                 'source_key' => $section['source_key'],
-                'title' => $section['title'],
+                'title' => $this->displayTitle($section),
                 'position' => $section['position'],
             ], $sectionLayout),
             'sections' => $sections,
         ]);
+    }
+
+    private function displayTitle(array $section): string
+    {
+        $title = (string) $section['title'];
+        if (($section['source_key'] ?? null) !== 'last_month_top_10') {
+            return $title;
+        }
+
+        // Replace an older generated month suffix if a cached/admin title was
+        // saved with one, then append the month represented by this ranking.
+        $title = preg_replace(
+            '/\s+\((?:January|February|March|April|May|June|July|August|September|October|November|December)\)\z/',
+            '',
+            $title
+        ) ?? $title;
+
+        return sprintf('%s (%s)', $title, now()->subMonthNoOverflow()->format('F'));
     }
 
     private function paginate(array $items, int $page, int $perPage): array
