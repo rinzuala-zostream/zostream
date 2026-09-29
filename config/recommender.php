@@ -23,6 +23,13 @@ return [
     ),
     'timeout_seconds' => (float) env('RECOMMENDER_TIMEOUT_SECONDS', 30),
     'cache_seconds' => (int) env('RECOMMENDER_CACHE_SECONDS', 300),
+    // Cache the assembled homepage briefly so repeat visits do not execute the
+    // live shelf queries before discovering that the AI result is cached.
+    // During the stale window Laravel serves the existing response immediately
+    // and refreshes it after the HTTP response has been sent.
+    'response_cache_fresh_seconds' => (int) env('RECOMMENDER_RESPONSE_CACHE_FRESH_SECONDS', 30),
+    'response_cache_stale_seconds' => (int) env('RECOMMENDER_RESPONSE_CACHE_STALE_SECONDS', 300),
+    'live_section_cache_seconds' => (int) env('RECOMMENDER_LIVE_SECTION_CACHE_SECONDS', 60),
     'train_source' => env('RECOMMENDER_TRAIN_SOURCE', 'mysql'),
     'train_data_dir' => env('RECOMMENDER_TRAIN_DATA_DIR', base_path()),
     'train_timeout_seconds' => (int) env('RECOMMENDER_TRAIN_TIMEOUT_SECONDS', 3600),

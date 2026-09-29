@@ -53,7 +53,8 @@ class LiveHomeSectionService
         $watch = $needsWatch
             ? DB::table('watch_position')
                 ->where('user_id', $userId)
-                ->orderByRaw('COALESCE(updated_at, created_at) DESC')
+                ->orderByDesc('updated_at')
+                ->orderByDesc('created_at')
                 ->limit(1000)
                 ->get(['movie_id', 'movie_type', 'position', 'duration', 'created_at', 'updated_at'])
                 ->map(fn ($row) => (array) $row)->all()
@@ -61,7 +62,8 @@ class LiveHomeSectionService
         $wishlist = $needsWishlist
             ? DB::table('wist_list')
                 ->where('uid', $userId)
-                ->orderByRaw('COALESCE(updated_at, created_at) DESC')
+                ->orderByDesc('updated_at')
+                ->orderByDesc('created_at')
                 ->limit(max($fetchLimit, 200))
                 ->get(['movie_id', 'created_at', 'updated_at'])
                 ->map(fn ($row) => (array) $row)->all()
@@ -69,19 +71,31 @@ class LiveHomeSectionService
 
         $sections = [];
         if (in_array('latest_update', $requested, true)) {
-            $sections['latest_update'] = $this->latestUpdates(
-                $userId,
-                $fetchLimit,
-                $mode,
-                $includeAgeRestricted
+            $sections['latest_update'] = $this->rememberLiveSection(
+                sprintf(
+                    'latest-update:%s:%d:%s:%d',
+                    $userId === 'AW7ovVnTdgWuvE1Uke7QTQ5OEQt1' ? 'mizo-only' : 'all',
+                    $fetchLimit,
+                    $mode,
+                    (int) $includeAgeRestricted
+                ),
+                fn (): array => $this->latestUpdates(
+                    $userId,
+                    $fetchLimit,
+                    $mode,
+                    $includeAgeRestricted
+                )
             );
         }
         if (in_array('continue_watching', $requested, true)) {
             $sections['continue_watching'] = $this->continueWatching($watch, $fetchLimit, $mode, $includeAgeRestricted);
         }
         if (in_array('trending_now', $requested, true)) {
-            $sections['trending_now'] = $this->movies(
-                $this->allowedMovies($mode, $includeAgeRestricted)->orderByDesc('views')->orderByDesc('num')->limit($fetchLimit)->get(self::MOVIE_CARD_COLUMNS)
+            $sections['trending_now'] = $this->rememberLiveSection(
+                sprintf('trending-now:%d:%s:%d', $fetchLimit, $mode, (int) $includeAgeRestricted),
+                fn (): array => $this->movies(
+                    $this->allowedMovies($mode, $includeAgeRestricted)->orderByDesc('views')->orderByDesc('num')->limit($fetchLimit)->get(self::MOVIE_CARD_COLUMNS)
+                )
             );
         }
         if (in_array('last_month_top_10', $requested, true)) {
@@ -112,8 +126,11 @@ class LiveHomeSectionService
             }
         }
         if (in_array('new_releases', $requested, true)) {
-            $sections['new_releases'] = $this->movies(
-                $this->allowedMovies($mode, $includeAgeRestricted)->whereNotNull('release_on')->orderByDesc('release_on')->orderByDesc('num')->limit($fetchLimit)->get(self::MOVIE_CARD_COLUMNS)
+            $sections['new_releases'] = $this->rememberLiveSection(
+                sprintf('new-releases:%d:%s:%d', $fetchLimit, $mode, (int) $includeAgeRestricted),
+                fn (): array => $this->movies(
+                    $this->allowedMovies($mode, $includeAgeRestricted)->whereNotNull('release_on')->orderByDesc('release_on')->orderByDesc('num')->limit($fetchLimit)->get(self::MOVIE_CARD_COLUMNS)
+                )
             );
         }
         if (in_array('your_wishlist', $requested, true)) {
@@ -132,6 +149,20 @@ class LiveHomeSectionService
             // out of this version prevents view counters from defeating the cache.
             'version' => hash('sha256', json_encode($signals, JSON_UNESCAPED_UNICODE)),
         ];
+    }
+
+    private function rememberLiveSection(string $key, callable $callback): array
+    {
+        $seconds = max(0, (int) config('recommender.live_section_cache_seconds', 60));
+        if ($seconds === 0) {
+            return $callback();
+        }
+
+        return Cache::remember(
+            'recommendations:live-section:'.$key,
+            now()->addSeconds($seconds),
+            $callback
+        );
     }
 
     public function filterAiSections(array $homepage, string $mode, bool $includeAgeRestricted): array

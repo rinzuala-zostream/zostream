@@ -21,6 +21,73 @@ class HomeRecommendationService
         bool $includeAgeRestricted = false,
         ?array $requestedSections = null
     ): array {
+        $freshSeconds = max(0, (int) config('recommender.response_cache_fresh_seconds', 30));
+        $staleSeconds = max($freshSeconds, (int) config('recommender.response_cache_stale_seconds', 300));
+
+        if ($freshSeconds === 0 || $staleSeconds === 0) {
+            return $this->buildHomepage(
+                $userId,
+                $limit,
+                $contentMode,
+                $includeAgeRestricted,
+                $requestedSections
+            );
+        }
+
+        $sections = $requestedSections;
+        if ($sections !== null) {
+            $sections = array_values(array_unique($sections));
+            sort($sections);
+        }
+        $model = (string) config('recommender.model');
+        $modelVersion = is_file($model) ? (string) filemtime($model) : 'unavailable';
+        $cacheKey = sprintf(
+            'recommendations:home-response:%s:%d:%s:%d:%s:%s',
+            hash('sha256', $userId),
+            $limit,
+            $contentMode,
+            (int) $includeAgeRestricted,
+            $modelVersion,
+            hash('sha256', json_encode($sections, JSON_THROW_ON_ERROR))
+        );
+
+        try {
+            return Cache::flexible(
+                $cacheKey,
+                [$freshSeconds, $staleSeconds],
+                fn (): array => $this->buildHomepage(
+                    $userId,
+                    $limit,
+                    $contentMode,
+                    $includeAgeRestricted,
+                    $requestedSections
+                ),
+                ['seconds' => 30]
+            );
+        } catch (Throwable $exception) {
+            // Cache availability must not become a homepage availability
+            // dependency. Continue through the uncached path instead.
+            Log::warning('Home recommendation response cache failed.', [
+                'exception' => $exception,
+            ]);
+
+            return $this->buildHomepage(
+                $userId,
+                $limit,
+                $contentMode,
+                $includeAgeRestricted,
+                $requestedSections
+            );
+        }
+    }
+
+    private function buildHomepage(
+        string $userId,
+        int $limit,
+        string $contentMode,
+        bool $includeAgeRestricted,
+        ?array $requestedSections
+    ): array {
         $script = (string) config('recommender.script');
         $model = (string) config('recommender.model');
 
