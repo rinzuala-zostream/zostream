@@ -262,7 +262,10 @@ class SubscriptionController extends Controller
                     "original_price" => (float) $planGroup->sum('price'),
                     "duration_days" => (int) $first->duration_days,
                     "per_device_price" => $perDevicePrice,
-                    "per_device_features" => $deviceFeatures
+                    "per_device_features" => $deviceFeatures,
+                    "apple_product_id" => strtolower((string) $first->device_type) === 'mobile'
+                        ? "zostream.mobile.plan.{$first->id}.v3"
+                        : null,
                 ];
             }
 
