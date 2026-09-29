@@ -5,6 +5,7 @@ namespace Tests\Unit;
 use App\Services\LiveHomeSectionService;
 use Carbon\Carbon;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
@@ -23,6 +24,7 @@ class LiveHomeSectionServiceTest extends TestCase
             'foreign_key_constraints' => false,
         ]);
         DB::purge('live-home-section-testing');
+        Cache::flush();
 
         Schema::create('movie', function (Blueprint $table): void {
             $table->increments('num');
@@ -62,6 +64,7 @@ class LiveHomeSectionServiceTest extends TestCase
 
     protected function tearDown(): void
     {
+        Cache::flush();
         Carbon::setTestNow();
         DB::disconnect('live-home-section-testing');
 
@@ -100,5 +103,22 @@ class LiveHomeSectionServiceTest extends TestCase
         $this->assertSame(['series-b', 'movie-a'], array_column($items, 'id'));
         $this->assertSame([3, 2], array_column($items, 'monthly_views'));
         $this->assertCount(2, $items);
+    }
+
+    public function test_last_month_top_ten_failure_does_not_break_the_home_snapshot(): void
+    {
+        Cache::flush();
+        Schema::drop('watch_position');
+
+        $snapshot = app(LiveHomeSectionService::class)->snapshot(
+            'trusted-user',
+            11,
+            'adult',
+            false,
+            ['last_month_top_10'],
+            false
+        );
+
+        $this->assertSame([], $snapshot['sections']['last_month_top_10']);
     }
 }

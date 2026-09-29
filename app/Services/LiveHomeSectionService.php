@@ -4,7 +4,10 @@ namespace App\Services;
 
 use App\Models\MovieModel;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class LiveHomeSectionService
 {
@@ -82,11 +85,31 @@ class LiveHomeSectionService
             );
         }
         if (in_array('last_month_top_10', $requested, true)) {
-            $sections['last_month_top_10'] = $this->lastMonthTopTen(
-                min($fetchLimit, 10),
-                $mode,
-                $includeAgeRestricted
-            );
+            try {
+                $monthKey = now()->subMonthNoOverflow()->format('Y-m');
+                $cacheKey = sprintf(
+                    'home:last-month-top-10:%s:%s:%d',
+                    $monthKey,
+                    $mode,
+                    (int) $includeAgeRestricted
+                );
+                $sections['last_month_top_10'] = Cache::remember(
+                    $cacheKey,
+                    now()->addHour(),
+                    fn (): array => $this->lastMonthTopTen(
+                        10,
+                        $mode,
+                        $includeAgeRestricted
+                    )
+                );
+            } catch (Throwable $exception) {
+                // An optional ranking shelf must never make the complete home
+                // recommendation response fail and trigger a catalog fallback.
+                Log::warning('Last-month Top 10 section could not be built.', [
+                    'exception' => $exception,
+                ]);
+                $sections['last_month_top_10'] = [];
+            }
         }
         if (in_array('new_releases', $requested, true)) {
             $sections['new_releases'] = $this->movies(
