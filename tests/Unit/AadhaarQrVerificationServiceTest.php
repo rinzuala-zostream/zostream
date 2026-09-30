@@ -2,7 +2,9 @@
 
 namespace Tests\Unit;
 
+use App\Isp\Exceptions\AadhaarQrVerificationException;
 use App\Isp\Services\AadhaarQrVerificationService;
+use Illuminate\Http\UploadedFile;
 use PHPUnit\Framework\TestCase;
 
 class AadhaarQrVerificationServiceTest extends TestCase
@@ -56,6 +58,18 @@ class AadhaarQrVerificationServiceTest extends TestCase
 
         $this->assertFalse($service->verifyPayload('https://example.com'));
         $this->assertFalse($service->verifyPayload('1234567890'));
+    }
+
+    public function test_it_reads_an_uploaded_qr_before_rejecting_a_non_aadhaar_payload(): void
+    {
+        $fixture = dirname(__DIR__, 2).'/vendor/khanamiryan/qrcode-detector-decoder/tests/qrcodes/hello_world.png';
+        $file = new UploadedFile($fixture, 'aadhaar-front.png', 'image/png', null, true);
+        $service = new AadhaarQrVerificationService([$this->certificatePath]);
+
+        $this->expectException(AadhaarQrVerificationException::class);
+        $this->expectExceptionMessage('this QR is invalid or has been changed');
+
+        $service->verifyUploadedFiles([$file]);
     }
 
     private function signedPayload(string $signedData): string

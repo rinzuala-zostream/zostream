@@ -23,14 +23,11 @@ class AadhaarQrVerificationService
         $foundQr = false;
 
         foreach (array_filter($files) as $file) {
-            $payload = $this->readQrPayload($file->getRealPath());
-            if ($payload === null) {
-                continue;
-            }
-
-            $foundQr = true;
-            if ($this->verifyPayload($payload)) {
-                return;
+            foreach ($this->readQrPayloads($file->getRealPath()) as $payload) {
+                $foundQr = true;
+                if ($this->verifyPayload($payload)) {
+                    return;
+                }
             }
         }
 
@@ -84,20 +81,153 @@ class AadhaarQrVerificationService
         return false;
     }
 
-    private function readQrPayload(string $path): ?string
+    /**
+     * The decoder stores one PHP value for every image pixel. Feeding a modern
+     * phone photo to it directly can therefore consume hundreds of megabytes.
+     * Decode small, overlapping crops so a large Aadhaar photo stays safely
+     * below the PHP memory limit while the QR retains enough detail to scan.
+     *
+     * @return array<int, string>
+     */
+    private function readQrPayloads(string $path): array
     {
+        $candidatePaths = $this->buildQrCandidateImages($path);
+        $payloads = [];
+
         try {
-            $size = @getimagesize($path);
-            if (! $size || ($size[0] * $size[1]) > 50_000_000) {
-                return null;
+            foreach ($candidatePaths as $candidatePath) {
+                try {
+                    $reader = new QrReader($candidatePath);
+                    $payload = $reader->text();
+                    unset($reader);
+
+                    if (is_string($payload) && $payload !== '' && ! in_array($payload, $payloads, true)) {
+                        $payloads[] = $payload;
+                    }
+                } catch (Throwable) {
+                    // One crop may miss the QR; the remaining crops can still find it.
+                } finally {
+                    gc_collect_cycles();
+                }
             }
-
-            $payload = (new QrReader($path))->text();
-
-            return is_string($payload) && $payload !== '' ? $payload : null;
-        } catch (Throwable) {
-            return null;
+        } finally {
+            foreach ($candidatePaths as $candidatePath) {
+                @unlink($candidatePath);
+            }
         }
+
+        return $payloads;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function buildQrCandidateImages(string $path): array
+    {
+        $size = @getimagesize($path);
+        if (! $size || ! isset($size[0], $size[1], $size[2])) {
+            return [];
+        }
+
+        $width = (int) $size[0];
+        $height = (int) $size[1];
+        if ($width < 1 || $height < 1) {
+            return [];
+        }
+
+        // Loading the source into GD needs roughly four bytes per pixel. Reject
+        // unusually large originals before allocation instead of causing a 500.
+        if (($width * $height) > 24_000_000) {
+            throw new AadhaarQrVerificationException(
+                'Aadhaar verification failed: the uploaded photo resolution is too large to process safely. Resize it below 24 megapixels or retake the photo, then upload again. No customer or payment was created.',
+            );
+        }
+
+        set_error_handler(static fn (): bool => true);
+        try {
+            $source = match ($size[2]) {
+                IMAGETYPE_JPEG => imagecreatefromjpeg($path),
+                IMAGETYPE_PNG => imagecreatefrompng($path),
+                default => false,
+            };
+        } catch (Throwable) {
+            $source = false;
+        } finally {
+            restore_error_handler();
+        }
+
+        if ($source === false) {
+            return [];
+        }
+
+        // The overlapping regions cover common Aadhaar layouts without knowing
+        // whether the uploaded photo is portrait, landscape, front, or back.
+        $regions = [
+            [0.00, 0.00, 1.00, 1.00],
+            [0.38, 0.00, 0.62, 1.00],
+            [0.00, 0.00, 0.62, 1.00],
+            [0.00, 0.38, 1.00, 0.62],
+            [0.00, 0.00, 1.00, 0.62],
+            [0.00, 0.00, 0.58, 0.58],
+            [0.42, 0.00, 0.58, 0.58],
+            [0.00, 0.42, 0.58, 0.58],
+            [0.42, 0.42, 0.58, 0.58],
+        ];
+        $candidatePaths = [];
+
+        try {
+            foreach ($regions as [$xRatio, $yRatio, $widthRatio, $heightRatio]) {
+                $cropX = (int) floor($width * $xRatio);
+                $cropY = (int) floor($height * $yRatio);
+                $cropWidth = max(1, min($width - $cropX, (int) ceil($width * $widthRatio)));
+                $cropHeight = max(1, min($height - $cropY, (int) ceil($height * $heightRatio)));
+
+                // Keep each decoder input under 420k pixels. This is the main
+                // guard against the decoder's per-pixel PHP array exhausting RAM.
+                $scale = min(
+                    1,
+                    900 / max($cropWidth, $cropHeight),
+                    sqrt(420_000 / ($cropWidth * $cropHeight)),
+                );
+                $targetWidth = max(1, (int) floor($cropWidth * $scale));
+                $targetHeight = max(1, (int) floor($cropHeight * $scale));
+                $candidate = imagecreatetruecolor($targetWidth, $targetHeight);
+                if ($candidate === false) {
+                    continue;
+                }
+
+                try {
+                    if (! imagecopyresampled(
+                        $candidate,
+                        $source,
+                        0,
+                        0,
+                        $cropX,
+                        $cropY,
+                        $targetWidth,
+                        $targetHeight,
+                        $cropWidth,
+                        $cropHeight,
+                    )) {
+                        continue;
+                    }
+
+                    imagefilter($candidate, IMG_FILTER_GRAYSCALE);
+                    $candidatePath = tempnam(sys_get_temp_dir(), 'aadhaar-qr-');
+                    if ($candidatePath !== false && imagepng($candidate, $candidatePath, 6)) {
+                        $candidatePaths[] = $candidatePath;
+                    } elseif ($candidatePath !== false) {
+                        @unlink($candidatePath);
+                    }
+                } finally {
+                    unset($candidate);
+                }
+            }
+        } finally {
+            unset($source);
+        }
+
+        return $candidatePaths;
     }
 
     /**
