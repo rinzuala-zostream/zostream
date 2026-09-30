@@ -82,10 +82,10 @@ class IspWifiReminderTest extends TestCase
                     && $request->input('template_name') === 'zostream_wifi_reminder'
                     && $request->input('language') === 'en'
                     && $request->input('template_params') === [
-                        'Test Customer',
-                        today()->addDay()->format('d M Y'),
-                        '599.00',
-                        'Home 50 Mbps',
+                        'customer_name' => 'Test Customer',
+                        'expiry_date' => today()->addDay()->format('d M Y'),
+                        'amount' => '599.00',
+                        'plan_name' => 'Home 50 Mbps',
                     ];
             }))
             ->andReturn(response()->json(['status' => 'success']));

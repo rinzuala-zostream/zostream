@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Http;
 class WhatsAppController extends Controller
 {
     private $whatsappPhoneId;
+
     private $whatsappToken;
 
     public function __construct()
@@ -15,7 +16,6 @@ class WhatsAppController extends Controller
         $this->whatsappPhoneId = config('app.whatsapp_phone_id');
         $this->whatsappToken = config('app.whatsapp_token');
     }
-
 
     public function send(Request $request)
     {
@@ -53,45 +53,51 @@ class WhatsAppController extends Controller
             if (empty($validated['template_name']) || empty($validated['template_params'])) {
                 return response()->json([
                     'status' => 'error',
-                    'message' => 'Template name and parameters are required for template messages.'
+                    'message' => 'Template name and parameters are required for template messages.',
                 ], 400);
             }
 
             $bodyParameters = [];
-            foreach ($validated['template_params'] as $param) {
-                $bodyParameters[] = [
-                    "type" => "text",
-                    "text" => $param
+            foreach ($validated['template_params'] as $name => $param) {
+                $bodyParameter = [
+                    'type' => 'text',
+                    'text' => (string) $param,
                 ];
+
+                if (is_string($name) && ! ctype_digit($name)) {
+                    $bodyParameter['parameter_name'] = $name;
+                }
+
+                $bodyParameters[] = $bodyParameter;
             }
 
             $payload = [
-                "messaging_product" => "whatsapp",
-                "to" => $validated['to'],
-                "type" => "template",
-                "template" => [
-                    "name" => $validated['template_name'],
-                    "language" => [
-                        "code" => $validated['language'] ?? "en"
+                'messaging_product' => 'whatsapp',
+                'to' => $validated['to'],
+                'type' => 'template',
+                'template' => [
+                    'name' => $validated['template_name'],
+                    'language' => [
+                        'code' => $validated['language'] ?? 'en',
                     ],
-                    "components" => [
+                    'components' => [
                         [
-                            "type" => "body",
-                            "parameters" => $bodyParameters
-                        ]
-                    ]
-                ]
+                            'type' => 'body',
+                            'parameters' => $bodyParameters,
+                        ],
+                    ],
+                ],
             ];
 
-            if (!empty($validated['template_header_document_url'])) {
+            if (! empty($validated['template_header_document_url'])) {
                 $payload['template']['components'][] = [
-                    "type" => "header",
-                    "parameters" => [
+                    'type' => 'header',
+                    'parameters' => [
                         [
-                            "type" => "document",
-                            "document" => [
-                                "link" => $validated['template_header_document_url'],
-                                "filename" => $validated['template_header_document_name'] ?? 'invoice.pdf',
+                            'type' => 'document',
+                            'document' => [
+                                'link' => $validated['template_header_document_url'],
+                                'filename' => $validated['template_header_document_name'] ?? 'invoice.pdf',
                             ],
                         ],
                     ],
@@ -100,50 +106,50 @@ class WhatsAppController extends Controller
 
             if ($validated['template_name'] === 'zostream_auth_otp') {
                 $otp = $validated['template_params'][0] ?? '';
-                if (!empty($otp)) {
+                if (! empty($otp)) {
                     $payload['template']['components'][] = [
-                        "type" => "button",
-                        "sub_type" => "url",
-                        "index" => "0",
-                        "parameters" => [
+                        'type' => 'button',
+                        'sub_type' => 'url',
+                        'index' => '0',
+                        'parameters' => [
                             [
-                                "type" => "text",
-                                "text" => $otp
-                            ]
-                        ]
+                                'type' => 'text',
+                                'text' => $otp,
+                            ],
+                        ],
                     ];
                 }
             }
 
-            if (!empty($validated['template_button_url'])) {
+            if (! empty($validated['template_button_url'])) {
                 $payload['template']['components'][] = [
-                    "type" => "button",
-                    "sub_type" => "url",
-                    "index" => "0",
-                    "parameters" => [
+                    'type' => 'button',
+                    'sub_type' => 'url',
+                    'index' => '0',
+                    'parameters' => [
                         [
-                            "type" => "text",
-                            "text" => $validated['template_button_url']
-                        ]
-                    ]
+                            'type' => 'text',
+                            'text' => $validated['template_button_url'],
+                        ],
+                    ],
                 ];
             }
         } else {
             if (empty($validated['message'])) {
                 return response()->json([
-                'status' => 'error',
-                'message' => 'Message field is required for text messages.'
-            ], 400);
+                    'status' => 'error',
+                    'message' => 'Message field is required for text messages.',
+                ], 400);
             }
 
             $payload = [
-                "messaging_product" => "whatsapp",
-                "to" => $validated['to'],
-                "type" => "text",
-                "text" => [
-                    "preview_url" => false,
-                    "body" => $validated['message']
-                ]
+                'messaging_product' => 'whatsapp',
+                'to' => $validated['to'],
+                'type' => 'text',
+                'text' => [
+                    'preview_url' => false,
+                    'body' => $validated['message'],
+                ],
             ];
         }
 
@@ -152,15 +158,15 @@ class WhatsAppController extends Controller
         if ($response->successful()) {
             return response()->json([
                 'status' => 'success',
-                'message' => ucfirst($validated['type']) . ' message sent successfully.',
-                'response' => $response->json()
+                'message' => ucfirst($validated['type']).' message sent successfully.',
+                'response' => $response->json(),
             ]);
         }
 
         return response()->json([
             'status' => 'error',
             'message' => 'Failed to send WhatsApp message.',
-            'error' => $response->json()
+            'error' => $response->json(),
         ], $response->status());
     }
 }

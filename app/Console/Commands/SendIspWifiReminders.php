@@ -54,10 +54,10 @@ class SendIspWifiReminders extends Command
                         'type' => 'template',
                         'template_name' => config('app.whatsapp_wifi_reminder_template', 'zostream_wifi_reminder'),
                         'template_params' => [
-                            $customer->name,
-                            $expiryDate->format('d M Y'),
-                            number_format((float) $customer->package->price, 2, '.', ''),
-                            $customer->package->name,
+                            'customer_name' => $customer->name,
+                            'expiry_date' => $expiryDate->format('d M Y'),
+                            'amount' => number_format((float) $customer->package->price, 2, '.', ''),
+                            'plan_name' => $customer->package->name,
                         ],
                         'language' => config('app.whatsapp_wifi_reminder_language', 'en'),
                     ]));
@@ -65,7 +65,10 @@ class SendIspWifiReminders extends Command
                     if ($response->getStatusCode() >= 400) {
                         $failed++;
                         $payload = $response->getData(true);
-                        $error = $payload['message'] ?? 'WhatsApp rejected the reminder.';
+                        $error = data_get($payload, 'error.error.message')
+                            ?? data_get($payload, 'error.message')
+                            ?? $payload['message']
+                            ?? 'WhatsApp rejected the reminder.';
                         $this->warn("Reminder failed for customer #{$customer->id}: {$error}");
                         Log::warning('ISP WiFi reminder failed', [
                             'customer_id' => $customer->id,
