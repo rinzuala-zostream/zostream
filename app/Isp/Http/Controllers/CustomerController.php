@@ -83,10 +83,11 @@ class CustomerController extends Controller
             }
 
             $condition = $data['router_device_condition'];
-            $amount = $condition === 'new' ? (float) $data['router_amount'] : 0;
-            $notes = $condition === 'new' ? ($data['router_payment_note'] ?? null) : null;
+            $paymentChoice = $condition === 'new' ? ($data['router_payment_choice'] ?? null) : null;
+            $amount = $paymentChoice === 'pay_now' ? (float) ($data['router_amount'] ?? 0) : 0;
+            $notes = $paymentChoice === 'pay_later' ? ($data['router_payment_note'] ?? null) : null;
 
-            if ($condition === 'new' && $data['router_payment_choice'] === 'pay_now') {
+            if ($condition === 'new' && $paymentChoice === 'pay_now') {
                 $pending = $onboarding->createCashfreeOnboarding(
                     $customerData,
                     $amount,
@@ -543,7 +544,7 @@ class CustomerController extends Controller
             'expires_at' => ['nullable', 'date'],
             'router_device_condition' => ['required', Rule::in(['old', 'new'])],
             'router_payment_choice' => [$customer ? 'nullable' : Rule::requiredIf(fn (): bool => $request->input('router_device_condition') === 'new'), Rule::in(['pay_now', 'pay_later'])],
-            'router_amount' => [$customer ? 'nullable' : Rule::requiredIf(fn (): bool => $request->input('router_device_condition') === 'new'), 'nullable', 'numeric', 'min:1', 'max:999999.99'],
+            'router_amount' => [Rule::requiredIf(fn (): bool => ! $customer && $request->input('router_device_condition') === 'new' && $request->input('router_payment_choice') === 'pay_now'), 'nullable', 'numeric', 'min:1', 'max:999999.99'],
             'router_payment_note' => [Rule::requiredIf(fn (): bool => ! $customer && $request->input('router_device_condition') === 'new' && $request->input('router_payment_choice') === 'pay_later'), 'nullable', 'string', 'max:1000'],
             'aadhaar_front' => ['nullable', File::types(['jpg', 'jpeg', 'png', 'pdf'])->max(5 * 1024)],
             'aadhaar_back' => ['nullable', File::types(['jpg', 'jpeg', 'png', 'pdf'])->max(5 * 1024)],

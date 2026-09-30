@@ -79,14 +79,18 @@
 
     const refreshRouterFields = () => {
         const isNew = condition.value === 'new';
+        const payNow = isNew && payment.value === 'pay_now';
         const payLater = isNew && payment.value === 'pay_later';
-        amountField.hidden = !isNew;
+        amountField.hidden = !payNow;
         paymentField.hidden = !isNew;
         noteField.hidden = !payLater;
-        amount.required = isNew;
+        amount.disabled = !payNow;
+        payment.disabled = !isNew;
+        note.disabled = !payLater;
+        amount.required = payNow;
         payment.required = isNew;
         note.required = payLater;
-        button.textContent = isNew && payment.value === 'pay_now' ? 'Pay router & add customer' : 'Save & sync';
+        button.textContent = payNow ? 'Pay router & add customer' : 'Save & sync';
     };
     condition.addEventListener('change', refreshRouterFields);
     payment.addEventListener('change', refreshRouterFields);
