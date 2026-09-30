@@ -25,6 +25,11 @@ Schedule::command('app:subscription-maintenance --deactivate=1 --send-reminders=
 Schedule::command('app:subscription-maintenance --deactivate=0 --reminder-days=3 --send-reminders=1')
     ->dailyAt('10:00');
 
+// 10 AM IST: remind active ISP customers whose WiFi plan expires tomorrow.
+Schedule::command('isp:send-wifi-reminders')
+    ->dailyAt('10:00')
+    ->withoutOverlapping(30);
+
 // Keep stopped/expired rows briefly for idempotent stop retries and diagnosis,
 // then remove them in small batches so the live-session table stays compact.
 Schedule::command('streams:prune-inactive')

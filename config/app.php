@@ -25,6 +25,8 @@ return [
     'whatsapp_token' => env('WHATSAPP_TOKEN'),
     'whatsapp_invoice_template' => env('WHATSAPP_INVOICE_TEMPLATE', 'zostream_invoice'),
     'whatsapp_invoice_button_parameter' => env('WHATSAPP_INVOICE_BUTTON_PARAMETER', 'none'),
+    'whatsapp_wifi_reminder_template' => env('WHATSAPP_WIFI_REMINDER_TEMPLATE', 'zostream_wifi_reminder'),
+    'whatsapp_wifi_reminder_language' => env('WHATSAPP_WIFI_REMINDER_LANGUAGE', 'en'),
 
     /*
     |--------------------------------------------------------------------------
