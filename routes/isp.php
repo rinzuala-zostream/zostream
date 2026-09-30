@@ -37,7 +37,7 @@ Route::prefix('isp')->name('isp.')->group(function (): void {
             Route::get('/customers/import-mikrotik', [MikroTikCustomerImportController::class, 'create'])->name('customers.import-mikrotik.create');
             Route::post('/customers/import-mikrotik', [MikroTikCustomerImportController::class, 'store'])->name('customers.import-mikrotik.store');
 
-            Route::resource('branches', BranchController::class)->only(['index', 'store', 'update', 'destroy']);
+            Route::resource('branches', BranchController::class)->only(['index', 'create', 'store', 'update', 'destroy']);
             Route::resource('users', UserController::class)->except('show');
         });
 

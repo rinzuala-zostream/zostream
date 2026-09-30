@@ -21,13 +21,21 @@ class BranchController extends Controller
         ]);
     }
 
+    public function create(): View
+    {
+        return view('isp.branches.create', [
+            'packages' => Package::where('is_active', true)->orderBy('name')->get(),
+            'routers' => Router::where('is_active', true)->orderBy('name')->get(),
+        ]);
+    }
+
     public function store(Request $request): RedirectResponse
     {
         [$data, $packageIds] = $this->validated($request);
         $branch = Branch::create($data);
         $branch->packages()->sync($packageIds);
 
-        return back()->with('success', 'Branch added successfully.');
+        return to_route('isp.branches.index')->with('success', 'Branch added successfully.');
     }
 
     public function update(Request $request, Branch $branch): RedirectResponse
