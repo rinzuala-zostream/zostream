@@ -49,17 +49,22 @@ class AadhaarQrVerificationService
             return false;
         }
 
-        $compressed = $this->decimalToBinary($payload);
-        if (! str_starts_with($compressed, "\x1f\x8b")) {
-            return false;
+        $encoded = $this->decimalToBinary($payload);
+        if (str_starts_with($encoded, "\x1f\x8b")) {
+            set_error_handler(static fn (): bool => true);
+            try {
+                $decoded = gzdecode($encoded);
+            } finally {
+                restore_error_handler();
+            }
+        } else {
+            // Secure QR is normally gzip-compressed, but UIDAI readers also
+            // encounter unpacked variants. Authenticity still depends on the
+            // same trailing RSA signature, so accepting raw bytes does not
+            // weaken verification.
+            $decoded = $encoded;
         }
 
-        set_error_handler(static fn (): bool => true);
-        try {
-            $decoded = gzdecode($compressed);
-        } finally {
-            restore_error_handler();
-        }
         if ($decoded === false || strlen($decoded) < 300) {
             return false;
         }

@@ -43,6 +43,14 @@ class AadhaarQrVerificationServiceTest extends TestCase
         $this->assertTrue($service->verifyPayload($payload));
     }
 
+    public function test_it_accepts_a_valid_uncompressed_secure_qr_payload(): void
+    {
+        $payload = $this->signedPayload('V2'.str_repeat("\xffverified", 20), false);
+        $service = new AadhaarQrVerificationService([$this->certificatePath]);
+
+        $this->assertTrue($service->verifyPayload($payload));
+    }
+
     public function test_it_rejects_a_tampered_secure_qr_payload(): void
     {
         $payload = $this->signedPayload('V2'.str_repeat("\xffverified", 20));
@@ -72,11 +80,13 @@ class AadhaarQrVerificationServiceTest extends TestCase
         $service->verifyUploadedFiles([$file]);
     }
 
-    private function signedPayload(string $signedData): string
+    private function signedPayload(string $signedData, bool $compress = true): string
     {
         openssl_sign($signedData, $signature, $this->privateKey, OPENSSL_ALGO_SHA256);
 
-        return $this->binaryToDecimal(gzencode($signedData.$signature));
+        $binary = $signedData.$signature;
+
+        return $this->binaryToDecimal($compress ? gzencode($binary) : $binary);
     }
 
     private function binaryToDecimal(string $binary): string
