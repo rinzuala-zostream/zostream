@@ -47,7 +47,7 @@ Route::prefix('isp')->name('isp.')->group(function (): void {
         Route::resource('customers', CustomerController::class)->except('show');
 
         Route::post('/payments/checkout', [PaymentController::class, 'checkout'])->name('payments.checkout');
-        Route::post('/payments/razorpay/complete', [PaymentController::class, 'completeRazorpay'])->name('payments.razorpay.complete');
+        Route::post('/payments/cashfree/complete', [PaymentController::class, 'completeCashfree'])->name('payments.cashfree.complete');
         Route::get('/payments/{payment}/invoice', [PaymentController::class, 'invoice'])->name('payments.invoice');
         Route::resource('payments', PaymentController::class)->only(['index', 'store', 'destroy']);
     });

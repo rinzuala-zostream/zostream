@@ -4,16 +4,16 @@
 @section('content')
 <section class="payment-hero">
     <div><span>SMART COLLECTION</span><h2>Collect, split and activate.</h2><p>Select a customer and the panel will calculate every share before payment.</p></div>
-    <div class="payment-hero-badge"><i>✓</i><span><strong>Secure checkout</strong><small>Server-verified Razorpay payment</small></span></div>
+    <div class="payment-hero-badge"><i>✓</i><span><strong>Secure checkout</strong><small>Server-verified Cashfree payment</small></span></div>
 </section>
 
-<form id="paymentForm" class="payment-workspace" method="POST" action="{{ route('isp.payments.store') }}" data-checkout-url="{{ route('isp.payments.checkout') }}" data-complete-url="{{ route('isp.payments.razorpay.complete') }}" data-ott-deduction="0" data-operator-percentage="{{ config('services.zostream_subscription.operator_percentage', 20) }}">@csrf
+<form id="paymentForm" class="payment-workspace" method="POST" action="{{ route('isp.payments.store') }}" data-checkout-url="{{ route('isp.payments.checkout') }}" data-complete-url="{{ route('isp.payments.cashfree.complete') }}" data-ott-deduction="0" data-operator-percentage="{{ config('services.zostream_subscription.operator_percentage', 20) }}">@csrf
     <section class="payment-entry-card">
         <div class="payment-section-head"><span>01</span><div><h3>Customer & payment</h3><p>Choose the subscriber and how the payment was received.</p></div></div>
         <div class="payment-fields">
             <label class="payment-field full"><span>Customer</span><select id="paymentCustomer" name="customer_id" required><option value="">Search or choose a customer</option>@foreach($customers as $customer)<option value="{{ $customer->id }}" data-package-id="{{ $customer->package_id }}" data-package-ids='@json($customer->branch?->packages->pluck("id")->values() ?? [])' data-branch="{{ $customer->branch?->name }}" data-operator-percentage="{{ $customer->branch?->operator_percentage ?? config('services.zostream_subscription.operator_percentage', 20) }}" data-ott-deduction="{{ $customer->branch?->ott_deduction ?? 0 }}" @selected(old('customer_id', $selectedCustomer) == $customer->id)>{{ $customer->name }} · {{ $customer->username }}</option>@endforeach</select></label>
             <label class="payment-field full"><span>Package</span><select id="paymentPackage" name="package_id" required disabled><option value="">Select a customer first</option>@foreach($packages as $package)<option value="{{ $package->id }}" data-price="{{ $package->price }}" data-package="{{ $package->name }}" data-validity="{{ $package->validity_days }}">{{ $package->name }} · ₹{{ number_format($package->price, 0) }} · {{ $package->validity_days }} days</option>@endforeach</select><small id="paymentPackageHelp">The customer's current package will be selected automatically.</small></label>
-            <input id="paymentMethod" type="hidden" name="method" value="razorpay">
+            <input id="paymentMethod" type="hidden" name="method" value="cashfree">
             <label class="payment-field full"><span>Notes</span><textarea name="notes" placeholder="Add an optional note for this collection">{{ old('notes') }}</textarea></label>
         </div>
         <label class="renew-card"><input type="checkbox" name="renew" value="1" checked><i>↻</i><span><strong>Renew and activate internet</strong><small>Extend package validity, activate the customer and sync with RADIUS after successful payment.</small></span></label>
@@ -38,7 +38,7 @@
             </div>
             <div class="razorpay-total"><span><small>AMOUNT TO COLLECT</small><strong id="summaryPayable">₹0</strong></span><em>WiFi share + branch OTT, if configured</em></div>
         </div>
-        <button id="paymentButton" class="payment-submit" type="submit"><span>Pay with Razorpay</span><i>→</i></button>
+        <button id="paymentButton" class="payment-submit" type="submit"><span>Pay with Cashfree</span><i>→</i></button>
         <small class="payment-security">🔒 Amount is recalculated and verified by the server.</small>
     </aside>
 </form>
@@ -48,7 +48,7 @@
     <div class="payment-history-list">
     @forelse($payments as $payment)
         <article class="payment-history-item">
-            <span class="payment-method-icon">{{ $payment->method === 'razorpay' ? 'R' : '₹' }}</span>
+            <span class="payment-method-icon">{{ $payment->method === 'cashfree' ? 'C' : ($payment->method === 'razorpay' ? 'R' : '₹') }}</span>
             <div class="payment-history-copy"><strong>{{ $payment->customer?->name ?? 'Deleted customer' }}</strong><small>{{ ucfirst($payment->method) }} · {{ $payment->paid_at->format('d M Y, h:i A') }} · {{ $payment->operator?->name ?? 'Unknown operator' }}</small></div>
             <div class="payment-history-split"><span>Package ₹{{ number_format($payment->package_amount ?? $payment->amount, 0) }}</span><span>Operator ₹{{ number_format($payment->operator_commission ?? 0, 0) }}</span></div>
             <strong class="payment-history-amount">₹{{ number_format($payment->amount, 2) }}</strong>
@@ -72,7 +72,7 @@
             <div><dt>Local operator <span id="confirmOperatorPercentage"></span>%</dt><dd id="confirmCommission"></dd></div>
             <div><dt>ZoStream WiFi <span id="confirmWifiPercentage"></span>%</dt><dd id="confirmWifiShare"></dd></div>
             <div><dt>OTT added back</dt><dd id="confirmOttAdded"></dd></div>
-            <div class="total"><dt>Razorpay amount</dt><dd id="confirmPayable"></dd></div>
+            <div class="total"><dt>Cashfree amount</dt><dd id="confirmPayable"></dd></div>
         </dl>
         <p class="confirmation-note">OTT is excluded only when the selected branch has an OTT deduction configured. Otherwise, percentages are calculated from the full package amount.</p>
         <div class="confirmation-actions">
@@ -83,7 +83,7 @@
 </dialog>
 @endsection
 @push('scripts')
-<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+<script src="https://sdk.cashfree.com/js/v3/cashfree.js"></script>
 <script>
 (() => {
     const form = document.getElementById('paymentForm');
@@ -145,13 +145,13 @@
         const distributable = Math.max(0, price - ottDeduction);
         const commission = distributable * (operatorPercentage / 100);
         const wifiShare = distributable - commission;
-        const razorpayAmount = wifiShare + ottDeduction;
+        const cashfreeAmount = wifiShare + ottDeduction;
         packageAmount.value = price > 0 ? price.toFixed(2) : '';
         ottInput.value = ottDeduction.toFixed(2);
         distributableInput.value = price > ottDeduction ? distributable.toFixed(2) : '';
         commissionInput.value = price > ottDeduction ? commission.toFixed(2) : '';
         wifiShareInput.value = price > ottDeduction ? wifiShare.toFixed(2) : '';
-        amount.value = price > ottDeduction ? razorpayAmount.toFixed(2) : '';
+        amount.value = price > ottDeduction ? cashfreeAmount.toFixed(2) : '';
         emptyState.hidden = price > 0;
         breakdown.hidden = price <= 0;
         if (price > 0) {
@@ -164,9 +164,9 @@
             document.getElementById('summaryWifi').textContent = money(wifiShare);
             document.getElementById('summaryOperatorPercentage').textContent = operatorPercentage.toLocaleString('en-IN');
             document.getElementById('summaryWifiPercentage').textContent = wifiPercentage.toLocaleString('en-IN');
-            document.getElementById('summaryPayable').textContent = money(razorpayAmount);
+            document.getElementById('summaryPayable').textContent = money(cashfreeAmount);
         }
-        button.querySelector('span').textContent = method.value === 'razorpay' ? 'Pay with Razorpay' : 'Record payment';
+        button.querySelector('span').textContent = method.value === 'cashfree' ? 'Pay with Cashfree' : 'Record payment';
     };
     customer.addEventListener('change', () => {
         refreshPackages();
@@ -176,9 +176,9 @@
     refreshPackages();
     refresh();
 
-    const startRazorpay = async () => {
-        if (typeof Razorpay === 'undefined') {
-            alert('Razorpay Checkout could not be loaded. Check the internet connection and retry.');
+    const startCashfree = async () => {
+        if (typeof Cashfree === 'undefined') {
+            alert('Cashfree Checkout could not be loaded. Check the internet connection and retry.');
             return;
         }
 
@@ -192,56 +192,32 @@
                 headers: {'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest'},
             });
             const checkout = await response.json();
-            if (!response.ok) throw new Error(checkout.message || 'Unable to create Razorpay order.');
+            if (!response.ok) throw new Error(checkout.message || 'Unable to create Cashfree order.');
 
-            const razorpay = new Razorpay({
-                key: checkout.key,
-                amount: checkout.amount,
-                currency: checkout.currency,
-                order_id: checkout.order_id,
-                name: checkout.name,
-                description: checkout.description,
-                prefill: checkout.prefill,
-                theme: {color: '#0c7253'},
-                handler: async payment => {
-                    button.querySelector('span').textContent = 'Verifying payment…';
-                    const verified = await fetch(form.dataset.completeUrl, {
-                        method: 'POST',
-                        headers: {
-                            'Accept': 'application/json',
-                            'Content-Type': 'application/json',
-                            'X-CSRF-TOKEN': csrf,
-                            'X-Requested-With': 'XMLHttpRequest',
-                        },
-                        body: JSON.stringify({
-                            checkout_id: checkout.checkout_id,
-                            razorpay_order_id: payment.razorpay_order_id,
-                            razorpay_payment_id: payment.razorpay_payment_id,
-                            razorpay_signature: payment.razorpay_signature,
-                        }),
-                    });
-                    const result = await verified.json();
-                    if (!verified.ok) {
-                        busy = false;
-                        button.disabled = false;
-                        refresh();
-                        alert(result.message || 'Payment verification failed.');
-                        return;
-                    }
-                    window.location.href = result.redirect;
-                },
-                modal: {
-                    ondismiss: () => {
-                        busy = false;
-                        button.disabled = false;
-                        refresh();
-                    },
-                },
+            const cashfree = Cashfree({mode: checkout.mode});
+            const checkoutResult = await cashfree.checkout({
+                paymentSessionId: checkout.payment_session_id,
+                redirectTarget: '_modal',
             });
-            razorpay.on('payment.failed', response => {
-                alert(response.error?.description || 'Razorpay payment failed.');
+            button.querySelector('span').textContent = 'Verifying payment…';
+            const verified = await fetch(form.dataset.completeUrl, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrf,
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: JSON.stringify({
+                    checkout_id: checkout.checkout_id,
+                    order_id: checkout.order_id,
+                }),
             });
-            razorpay.open();
+            const result = await verified.json();
+            if (!verified.ok) {
+                throw new Error(result.message || checkoutResult?.error?.message || 'Payment verification failed.');
+            }
+            window.location.href = result.redirect;
         } catch (error) {
             busy = false;
             button.disabled = false;
@@ -278,8 +254,8 @@
     confirmButton.addEventListener('click', event => {
         event.preventDefault();
         dialog.close();
-        if (method.value === 'razorpay') {
-            startRazorpay();
+        if (method.value === 'cashfree') {
+            startCashfree();
             return;
         }
         HTMLFormElement.prototype.submit.call(form);

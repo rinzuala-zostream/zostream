@@ -43,10 +43,11 @@ class ZoStreamSubscriptionService
             'meta' => [
                 'source_name' => (string) config('services.zostream_subscription.source_name', 'zostream-isp-panel'),
             ],
+            'gateway' => 'cashfree',
         ]);
         $request->headers->set(
-            'X-RZ-Env',
-            (string) config('services.zostream_subscription.environment', 'SANDBOX')
+            'X-CF-Env',
+            (string) config('cashfree.env', 'SANDBOX')
         );
 
         $response = $this->subscriptions->storeExternalHistory($request);
@@ -54,16 +55,17 @@ class ZoStreamSubscriptionService
         if (! $response->isSuccessful()) {
             throw new RuntimeException((string) (data_get($data, 'message') ?: 'ZoStream subscription order creation failed.'));
         }
-        $order = data_get($data, 'razorpay_order');
-        if (data_get($data, 'status') !== 'success' || ! is_array($order) || blank($order['id'] ?? null)) {
-            throw new RuntimeException((string) (data_get($data, 'message') ?: 'ZoStream API did not return a Razorpay order.'));
+        $order = data_get($data, 'cashfree_order');
+        if (data_get($data, 'status') !== 'success' || ! is_array($order) || blank($order['order_id'] ?? null)) {
+            throw new RuntimeException((string) (data_get($data, 'message') ?: 'ZoStream API did not return a Cashfree order.'));
         }
         $expectedAmount = (int) round($payableAmount * 100);
-        if ((int) ($order['amount'] ?? 0) !== $expectedAmount || strtoupper((string) ($order['currency'] ?? '')) !== 'INR') {
+        $actualAmount = (int) round(((float) ($order['order_amount'] ?? 0)) * 100);
+        if ($actualAmount !== $expectedAmount || strtoupper((string) ($order['order_currency'] ?? '')) !== 'INR') {
             throw new RuntimeException('ZoStream API returned an order with an unexpected amount or currency.');
         }
-        if (blank(data_get($data, 'razorpay_key_id'))) {
-            throw new RuntimeException('ZoStream API did not return the Razorpay key ID.');
+        if (blank(data_get($data, 'payment_session_id'))) {
+            throw new RuntimeException('ZoStream API did not return the Cashfree payment session ID.');
         }
 
         return $data;

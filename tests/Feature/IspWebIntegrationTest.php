@@ -71,9 +71,9 @@ class IspWebIntegrationTest extends TestCase
         $this->get('/')->assertOk();
     }
 
-    public function test_isp_checkout_uses_the_internal_zostream_subscription_flow(): void
+    public function test_isp_checkout_uses_cashfree_through_the_internal_zostream_subscription_flow(): void
     {
-        config()->set('services.zostream_subscription.environment', 'SANDBOX');
+        config()->set('cashfree.env', 'SANDBOX');
 
         $package = new Package(['name' => 'Starter', 'price' => 499]);
         $branch = new Branch(['operator_percentage' => 20, 'ott_deduction' => 0]);
@@ -87,20 +87,23 @@ class IspWebIntegrationTest extends TestCase
             ->with(Mockery::on(function (Request $request): bool {
                 return $request->input('phone_number') === '9876543210'
                     && (float) $request->input('amount') === 399.2
-                    && $request->header('X-RZ-Env') === 'SANDBOX';
+                    && $request->input('gateway') === 'cashfree'
+                    && $request->header('X-CF-Env') === 'SANDBOX';
             }))
             ->andReturn(response()->json([
                 'status' => 'success',
-                'razorpay_key_id' => 'rzp_test_key',
-                'razorpay_order' => [
-                    'id' => 'order_isp_test',
-                    'amount' => 39920,
-                    'currency' => 'INR',
+                'gateway' => 'cashfree',
+                'payment_session_id' => 'session_isp_test',
+                'cashfree_order' => [
+                    'order_id' => 'order_isp_test',
+                    'order_amount' => 399.2,
+                    'order_currency' => 'INR',
                 ],
             ], 201));
 
         $result = (new ZoStreamSubscriptionService($subscriptions))->createOrder($customer, $package);
 
-        $this->assertSame('order_isp_test', $result['razorpay_order']['id']);
+        $this->assertSame('order_isp_test', $result['cashfree_order']['order_id']);
+        $this->assertSame('session_isp_test', $result['payment_session_id']);
     }
 }

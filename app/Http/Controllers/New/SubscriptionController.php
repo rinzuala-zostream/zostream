@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\New;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\CashFreeController;
 use App\Http\Controllers\NewStreamController;
 use App\Http\Controllers\RazorpayController;
 use App\Models\UserModel;
@@ -814,6 +815,7 @@ class SubscriptionController extends Controller
             'actual_amount' => 'nullable|numeric|min:1',
             'env' => 'nullable|string|in:SANDBOX,PRODUCTION',
             'meta' => 'nullable|array',
+            'gateway' => 'nullable|string|in:razorpay,cashfree',
         ]);
 
         try {
@@ -870,6 +872,7 @@ class SubscriptionController extends Controller
             }
 
             $currency = strtoupper($validated['currency'] ?? 'INR');
+            $gateway = strtolower((string) ($validated['gateway'] ?? 'razorpay'));
             $receipt = substr(sprintf(
                 'ext_sub_%s_%s',
                 $phoneSuffix,
@@ -892,33 +895,66 @@ class SubscriptionController extends Controller
                 $orderPayload['env'] = $validated['env'];
             }
 
-            $orderRequest = new Request($orderPayload);
+            if ($gateway === 'cashfree') {
+                $cashfreeRequest = new Request([
+                    'order_id' => substr('isp_'.$receipt, 0, 45),
+                    'order_amount' => (float) $validated['amount'],
+                    'order_currency' => $currency,
+                    'customer_details' => [
+                        'customer_id' => substr('zs_'.$resolvedUserId, 0, 50),
+                        'customer_phone' => $phoneSuffix,
+                        'customer_name' => $validated['name'] ?? 'ISP Customer',
+                    ],
+                    'order_meta' => [
+                        'notify_url' => route('isp.cashfree.webhook'),
+                    ],
+                    'order_note' => 'ZoStream ISP subscription',
+                ]);
+                $cashfreeRequest->headers->set(
+                    'X-CF-Env',
+                    (string) $request->header('X-CF-Env', config('cashfree.env', 'SANDBOX'))
+                );
+                $gatewayResponse = app(CashFreeController::class)->createOrder($cashfreeRequest);
+                $gatewayData = $gatewayResponse->getData(true);
+                $order = data_get($gatewayData, 'data.raw', []);
+                $orderId = data_get($gatewayData, 'data.order_id');
+                $paymentSessionId = data_get($gatewayData, 'data.payment_session_id');
+                $gatewaySucceeded = $gatewayResponse->isSuccessful()
+                    && data_get($gatewayData, 'status') === 'success'
+                    && filled($orderId)
+                    && filled($paymentSessionId);
+            } else {
+                $orderRequest = new Request($orderPayload);
 
-            if ($request->hasHeader('X-RZ-Env')) {
-                $orderRequest->headers->set('X-RZ-Env', $request->header('X-RZ-Env'));
+                if ($request->hasHeader('X-RZ-Env')) {
+                    $orderRequest->headers->set('X-RZ-Env', $request->header('X-RZ-Env'));
+                }
+
+                $gatewayResponse = $this->razorpayController->createOrder($orderRequest);
+                $gatewayData = $gatewayResponse->getData(true);
+                $order = $gatewayData['order'] ?? [];
+                $orderId = $order['id'] ?? null;
+                $paymentSessionId = null;
+                $gatewaySucceeded = $gatewayResponse->isSuccessful()
+                    && !empty($gatewayData['ok'])
+                    && filled($orderId);
             }
 
-            $razorpayResponse = $this->razorpayController->createOrder($orderRequest);
-            $razorpayData = $razorpayResponse->getData(true);
-
-            if (
-                empty($razorpayData['ok'])
-                || empty($razorpayData['order']['id'])
-            ) {
-                Log::error('External subscription Razorpay order creation failed', [
+            if (!$gatewaySucceeded) {
+                Log::error('External subscription gateway order creation failed', [
+                    'gateway' => $gateway,
                     'user_id' => $resolvedUserId,
                     'phone_number' => $phoneSuffix,
-                    'response' => $razorpayData,
+                    'response' => $gatewayData,
                 ]);
 
                 return $this->respond([
                     'status' => 'error',
-                    'message' => 'Failed to create Razorpay order',
-                    'razorpay' => $razorpayData,
+                    'message' => 'Failed to create payment order',
+                    'gateway' => $gateway,
                 ], 502);
             }
 
-            $order = $razorpayData['order'];
             $wifiExpiryDate = Subscription::endAtForDuration(now(), 30);
             $payments = DB::transaction(function () use (
                 $validated,
@@ -927,6 +963,8 @@ class SubscriptionController extends Controller
                 $currency,
                 $planDeviceTypes,
                 $order,
+                $orderId,
+                $gateway,
                 $wifiExpiryDate
             ) {
                 $created = [];
@@ -940,9 +978,9 @@ class SubscriptionController extends Controller
                         'app_payment_type' => 'subscription',
                         'amount' => $validated['amount'],
                         'currency' => $currency,
-                        'payment_method' => 'razorpay',
-                        'payment_gateway' => 'razorpay',
-                        'transaction_id' => $order['id'],
+                        'payment_method' => $gateway,
+                        'payment_gateway' => $gateway,
+                        'transaction_id' => $orderId,
                         'status' => 'pending',
                         'payment_type' => 'new',
                         'payment_date' => now(),
@@ -957,7 +995,8 @@ class SubscriptionController extends Controller
                             'access_type' => 'complimentary',
                             'is_free' => true,
                             'phone_number' => $phoneSuffix,
-                            'razorpay_order' => $order,
+                            'gateway_order' => $order,
+                            $gateway.'_order' => $order,
                         ]),
                     ]);
                 }
@@ -970,8 +1009,11 @@ class SubscriptionController extends Controller
                 'message' => 'Mobile and TV subscription histories created successfully.',
                 'user_id' => $resolvedUserId,
                 'user_created' => $userCreated,
-                'razorpay_key_id' => $razorpayData['key_id'] ?? null,
-                'razorpay_order' => $order,
+                'gateway' => $gateway,
+                'razorpay_key_id' => $gateway === 'razorpay' ? ($gatewayData['key_id'] ?? null) : null,
+                'razorpay_order' => $gateway === 'razorpay' ? $order : null,
+                'payment_session_id' => $paymentSessionId,
+                'cashfree_order' => $gateway === 'cashfree' ? $order : null,
                 'data' => $payments,
             ], 201);
         } catch (Exception $e) {

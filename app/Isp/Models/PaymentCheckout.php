@@ -8,11 +8,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class PaymentCheckout extends Model
 {
     protected $fillable = [
-        'user_id', 'customer_id', 'package_id', 'payment_id', 'external_order_id',
-        'razorpay_key_id', 'package_amount', 'ott_deduction',
+        'user_id', 'customer_id', 'package_id', 'payment_id', 'external_order_id', 'gateway',
+        'razorpay_key_id', 'payment_session_id', 'package_amount', 'ott_deduction',
         'distributable_amount', 'operator_percentage', 'operator_commission',
         'amount', 'currency', 'status',
-        'razorpay_payment_id', 'razorpay_signature', 'renew',
+        'razorpay_payment_id', 'gateway_payment_id', 'razorpay_signature', 'renew',
         'notes', 'external_response', 'paid_at',
     ];
 

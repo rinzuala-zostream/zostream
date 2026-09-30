@@ -57,6 +57,7 @@ use App\Http\Controllers\WistListController;
 use App\Http\Controllers\ZonetController;
 use App\Http\Controllers\ZonetOperatorController;
 use App\Http\Controllers\ZostreamIspController;
+use App\Isp\Http\Controllers\PaymentController as IspPaymentController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -155,6 +156,8 @@ Route::post('/clear-device', [UserController::class, 'clearDeviceId']);
 
 Route::get('/cash-free-payment', [CashFreeController::class, 'checkPayment']);
 Route::post('/cash-free-order', [CashFreeController::class, 'createOrder']);
+Route::post('/isp/payments/cashfree/webhook', [IspPaymentController::class, 'cashfreeWebhook'])
+    ->name('isp.cashfree.webhook');
 
 Route::get('/price-list', [PlanListController::class, 'getPriceList']);
 Route::get('/invoice/{num}', [SubscriptionController::class, 'generateInvoice']);

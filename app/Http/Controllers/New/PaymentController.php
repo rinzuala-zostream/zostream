@@ -304,7 +304,7 @@ class PaymentController extends Controller
         $successful = in_array($event, $successEvents, true);
 
         try {
-            $result = $this->processRazorpayWebhookPayment($payment, $successful);
+            $result = $this->processGatewayPayment($payment, $successful);
             $qrResult = $this->updateQrSessionFromRazorpayWebhook(
                 $request,
                 $successful ? 'payment_completed' : 'failed',
@@ -330,7 +330,26 @@ class PaymentController extends Controller
         }
     }
 
-    private function processRazorpayWebhookPayment(PaymentHistory $payment, bool $successful): array
+    public function processExternalOrderPayments(string $orderId, string $gateway): array
+    {
+        $payments = PaymentHistory::where('transaction_id', $orderId)
+            ->where('payment_gateway', strtolower($gateway))
+            ->orderBy('id')
+            ->get();
+
+        if ($payments->isEmpty()) {
+            throw new \RuntimeException('ZoStream payment history was not found for this order.');
+        }
+
+        $results = [];
+        foreach ($payments as $payment) {
+            $results[] = $this->processGatewayPayment($payment, true);
+        }
+
+        return $results;
+    }
+
+    private function processGatewayPayment(PaymentHistory $payment, bool $successful): array
     {
         DB::beginTransaction();
 
@@ -1138,7 +1157,7 @@ class PaymentController extends Controller
             }
             $existingPayment->update(['meta' => $meta]);
 
-            $result = $this->processRazorpayWebhookPayment($existingPayment, true);
+            $result = $this->processGatewayPayment($existingPayment, true);
             $completedPayment = $existingPayment->fresh();
             $qrResult = $this->updateQrSessionFromRazorpayWebhook(
                 new Request(),
@@ -1182,7 +1201,7 @@ class PaymentController extends Controller
             $meta['device_type'] = $plan->device_type;
             $existingPayment->update(['meta' => $meta]);
 
-            $result = $this->processRazorpayWebhookPayment($existingPayment, true);
+            $result = $this->processGatewayPayment($existingPayment, true);
             $completedPayment = $existingPayment->fresh('subscription');
 
             return response()->json([

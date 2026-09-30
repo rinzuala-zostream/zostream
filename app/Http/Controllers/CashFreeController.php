@@ -31,12 +31,14 @@ class CashFreeController extends Controller
     {
         $validated = $request->validate([
             'customer_details.customer_id' => 'required|string',
-            'customer_details.customer_email' => 'required|email',
+            'customer_details.customer_email' => 'nullable|email',
             'customer_details.customer_phone' => 'required|string',
+            'customer_details.customer_name' => 'nullable|string|max:255',
             'order_meta.return_url' => 'nullable|url',
-            // 'order_meta.notify_url' is NOT supported on this API version
+            'order_meta.notify_url' => 'nullable|url',
             'order_amount' => 'required|numeric|min:0.0',
             'order_currency' => 'required|string|size:3',
+            'order_id' => 'nullable|string|max:45',
             'order_note' => 'nullable|string',
             // env can be present but is optional; if present should be PRODUCTION|SANDBOX
             'env' => 'nullable|string|in:PRODUCTION,SANDBOX,production,sandbox',

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Http\Controllers\CashFreeController;
 use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\RazorpayController;
 use App\Http\Controllers\WhatsAppController;
@@ -187,6 +188,60 @@ class ExternalSubscriptionHistoryTest extends TestCase
                 $expiryDate
             );
         }
+    }
+
+    public function test_isp_gateway_creates_cashfree_mobile_and_tv_histories(): void
+    {
+        DB::table('user')->insert([
+            'uid' => 'isp-user-123',
+            'auth_phone' => '9876543210',
+        ]);
+        DB::table('n_plans')->insert([
+            ['id' => 22, 'name' => 'Mobile plan', 'device_type' => 'mobile', 'duration_days' => 30, 'price' => 199, 'created_at' => now(), 'updated_at' => now()],
+            ['id' => 24, 'name' => 'TV plan', 'device_type' => 'tv', 'duration_days' => 30, 'price' => 299, 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
+        $cashfree = $this->mock(CashFreeController::class);
+        $cashfree->shouldReceive('createOrder')
+            ->once()
+            ->with(\Mockery::on(fn (Request $request): bool => $request->input('order_amount') === 399.2
+                && $request->input('customer_details.customer_phone') === '9876543210'
+                && $request->input('order_meta.notify_url') === route('isp.cashfree.webhook')
+                && $request->header('X-CF-Env') === 'SANDBOX'))
+            ->andReturn(response()->json([
+                'status' => 'success',
+                'env' => 'SANDBOX',
+                'data' => [
+                    'order_id' => 'isp_cashfree_1001',
+                    'payment_session_id' => 'session_cashfree_1001',
+                    'raw' => [
+                        'order_id' => 'isp_cashfree_1001',
+                        'order_amount' => 399.2,
+                        'order_currency' => 'INR',
+                    ],
+                ],
+            ]));
+
+        $this->withHeaders([
+            'X-Api-Key' => 'external-test-key',
+            'X-CF-Env' => 'SANDBOX',
+        ])->postJson('/api/v4/external/subscription-history', [
+            'phone_number' => '9876543210',
+            'amount' => 399.2,
+            'actual_amount' => 499,
+            'currency' => 'INR',
+            'gateway' => 'cashfree',
+        ])->assertCreated()
+            ->assertJsonPath('gateway', 'cashfree')
+            ->assertJsonPath('payment_session_id', 'session_cashfree_1001')
+            ->assertJsonPath('cashfree_order.order_id', 'isp_cashfree_1001')
+            ->assertJsonCount(2, 'data');
+
+        $this->assertDatabaseCount('n_payment_histories', 2);
+        $this->assertSame(
+            ['cashfree'],
+            DB::table('n_payment_histories')->distinct()->pluck('payment_gateway')->all()
+        );
     }
 
     public function test_invalid_external_history_returns_validation_errors(): void

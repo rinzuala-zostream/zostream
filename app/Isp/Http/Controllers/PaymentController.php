@@ -2,6 +2,8 @@
 
 namespace App\Isp\Http\Controllers;
 
+use App\Http\Controllers\CashFreeController;
+use App\Http\Controllers\New\PaymentController as ZoStreamPaymentController;
 use App\Isp\Models\Customer;
 use App\Isp\Models\Package;
 use App\Isp\Models\Payment;
@@ -102,13 +104,15 @@ class PaymentController extends Controller
         try {
             $amounts = $this->paymentAmounts($customer, $package);
             $external = $subscriptions->createOrder($customer, $package);
-            $order = $external['razorpay_order'];
+            $order = $external['cashfree_order'];
             $checkout = PaymentCheckout::create([
                 'user_id' => $request->user()->id,
                 'customer_id' => $customer->id,
                 'package_id' => $package->id,
-                'external_order_id' => $order['id'],
-                'razorpay_key_id' => $external['razorpay_key_id'],
+                'external_order_id' => $order['order_id'],
+                'gateway' => 'cashfree',
+                'razorpay_key_id' => null,
+                'payment_session_id' => $external['payment_session_id'],
                 'package_amount' => $amounts['package'],
                 'ott_deduction' => $amounts['ott'],
                 'distributable_amount' => $amounts['distributable'],
@@ -128,8 +132,11 @@ class PaymentController extends Controller
 
         return response()->json([
             'checkout_id' => $checkout->id,
-            'key' => $checkout->razorpay_key_id,
             'order_id' => $checkout->external_order_id,
+            'payment_session_id' => $checkout->payment_session_id,
+            'mode' => strtoupper((string) config('cashfree.env', 'SANDBOX')) === 'PRODUCTION'
+                ? 'production'
+                : 'sandbox',
             'amount' => (int) round((float) $checkout->amount * 100),
             'currency' => $checkout->currency,
             'name' => config('app.name'),
@@ -141,86 +148,45 @@ class PaymentController extends Controller
         ]);
     }
 
-    public function completeRazorpay(Request $request, RadiusService $radius): JsonResponse
-    {
+    public function completeCashfree(
+        Request $request,
+        RadiusService $radius,
+        CashFreeController $cashfree,
+        ZoStreamPaymentController $zostreamPayments,
+    ): JsonResponse {
         $data = $request->validate([
             'checkout_id' => ['required', 'integer', 'exists:payment_checkouts,id'],
-            'razorpay_order_id' => ['required', 'string', 'max:100'],
-            'razorpay_payment_id' => ['required', 'string', 'max:100'],
-            'razorpay_signature' => ['required', 'string', 'max:255'],
+            'order_id' => ['required', 'string', 'max:100'],
         ]);
-        $environment = strtoupper((string) config('services.zostream_subscription.environment', 'SANDBOX'));
-        $secret = (string) config($environment === 'PRODUCTION'
-            ? 'razorpay.live.key_secret'
-            : 'razorpay.test.key_secret');
-        if ($secret === '') {
-            return response()->json(['message' => 'The Razorpay key secret is not configured.'], 422);
-        }
 
         $checkout = PaymentCheckout::with(['customer.package', 'customer.router', 'customer.branch', 'package'])
             ->where('user_id', $request->user()->id)
             ->findOrFail($data['checkout_id']);
         $this->ensureCustomerAccess($request, $checkout->customer);
-        if (! hash_equals($checkout->external_order_id, $data['razorpay_order_id'])) {
-            return response()->json(['message' => 'The Razorpay order does not match this checkout.'], 422);
-        }
-        $expectedSignature = hash_hmac(
-            'sha256',
-            $data['razorpay_order_id'].'|'.$data['razorpay_payment_id'],
-            $secret,
-        );
-        if (! hash_equals($expectedSignature, $data['razorpay_signature'])) {
-            return response()->json(['message' => 'Razorpay signature verification failed.'], 422);
+        if ($checkout->gateway !== 'cashfree' || ! hash_equals($checkout->external_order_id, $data['order_id'])) {
+            return response()->json(['message' => 'The Cashfree order does not match this checkout.'], 422);
         }
 
         try {
-            [$payment, $created] = DB::transaction(function () use ($checkout, $data): array {
-                $locked = PaymentCheckout::lockForUpdate()->findOrFail($checkout->id);
-                if ($locked->status === 'paid') {
-                    if (! hash_equals((string) $locked->razorpay_payment_id, $data['razorpay_payment_id'])) {
-                        throw new RuntimeException('This checkout has already been completed by another payment.');
-                    }
-
-                    return [$locked->payment, false];
-                }
-
-                $payment = Payment::create([
-                    'customer_id' => $locked->customer_id,
-                    'package_id' => $locked->package_id,
-                    'operator_id' => $locked->user_id,
-                    'package_amount' => $locked->package_amount,
-                    'ott_deduction' => $locked->ott_deduction,
-                    'distributable_amount' => $locked->distributable_amount,
-                    'operator_percentage' => $locked->operator_percentage,
-                    'operator_commission' => $locked->operator_commission,
-                    'amount' => $locked->amount,
-                    'method' => 'razorpay',
-                    'reference' => $data['razorpay_payment_id'],
-                    'paid_at' => now(),
-                    'notes' => $locked->notes,
-                ]);
-                $locked->update([
-                    'payment_id' => $payment->id,
-                    'status' => 'paid',
-                    'razorpay_payment_id' => $data['razorpay_payment_id'],
-                    'razorpay_signature' => $data['razorpay_signature'],
-                    'paid_at' => now(),
-                ]);
-
-                return [$payment, true];
-            });
+            [$status, $gatewayPaymentId] = $this->verifyCashfreeCheckout($checkout, $cashfree);
+            $result = $this->finalizeCashfreeCheckout(
+                $checkout,
+                $gatewayPaymentId,
+                $status,
+                $radius,
+                $zostreamPayments,
+            );
         } catch (Throwable $e) {
             report($e);
 
-            return response()->json(['message' => $e->getMessage()], 422);
+            return response()->json(['message' => $e->getMessage()], 409);
         }
 
-        $syncError = null;
-        if ($created && $checkout->renew) {
-            $syncError = $this->renewCustomer($checkout->customer, $radius, $checkout->package);
-        }
-        $message = $created ? 'Razorpay payment verified and recorded.' : 'Payment was already recorded.';
-        if ($syncError) {
+        ['payment' => $payment, 'created' => $created, 'activation_error' => $activationError, 'sync_error' => $syncError] = $result;
+        $message = $created ? 'Cashfree payment verified and recorded.' : 'Payment was already recorded.';
+        if ($activationError) {
+            session()->flash('warning', $message.' ZoStream subscription activation needs a retry: '.$activationError);
+        } elseif ($syncError) {
             session()->flash('warning', $message.' Customer renewed locally, but RADIUS sync failed: '.$syncError);
         } else {
             session()->flash('success', $checkout->renew ? $message.' Customer renewed and synced with RADIUS.' : $message);
@@ -231,6 +197,85 @@ class PaymentController extends Controller
             'payment_id' => $payment?->id,
             'redirect' => route('isp.payments.index'),
         ]);
+    }
+
+    public function cashfreeWebhook(
+        Request $request,
+        RadiusService $radius,
+        CashFreeController $cashfree,
+        ZoStreamPaymentController $zostreamPayments,
+    ): JsonResponse {
+        $rawBody = $request->getContent();
+        $timestamp = (string) $request->header('x-webhook-timestamp', '');
+        $signature = (string) $request->header('x-webhook-signature', '');
+        $secret = $this->cashfreeSecret();
+
+        if ($secret === '' || $timestamp === '' || $signature === '') {
+            return response()->json(['message' => 'Cashfree webhook authentication is not configured.'], 401);
+        }
+
+        $expectedSignature = base64_encode(hash_hmac('sha256', $timestamp.$rawBody, $secret, true));
+        if (! hash_equals($expectedSignature, $signature)) {
+            return response()->json(['message' => 'Invalid Cashfree webhook signature.'], 401);
+        }
+
+        $payload = json_decode($rawBody, true);
+        if (! is_array($payload)) {
+            return response()->json(['message' => 'Invalid Cashfree webhook payload.'], 422);
+        }
+
+        $type = strtoupper((string) data_get($payload, 'type'));
+        $orderId = (string) data_get($payload, 'data.order.order_id', '');
+        if ($orderId === '') {
+            return response()->json(['message' => 'Cashfree webhook order ID is missing.'], 422);
+        }
+
+        $checkout = PaymentCheckout::with(['customer.package', 'customer.router', 'customer.branch', 'package'])
+            ->where('gateway', 'cashfree')
+            ->where('external_order_id', $orderId)
+            ->first();
+        if (! $checkout) {
+            return response()->json([
+                'status' => 'ignored',
+                'message' => 'This Cashfree order does not belong to the ISP checkout.',
+            ]);
+        }
+
+        if ($type !== 'PAYMENT_SUCCESS_WEBHOOK') {
+            if (in_array($type, ['PAYMENT_FAILED_WEBHOOK', 'PAYMENT_USER_DROPPED_WEBHOOK'], true)
+                && $checkout->status !== 'paid') {
+                $checkout->update([
+                    'status' => $type === 'PAYMENT_FAILED_WEBHOOK' ? 'failed' : 'dropped',
+                    'gateway_payment_id' => (string) data_get($payload, 'data.payment.cf_payment_id', '') ?: null,
+                    'external_response' => $payload,
+                ]);
+            }
+
+            return response()->json(['status' => 'ignored', 'type' => $type]);
+        }
+
+        try {
+            [$status, $gatewayPaymentId] = $this->verifyCashfreeCheckout($checkout, $cashfree);
+            $result = $this->finalizeCashfreeCheckout(
+                $checkout,
+                $gatewayPaymentId,
+                $status,
+                $radius,
+                $zostreamPayments,
+            );
+        } catch (Throwable $e) {
+            report($e);
+
+            return response()->json(['message' => 'Cashfree webhook processing failed.'], 503);
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'payment_id' => $result['payment']?->id,
+            'already_processed' => ! $result['created'],
+            'activation_error' => $result['activation_error'],
+            'sync_error' => $result['sync_error'],
+        ], $result['activation_error'] ? 503 : 200);
     }
 
     public function destroy(Payment $payment): RedirectResponse
@@ -253,6 +298,110 @@ class PaymentController extends Controller
             'Content-Disposition' => 'attachment; filename="'.$filename.'"',
             'Cache-Control' => 'private, no-store, max-age=0',
         ]);
+    }
+
+    private function verifyCashfreeCheckout(PaymentCheckout $checkout, CashFreeController $cashfree): array
+    {
+        $statusRequest = Request::create('/api/cash-free-payment', 'GET', [
+            'order_id' => $checkout->external_order_id,
+        ]);
+        $statusRequest->headers->set('X-CF-Env', (string) config('cashfree.env', 'SANDBOX'));
+        $statusResponse = $cashfree->checkPayment($statusRequest);
+        $status = $statusResponse->getData(true);
+        $gatewayOrder = data_get($status, 'data.order', []);
+
+        if (! $statusResponse->isSuccessful() || data_get($status, 'success') !== true) {
+            throw new RuntimeException('Cashfree payment is not completed yet.');
+        }
+
+        $gatewayAmount = (int) round(((float) data_get($gatewayOrder, 'order_amount', 0)) * 100);
+        $expectedAmount = (int) round(((float) $checkout->amount) * 100);
+        if (! hash_equals((string) $checkout->external_order_id, (string) data_get($gatewayOrder, 'order_id'))
+            || $gatewayAmount !== $expectedAmount
+            || strtoupper((string) data_get($gatewayOrder, 'order_currency')) !== $checkout->currency) {
+            throw new RuntimeException('Cashfree returned an unexpected order amount or currency.');
+        }
+
+        $successfulPayment = collect(data_get($status, 'data.payments', []))->first(
+            fn (array $payment): bool => in_array(strtoupper((string) ($payment['payment_status'] ?? '')), ['SUCCESS', 'CAPTURED', 'COMPLETED'], true)
+        );
+        $gatewayPaymentId = (string) ($successfulPayment['cf_payment_id'] ?? 'cashfree-'.$checkout->external_order_id);
+
+        return [$status, $gatewayPaymentId];
+    }
+
+    private function finalizeCashfreeCheckout(
+        PaymentCheckout $checkout,
+        string $gatewayPaymentId,
+        array $status,
+        RadiusService $radius,
+        ZoStreamPaymentController $zostreamPayments,
+    ): array {
+        [$payment, $created] = DB::transaction(function () use ($checkout, $gatewayPaymentId, $status): array {
+            $locked = PaymentCheckout::lockForUpdate()->findOrFail($checkout->id);
+            if ($locked->status === 'paid') {
+                if (! hash_equals((string) $locked->gateway_payment_id, $gatewayPaymentId)) {
+                    throw new RuntimeException('This checkout has already been completed by another payment.');
+                }
+
+                return [$locked->payment, false];
+            }
+
+            $payment = Payment::create([
+                'customer_id' => $locked->customer_id,
+                'package_id' => $locked->package_id,
+                'operator_id' => $locked->user_id,
+                'package_amount' => $locked->package_amount,
+                'ott_deduction' => $locked->ott_deduction,
+                'distributable_amount' => $locked->distributable_amount,
+                'operator_percentage' => $locked->operator_percentage,
+                'operator_commission' => $locked->operator_commission,
+                'amount' => $locked->amount,
+                'method' => 'cashfree',
+                'reference' => $gatewayPaymentId,
+                'paid_at' => now(),
+                'notes' => $locked->notes,
+            ]);
+            $locked->update([
+                'payment_id' => $payment->id,
+                'status' => 'paid',
+                'gateway_payment_id' => $gatewayPaymentId,
+                'external_response' => $status,
+                'paid_at' => now(),
+            ]);
+
+            return [$payment, true];
+        });
+
+        $activationError = null;
+        try {
+            $zostreamPayments->processExternalOrderPayments($checkout->external_order_id, 'cashfree');
+        } catch (Throwable $e) {
+            report($e);
+            $activationError = $e->getMessage();
+        }
+
+        $syncError = null;
+        if ($created && $checkout->renew) {
+            $syncError = $this->renewCustomer($checkout->customer, $radius, $checkout->package);
+        }
+
+        return [
+            'payment' => $payment,
+            'created' => $created,
+            'activation_error' => $activationError,
+            'sync_error' => $syncError,
+        ];
+    }
+
+    private function cashfreeSecret(): string
+    {
+        $environment = strtoupper((string) config('cashfree.env', 'SANDBOX'));
+        $secret = (string) config($environment === 'PRODUCTION'
+            ? 'cashfree.client_secret'
+            : 'cashfree.sandbox_client_secret');
+
+        return $secret !== '' ? $secret : (string) config('cashfree.client_secret', '');
     }
 
     private function ensureCustomerAccess(Request $request, ?Customer $customer): void
