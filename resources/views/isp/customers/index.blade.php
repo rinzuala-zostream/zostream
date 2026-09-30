@@ -159,7 +159,12 @@
                     <div>
                         <small>ROUTER</small>
                         <strong>{{ $customer->router?->name ?? 'Not assigned' }}</strong>
-                        <span>{{ ucfirst($customer->router_device_condition ?? 'unknown') }} device@if($customer->routerPayment) · {{ str_replace('_', ' ', ucfirst($customer->routerPayment->status)) }}@endif</span>
+                        <span>
+                            {{ ucfirst($customer->router_device_condition ?? 'unknown') }} device
+                            @if($customer->routerPayment)
+                                · {{ str_replace('_', ' ', ucfirst($customer->routerPayment->status)) }}
+                            @endif
+                        </span>
                     </div>
                     <div>
                         <small>BRANCH</small>
