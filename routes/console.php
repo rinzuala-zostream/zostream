@@ -36,6 +36,11 @@ Schedule::command('isp:suspend-expired')
     ->timezone('Asia/Kolkata')
     ->withoutOverlapping();
 
+Schedule::command('isp:prune-customer-onboardings')
+    ->dailyAt('02:00')
+    ->timezone('Asia/Kolkata')
+    ->withoutOverlapping();
+
 // Keep stopped/expired rows briefly for idempotent stop retries and diagnosis,
 // then remove them in small batches so the live-session table stays compact.
 Schedule::command('streams:prune-inactive')

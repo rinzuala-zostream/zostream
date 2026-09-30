@@ -4,10 +4,14 @@ namespace Tests\Feature;
 
 use App\Http\Controllers\CashFreeController;
 use App\Http\Controllers\New\PaymentController as ZoStreamPaymentController;
+use App\Isp\Models\Customer;
+use App\Isp\Models\CustomerOnboarding;
 use App\Isp\Models\PaymentCheckout;
+use App\Isp\Services\CustomerOnboardingService;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Mockery;
 use Tests\TestCase;
 
 class IspCashfreeWebhookTest extends TestCase
@@ -107,6 +111,26 @@ class IspCashfreeWebhookTest extends TestCase
             $table->timestamp('paid_at')->nullable();
             $table->timestamps();
         });
+        Schema::create('customer_onboardings', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('operator_id')->nullable();
+            $table->longText('customer_payload');
+            $table->string('username');
+            $table->string('aadhaar_front_path')->nullable();
+            $table->string('aadhaar_back_path')->nullable();
+            $table->decimal('router_amount', 12, 2);
+            $table->text('notes')->nullable();
+            $table->string('cashfree_order_id')->nullable()->unique();
+            $table->text('payment_session_id')->nullable();
+            $table->string('gateway_payment_id')->nullable();
+            $table->string('status');
+            $table->unsignedBigInteger('customer_id')->nullable();
+            $table->text('activation_error')->nullable();
+            $table->text('sync_error')->nullable();
+            $table->timestamp('completed_at')->nullable();
+            $table->timestamp('expires_at')->nullable();
+            $table->timestamps();
+        });
 
         DB::table('isp_users')->insert(['id' => 1, 'name' => 'Admin', 'email' => 'admin@example.test', 'password' => 'secret']);
         DB::table('routers')->insert(['id' => 1, 'name' => 'Router']);
@@ -142,7 +166,7 @@ class IspCashfreeWebhookTest extends TestCase
 
     protected function tearDown(): void
     {
-        foreach (['payment_checkouts', 'payments', 'customers', 'packages', 'branches', 'routers', 'isp_users'] as $table) {
+        foreach (['customer_onboardings', 'payment_checkouts', 'payments', 'customers', 'packages', 'branches', 'routers', 'isp_users'] as $table) {
             Schema::dropIfExists($table);
         }
 
@@ -234,6 +258,42 @@ class IspCashfreeWebhookTest extends TestCase
             ->assertJsonPath('status', 'ignored');
 
         $this->assertDatabaseCount('payments', 0);
+    }
+
+    public function test_signed_router_payment_webhook_completes_customer_onboarding(): void
+    {
+        $onboarding = CustomerOnboarding::create([
+            'operator_id' => 1,
+            'customer_payload' => ['username' => 'pending-user'],
+            'username' => 'pending-user',
+            'router_amount' => 2500,
+            'cashfree_order_id' => 'isp_router_1_test',
+            'payment_session_id' => 'router-session',
+            'status' => 'pending',
+            'expires_at' => now()->addDay(),
+        ]);
+        $service = $this->mock(CustomerOnboardingService::class);
+        $service->shouldReceive('completePaidOnboarding')
+            ->once()
+            ->with(Mockery::on(fn (CustomerOnboarding $candidate): bool => $candidate->is($onboarding)))
+            ->andReturn([
+                'customer' => Customer::findOrFail(1),
+                'created' => true,
+                'activation_error' => null,
+                'sync_error' => null,
+            ]);
+        $payload = json_encode([
+            'type' => 'PAYMENT_SUCCESS_WEBHOOK',
+            'data' => [
+                'order' => ['order_id' => 'isp_router_1_test'],
+                'payment' => ['cf_payment_id' => 'router-payment-123', 'payment_status' => 'SUCCESS'],
+            ],
+        ], JSON_THROW_ON_ERROR);
+
+        $this->sendSignedPayload($payload)
+            ->assertOk()
+            ->assertJsonPath('customer_id', 1)
+            ->assertJsonPath('already_processed', false);
     }
 
     private function sendSignedWebhook()

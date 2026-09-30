@@ -6,14 +6,15 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Customer extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['router_id', 'package_id', 'branch_id', 'name', 'phone', 'address', 'username', 'password', 'status', 'expires_at', 'wifi_reminder_sent_for', 'expiry_suspended_for', 'mikrotik_id', 'last_synced_at'];
+    protected $fillable = ['router_id', 'package_id', 'branch_id', 'name', 'phone', 'address', 'router_device_condition', 'aadhaar_front_path', 'aadhaar_back_path', 'username', 'password', 'status', 'expires_at', 'wifi_reminder_sent_for', 'expiry_suspended_for', 'mikrotik_id', 'last_synced_at'];
 
-    protected $hidden = ['password'];
+    protected $hidden = ['password', 'aadhaar_front_path', 'aadhaar_back_path'];
 
     protected function casts(): array
     {
@@ -38,5 +39,10 @@ class Customer extends Model
     public function payments(): HasMany
     {
         return $this->hasMany(Payment::class);
+    }
+
+    public function routerPayment(): HasOne
+    {
+        return $this->hasOne(CustomerRouterPayment::class);
     }
 }

@@ -5,11 +5,18 @@ namespace App\Isp\Services;
 use App\Http\Controllers\New\SubscriptionController;
 use App\Isp\Models\Customer;
 use App\Isp\Models\Package;
+use App\Models\New\Plan;
+use App\Models\New\Subscription;
+use App\Models\UserModel;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use RuntimeException;
 
 class ZoStreamSubscriptionService
 {
+    private const COMPLIMENTARY_PLAN_IDS = [22, 24];
+
     public function __construct(private readonly SubscriptionController $subscriptions) {}
 
     public function createOrder(Customer $customer, ?Package $package = null): array
@@ -69,5 +76,87 @@ class ZoStreamSubscriptionService
         }
 
         return $data;
+    }
+
+    public function activateComplimentaryAccess(Customer $customer): array
+    {
+        $phone = substr(preg_replace('/\D+/', '', (string) $customer->phone) ?: '', -10);
+        if (strlen($phone) !== 10) {
+            throw new RuntimeException('A valid 10-digit customer phone number is required for ZoStream access.');
+        }
+
+        $plans = Plan::query()
+            ->whereIn('id', self::COMPLIMENTARY_PLAN_IDS)
+            ->where('is_active', true)
+            ->get()
+            ->keyBy('id');
+        $missing = collect(self::COMPLIMENTARY_PLAN_IDS)->reject(fn (int $id): bool => $plans->has($id));
+        if ($missing->isNotEmpty()) {
+            throw new RuntimeException('Required ZoStream Mobile/TV plans are unavailable: '.$missing->implode(', ').'.');
+        }
+
+        return DB::transaction(function () use ($customer, $phone, $plans): array {
+            $user = UserModel::query()->where('auth_phone', $phone)->lockForUpdate()->first();
+            $userCreated = false;
+            if (! $user) {
+                $user = UserModel::create([
+                    'uid' => (string) Str::uuid(),
+                    'auth_phone' => $phone,
+                    'name' => $customer->name,
+                    'created_date' => now()->format('M d, Y h:i:s a'),
+                    'device_name' => 'ZoStream ISP',
+                    'isACActive' => true,
+                    'isAccountComplete' => false,
+                    'is_auth_phone_active' => true,
+                ]);
+                $userCreated = true;
+            }
+
+            $subscriptions = [];
+            foreach (self::COMPLIMENTARY_PLAN_IDS as $planId) {
+                $plan = $plans->get($planId);
+                $targetEnd = $customer->expires_at
+                    ? $customer->expires_at->copy()->endOfDay()
+                    : Subscription::endAtForDuration(now(), (int) $plan->duration_days);
+                if ($targetEnd->isPast()) {
+                    $targetEnd = Subscription::endAtForDuration(now(), (int) $plan->duration_days);
+                }
+
+                $subscription = Subscription::query()
+                    ->where('user_id', $user->uid)
+                    ->whereHas('plan', fn ($query) => $query->where('device_type', $plan->device_type))
+                    ->latest('end_at')
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($subscription) {
+                    $endAt = $subscription->end_at && $subscription->end_at->gt($targetEnd)
+                        ? $subscription->end_at
+                        : $targetEnd;
+                    $subscription->update([
+                        'plan_id' => $plan->id,
+                        'start_at' => $subscription->start_at ?? now(),
+                        'end_at' => $endAt,
+                        'is_active' => true,
+                    ]);
+                } else {
+                    $subscription = Subscription::create([
+                        'user_id' => $user->uid,
+                        'plan_id' => $plan->id,
+                        'start_at' => now(),
+                        'end_at' => $targetEnd,
+                        'is_active' => true,
+                    ]);
+                }
+
+                $subscriptions[] = $subscription->fresh('plan');
+            }
+
+            return [
+                'user_id' => $user->uid,
+                'user_created' => $userCreated,
+                'subscriptions' => $subscriptions,
+            ];
+        });
     }
 }

@@ -42,6 +42,8 @@ Route::prefix('isp')->name('isp.')->group(function (): void {
         });
 
         Route::post('/customers/sync-all', [CustomerController::class, 'syncAll'])->name('customers.sync-all');
+        Route::post('/customers/onboarding/cashfree/complete', [CustomerController::class, 'completeOnboarding'])->name('customers.onboarding.cashfree.complete');
+        Route::get('/customers/{customer}/documents/{side}', [CustomerController::class, 'document'])->name('customers.document');
         Route::post('/customers/{customer}/sync', [CustomerController::class, 'sync'])->name('customers.sync');
         Route::post('/customers/{customer}/toggle', [CustomerController::class, 'toggle'])->name('customers.toggle');
         Route::resource('customers', CustomerController::class)->except('show');

@@ -5,9 +5,11 @@ namespace App\Isp\Http\Controllers;
 use App\Http\Controllers\CashFreeController;
 use App\Http\Controllers\New\PaymentController as ZoStreamPaymentController;
 use App\Isp\Models\Customer;
+use App\Isp\Models\CustomerOnboarding;
 use App\Isp\Models\Package;
 use App\Isp\Models\Payment;
 use App\Isp\Models\PaymentCheckout;
+use App\Isp\Services\CustomerOnboardingService;
 use App\Isp\Services\PaymentInvoicePdf;
 use App\Isp\Services\RadiusService;
 use App\Isp\Services\ZoStreamSubscriptionService;
@@ -204,6 +206,7 @@ class PaymentController extends Controller
         RadiusService $radius,
         CashFreeController $cashfree,
         ZoStreamPaymentController $zostreamPayments,
+        CustomerOnboardingService $customerOnboarding,
     ): JsonResponse {
         $rawBody = $request->getContent();
         $timestamp = (string) $request->header('x-webhook-timestamp', '');
@@ -235,6 +238,40 @@ class PaymentController extends Controller
             ->where('external_order_id', $orderId)
             ->first();
         if (! $checkout) {
+            $onboarding = str_starts_with($orderId, 'isp_router_')
+                ? CustomerOnboarding::where('cashfree_order_id', $orderId)->first()
+                : null;
+            if ($onboarding) {
+                $gatewayPaymentId = (string) data_get($payload, 'data.payment.cf_payment_id', '') ?: null;
+                if ($type !== 'PAYMENT_SUCCESS_WEBHOOK') {
+                    if (in_array($type, ['PAYMENT_FAILED_WEBHOOK', 'PAYMENT_USER_DROPPED_WEBHOOK'], true)) {
+                        $customerOnboarding->markPaymentAttempt(
+                            $onboarding,
+                            $type === 'PAYMENT_FAILED_WEBHOOK' ? 'failed' : 'dropped',
+                            $gatewayPaymentId,
+                        );
+                    }
+
+                    return response()->json(['status' => 'ignored', 'type' => $type]);
+                }
+
+                try {
+                    $result = $customerOnboarding->completePaidOnboarding($onboarding);
+                } catch (Throwable $e) {
+                    report($e);
+
+                    return response()->json(['message' => 'Cashfree customer onboarding failed.'], 503);
+                }
+
+                return response()->json([
+                    'status' => 'success',
+                    'customer_id' => $result['customer']->id,
+                    'already_processed' => ! $result['created'],
+                    'activation_error' => $result['activation_error'],
+                    'sync_error' => $result['sync_error'],
+                ], $result['activation_error'] || $result['sync_error'] ? 503 : 200);
+            }
+
             return response()->json([
                 'status' => 'ignored',
                 'message' => 'This Cashfree order does not belong to the ISP checkout.',

@@ -4,8 +4,10 @@ namespace App\Isp\Http\Controllers;
 
 use App\Isp\Models\Branch;
 use App\Isp\Models\Customer;
+use App\Isp\Models\CustomerOnboarding;
 use App\Isp\Models\Package;
 use App\Isp\Models\Router;
+use App\Isp\Services\CustomerOnboardingService;
 use App\Isp\Services\MikroTikService;
 use App\Isp\Services\RadiusService;
 use Carbon\Carbon;
@@ -13,11 +15,15 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\File;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
 
 class CustomerController extends Controller
@@ -26,7 +32,7 @@ class CustomerController extends Controller
     {
         $liveStatusIds = $this->liveStatusIds($request, $mikrotik);
         $customers = $this->filteredQuery($request, $liveStatusIds)
-            ->with(['router', 'package', 'branch'])
+            ->with(['router', 'package', 'branch', 'routerPayment'])
             ->orderBy('username')->paginate(15)->withQueryString();
         $this->attachAccountingUsage($customers->getCollection());
 
@@ -58,11 +64,75 @@ class CustomerController extends Controller
         ]);
     }
 
-    public function store(Request $request, RadiusService $radius): RedirectResponse
+    public function store(Request $request, CustomerOnboardingService $onboarding): RedirectResponse|JsonResponse
     {
-        $customer = Customer::create($this->validated($request));
+        $data = $this->validated($request);
+        $customerData = Arr::only($data, [
+            'router_id', 'package_id', 'branch_id', 'name', 'phone', 'address', 'username',
+            'password', 'status', 'expires_at', 'router_device_condition',
+        ]);
+        $storedPaths = [];
 
-        return $this->syncAndRedirect($customer, $radius, 'Customer created');
+        try {
+            foreach (['aadhaar_front', 'aadhaar_back'] as $side) {
+                if ($request->hasFile($side)) {
+                    $path = $request->file($side)->store('isp/customers/aadhaar', 'local');
+                    $customerData[$side.'_path'] = $path;
+                    $storedPaths[] = $path;
+                }
+            }
+
+            $condition = $data['router_device_condition'];
+            $amount = $condition === 'new' ? (float) $data['router_amount'] : 0;
+            $notes = $condition === 'new' ? ($data['router_payment_note'] ?? null) : null;
+
+            if ($condition === 'new' && $data['router_payment_choice'] === 'pay_now') {
+                $pending = $onboarding->createCashfreeOnboarding(
+                    $customerData,
+                    $amount,
+                    $notes,
+                    $request->user()->id,
+                );
+
+                return response()->json([
+                    'requires_payment' => true,
+                    'onboarding_id' => $pending->id,
+                    'order_id' => $pending->cashfree_order_id,
+                    'payment_session_id' => $pending->payment_session_id,
+                    'mode' => strtoupper((string) config('cashfree.env', 'SANDBOX')) === 'PRODUCTION'
+                        ? 'production'
+                        : 'sandbox',
+                ], 201);
+            }
+
+            $result = $onboarding->createWithoutPayment(
+                $customerData,
+                $condition,
+                $amount,
+                $notes,
+                $request->user()->id,
+            );
+        } catch (Throwable $e) {
+            Storage::disk('local')->delete($storedPaths);
+            report($e);
+
+            if ($request->expectsJson()) {
+                return response()->json(['message' => $e->getMessage()], 422);
+            }
+
+            return back()->withInput()->with('error', $e->getMessage());
+        }
+
+        $message = 'Customer created; ZoStream Mobile and TV access activated.';
+        $warnings = array_filter([$result['sync_error'], $result['activation_error']]);
+        if ($warnings) {
+            return redirect()->route('isp.customers.index')->with(
+                'warning',
+                'Customer created, but follow-up needs a retry: '.implode(' ', $warnings),
+            );
+        }
+
+        return redirect()->route('isp.customers.index')->with('success', $message);
     }
 
     public function edit(Request $request, Customer $customer): View
@@ -89,7 +159,25 @@ class CustomerController extends Controller
         if (blank($data['password'] ?? null)) {
             unset($data['password']);
         }
-        $customer->update($data);
+        unset($data['router_payment_choice'], $data['router_amount'], $data['router_payment_note']);
+        $oldPaths = [];
+        $newPaths = [];
+        foreach (['aadhaar_front', 'aadhaar_back'] as $side) {
+            unset($data[$side]);
+            if ($request->hasFile($side)) {
+                $column = $side.'_path';
+                $oldPaths[] = $customer->{$column};
+                $data[$column] = $request->file($side)->store('isp/customers/aadhaar', 'local');
+                $newPaths[] = $data[$column];
+            }
+        }
+        try {
+            $customer->update($data);
+            Storage::disk('local')->delete(array_filter($oldPaths));
+        } catch (Throwable $e) {
+            Storage::disk('local')->delete($newPaths);
+            throw $e;
+        }
 
         return $this->syncAndRedirect(
             $customer,
@@ -110,7 +198,9 @@ class CustomerController extends Controller
             } catch (Throwable $e) {
                 report($e);
             }
+            $documentPaths = [$customer->aadhaar_front_path, $customer->aadhaar_back_path];
             $customer->delete();
+            Storage::disk('local')->delete(array_filter($documentPaths));
 
             $message = $removed
                 ? 'Customer deleted from the admin panel and RADIUS.'
@@ -129,6 +219,54 @@ class CustomerController extends Controller
         $this->ensureCustomerAccess(request(), $customer);
 
         return $this->syncAndRedirect($customer, $radius, 'Customer');
+    }
+
+    public function completeOnboarding(
+        Request $request,
+        CustomerOnboardingService $service,
+    ): JsonResponse {
+        $data = $request->validate([
+            'onboarding_id' => ['required', 'integer', 'exists:customer_onboardings,id'],
+            'order_id' => ['required', 'string', 'max:100'],
+        ]);
+        $onboarding = CustomerOnboarding::query()
+            ->where('operator_id', $request->user()->id)
+            ->findOrFail($data['onboarding_id']);
+        if (! hash_equals((string) $onboarding->cashfree_order_id, $data['order_id'])) {
+            return response()->json(['message' => 'Cashfree order does not match this onboarding.'], 422);
+        }
+
+        try {
+            $result = $service->completePaidOnboarding($onboarding);
+        } catch (Throwable $e) {
+            report($e);
+
+            return response()->json(['message' => $e->getMessage()], 409);
+        }
+
+        $message = $result['created']
+            ? 'Router payment verified and customer created.'
+            : 'Customer was already created for this payment.';
+        $warnings = array_filter([$result['sync_error'], $result['activation_error']]);
+        session()->flash($warnings ? 'warning' : 'success', $warnings
+            ? $message.' Follow-up needs a retry: '.implode(' ', $warnings)
+            : $message.' ZoStream Mobile and TV access activated.');
+
+        return response()->json([
+            'message' => $message,
+            'customer_id' => $result['customer']->id,
+            'redirect' => route('isp.customers.index'),
+        ]);
+    }
+
+    public function document(Request $request, Customer $customer, string $side): StreamedResponse
+    {
+        $this->ensureCustomerAccess($request, $customer);
+        abort_unless(in_array($side, ['front', 'back'], true), 404);
+        $path = $side === 'front' ? $customer->aadhaar_front_path : $customer->aadhaar_back_path;
+        abort_unless($path && Storage::disk('local')->exists($path), 404);
+
+        return Storage::disk('local')->download($path, "aadhaar-{$side}-customer-{$customer->id}.".pathinfo($path, PATHINFO_EXTENSION));
     }
 
     public function syncAll(Request $request, RadiusService $radius, MikroTikService $mikrotik): RedirectResponse|JsonResponse
@@ -380,7 +518,16 @@ class CustomerController extends Controller
                 ])),
             'package_id' => ['required', 'exists:packages,id'],
             'name' => ['required', 'string', 'max:150'],
-            'phone' => ['nullable', 'string', 'max:30'],
+            'phone' => [
+                $customer ? 'nullable' : 'required',
+                'string',
+                'max:30',
+                function (string $attribute, mixed $value, \Closure $fail) use ($customer): void {
+                    if (! $customer && strlen(substr(preg_replace('/\D+/', '', (string) $value) ?: '', -10)) !== 10) {
+                        $fail('Enter a valid 10-digit phone number for the ZoStream account.');
+                    }
+                },
+            ],
             'branch_id' => $request->user()->isBranchOperator()
                 ? ['required', Rule::in([$request->user()->branch_id])]
                 : ['nullable', 'exists:branches,id'],
@@ -394,6 +541,12 @@ class CustomerController extends Controller
             'password' => [$customer ? 'nullable' : 'required', 'string', 'max:255'],
             'status' => ['required', Rule::in(['active', 'suspended'])],
             'expires_at' => ['nullable', 'date'],
+            'router_device_condition' => ['required', Rule::in(['old', 'new'])],
+            'router_payment_choice' => [$customer ? 'nullable' : Rule::requiredIf(fn (): bool => $request->input('router_device_condition') === 'new'), Rule::in(['pay_now', 'pay_later'])],
+            'router_amount' => [$customer ? 'nullable' : Rule::requiredIf(fn (): bool => $request->input('router_device_condition') === 'new'), 'nullable', 'numeric', 'min:1', 'max:999999.99'],
+            'router_payment_note' => [Rule::requiredIf(fn (): bool => ! $customer && $request->input('router_device_condition') === 'new' && $request->input('router_payment_choice') === 'pay_later'), 'nullable', 'string', 'max:1000'],
+            'aadhaar_front' => ['nullable', File::types(['jpg', 'jpeg', 'png', 'pdf'])->max(5 * 1024)],
+            'aadhaar_back' => ['nullable', File::types(['jpg', 'jpeg', 'png', 'pdf'])->max(5 * 1024)],
         ]);
 
         if ($request->user()->isBranchOperator()) {

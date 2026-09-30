@@ -5,7 +5,7 @@
 <div class="page-actions"><div><h2>{{ $customer->exists ? $customer->name : 'New PPPoE subscriber' }}</h2><p>Saving will also create or update the MikroTik PPP secret.</p></div></div>
 @if($packages->isEmpty() || (!auth()->user()->isBranchOperator() && $routers->isEmpty()))<div class="alert warning">You need at least one active router and one active package before adding a customer.</div>@endif
 @if(!$customer->exists && auth()->user()->isBranchOperator() && !$operatorBranch?->router_id)<div class="alert warning">Your branch has no default router. Ask an administrator to assign one from the Branches page before adding a customer.</div>@endif
-<form class="form-card form-grid" method="POST" action="{{ $customer->exists ? route('isp.customers.update', $customer) : route('isp.customers.store') }}">@csrf @if($customer->exists) @method('PUT') @endif
+<form id="customerForm" class="form-card form-grid" method="POST" enctype="multipart/form-data" action="{{ $customer->exists ? route('isp.customers.update', $customer) : route('isp.customers.store') }}" data-complete-url="{{ route('isp.customers.onboarding.cashfree.complete') }}">@csrf @if($customer->exists) @method('PUT') @endif
     @if($customer->exists)<input type="hidden" name="return_to" value="{{ old('return_to', $returnTo ?? route('isp.customers.index')) }}">@endif
     <label>Full name<input name="name" value="{{ old('name', $customer->name) }}" required placeholder="Customer name"></label>
     <label>Phone<input name="phone" value="{{ old('phone', $customer->phone) }}" placeholder="+91..."></label>
@@ -24,11 +24,20 @@
     <label>PPPoE password<input type="password" name="password" {{ $customer->exists ? '' : 'required' }} autocomplete="new-password" placeholder="{{ $customer->exists ? 'Leave blank to keep current password' : 'PPPoE password' }}"></label>
     <label>Status<select name="status"><option value="active" @selected(old('status', $customer->status ?: 'active') === 'active')>Active</option><option value="suspended" @selected(old('status', $customer->status) === 'suspended')>Suspended</option></select></label>
     <label>Expiry date<input type="date" name="expires_at" value="{{ old('expires_at', $customer->expires_at?->format('Y-m-d')) }}"></label>
+    <label>Customer router condition<select id="routerDeviceCondition" name="router_device_condition" required @disabled($customer->exists && $customer->router_device_condition)><option value="">Choose old or new</option><option value="old" @selected(old('router_device_condition', $customer->router_device_condition) === 'old')>Old router — no payment required</option><option value="new" @selected(old('router_device_condition', $customer->router_device_condition) === 'new')>New router</option></select>@if($customer->exists && $customer->router_device_condition)<input type="hidden" name="router_device_condition" value="{{ $customer->router_device_condition }}">@endif<small class="form-help">This describes the customer's device, not the network router selected above.</small></label>
+    @unless($customer->exists)
+        <label id="routerAmountField" hidden>New router amount<input id="routerAmount" type="number" name="router_amount" min="1" max="999999.99" step="0.01" value="{{ old('router_amount') }}" placeholder="Amount in ₹"></label>
+        <label id="routerPaymentField" hidden>Router payment<select id="routerPaymentChoice" name="router_payment_choice"><option value="">Choose payment option</option><option value="pay_now" @selected(old('router_payment_choice') === 'pay_now')>Pay now with Cashfree</option><option value="pay_later" @selected(old('router_payment_choice') === 'pay_later')>Pay later</option></select></label>
+        <label id="routerNoteField" class="full" hidden>Reason for not paying now<textarea id="routerPaymentNote" name="router_payment_note" placeholder="Write why the new router payment is deferred">{{ old('router_payment_note') }}</textarea></label>
+    @endunless
+    <label>Aadhaar front<input type="file" name="aadhaar_front" accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf"><small class="form-help">JPG, PNG or PDF; maximum 5 MB. Stored privately.</small>@if($customer->exists && $customer->aadhaar_front_path)<a class="text-link" href="{{ route('isp.customers.document', [$customer, 'front']) }}">Download current front</a>@endif</label>
+    <label>Aadhaar back<input type="file" name="aadhaar_back" accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf"><small class="form-help">JPG, PNG or PDF; maximum 5 MB. Stored privately.</small>@if($customer->exists && $customer->aadhaar_back_path)<a class="text-link" href="{{ route('isp.customers.document', [$customer, 'back']) }}">Download current back</a>@endif</label>
     <label class="full">Installation address<textarea name="address" placeholder="House, locality, landmark">{{ old('address', $customer->address) }}</textarea></label>
-    <div class="form-actions"><a class="button secondary" href="{{ $customer->exists ? ($returnTo ?? route('isp.customers.index')) : route('isp.customers.index') }}">Cancel</a><button class="button primary" @disabled($packages->isEmpty() || (!auth()->user()->isBranchOperator() && $routers->isEmpty()) || (! $customer->exists && auth()->user()->isBranchOperator() && ! $operatorBranch?->router_id))>Save & sync</button></div>
+    <div class="form-actions"><a class="button secondary" href="{{ $customer->exists ? ($returnTo ?? route('isp.customers.index')) : route('isp.customers.index') }}">Cancel</a><button id="customerSubmitButton" class="button primary" @disabled($packages->isEmpty() || (!auth()->user()->isBranchOperator() && $routers->isEmpty()) || (! $customer->exists && auth()->user()->isBranchOperator() && ! $operatorBranch?->router_id))>Save & sync</button></div>
 </form>
 @endsection
 @push('scripts')
+@unless($customer->exists)<script src="https://sdk.cashfree.com/js/v3/cashfree.js"></script>@endunless
 <script>
 (() => {
     const branch = document.getElementById('customerBranch');
@@ -54,6 +63,91 @@
     };
     branch.addEventListener('change', filterPackages);
     filterPackages();
+})();
+
+(() => {
+    const form = document.getElementById('customerForm');
+    const condition = document.getElementById('routerDeviceCondition');
+    const amountField = document.getElementById('routerAmountField');
+    const amount = document.getElementById('routerAmount');
+    const paymentField = document.getElementById('routerPaymentField');
+    const payment = document.getElementById('routerPaymentChoice');
+    const noteField = document.getElementById('routerNoteField');
+    const note = document.getElementById('routerPaymentNote');
+    const button = document.getElementById('customerSubmitButton');
+    if (!form || !condition || !amount || !payment || !note) return;
+
+    const refreshRouterFields = () => {
+        const isNew = condition.value === 'new';
+        const payLater = isNew && payment.value === 'pay_later';
+        amountField.hidden = !isNew;
+        paymentField.hidden = !isNew;
+        noteField.hidden = !payLater;
+        amount.required = isNew;
+        payment.required = isNew;
+        note.required = payLater;
+        button.textContent = isNew && payment.value === 'pay_now' ? 'Pay router & add customer' : 'Save & sync';
+    };
+    condition.addEventListener('change', refreshRouterFields);
+    payment.addEventListener('change', refreshRouterFields);
+    refreshRouterFields();
+
+    let busy = false;
+    form.addEventListener('submit', async event => {
+        if (condition.value !== 'new' || payment.value !== 'pay_now') return;
+        event.preventDefault();
+        if (busy || !form.reportValidity()) return;
+        if (typeof Cashfree === 'undefined') {
+            alert('Cashfree Checkout could not be loaded. Check the internet connection and retry.');
+            return;
+        }
+
+        busy = true;
+        button.disabled = true;
+        button.textContent = 'Creating router payment…';
+        try {
+            const response = await fetch(form.action, {
+                method: 'POST',
+                body: new FormData(form),
+                headers: {'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest'},
+            });
+            const pending = await response.json();
+            if (!response.ok) {
+                const validation = pending.errors ? Object.values(pending.errors).flat().join('\n') : '';
+                throw new Error(validation || pending.message || 'Unable to start router payment.');
+            }
+
+            const cashfree = Cashfree({mode: pending.mode});
+            const checkoutResult = await cashfree.checkout({
+                paymentSessionId: pending.payment_session_id,
+                redirectTarget: '_modal',
+            });
+            button.textContent = 'Verifying & creating customer…';
+            const completed = await fetch(form.dataset.completeUrl, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': form.querySelector('input[name="_token"]').value,
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: JSON.stringify({
+                    onboarding_id: pending.onboarding_id,
+                    order_id: pending.order_id,
+                }),
+            });
+            const result = await completed.json();
+            if (!completed.ok) {
+                throw new Error(result.message || checkoutResult?.error?.message || 'Router payment is not completed yet.');
+            }
+            window.location.href = result.redirect;
+        } catch (error) {
+            busy = false;
+            button.disabled = false;
+            refreshRouterFields();
+            alert(error.message);
+        }
+    });
 })();
 </script>
 @endpush
