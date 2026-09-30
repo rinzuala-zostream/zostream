@@ -30,6 +30,12 @@ Schedule::command('isp:send-wifi-reminders')
     ->dailyAt('10:00')
     ->withoutOverlapping(30);
 
+// 12 AM IST: suspend customers after their inclusive expiry date has ended.
+Schedule::command('isp:suspend-expired')
+    ->dailyAt('00:00')
+    ->timezone('Asia/Kolkata')
+    ->withoutOverlapping();
+
 // Keep stopped/expired rows briefly for idempotent stop retries and diagnosis,
 // then remove them in small batches so the live-session table stays compact.
 Schedule::command('streams:prune-inactive')
