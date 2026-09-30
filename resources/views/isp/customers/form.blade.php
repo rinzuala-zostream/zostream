@@ -50,10 +50,19 @@
     </section>
 
     <section class="customer-form-section">
-        <div class="customer-form-section-head"><span>04</span><div><strong>Documents & installation</strong><small>Aadhaar files are stored privately and remain accessible only to authorized staff.</small></div></div>
+        <div class="customer-form-section-head"><span>04</span><div><strong>Documents & installation</strong><small>Aadhaar Secure QR is verified before the customer or payment order is created.</small></div></div>
         <div class="customer-form-section-grid">
-            <label>Aadhaar front<input type="file" name="aadhaar_front" accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf"><small class="form-help">JPG, PNG or PDF; maximum 5 MB.</small>@if($customer->exists && $customer->aadhaar_front_path)<a class="text-link" href="{{ route('isp.customers.document', [$customer, 'front']) }}">Download current front</a>@endif</label>
-            <label>Aadhaar back<input type="file" name="aadhaar_back" accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf"><small class="form-help">JPG, PNG or PDF; maximum 5 MB.</small>@if($customer->exists && $customer->aadhaar_back_path)<a class="text-link" href="{{ route('isp.customers.document', [$customer, 'back']) }}">Download current back</a>@endif</label>
+            <div class="aadhaar-verification-note full"><span>✓</span><div><strong>UIDAI Secure QR verification required</strong><small>Upload clear, uncropped front and back images together. Payment cannot start until the QR signature is valid.</small></div></div>
+            <div id="aadhaarVerificationError" class="aadhaar-verification-error full" role="alert" tabindex="-1" @if(!$errors->hasAny(['aadhaar_front', 'aadhaar_back'])) hidden @endif>
+                <span aria-hidden="true">!</span>
+                <div>
+                    <strong>Aadhaar could not be verified</strong>
+                    <p data-aadhaar-error-message>{{ $errors->first('aadhaar_front') ?: $errors->first('aadhaar_back') }}</p>
+                    <small>Check that the QR is fully visible, the photo is not blurred or cropped, then choose both images and try again.</small>
+                </div>
+            </div>
+            <label>Aadhaar front<input type="file" name="aadhaar_front" accept=".jpg,.jpeg,.png,image/jpeg,image/png" @required(! $customer->exists)><small class="form-help">JPG or PNG; maximum 5 MB. Keep the QR visible.</small>@if($customer->exists && $customer->aadhaar_front_path)<a class="text-link" href="{{ route('isp.customers.document', [$customer, 'front']) }}">Download current front</a>@endif</label>
+            <label>Aadhaar back<input type="file" name="aadhaar_back" accept=".jpg,.jpeg,.png,image/jpeg,image/png" @required(! $customer->exists)><small class="form-help">JPG or PNG; maximum 5 MB. Keep the QR visible.</small>@if($customer->exists && $customer->aadhaar_back_path)<a class="text-link" href="{{ route('isp.customers.document', [$customer, 'back']) }}">Download current back</a>@endif</label>
             <label class="full">Installation address<textarea name="address" placeholder="House, locality, landmark">{{ old('address', $customer->address) }}</textarea></label>
         </div>
     </section>
@@ -100,7 +109,17 @@
     const noteField = document.getElementById('routerNoteField');
     const note = document.getElementById('routerPaymentNote');
     const button = document.getElementById('customerSubmitButton');
+    const aadhaarError = document.getElementById('aadhaarVerificationError');
+    const aadhaarErrorMessage = aadhaarError?.querySelector('[data-aadhaar-error-message]');
     if (!form || !condition || !amount || !payment || !note) return;
+
+    const showAadhaarError = message => {
+        if (!aadhaarError || !aadhaarErrorMessage) return;
+        aadhaarErrorMessage.textContent = message;
+        aadhaarError.hidden = false;
+        aadhaarError.scrollIntoView({behavior: 'smooth', block: 'center'});
+        aadhaarError.focus({preventScroll: true});
+    };
 
     const refreshRouterFields = () => {
         const isNew = condition.value === 'new';
@@ -133,7 +152,8 @@
 
         busy = true;
         button.disabled = true;
-        button.textContent = 'Creating router payment…';
+        if (aadhaarError) aadhaarError.hidden = true;
+        button.textContent = 'Verifying Aadhaar…';
         try {
             const response = await fetch(form.action, {
                 method: 'POST',
@@ -143,9 +163,17 @@
             const pending = await response.json();
             if (!response.ok) {
                 const validation = pending.errors ? Object.values(pending.errors).flat().join('\n') : '';
-                throw new Error(validation || pending.message || 'Unable to start router payment.');
+                const aadhaarValidation = [
+                    ...(pending.errors?.aadhaar_front || []),
+                    ...(pending.errors?.aadhaar_back || []),
+                ].join('\n');
+                if (aadhaarValidation) showAadhaarError(aadhaarValidation);
+                const failure = new Error(validation || pending.message || 'Unable to start router payment.');
+                failure.shownInline = Boolean(aadhaarValidation);
+                throw failure;
             }
 
+            button.textContent = 'Opening secure payment…';
             const cashfree = Cashfree({mode: pending.mode});
             const checkoutResult = await cashfree.checkout({
                 paymentSessionId: pending.payment_session_id,
@@ -174,7 +202,7 @@
             busy = false;
             button.disabled = false;
             refreshRouterFields();
-            alert(error.message);
+            if (!error.shownInline) alert(error.message);
         }
     });
 })();

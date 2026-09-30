@@ -118,6 +118,7 @@ class IspCashfreeWebhookTest extends TestCase
             $table->string('username');
             $table->string('aadhaar_front_path')->nullable();
             $table->string('aadhaar_back_path')->nullable();
+            $table->timestamp('aadhaar_qr_verified_at')->nullable();
             $table->decimal('router_amount', 12, 2);
             $table->text('notes')->nullable();
             $table->string('cashfree_order_id')->nullable()->unique();

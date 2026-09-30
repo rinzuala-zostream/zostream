@@ -13,6 +13,7 @@ class CustomerOnboarding extends Model
         'username',
         'aadhaar_front_path',
         'aadhaar_back_path',
+        'aadhaar_qr_verified_at',
         'router_amount',
         'notes',
         'cashfree_order_id',
@@ -33,6 +34,7 @@ class CustomerOnboarding extends Model
         return [
             'customer_payload' => 'encrypted:array',
             'router_amount' => 'decimal:2',
+            'aadhaar_qr_verified_at' => 'datetime',
             'completed_at' => 'datetime',
             'expires_at' => 'datetime',
         ];

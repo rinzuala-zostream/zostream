@@ -34,6 +34,7 @@ class CustomerOnboardingService
             'username' => $customerData['username'],
             'aadhaar_front_path' => $customerData['aadhaar_front_path'] ?? null,
             'aadhaar_back_path' => $customerData['aadhaar_back_path'] ?? null,
+            'aadhaar_qr_verified_at' => $customerData['aadhaar_qr_verified_at'],
             'router_amount' => $routerAmount,
             'notes' => $notes,
             'status' => 'pending',

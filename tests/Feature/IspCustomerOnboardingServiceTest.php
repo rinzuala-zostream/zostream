@@ -30,6 +30,7 @@ class IspCustomerOnboardingServiceTest extends TestCase
             $table->string('router_device_condition')->nullable();
             $table->string('aadhaar_front_path')->nullable();
             $table->string('aadhaar_back_path')->nullable();
+            $table->timestamp('aadhaar_qr_verified_at')->nullable();
             $table->string('username');
             $table->text('password');
             $table->string('status');
@@ -57,6 +58,7 @@ class IspCustomerOnboardingServiceTest extends TestCase
             $table->string('username')->unique();
             $table->string('aadhaar_front_path')->nullable();
             $table->string('aadhaar_back_path')->nullable();
+            $table->timestamp('aadhaar_qr_verified_at')->nullable();
             $table->decimal('router_amount', 12, 2);
             $table->text('notes')->nullable();
             $table->string('cashfree_order_id')->nullable()->unique();
@@ -165,6 +167,7 @@ class IspCustomerOnboardingServiceTest extends TestCase
             'phone' => '9876543210',
             'address' => 'Test address',
             'router_device_condition' => 'new',
+            'aadhaar_qr_verified_at' => now(),
             'username' => $username,
             'password' => 'secret-password',
             'status' => 'active',
