@@ -2,6 +2,12 @@
 
 namespace App\Providers;
 
+use App\Isp\Models\Customer as IspCustomer;
+use App\Isp\Models\Package as IspPackage;
+use App\Isp\Models\Router as IspRouter;
+use App\Isp\Observers\CustomerObserver as IspCustomerObserver;
+use App\Isp\Observers\PackageObserver as IspPackageObserver;
+use App\Isp\Observers\RouterObserver as IspRouterObserver;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -22,6 +28,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        IspCustomer::observe(IspCustomerObserver::class);
+        IspPackage::observe(IspPackageObserver::class);
+        IspRouter::observe(IspRouterObserver::class);
+
         RateLimiter::for('otp-request', function (Request $request) {
             return $this->otpRecipientLimit(
                 $request,

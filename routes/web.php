@@ -6,6 +6,8 @@ use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
 
+require __DIR__.'/isp.php';
+
 Route::get('/', function () {
     return view('welcome');
 });

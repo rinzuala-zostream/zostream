@@ -68,4 +68,10 @@ return [
         ],
     ],
 
+    'zostream_subscription' => [
+        'environment' => env('RAZORPAY_ENV', 'SANDBOX'),
+        'source_name' => 'zostream-isp-panel',
+        'operator_percentage' => (float) env('ZOSTREAM_OPERATOR_PERCENTAGE', 20),
+    ],
+
 ];

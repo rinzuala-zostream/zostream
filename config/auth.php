@@ -40,6 +40,10 @@ return [
             'driver' => 'session',
             'provider' => 'users',
         ],
+        'isp' => [
+            'driver' => 'session',
+            'provider' => 'isp_users',
+        ],
     ],
 
     /*
@@ -63,6 +67,10 @@ return [
         'users' => [
             'driver' => 'eloquent',
             'model' => env('AUTH_MODEL', App\Models\User::class),
+        ],
+        'isp_users' => [
+            'driver' => 'eloquent',
+            'model' => App\Isp\Models\User::class,
         ],
 
         // 'users' => [

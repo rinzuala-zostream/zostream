@@ -1,0 +1,156 @@
+@extends('isp.layouts.admin')
+@section('title', 'Network overview')
+@section('eyebrow', now()->format('l, d F Y'))
+
+@section('content')
+@php
+    $chartSum = array_sum($statusChart);
+    $chartTotal = max($chartSum, 1);
+    $chartColors = [
+        'online' => '#46bc88',
+        'offline' => '#6faed7',
+        'expired' => '#9b83d7',
+        'suspended' => '#ef8b7e',
+        'unknown' => '#e4bd55',
+    ];
+    $chartLabels = [
+        'online' => 'Online',
+        'offline' => 'Offline',
+        'expired' => 'Expired',
+        'suspended' => 'Suspended',
+        'unknown' => 'Unknown',
+    ];
+    $chartFilters = [
+        'online' => route('isp.customers.index', ['status' => 'online']),
+        'offline' => route('isp.customers.index', ['status' => 'offline']),
+        'expired' => route('isp.customers.index', ['status' => 'expired']),
+        'suspended' => route('isp.customers.index', ['status' => 'suspended']),
+        'unknown' => route('isp.customers.index', ['status' => 'unknown']),
+    ];
+    $chartStops = [];
+    $chartCursor = 0;
+    foreach ($statusChart as $key => $value) {
+        $start = $chartCursor;
+        $chartCursor += ($value / $chartTotal) * 100;
+        $chartStops[] = $chartColors[$key].' '.$start.'% '.$chartCursor.'%';
+    }
+    if ($chartSum === 0) {
+        $chartStops = ['#e8eeeb 0% 100%'];
+    }
+@endphp
+
+<section class="hero-panel overview-hero">
+    <div>
+        <span class="kicker">CONTROL CENTER</span>
+        <h2>Your ISP, at a glance.</h2>
+        <p>Live PPP sessions, subscription health, collections and router reachability.</p>
+    </div>
+    <div class="actions">
+        <a href="{{ route('isp.dashboard', ['refresh' => 1]) }}" class="button secondary">Refresh live status</a>
+        <a href="{{ route('isp.customers.create') }}" class="button primary">+ Add customer</a>
+    </div>
+</section>
+
+<section class="stats-grid overview-clickable-stats">
+    <a class="stat-card mint" href="{{ route('isp.customers.index') }}">
+        <span>Total customers</span><strong>{{ number_format($stats['customers']) }}</strong>
+        <small>{{ $stats['active'] }} valid active subscriptions</small><i>→</i>
+    </a>
+    <a class="stat-card lime" href="{{ route('isp.customers.index', ['status' => 'online']) }}">
+        <span>Online customers</span><strong>{{ number_format($stats['online']) }}</strong>
+        <small>Live in MikroTik PPP Active</small><i>→</i>
+    </a>
+    <a class="stat-card blue" href="{{ route('isp.customers.index', ['status' => 'offline']) }}">
+        <span>Offline customers</span><strong>{{ number_format($stats['offline']) }}</strong>
+        <small>Valid users on reachable routers</small><i>→</i>
+    </a>
+    <a class="stat-card violet" href="{{ route('isp.customers.index', ['status' => 'expired']) }}">
+        <span>Expired users</span><strong>{{ number_format($stats['expired']) }}</strong>
+        <small>Expiry date is before today</small><i>→</i>
+    </a>
+    <a class="stat-card mint" href="{{ route('isp.customers.index', ['status' => 'suspended']) }}">
+        <span>Suspended</span><strong>{{ number_format($stats['suspended']) }}</strong>
+        <small>Administratively disabled</small><i>→</i>
+    </a>
+    <a class="stat-card lime" href="{{ route('isp.customers.index', ['status' => 'unknown']) }}">
+        <span>Unknown status</span><strong>{{ number_format($stats['unknown']) }}</strong>
+        <small>Router inactive or unreachable</small><i>→</i>
+    </a>
+    <a class="stat-card blue" href="{{ route('isp.payments.index') }}">
+        <span>This month</span><strong>₹{{ number_format($stats['revenue'], 0) }}</strong>
+        <small>Payments collected</small><i>→</i>
+    </a>
+    <a class="stat-card violet" href="{{ auth()->user()->isAdmin() ? route('isp.routers.index') : route('isp.customers.index', ['status' => 'unknown']) }}">
+        <span>Reachable routers</span><strong>{{ $stats['reachable_routers'] }}/{{ $stats['routers'] }}</strong>
+        <small>Live REST status · cached 20 seconds</small><i>→</i>
+    </a>
+</section>
+
+<section class="overview-chart-card">
+    <div class="overview-chart-copy">
+        <span>SUBSCRIBER DISTRIBUTION</span>
+        <h3>Customer status</h3>
+        <p>Click a status to open the matching customer list.</p>
+        <div class="overview-chart-legend">
+            @foreach($statusChart as $key => $value)
+                <a href="{{ $chartFilters[$key] }}">
+                    <i style="--legend-color: {{ $chartColors[$key] }}"></i>
+                    <span>{{ $chartLabels[$key] }}</span>
+                    <strong>{{ number_format($value) }}</strong>
+                    <small>{{ number_format(($value / $chartTotal) * 100, 1) }}%</small>
+                </a>
+            @endforeach
+        </div>
+    </div>
+    <div class="overview-donut-wrap">
+        <div class="overview-donut" style="--donut-segments: {{ implode(', ', $chartStops) }}">
+            <div><strong>{{ number_format($chartSum) }}</strong><span>Customers</span></div>
+        </div>
+    </div>
+</section>
+
+<article class="panel overview-section router-health-panel">
+    <div class="panel-head">
+        <div><span>INFRASTRUCTURE</span><h3>Router health</h3></div>
+        @if(auth()->user()->isAdmin())
+            <a href="{{ route('isp.routers.index') }}">Manage routers</a>
+        @endif
+    </div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Router</th>
+                    <th>REST status</th>
+                    <th>PPP sessions</th>
+                    <th>Panel online</th>
+                    <th>Valid customers</th>
+                    <th>Last connected</th>
+                </tr>
+            </thead>
+            <tbody>
+                @forelse($routerHealth as $health)
+                    <tr>
+                        <td>
+                            <strong>{{ $health['router']->name }}</strong>
+                            <small>{{ $health['router']->host }}:{{ $health['router']->port }}</small>
+                        </td>
+                        <td>
+                            <span class="badge {{ $health['reachable'] ? '' : 'off' }}">{{ $health['reachable'] ? 'Reachable' : 'Unreachable' }}</span>
+                            @if(!$health['reachable'])
+                                <small title="{{ $health['error'] }}">{{ Illuminate\Support\Str::limit($health['error'], 55) }}</small>
+                            @endif
+                        </td>
+                        <td>{{ $health['sessions'] ?? '—' }}</td>
+                        <td>{{ $health['panel_online'] ?? '—' }}</td>
+                        <td>{{ $health['eligible'] }}</td>
+                        <td>{{ $health['router']->last_connected_at?->diffForHumans() ?? 'Never' }}</td>
+                    </tr>
+                @empty
+                    <tr><td colspan="6" class="empty">No active routers configured.</td></tr>
+                @endforelse
+            </tbody>
+        </table>
+    </div>
+</article>
+@endsection

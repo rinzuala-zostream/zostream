@@ -1,0 +1,59 @@
+@extends('isp.layouts.admin')
+@section('title', $customer->exists ? 'Edit customer' : 'Add customer')
+@section('eyebrow', 'Subscriber management')
+@section('content')
+<div class="page-actions"><div><h2>{{ $customer->exists ? $customer->name : 'New PPPoE subscriber' }}</h2><p>Saving will also create or update the MikroTik PPP secret.</p></div></div>
+@if($packages->isEmpty() || (!auth()->user()->isBranchOperator() && $routers->isEmpty()))<div class="alert warning">You need at least one active router and one active package before adding a customer.</div>@endif
+@if(!$customer->exists && auth()->user()->isBranchOperator() && !$operatorBranch?->router_id)<div class="alert warning">Your branch has no default router. Ask an administrator to assign one from the Branches page before adding a customer.</div>@endif
+<form class="form-card form-grid" method="POST" action="{{ $customer->exists ? route('isp.customers.update', $customer) : route('isp.customers.store') }}">@csrf @if($customer->exists) @method('PUT') @endif
+    @if($customer->exists)<input type="hidden" name="return_to" value="{{ old('return_to', $returnTo ?? route('isp.customers.index')) }}">@endif
+    <label>Full name<input name="name" value="{{ old('name', $customer->name) }}" required placeholder="Customer name"></label>
+    <label>Phone<input name="phone" value="{{ old('phone', $customer->phone) }}" placeholder="+91..."></label>
+    <label>Branch<select id="customerBranch" name="branch_id" @disabled(auth()->user()->isBranchOperator())><option value="" data-package-ids="[]">No branch</option>@foreach($branches as $branch)<option value="{{ $branch->id }}" data-package-ids='@json($branch->packages->pluck("id")->values())' @selected((string) old('branch_id', $customer->branch_id ?: auth()->user()->branch_id) === (string) $branch->id)>{{ $branch->name }}</option>@endforeach</select>@if(auth()->user()->isBranchOperator())<input type="hidden" name="branch_id" value="{{ auth()->user()->branch_id }}"><small class="form-help">Your account is restricted to this branch.</small>@else<small class="form-help">Package choices change according to the selected branch.</small>@endif</label>
+    @if($customer->exists)
+        <label>Router<select disabled><option>{{ $customer->router->name }}</option></select><input type="hidden" name="router_id" value="{{ $customer->router_id }}"><small class="form-help">A synced customer cannot be moved silently to another router.</small></label>
+    @elseif(!auth()->user()->isBranchOperator())
+        <label>Router<select name="router_id" required><option value="">Choose router</option>@foreach($routers as $router)<option value="{{ $router->id }}" @selected(old('router_id') == $router->id)>{{ $router->name }}</option>@endforeach</select></label>
+    @endif
+    <label>Package<select id="customerPackage" name="package_id" required><option value="">Choose package</option>@foreach($packages as $package)<option value="{{ $package->id }}" @selected(old('package_id', $customer->package_id) == $package->id)>{{ $package->name }} · ₹{{ number_format($package->price, 0) }}</option>@endforeach</select><small id="packageAvailability" class="form-help"></small></label>
+    @if($customer->exists)
+        <label>PPPoE username<input value="{{ $customer->username }}" disabled><input type="hidden" name="username" value="{{ $customer->username }}"><small class="form-help">The PPPoE identity is locked to prevent an orphan secret on MikroTik. Delete and recreate the customer to change it.</small></label>
+    @else
+        <label>PPPoE username<input name="username" value="{{ old('username', $customer->username) }}" required autocomplete="off" placeholder="customer001"></label>
+    @endif
+    <label>PPPoE password<input type="password" name="password" {{ $customer->exists ? '' : 'required' }} autocomplete="new-password" placeholder="{{ $customer->exists ? 'Leave blank to keep current password' : 'PPPoE password' }}"></label>
+    <label>Status<select name="status"><option value="active" @selected(old('status', $customer->status ?: 'active') === 'active')>Active</option><option value="suspended" @selected(old('status', $customer->status) === 'suspended')>Suspended</option></select></label>
+    <label>Expiry date<input type="date" name="expires_at" value="{{ old('expires_at', $customer->expires_at?->format('Y-m-d')) }}"></label>
+    <label class="full">Installation address<textarea name="address" placeholder="House, locality, landmark">{{ old('address', $customer->address) }}</textarea></label>
+    <div class="form-actions"><a class="button secondary" href="{{ $customer->exists ? ($returnTo ?? route('isp.customers.index')) : route('isp.customers.index') }}">Cancel</a><button class="button primary" @disabled($packages->isEmpty() || (!auth()->user()->isBranchOperator() && $routers->isEmpty()) || (! $customer->exists && auth()->user()->isBranchOperator() && ! $operatorBranch?->router_id))>Save & sync</button></div>
+</form>
+@endsection
+@push('scripts')
+<script>
+(() => {
+    const branch = document.getElementById('customerBranch');
+    const packageSelect = document.getElementById('customerPackage');
+    const help = document.getElementById('packageAvailability');
+    if (!branch || !packageSelect) return;
+    const filterPackages = () => {
+        const option = branch.selectedOptions[0];
+        const allowed = JSON.parse(option?.dataset.packageIds || '[]').map(String);
+        const unrestricted = allowed.length === 0;
+        let visible = 0;
+        [...packageSelect.options].forEach((item, index) => {
+            if (index === 0) return;
+            const show = unrestricted || allowed.includes(item.value);
+            item.hidden = !show;
+            item.disabled = !show;
+            if (show) visible++;
+        });
+        if (packageSelect.selectedOptions[0]?.disabled) packageSelect.value = '';
+        help.textContent = unrestricted
+            ? 'All active packages are available for this branch.'
+            : `${visible} package${visible === 1 ? '' : 's'} available for ${option.textContent.trim()}.`;
+    };
+    branch.addEventListener('change', filterPackages);
+    filterPackages();
+})();
+</script>
+@endpush
