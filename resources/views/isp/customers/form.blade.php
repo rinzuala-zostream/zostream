@@ -53,19 +53,19 @@
     </section>
 
     <section class="customer-form-section">
-        <div class="customer-form-section-head"><span>04</span><div><strong>Documents & installation</strong><small>Aadhaar is optional. Uploaded documents are verified before saving.</small></div></div>
+        <div class="customer-form-section-head"><span>04</span><div><strong>Documents & installation</strong><small>Aadhaar front and back images are required. QR verification is not performed.</small></div></div>
         <div class="customer-form-section-grid">
-            <div class="aadhaar-verification-note full"><span>✓</span><div><strong>Aadhaar documents (optional)</strong><small>You can add a customer without Aadhaar. If uploading documents, provide clear front and back images together for QR verification.</small></div></div>
-            <div id="aadhaarVerificationError" class="aadhaar-verification-error full" role="alert" tabindex="-1" @if(!$errors->hasAny(['aadhaar_front', 'aadhaar_back'])) hidden @endif>
+            <div class="aadhaar-verification-note full"><span>✓</span><div><strong>Aadhaar documents required</strong><small>Upload clear front and back images. The images are stored with the customer record; the QR is not verified.</small></div></div>
+            <div id="aadhaarUploadError" class="aadhaar-verification-error full" role="alert" tabindex="-1" @if(!$errors->hasAny(['aadhaar_front', 'aadhaar_back'])) hidden @endif>
                 <span aria-hidden="true">!</span>
                 <div>
-                    <strong>Aadhaar could not be verified</strong>
+                    <strong>Aadhaar images are required</strong>
                     <p data-aadhaar-error-message>{{ $errors->first('aadhaar_front') ?: $errors->first('aadhaar_back') }}</p>
-                    <small>Check that the QR is fully visible, the photo is not blurred or cropped, then choose both images and try again.</small>
+                    <small>Choose valid JPG or PNG images for both front and back, up to 5 MB each.</small>
                 </div>
             </div>
-            <label>Aadhaar front<input type="file" name="aadhaar_front" accept=".jpg,.jpeg,.png,image/jpeg,image/png"><small class="form-help">JPG or PNG; maximum 5 MB. Keep the QR visible.</small>@if($customer->exists && $customer->aadhaar_front_path)<a class="text-link" href="{{ route('isp.customers.document', [$customer, 'front']) }}">Download current front</a>@endif</label>
-            <label>Aadhaar back<input type="file" name="aadhaar_back" accept=".jpg,.jpeg,.png,image/jpeg,image/png"><small class="form-help">JPG or PNG; maximum 5 MB. Keep the QR visible.</small>@if($customer->exists && $customer->aadhaar_back_path)<a class="text-link" href="{{ route('isp.customers.document', [$customer, 'back']) }}">Download current back</a>@endif</label>
+            <label>Aadhaar front<input type="file" name="aadhaar_front" accept=".jpg,.jpeg,.png,image/jpeg,image/png" @required(! $customer->exists || ! $customer->aadhaar_front_path)><small class="form-help">JPG or PNG; maximum 5 MB.</small>@if($customer->exists && $customer->aadhaar_front_path)<a class="text-link" href="{{ route('isp.customers.document', [$customer, 'front']) }}">Download current front</a>@endif</label>
+            <label>Aadhaar back<input type="file" name="aadhaar_back" accept=".jpg,.jpeg,.png,image/jpeg,image/png" @required(! $customer->exists || ! $customer->aadhaar_back_path)><small class="form-help">JPG or PNG; maximum 5 MB.</small>@if($customer->exists && $customer->aadhaar_back_path)<a class="text-link" href="{{ route('isp.customers.document', [$customer, 'back']) }}">Download current back</a>@endif</label>
             <label class="full">Installation address<textarea name="address" placeholder="House, locality, landmark">{{ old('address', $customer->address) }}</textarea></label>
         </div>
     </section>
@@ -112,7 +112,7 @@
     const noteField = document.getElementById('routerNoteField');
     const note = document.getElementById('routerPaymentNote');
     const button = document.getElementById('customerSubmitButton');
-    const aadhaarError = document.getElementById('aadhaarVerificationError');
+    const aadhaarError = document.getElementById('aadhaarUploadError');
     const aadhaarErrorMessage = aadhaarError?.querySelector('[data-aadhaar-error-message]');
     if (!form || !condition || !amount || !payment || !note) return;
 
@@ -156,7 +156,7 @@
         busy = true;
         button.disabled = true;
         if (aadhaarError) aadhaarError.hidden = true;
-        button.textContent = 'Verifying Aadhaar…';
+        button.textContent = 'Preparing payment…';
         try {
             const response = await fetch(form.action, {
                 method: 'POST',

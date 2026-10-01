@@ -159,7 +159,7 @@ class IspCustomerOnboardingServiceTest extends TestCase
         ]);
     }
 
-    public function test_custom_expiry_is_preserved_without_payment_or_aadhaar(): void
+    public function test_custom_expiry_and_aadhaar_paths_are_preserved_without_payment(): void
     {
         $radius = Mockery::mock(RadiusService::class);
         $radius->shouldReceive('syncCustomer')->once()->andReturn(['active' => true, 'disconnected' => 0]);
@@ -171,7 +171,8 @@ class IspCustomerOnboardingServiceTest extends TestCase
         $result = $service->createWithoutPayment($payload, 'old', 0, null, 7);
         $this->assertSame($payload['expires_at'], $result['customer']->expires_at->toDateString());
         $this->assertNull($result['customer']->aadhaar_qr_verified_at);
-        $this->assertNull($result['customer']->aadhaar_front_path);
+        $this->assertSame('isp/customers/aadhaar/front.jpg', $result['customer']->aadhaar_front_path);
+        $this->assertSame('isp/customers/aadhaar/back.jpg', $result['customer']->aadhaar_back_path);
     }
 
     private function customerPayload(string $username): array
@@ -184,7 +185,8 @@ class IspCustomerOnboardingServiceTest extends TestCase
             'phone' => '9876543210',
             'address' => 'Test address',
             'router_device_condition' => 'new',
-            'aadhaar_qr_verified_at' => null,
+            'aadhaar_front_path' => 'isp/customers/aadhaar/front.jpg',
+            'aadhaar_back_path' => 'isp/customers/aadhaar/back.jpg',
             'username' => $username,
             'password' => 'secret-password',
             'status' => 'active',

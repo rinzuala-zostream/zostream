@@ -2,13 +2,11 @@
 
 namespace App\Isp\Http\Controllers;
 
-use App\Isp\Exceptions\AadhaarQrVerificationException;
 use App\Isp\Models\Branch;
 use App\Isp\Models\Customer;
 use App\Isp\Models\CustomerOnboarding;
 use App\Isp\Models\Package;
 use App\Isp\Models\Router;
-use App\Isp\Services\AadhaarQrVerificationService;
 use App\Isp\Services\CustomerOnboardingService;
 use App\Isp\Services\MikroTikService;
 use App\Isp\Services\RadiusService;
@@ -24,7 +22,6 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\File;
-use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
@@ -127,7 +124,7 @@ class CustomerController extends Controller
                 'package_price', 'package_validity_days', 'pppoe_username',
                 'pppoe_password', 'status', 'expires_at', 'wifi_reminder_sent_for',
                 'expiry_suspended_for', 'router_device_condition',
-                'aadhaar_qr_verified_at', 'mikrotik_id', 'last_synced_at',
+                'mikrotik_id', 'last_synced_at',
                 'payment_count', 'payment_total', 'last_payment_at',
                 'router_payment_amount', 'router_payment_status',
                 'router_payment_method', 'router_payment_reference',
@@ -165,7 +162,6 @@ class CustomerController extends Controller
                             $customer->wifi_reminder_sent_for?->toDateString(),
                             $customer->expiry_suspended_for?->toDateString(),
                             $customer->router_device_condition,
-                            $customer->aadhaar_qr_verified_at?->toDateTimeString(),
                             $customer->mikrotik_id,
                             $customer->last_synced_at?->toDateTimeString(),
                             $customer->payments_count,
@@ -193,26 +189,13 @@ class CustomerController extends Controller
     public function store(
         Request $request,
         CustomerOnboardingService $onboarding,
-        AadhaarQrVerificationService $aadhaar,
     ): RedirectResponse|JsonResponse {
         $data = $this->validated($request);
-        $hasAadhaar = $request->hasFile('aadhaar_front') || $request->hasFile('aadhaar_back');
-        if ($hasAadhaar) {
-            try {
-                $aadhaar->verifyUploadedFiles([
-                    $request->file('aadhaar_front'),
-                    $request->file('aadhaar_back'),
-                ]);
-            } catch (AadhaarQrVerificationException $e) {
-                throw ValidationException::withMessages(['aadhaar_front' => $e->getMessage()]);
-            }
-        }
 
         $customerData = Arr::only($data, [
             'router_id', 'package_id', 'branch_id', 'name', 'phone', 'address', 'username',
             'password', 'status', 'router_device_condition', 'expires_at',
         ]);
-        $customerData['aadhaar_qr_verified_at'] = $hasAadhaar ? now() : null;
         $storedPaths = [];
 
         try {
@@ -299,21 +282,9 @@ class CustomerController extends Controller
         Request $request,
         Customer $customer,
         RadiusService $radius,
-        AadhaarQrVerificationService $aadhaar,
     ): RedirectResponse {
         $this->ensureCustomerAccess($request, $customer);
         $data = $this->validated($request, $customer);
-        if ($request->hasFile('aadhaar_front') || $request->hasFile('aadhaar_back')) {
-            try {
-                $aadhaar->verifyUploadedFiles([
-                    $request->file('aadhaar_front'),
-                    $request->file('aadhaar_back'),
-                ]);
-                $data['aadhaar_qr_verified_at'] = now();
-            } catch (AadhaarQrVerificationException $e) {
-                throw ValidationException::withMessages(['aadhaar_front' => $e->getMessage()]);
-            }
-        }
         if (blank($data['password'] ?? null)) {
             unset($data['password']);
         }
@@ -705,8 +676,16 @@ class CustomerController extends Controller
             'router_payment_choice' => [$customer ? 'nullable' : Rule::requiredIf(fn (): bool => $request->input('router_device_condition') === 'new'), Rule::in(['pay_now', 'pay_later'])],
             'router_amount' => [Rule::requiredIf(fn (): bool => ! $customer && $request->input('router_device_condition') === 'new' && $request->input('router_payment_choice') === 'pay_now'), 'nullable', 'numeric', 'min:1', 'max:999999.99'],
             'router_payment_note' => [Rule::requiredIf(fn (): bool => ! $customer && $request->input('router_device_condition') === 'new' && $request->input('router_payment_choice') === 'pay_later'), 'nullable', 'string', 'max:1000'],
-            'aadhaar_front' => ['nullable', 'required_with:aadhaar_back', File::image()->max(5 * 1024)],
-            'aadhaar_back' => ['nullable', 'required_with:aadhaar_front', File::image()->max(5 * 1024)],
+            'aadhaar_front' => [
+                $customer?->aadhaar_front_path ? 'nullable' : 'required',
+                'required_with:aadhaar_back',
+                File::image()->max(5 * 1024),
+            ],
+            'aadhaar_back' => [
+                $customer?->aadhaar_back_path ? 'nullable' : 'required',
+                'required_with:aadhaar_front',
+                File::image()->max(5 * 1024),
+            ],
         ]);
 
         if ($request->user()->isBranchOperator()) {
