@@ -45,7 +45,11 @@
                 <span>{{ $panelUser->is_active ? 'Sign-in allowed' : 'Sign-in blocked' }}</span>
                 <div class="module-actions">
                     <a href="{{ route('isp.users.edit', $panelUser) }}">Edit</a>
-                    <form data-confirm="Delete this panel user?" method="POST" action="{{ route('isp.users.destroy', $panelUser) }}">@csrf @method('DELETE')<button type="submit">Delete</button></form>
+                    @if($panelUser->is(auth()->user()))
+                        <span class="module-current-user">Current account</span>
+                    @else
+                        <form data-confirm="Delete this panel user? Historical payment records will be retained." method="POST" action="{{ route('isp.users.destroy', $panelUser) }}">@csrf @method('DELETE')<button type="submit">Delete</button></form>
+                    @endif
                 </div>
             </footer>
         </article>

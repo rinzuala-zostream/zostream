@@ -4,6 +4,7 @@ namespace App\Isp\Http\Controllers;
 
 use App\Isp\Models\Branch;
 use App\Isp\Models\User;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -69,7 +70,13 @@ class UserController extends Controller
         if ($user->isAdmin() && User::where('role', 'admin')->where('is_active', true)->count() <= 1) {
             return back()->with('error', 'At least one active administrator is required.');
         }
-        $user->delete();
+        try {
+            $user->delete();
+        } catch (QueryException $exception) {
+            report($exception);
+
+            return back()->with('error', 'This panel user is still linked to historical records and could not be deleted. Run the latest database migrations and try again.');
+        }
 
         return back()->with('success', 'Admin user deleted.');
     }
@@ -78,7 +85,7 @@ class UserController extends Controller
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:150'],
-            'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user)],
+            'email' => ['required', 'email', 'max:255', Rule::unique('isp_users', 'email')->ignore($user)],
             'password' => [$user ? 'nullable' : 'required', 'string', 'min:8', 'max:255', 'confirmed'],
             'role' => ['required', Rule::in(['admin', 'branch_operator'])],
             'branch_id' => [Rule::requiredIf($request->input('role') === 'branch_operator'), 'nullable', 'exists:branches,id'],
