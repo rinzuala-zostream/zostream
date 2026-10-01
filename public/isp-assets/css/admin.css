@@ -290,6 +290,96 @@
 .customer-action{height:36px;font-size:12px}
 .customer-action i{font-size:14px}
 
+/* Customer directory cards v2 */
+.customer-hero-metrics{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:18px}
+.customer-hero-metrics>span{display:inline-flex;align-items:center;gap:6px;padding:7px 10px;border:1px solid rgba(255,255,255,.14);border-radius:99px;background:rgba(255,255,255,.09);color:#d7e9e2;font-size:10px;font-weight:700;backdrop-filter:blur(8px)}
+.customer-hero-metrics b{color:#fff;font:800 12px 'Manrope'}
+.customer-hero-metrics i{width:7px;height:7px;border-radius:50%;background:#91e0be;box-shadow:0 0 0 4px rgba(145,224,190,.12)}
+.customer-hero-metrics i.metric-alert{background:#f4ca70;box-shadow:0 0 0 4px rgba(244,202,112,.12)}
+.customer-card-list{display:grid;grid-template-columns:1fr;gap:16px;align-items:start}
+.customer-card{position:relative;display:block;min-width:0;padding:0;overflow:visible;background:linear-gradient(180deg,#fff 0%,#fdfefd 100%);border:1px solid #dfe8e3;border-radius:19px;box-shadow:0 10px 30px rgba(24,63,48,.055);transition:border-color .18s,box-shadow .18s,transform .18s}
+.customer-card:before{content:"";position:absolute;z-index:1;left:22px;right:22px;top:-1px;height:3px;border-radius:0 0 99px 99px;background:linear-gradient(90deg,#24a578,#92cf65);opacity:.85}
+.customer-card--expired:before,.customer-card--suspended:before{background:linear-gradient(90deg,#dc6a6f,#f1b17e)}
+.customer-card--unknown:before,.customer-card--offline:before{background:linear-gradient(90deg,#d19a35,#f0cf79)}
+.customer-card:hover{border-color:#c9dad2;box-shadow:0 17px 42px rgba(24,63,48,.095);transform:translateY(-2px)}
+.customer-card.is-menu-open{z-index:30;border-color:#a8cdbd;box-shadow:0 20px 50px rgba(24,63,48,.14)}
+.customer-card-top{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:21px 22px 17px;border-bottom:1px solid #edf2ef}
+.customer-card .customer-main{display:flex;align-items:center;gap:13px;min-width:0}
+.customer-card .customer-avatar{position:relative;width:50px;height:50px;display:grid;place-items:center;flex:0 0 auto;border:1px solid #d0e8dd;border-radius:15px;background:linear-gradient(145deg,#dff5eb,#edf8d8);color:#15523e;font:800 14px 'Manrope';box-shadow:inset 0 0 0 4px rgba(255,255,255,.45)}
+.customer-card .customer-avatar:after{content:"";position:absolute;right:-2px;bottom:-2px;width:11px;height:11px;border:3px solid #fff;border-radius:50%;background:#28ad7d}
+.customer-card--expired .customer-avatar:after,.customer-card--suspended .customer-avatar:after{background:#d76468}
+.customer-card--unknown .customer-avatar:after,.customer-card--offline .customer-avatar:after{background:#d6a13d}
+.customer-card .customer-identity{min-width:0}
+.customer-card .customer-identity h3{overflow:hidden;margin:0;color:#183b2f;text-overflow:ellipsis;white-space:nowrap;font:800 17px 'Manrope'}
+.customer-contact-row{display:flex;align-items:center;gap:11px;flex-wrap:wrap;margin-top:6px}
+.customer-contact-row code,.customer-contact-row>span{display:inline-flex;align-items:center;gap:4px;min-width:0;margin:0;color:#698078;font:700 11px 'Manrope'}
+.customer-contact-row code{color:#2f6452}
+.customer-contact-row i{color:#91a29b;font-style:normal;font-size:10px}
+.customer-card-tools{display:flex;align-items:center;gap:8px;flex:0 0 auto}
+.customer-card .customer-status{padding:6px 9px;font-size:9px;letter-spacing:.03em}
+.customer-status.status-online{background:#e3f8ee;color:#08754f}
+.customer-status.status-offline{background:#fff4dc;color:#886012}
+.customer-status.status-offline i{background:#d39b1f}
+.customer-action-menu{position:relative}
+.customer-menu-trigger{width:38px;height:36px;display:grid;place-items:center;border:1px solid #d8e2dd;border-radius:10px;padding:0 0 7px;background:#f8fbf9;color:#385b4e;font:800 18px/1 'Manrope';letter-spacing:1px;cursor:pointer;transition:.16s}
+.customer-menu-trigger:hover,.customer-menu-trigger[aria-expanded="true"]{border-color:#9fc9b7;background:#eaf6f0;color:#0e7654}
+.customer-menu-trigger:focus-visible{outline:3px solid rgba(27,152,112,.17);outline-offset:2px}
+.customer-menu-popover{position:absolute;z-index:100;top:calc(100% + 9px);right:0;width:310px;padding:8px;border:1px solid #dce7e1;border-radius:15px;background:#fff;box-shadow:0 22px 55px rgba(15,50,38,.2)}
+.customer-menu-popover[hidden]{display:none}
+.customer-menu-heading{padding:9px 10px 10px}
+.customer-menu-heading span,.customer-menu-heading strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.customer-menu-heading span{color:#82948c;font-size:8px;font-weight:900;letter-spacing:1.25px}
+.customer-menu-heading strong{margin-top:3px;color:#24483b;font:800 12px 'Manrope'}
+.customer-menu-popover form{display:block;margin:0}
+.customer-menu-item{width:100%;display:flex;align-items:center;gap:10px;border:0;border-radius:10px;padding:10px;background:transparent;color:#304f44;text-align:left;text-decoration:none;cursor:pointer;transition:.14s}
+.customer-menu-item:hover,.customer-menu-item:focus-visible{outline:0;background:#f0f7f3;color:#087453}
+.customer-menu-item>i{width:32px;height:32px;display:grid;place-items:center;flex:0 0 auto;border-radius:9px;background:#edf5f1;color:#287159;font-style:normal;font-weight:800}
+.customer-menu-item>span,.customer-menu-item strong,.customer-menu-item small{display:block}
+.customer-menu-item strong{font:800 12px 'Manrope'}
+.customer-menu-item small{margin-top:2px;color:#83938d;font-size:9px;line-height:1.35}
+.customer-menu-item.is-primary{background:#eff8d9;color:#355b2c}
+.customer-menu-item.is-primary>i{background:#dff0af;color:#315629}
+.customer-menu-item.is-danger{color:#9b454b}
+.customer-menu-item.is-danger:hover{background:#fff0f0;color:#a32e36}
+.customer-menu-item.is-danger>i{background:#fbe8e8;color:#b4494f}
+.customer-menu-divider{height:1px;margin:6px 7px;background:#edf1ef}
+.customer-service-grid{display:grid;grid-template-columns:1.05fr 1fr .9fr;gap:10px;padding:16px 22px}
+.customer-info-tile{display:flex;align-items:center;gap:10px;min-width:0;padding:12px;border:1px solid #e7eeea;border-radius:13px;background:#fafcfb}
+.customer-info-tile.customer-plan-tile{border-color:#dfebc2;background:linear-gradient(135deg,#f5fae8,#fbfdf8)}
+.customer-tile-icon{width:34px;height:34px;display:grid;place-items:center;flex:0 0 auto;border-radius:10px;background:#e7f3cb;color:#45692f;font-style:normal;font-size:16px;font-weight:800}
+.customer-tile-icon.router{background:#e5f3ed;color:#197153}
+.customer-tile-icon.branch{background:#eaf0f8;color:#426e9a}
+.customer-info-tile>div{min-width:0}
+.customer-info-tile small,.customer-expiry-summary small,.customer-footer-title small{display:block;color:#89978f;font-size:8px;font-weight:900;letter-spacing:1px}
+.customer-info-tile strong,.customer-info-tile>div>span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.customer-info-tile strong{margin-top:3px;color:#25483b;font:800 12px 'Manrope'}
+.customer-info-tile>div>span{margin-top:3px;color:#7b8d85;font-size:9px}
+.customer-card-footer{display:flex;align-items:stretch;justify-content:space-between;gap:12px;padding:15px 22px 19px;border-top:1px solid #f0f3f1;background:linear-gradient(180deg,#fdfefd,#f8fbf9);border-radius:0 0 19px 19px}
+.customer-usage-summary{display:flex;align-items:center;justify-content:space-between;gap:16px;min-width:0;flex:1}
+.customer-footer-title{display:flex;align-items:center;gap:9px;min-width:0}
+.customer-footer-title>span{width:32px;height:32px;display:grid;place-items:center;flex:0 0 auto;border-radius:10px;background:#e7f4ed;color:#217557;font-size:16px}
+.customer-footer-title strong{display:block;overflow:hidden;max-width:155px;margin-top:3px;color:#536b62;text-overflow:ellipsis;white-space:nowrap;font:700 10px 'Manrope'}
+.customer-traffic-pills{display:flex;gap:7px}
+.customer-traffic-pills>span{display:grid;grid-template-columns:auto auto;column-gap:4px;align-items:center;min-width:88px;padding:8px 10px;border-radius:10px;background:#eef8f3}
+.customer-traffic-pills>span.usage-upload{background:#edf4fa}
+.customer-traffic-pills i{grid-row:1/3;font-style:normal;font-size:14px}
+.customer-traffic-pills b{color:#245244;font:800 11px 'Manrope'}
+.customer-traffic-pills small{color:#83958d;font-size:8px}
+.customer-expiry-summary{display:flex;align-items:center;gap:10px;min-width:215px;padding-left:15px;border-left:1px solid #e1e9e5}
+.customer-expiry-date{width:45px;height:45px;display:grid;place-items:center;align-content:center;flex:0 0 auto;border-radius:12px;background:#eaf6ef;color:#176c4f;text-align:center}
+.customer-expiry-date b{font:800 16px/1 'Manrope'}
+.customer-expiry-date span{margin-top:3px;font-size:7px;font-weight:900;text-transform:uppercase}
+.customer-expiry-summary>div:last-child{min-width:0}
+.customer-expiry-summary strong,.customer-expiry-summary>div:last-child>span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.customer-expiry-summary strong{margin-top:3px;color:#31564a;font:800 11px 'Manrope'}
+.customer-expiry-summary>div:last-child>span{margin-top:3px;color:#84938d;font-size:8px}
+.customer-expiry-summary.is-expired .customer-expiry-date{background:#fdeaea;color:#a23e45}
+.customer-expiry-summary.is-expired strong{color:#a23e45}
+.operator-customer-card .customer-card-footer{border-top:0}
+@media(min-width:1500px){.customer-card-list{grid-template-columns:repeat(2,minmax(0,1fr))}.customer-card-footer{align-items:stretch;flex-direction:column}.customer-expiry-summary{padding:13px 0 0;border-top:1px solid #e1e9e5;border-left:0}}
+@media(max-width:650px){.customer-hero-metrics{gap:6px}.customer-hero-metrics>span{font-size:9px}.customer-card-top{align-items:flex-start;padding:19px 16px 15px}.customer-card .customer-avatar{width:44px;height:44px;border-radius:13px}.customer-card .customer-identity h3{font-size:15px}.customer-card-tools{align-items:flex-end;flex-direction:column-reverse}.customer-card .customer-status{font-size:8px}.customer-menu-popover{width:min(310px,calc(100vw - 48px))}.customer-service-grid{grid-template-columns:1fr;padding:14px 16px}.customer-card-footer{align-items:stretch;flex-direction:column;padding:14px 16px 17px}.customer-usage-summary{align-items:flex-start;flex-direction:column}.customer-traffic-pills{width:100%}.customer-traffic-pills>span{flex:1}.customer-expiry-summary{padding:13px 0 0;border-top:1px solid #e1e9e5;border-left:0}.customer-card:hover{transform:none}}
+@media(max-width:390px){.customer-contact-row{align-items:flex-start;flex-direction:column;gap:4px}.customer-card .customer-status{display:none}.customer-menu-popover{right:-2px}.customer-traffic-pills{flex-direction:column}.customer-traffic-pills>span{width:100%}}
+
 /* Packages, routers and panel users */
 .catalog-hero{position:relative;overflow:hidden;display:flex;align-items:center;justify-content:space-between;gap:28px;margin-bottom:24px;padding:29px 31px;border-radius:20px;color:#fff;background:linear-gradient(120deg,#123f33,#0d7253 68%,#15946c);box-shadow:0 18px 45px rgba(13,76,57,.15)}
 .catalog-hero:after{content:"";position:absolute;width:220px;height:220px;right:38%;top:-155px;border:40px solid rgba(201,243,108,.12);border-radius:50%}

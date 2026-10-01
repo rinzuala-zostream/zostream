@@ -11,6 +11,10 @@
     $activeFilters = collect($filterKeys)
         ->filter(fn ($key) => request()->filled($key))
         ->count();
+    $pageActive = $visibleCustomers->filter(fn ($customer) => $customer->status === 'active'
+        && ! ($customer->expires_at?->lt(today()) ?? false))->count();
+    $pageNeedsAttention = $visibleCustomers->filter(fn ($customer) => $customer->status === 'suspended'
+        || ($customer->expires_at?->lt(today()) ?? false))->count();
 @endphp
 
 <section class="customers-hero">
@@ -18,6 +22,11 @@
         <span>SUBSCRIBER CONTROL</span>
         <h2>PPPoE subscribers</h2>
         <p>Create, renew, suspend and monitor customer access from one familiar workspace.</p>
+        <div class="customer-hero-metrics" aria-label="Current page summary">
+            <span><b>{{ $visibleCustomers->count() }}</b> on this page</span>
+            <span><i class="metric-online"></i><b>{{ $pageActive }}</b> active</span>
+            <span><i class="metric-alert"></i><b>{{ $pageNeedsAttention }}</b> need attention</span>
+        </div>
     </div>
     <div class="customers-hero-actions">
         @if(auth()->user()->isAdmin())
@@ -134,87 +143,89 @@
                 ->take(2)
                 ->map(fn ($part) => mb_strtoupper(mb_substr($part, 0, 1)))
                 ->implode('');
+            $daysToExpiry = $customer->expires_at
+                ? (int) today()->diffInDays($customer->expires_at, false)
+                : null;
+            $expirySummary = match (true) {
+                $daysToExpiry === null => 'No expiry scheduled',
+                $daysToExpiry < 0 => abs($daysToExpiry).' '.Str::plural('day', abs($daysToExpiry)).' overdue',
+                $daysToExpiry === 0 => 'Ends today',
+                $daysToExpiry === 1 => 'Ends tomorrow',
+                default => $daysToExpiry.' days remaining',
+            };
         @endphp
-        <article class="customer-card {{ auth()->user()->isBranchOperator() ? 'operator-customer-card' : '' }}">
-            <div class="customer-main">
-                <div class="customer-avatar">{{ $initials ?: '?' }}</div>
-                <div class="customer-identity">
-                    <div class="customer-name-line">
+        <article class="customer-card customer-card--{{ $displayStatus }} {{ auth()->user()->isBranchOperator() ? 'operator-customer-card' : '' }}">
+            <div class="customer-card-top">
+                <div class="customer-main">
+                    <div class="customer-avatar"><span>{{ $initials ?: '?' }}</span></div>
+                    <div class="customer-identity">
                         <h3>{{ $customer->name }}</h3>
-                        <span class="customer-status status-{{ $displayStatus }}"><i></i>{{ ucfirst($displayStatus) }}</span>
+                        <div class="customer-contact-row">
+                            <code><i aria-hidden="true">@</i>{{ $customer->username }}</code>
+                            <span><i aria-hidden="true">☎</i>{{ $customer->phone ?: 'No phone' }}</span>
+                        </div>
                     </div>
-                    <code>{{ $customer->username }}</code>
-                    <span>{{ $customer->phone ?: 'No phone' }}</span>
                 </div>
-            </div>
-
-            @if(auth()->user()->isAdmin())
-                <div class="customer-plan-block">
-                    <small>PACKAGE</small>
-                    <strong>{{ $customer->package?->name ?? 'No package' }}</strong>
-                    <span>{{ $customer->package?->rate_limit ?: 'Unlimited speed' }}</span>
-                </div>
-
-                <div class="customer-location-block">
-                    <div>
-                        <small>ROUTER</small>
-                        <strong>{{ $customer->router?->name ?? 'Not assigned' }}</strong>
-                        <span>
-                            {{ ucfirst($customer->router_device_condition ?? 'unknown') }} device
-                            @if($customer->routerPayment)
-                                · {{ str_replace('_', ' ', ucfirst($customer->routerPayment->status)) }}
+                <div class="customer-card-tools">
+                    <span class="customer-status status-{{ $displayStatus }}"><i></i>{{ ucfirst($displayStatus) }}</span>
+                    <div class="customer-action-menu" data-customer-menu>
+                        <button class="customer-menu-trigger" type="button" aria-label="Actions for {{ $customer->name }}" aria-haspopup="menu" aria-expanded="false">•••</button>
+                        <div class="customer-menu-popover" role="menu" hidden>
+                            <div class="customer-menu-heading"><span>QUICK ACTIONS</span><strong>{{ $customer->name }}</strong></div>
+                            <a class="customer-menu-item is-primary" role="menuitem" href="{{ route('isp.payments.index', ['customer' => $customer]) }}"><i aria-hidden="true">₹</i><span><strong>Collect payment</strong><small>Renew internet for 30 days</small></span></a>
+                            <form method="POST" action="{{ route('isp.customers.toggle', $customer) }}">
+                                @csrf
+                                <button class="customer-menu-item" role="menuitem" type="submit"><i aria-hidden="true">{{ $customer->status === 'active' ? 'Ⅱ' : '▶' }}</i><span><strong>{{ $customer->status === 'active' ? 'Suspend access' : 'Activate access' }}</strong><small>{{ $customer->status === 'active' ? 'Pause PPPoE authentication' : 'Restore PPPoE authentication' }}</small></span></button>
+                            </form>
+                            @if(auth()->user()->isAdmin())
+                                <form method="POST" action="{{ route('isp.customers.sync', $customer) }}">
+                                    @csrf
+                                    <button class="customer-menu-item" role="menuitem" type="submit"><i aria-hidden="true">↻</i><span><strong>Sync RADIUS</strong><small>Push the latest account details</small></span></button>
+                                </form>
                             @endif
-                        </span>
-                    </div>
-                    <div>
-                        <small>BRANCH</small>
-                        <strong>{{ $customer->branch?->name ?? 'No branch' }}</strong>
+                            <a class="customer-menu-item" role="menuitem" href="{{ route('isp.customers.edit', ['customer' => $customer, 'return_to' => request()->fullUrl()]) }}"><i aria-hidden="true">✎</i><span><strong>Edit customer</strong><small>Update profile and service details</small></span></a>
+                            <div class="customer-menu-divider"></div>
+                            <form data-confirm="Delete this customer from both the admin panel and RADIUS?" method="POST" action="{{ route('isp.customers.destroy', $customer) }}">
+                                @csrf
+                                @method('DELETE')
+                                <button class="customer-menu-item is-danger" role="menuitem" type="submit"><i aria-hidden="true">×</i><span><strong>Delete customer</strong><small>Remove from the panel and RADIUS</small></span></button>
+                            </form>
+                        </div>
                     </div>
                 </div>
-            @endif
-
-            <div class="customer-usage-block">
-                <small>DATA USAGE</small>
-                <div>
-                    <span class="usage-download"><strong>↓ {{ \Illuminate\Support\Number::fileSize($customer->usage_download_bytes, 2) }}</strong></span>
-                    <span class="usage-upload"><strong>↑ {{ \Illuminate\Support\Number::fileSize($customer->usage_upload_bytes, 2) }}</strong></span>
-                </div>
-                <em>{{ $customer->usage_last_at?->diffForHumans() ?? 'No accounting data' }}</em>
             </div>
 
             @if(auth()->user()->isAdmin())
-                <div class="customer-expiry-block">
-                    <small>EXPIRY</small>
-                    <strong class="{{ $isExpired ? 'is-expired' : '' }}">{{ $customer->expires_at?->format('d M Y') ?? 'No expiry' }}</strong>
-                    <span>{{ $customer->last_synced_at ? 'Synced '.$customer->last_synced_at->diffForHumans() : 'Not synced' }}</span>
+                <div class="customer-service-grid">
+                    <div class="customer-info-tile customer-plan-tile">
+                        <span class="customer-tile-icon" aria-hidden="true">◇</span>
+                        <div><small>INTERNET PACKAGE</small><strong>{{ $customer->package?->name ?? 'No package' }}</strong><span>{{ $customer->package?->rate_limit ?: 'Unlimited speed' }} @if($customer->package) · ₹{{ number_format($customer->package->price, 0) }}@endif</span></div>
+                    </div>
+                    <div class="customer-info-tile">
+                        <span class="customer-tile-icon router" aria-hidden="true">⌁</span>
+                        <div><small>NETWORK ROUTER</small><strong>{{ $customer->router?->name ?? 'Not assigned' }}</strong><span>{{ ucfirst($customer->router_device_condition ?? 'unknown') }} customer device @if($customer->routerPayment) · {{ str_replace('_', ' ', $customer->routerPayment->status) }}@endif</span></div>
+                    </div>
+                    <div class="customer-info-tile">
+                        <span class="customer-tile-icon branch" aria-hidden="true">⌖</span>
+                        <div><small>BRANCH</small><strong>{{ $customer->branch?->name ?? 'No branch' }}</strong><span>{{ $customer->address ? Str::limit($customer->address, 42) : 'No installation address' }}</span></div>
+                    </div>
                 </div>
             @endif
 
-            <div class="customer-actions">
-                <a class="customer-action pay" href="{{ route('isp.payments.index', ['customer' => $customer]) }}">
-                    <i aria-hidden="true">₹</i><span>Pay</span>
-                </a>
-                <form method="POST" action="{{ route('isp.customers.toggle', $customer) }}">
-                    @csrf
-                    <button class="customer-action {{ $customer->status === 'active' ? 'suspend' : 'activate' }}" type="submit">
-                        <i aria-hidden="true">{{ $customer->status === 'active' ? 'Ⅱ' : '▶' }}</i>
-                        <span>{{ $customer->status === 'active' ? 'Suspend' : 'Activate' }}</span>
-                    </button>
-                </form>
+            <div class="customer-card-footer">
+                <div class="customer-usage-summary">
+                    <div class="customer-footer-title"><span aria-hidden="true">↕</span><div><small>DATA USAGE</small><strong>{{ $customer->usage_last_at ? 'Updated '.$customer->usage_last_at->diffForHumans() : 'No accounting data yet' }}</strong></div></div>
+                    <div class="customer-traffic-pills">
+                        <span class="usage-download"><i>↓</i><b>{{ \Illuminate\Support\Number::fileSize($customer->usage_download_bytes, 2) }}</b><small>download</small></span>
+                        <span class="usage-upload"><i>↑</i><b>{{ \Illuminate\Support\Number::fileSize($customer->usage_upload_bytes, 2) }}</b><small>upload</small></span>
+                    </div>
+                </div>
                 @if(auth()->user()->isAdmin())
-                    <form method="POST" action="{{ route('isp.customers.sync', $customer) }}">
-                        @csrf
-                        <button class="customer-action" type="submit"><i aria-hidden="true">↻</i><span>Sync</span></button>
-                    </form>
+                    <div class="customer-expiry-summary {{ $isExpired ? 'is-expired' : '' }}">
+                        <div class="customer-expiry-date"><b>{{ $customer->expires_at?->format('d') ?? '—' }}</b><span>{{ $customer->expires_at?->format('M Y') ?? 'No date' }}</span></div>
+                        <div><small>PLAN EXPIRY</small><strong>{{ $expirySummary }}</strong><span>{{ $customer->last_synced_at ? 'RADIUS synced '.$customer->last_synced_at->diffForHumans() : 'RADIUS not synced yet' }}</span></div>
+                    </div>
                 @endif
-                <a class="customer-action" href="{{ route('isp.customers.edit', ['customer' => $customer, 'return_to' => request()->fullUrl()]) }}">
-                    <i aria-hidden="true">✎</i><span>Edit</span>
-                </a>
-                <form data-confirm="Delete this customer from both the admin panel and RADIUS?" method="POST" action="{{ route('isp.customers.destroy', $customer) }}">
-                    @csrf
-                    @method('DELETE')
-                    <button class="customer-action delete" type="submit"><i aria-hidden="true">×</i><span>Delete</span></button>
-                </form>
             </div>
         </article>
     @empty
@@ -236,6 +247,46 @@
 
 @push('scripts')
 <script>
+(() => {
+    const menus = [...document.querySelectorAll('[data-customer-menu]')];
+    if (!menus.length) return;
+
+    const closeMenu = menu => {
+        const trigger = menu.querySelector('.customer-menu-trigger');
+        const popover = menu.querySelector('.customer-menu-popover');
+        popover.hidden = true;
+        trigger.setAttribute('aria-expanded', 'false');
+        menu.closest('.customer-card')?.classList.remove('is-menu-open');
+    };
+    const closeAll = except => menus.forEach(menu => {
+        if (menu !== except) closeMenu(menu);
+    });
+
+    menus.forEach(menu => {
+        const trigger = menu.querySelector('.customer-menu-trigger');
+        const popover = menu.querySelector('.customer-menu-popover');
+        trigger.addEventListener('click', event => {
+            event.stopPropagation();
+            const willOpen = popover.hidden;
+            closeAll(menu);
+            popover.hidden = !willOpen;
+            trigger.setAttribute('aria-expanded', String(willOpen));
+            menu.closest('.customer-card')?.classList.toggle('is-menu-open', willOpen);
+            if (willOpen) popover.querySelector('[role="menuitem"]')?.focus();
+        });
+        menu.addEventListener('click', event => event.stopPropagation());
+    });
+
+    document.addEventListener('click', () => closeAll());
+    document.addEventListener('keydown', event => {
+        if (event.key !== 'Escape') return;
+        const openMenu = menus.find(menu => !menu.querySelector('.customer-menu-popover').hidden);
+        if (!openMenu) return;
+        closeMenu(openMenu);
+        openMenu.querySelector('.customer-menu-trigger')?.focus();
+    });
+})();
+
 (() => {
     const form = document.querySelector('.bulk-sync-form');
     if (!form) return;
