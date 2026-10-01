@@ -395,7 +395,14 @@ class CustomerController extends Controller
         $path = $side === 'front' ? $customer->aadhaar_front_path : $customer->aadhaar_back_path;
         abort_unless($path && Storage::disk('local')->exists($path), 404);
 
-        return Storage::disk('local')->download($path, "aadhaar-{$side}-customer-{$customer->id}.".pathinfo($path, PATHINFO_EXTENSION));
+        $filename = "aadhaar-{$side}-customer-{$customer->id}.".pathinfo($path, PATHINFO_EXTENSION);
+        if ($request->boolean('preview')) {
+            return Storage::disk('local')->response($path, $filename, [
+                'Content-Disposition' => 'inline; filename="'.$filename.'"',
+            ]);
+        }
+
+        return Storage::disk('local')->download($path, $filename);
     }
 
     public function syncAll(Request $request, RadiusService $radius, MikroTikService $mikrotik): RedirectResponse|JsonResponse

@@ -64,8 +64,16 @@
                     <small>Choose valid JPG or PNG images for both front and back, up to 5 MB each.</small>
                 </div>
             </div>
-            <label>Aadhaar front<input type="file" name="aadhaar_front" accept=".jpg,.jpeg,.png,image/jpeg,image/png" @required(! $customer->exists || ! $customer->aadhaar_front_path)><small class="form-help">JPG or PNG; maximum 5 MB.</small>@if($customer->exists && $customer->aadhaar_front_path)<a class="text-link" href="{{ route('isp.customers.document', [$customer, 'front']) }}">Download current front</a>@endif</label>
-            <label>Aadhaar back<input type="file" name="aadhaar_back" accept=".jpg,.jpeg,.png,image/jpeg,image/png" @required(! $customer->exists || ! $customer->aadhaar_back_path)><small class="form-help">JPG or PNG; maximum 5 MB.</small>@if($customer->exists && $customer->aadhaar_back_path)<a class="text-link" href="{{ route('isp.customers.document', [$customer, 'back']) }}">Download current back</a>@endif</label>
+            <div class="aadhaar-upload-field" data-aadhaar-upload>
+                <label>Aadhaar front<input data-aadhaar-input type="file" name="aadhaar_front" accept=".jpg,.jpeg,.png,image/jpeg,image/png" @required(! $customer->exists || ! $customer->aadhaar_front_path)><small class="form-help">JPG or PNG; maximum 5 MB.</small>@if($customer->exists && $customer->aadhaar_front_path)<a class="text-link" href="{{ route('isp.customers.document', [$customer, 'front']) }}">Download current front</a>@endif</label>
+                @php($frontPreview = $customer->exists && $customer->aadhaar_front_path ? route('isp.customers.document', [$customer, 'front', 'preview' => 1]) : '')
+                <div class="aadhaar-image-preview"><img data-aadhaar-preview data-existing-src="{{ $frontPreview }}" src="{{ $frontPreview }}" alt="Aadhaar front preview" @if(!$frontPreview) hidden @endif><span data-aadhaar-empty @if($frontPreview) hidden @endif>No front image selected</span></div>
+            </div>
+            <div class="aadhaar-upload-field" data-aadhaar-upload>
+                <label>Aadhaar back<input data-aadhaar-input type="file" name="aadhaar_back" accept=".jpg,.jpeg,.png,image/jpeg,image/png" @required(! $customer->exists || ! $customer->aadhaar_back_path)><small class="form-help">JPG or PNG; maximum 5 MB.</small>@if($customer->exists && $customer->aadhaar_back_path)<a class="text-link" href="{{ route('isp.customers.document', [$customer, 'back']) }}">Download current back</a>@endif</label>
+                @php($backPreview = $customer->exists && $customer->aadhaar_back_path ? route('isp.customers.document', [$customer, 'back', 'preview' => 1]) : '')
+                <div class="aadhaar-image-preview"><img data-aadhaar-preview data-existing-src="{{ $backPreview }}" src="{{ $backPreview }}" alt="Aadhaar back preview" @if(!$backPreview) hidden @endif><span data-aadhaar-empty @if($backPreview) hidden @endif>No back image selected</span></div>
+            </div>
             <label class="full">Installation address<textarea name="address" placeholder="House, locality, landmark">{{ old('address', $customer->address) }}</textarea></label>
         </div>
     </section>
@@ -76,6 +84,33 @@
 @push('scripts')
 @unless($customer->exists)<script src="https://sdk.cashfree.com/js/v3/cashfree.js"></script>@endunless
 <script>
+(() => {
+    document.querySelectorAll('[data-aadhaar-upload]').forEach(field => {
+        const input = field.querySelector('[data-aadhaar-input]');
+        const image = field.querySelector('[data-aadhaar-preview]');
+        const empty = field.querySelector('[data-aadhaar-empty]');
+        let objectUrl = null;
+
+        input?.addEventListener('change', () => {
+            if (objectUrl) URL.revokeObjectURL(objectUrl);
+            objectUrl = null;
+            const file = input.files?.[0];
+            if (file) {
+                objectUrl = URL.createObjectURL(file);
+                image.src = objectUrl;
+                image.hidden = false;
+                empty.hidden = true;
+                return;
+            }
+
+            const existingSrc = image.dataset.existingSrc;
+            image.src = existingSrc || '';
+            image.hidden = !existingSrc;
+            empty.hidden = Boolean(existingSrc);
+        });
+    });
+})();
+
 (() => {
     const branch = document.getElementById('customerBranch');
     const packageSelect = document.getElementById('customerPackage');
