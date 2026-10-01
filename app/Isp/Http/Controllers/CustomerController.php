@@ -572,6 +572,9 @@ class CustomerController extends Controller
             ],
             'password' => [$customer ? 'nullable' : 'required', 'string', 'max:255'],
             'status' => ['required', Rule::in(['active', 'suspended'])],
+            'expires_at' => $customer && $request->user()->isAdmin()
+                ? ['nullable', 'date']
+                : ['prohibited'],
             'router_device_condition' => ['required', Rule::in(['old', 'new'])],
             'router_payment_choice' => [$customer ? 'nullable' : Rule::requiredIf(fn (): bool => $request->input('router_device_condition') === 'new'), Rule::in(['pay_now', 'pay_later'])],
             'router_amount' => [Rule::requiredIf(fn (): bool => ! $customer && $request->input('router_device_condition') === 'new' && $request->input('router_payment_choice') === 'pay_now'), 'nullable', 'numeric', 'min:1', 'max:999999.99'],
