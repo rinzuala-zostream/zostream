@@ -101,6 +101,7 @@ class IspCustomerOnboardingServiceTest extends TestCase
 
         $this->assertNull($result['sync_error']);
         $this->assertNull($result['activation_error']);
+        $this->assertSame(today()->addDays(30)->toDateString(), $result['customer']->expires_at->toDateString());
         $this->assertDatabaseHas('customers', [
             'id' => $result['customer']->id,
             'router_device_condition' => 'new',
@@ -148,6 +149,7 @@ class IspCustomerOnboardingServiceTest extends TestCase
         $this->assertTrue($first['created']);
         $this->assertFalse($second['created']);
         $this->assertSame($first['customer']->id, $second['customer']->id);
+        $this->assertSame(today()->addDays(30)->toDateString(), $first['customer']->expires_at->toDateString());
         $this->assertDatabaseCount('customers', 1);
         $this->assertDatabaseHas('customer_router_payments', [
             'customer_id' => $first['customer']->id,

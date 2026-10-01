@@ -83,6 +83,8 @@ class CustomerOnboardingService
         ?string $notes,
         ?int $operatorId,
     ): array {
+        $customerData['expires_at'] = Customer::initialExpiryDate()->toDateString();
+
         $customer = DB::transaction(function () use ($customerData, $routerCondition, $routerAmount, $notes, $operatorId): Customer {
             $customer = Customer::withoutEvents(fn (): Customer => Customer::create($customerData));
             CustomerRouterPayment::create([
@@ -111,6 +113,7 @@ class CustomerOnboardingService
             }
 
             $customerData = $locked->customer_payload;
+            $customerData['expires_at'] = Customer::initialExpiryDate()->toDateString();
             $customer = Customer::withoutEvents(fn (): Customer => Customer::create($customerData));
             CustomerRouterPayment::create([
                 'customer_id' => $customer->id,

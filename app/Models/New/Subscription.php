@@ -3,10 +3,10 @@
 namespace App\Models\New;
 
 use App\Models\UserModel;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Model;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
 
 class Subscription extends Model
 {
@@ -21,12 +21,16 @@ class Subscription extends Model
         'end_at',
         'is_active',
         'renewed_by',
+        'whatsapp_reminder_sent_for',
+        'whatsapp_reminder_days_left',
     ];
 
     protected $casts = [
         'start_at' => 'datetime:F j, Y',
-        'end_at'   => 'datetime:F j, Y',
+        'end_at' => 'datetime:F j, Y',
         'is_active' => 'boolean',
+        'whatsapp_reminder_sent_for' => 'date',
+        'whatsapp_reminder_days_left' => 'integer',
     ];
 
     /*
@@ -123,7 +127,7 @@ class Subscription extends Model
 
     public function extend(): void
     {
-        if (!$this->plan) {
+        if (! $this->plan) {
             return;
         }
 
@@ -135,7 +139,7 @@ class Subscription extends Model
 
         $this->update([
             'start_at' => $this->start_at ?? now(),
-            'end_at'   => $newExpiry,
+            'end_at' => $newExpiry,
             'is_active' => true,
         ]);
     }

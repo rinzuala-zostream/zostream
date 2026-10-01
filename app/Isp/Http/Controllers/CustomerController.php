@@ -84,7 +84,7 @@ class CustomerController extends Controller
 
         $customerData = Arr::only($data, [
             'router_id', 'package_id', 'branch_id', 'name', 'phone', 'address', 'username',
-            'password', 'status', 'expires_at', 'router_device_condition',
+            'password', 'status', 'router_device_condition',
         ]);
         $customerData['aadhaar_qr_verified_at'] = now();
         $storedPaths = [];
@@ -572,7 +572,6 @@ class CustomerController extends Controller
             ],
             'password' => [$customer ? 'nullable' : 'required', 'string', 'max:255'],
             'status' => ['required', Rule::in(['active', 'suspended'])],
-            'expires_at' => ['nullable', 'date'],
             'router_device_condition' => ['required', Rule::in(['old', 'new'])],
             'router_payment_choice' => [$customer ? 'nullable' : Rule::requiredIf(fn (): bool => $request->input('router_device_condition') === 'new'), Rule::in(['pay_now', 'pay_later'])],
             'router_amount' => [Rule::requiredIf(fn (): bool => ! $customer && $request->input('router_device_condition') === 'new' && $request->input('router_payment_choice') === 'pay_now'), 'nullable', 'numeric', 'min:1', 'max:999999.99'],

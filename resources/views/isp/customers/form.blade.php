@@ -33,7 +33,7 @@
             @endif
             <label>PPPoE password<input type="password" name="password" {{ $customer->exists ? '' : 'required' }} autocomplete="new-password" placeholder="{{ $customer->exists ? 'Leave blank to keep current password' : 'PPPoE password' }}"></label>
             <label>Status<select name="status"><option value="active" @selected(old('status', $customer->status ?: 'active') === 'active')>Active</option><option value="suspended" @selected(old('status', $customer->status) === 'suspended')>Suspended</option></select></label>
-            <label>Expiry date<input type="date" name="expires_at" value="{{ old('expires_at', $customer->expires_at?->format('Y-m-d')) }}"></label>
+            <div class="form-help full">New customers receive 30 days automatically. Future payments extend an active plan from its current expiry date.</div>
         </div>
     </section>
 

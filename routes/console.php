@@ -19,11 +19,15 @@ Schedule::command('app:movie-schedule')
 
 // 12 AM: deactivate only
 Schedule::command('app:subscription-maintenance --deactivate=1 --send-reminders=0')
-    ->daily();
+    ->daily()
+    ->timezone('Asia/Kolkata')
+    ->withoutOverlapping(30);
 
 // 10 AM: reminder only
-Schedule::command('app:subscription-maintenance --deactivate=0 --reminder-days=3 --send-reminders=1')
-    ->dailyAt('10:00');
+Schedule::command('app:subscription-maintenance --deactivate=0 --reminder-days=2 --send-reminders=1')
+    ->dailyAt('10:00')
+    ->timezone('Asia/Kolkata')
+    ->withoutOverlapping(30);
 
 // 10 AM IST: remind active ISP customers whose WiFi plan expires tomorrow.
 Schedule::command('isp:send-wifi-reminders')

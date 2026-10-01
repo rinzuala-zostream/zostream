@@ -12,11 +12,11 @@ use Illuminate\Support\Facades\Log;
 
 class SubscriptionMaintenance extends Command
 {
-    private const REMINDER_DAYS_LEFT = [3, 1, 0];
+    private const REMINDER_DAYS_LEFT = [2, 0];
 
     protected $signature = 'app:subscription-maintenance
                             {--deactivate=1 : Whether to deactivate expired subscriptions}
-                            {--reminder-days=3 : Send reminders for subscriptions expiring within this many days}
+                            {--reminder-days=2 : Send reminders for subscriptions expiring within this many days}
                             {--send-reminders=0 : Whether to send WhatsApp reminders to users}';
 
     protected $description = 'Deactivate expired subscriptions and send WhatsApp reminders.';
@@ -54,11 +54,12 @@ class SubscriptionMaintenance extends Command
 
         if ($expiredIds->isEmpty()) {
             $this->info('No expired subscriptions to deactivate.');
+
             return;
         }
 
         Subscription::whereIn('id', $expiredIds)->update([
-            'is_active' => false
+            'is_active' => false,
         ]);
 
         $this->info("Deactivated {$expiredIds->count()} expired subscriptions.");
@@ -66,7 +67,7 @@ class SubscriptionMaintenance extends Command
 
     protected function processExpiringSubscriptions(int $reminderDays): void
     {
-        $cutoff = now()->copy()->addDays($reminderDays);
+        $cutoff = now()->copy()->addDays($reminderDays)->endOfDay();
 
         $subscriptions = Subscription::with('plan')
             ->currentlyActive()
@@ -77,11 +78,12 @@ class SubscriptionMaintenance extends Command
 
         if ($subscriptions->isEmpty()) {
             $this->info("No active subscriptions expiring within {$reminderDays} day(s).");
+
             return;
         }
 
         foreach ($subscriptions as $subscription) {
-            $daysLeft = max(
+            $daysLeft = (int) max(
                 Carbon::now()->startOfDay()
                     ->diffInDays($subscription->end_at->copy()->startOfDay(), false),
                 0
@@ -89,6 +91,14 @@ class SubscriptionMaintenance extends Command
 
             if (! in_array($daysLeft, self::REMINDER_DAYS_LEFT, true)) {
                 $this->line("Skipped reminder for subscription #{$subscription->id}: {$daysLeft} day(s) left.");
+
+                continue;
+            }
+
+            if ($subscription->whatsapp_reminder_sent_for?->isSameDay($subscription->end_at)
+                && $subscription->whatsapp_reminder_days_left === $daysLeft) {
+                $this->line("Skipped reminder for subscription #{$subscription->id}: already sent for {$daysLeft} day(s) left.");
+
                 continue;
             }
 
@@ -102,8 +112,9 @@ class SubscriptionMaintenance extends Command
             ->where('uid', $subscription->user_id)
             ->first();
 
-        if (!$user) {
+        if (! $user) {
             $this->warn("Skipped reminder for subscription #{$subscription->id}: user phone not found.");
+
             return;
         }
 
@@ -111,6 +122,7 @@ class SubscriptionMaintenance extends Command
 
         if ($phone === '') {
             $this->warn("Skipped reminder for subscription #{$subscription->id}: user phone not found.");
+
             return;
         }
 
@@ -151,6 +163,11 @@ class SubscriptionMaintenance extends Command
                 return;
             }
 
+            $subscription->forceFill([
+                'whatsapp_reminder_sent_for' => $subscription->end_at->toDateString(),
+                'whatsapp_reminder_days_left' => $daysLeft,
+            ])->save();
+
             $this->info("Reminder sent for subscription #{$subscription->id}.");
         } catch (\Throwable $e) {
             $this->warn("Reminder failed for subscription #{$subscription->id}: {$e->getMessage()}");
@@ -178,7 +195,7 @@ class SubscriptionMaintenance extends Command
 
         $hasCountryCode = str_starts_with($phone, $countryCode) && strlen($phone) > 10;
 
-        return $hasCountryCode ? $phone : $countryCode . $phone;
+        return $hasCountryCode ? $phone : $countryCode.$phone;
     }
 
     protected function normalizePhone(string $phone): string

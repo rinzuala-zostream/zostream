@@ -50,7 +50,6 @@ class PaymentController extends Controller
             'method' => ['required', Rule::in(['cash', 'upi', 'bank', 'card'])],
             'reference' => ['nullable', 'string', 'max:100'],
             'notes' => ['nullable', 'string', 'max:1000'],
-            'renew' => ['nullable', 'boolean'],
         ]);
         $customer = Customer::with(['package', 'router', 'branch'])->findOrFail($data['customer_id']);
         $this->ensureCustomerAccess($request, $customer);
@@ -78,17 +77,13 @@ class PaymentController extends Controller
             'paid_at' => now(),
             'notes' => $data['notes'] ?? null,
         ]);
-        $syncError = $request->boolean('renew') ? $this->renewCustomer($customer, $radius, $package) : null;
+        $syncError = $this->renewCustomer($customer, $radius, $package);
 
         if ($syncError) {
             return back()->with('warning', 'Payment was recorded and the customer renewed locally, but RADIUS sync failed: '.$syncError.' Use the customer Sync action to retry; do not record the payment again.');
         }
 
-        $message = $request->boolean('renew')
-            ? 'Payment recorded; customer renewed and synced with RADIUS.'
-            : 'Payment recorded successfully.';
-
-        return back()->with('success', $message);
+        return back()->with('success', 'Payment recorded; customer renewed for 30 days and synced with RADIUS.');
     }
 
     public function checkout(Request $request, ZoStreamSubscriptionService $subscriptions): JsonResponse
@@ -97,7 +92,6 @@ class PaymentController extends Controller
             'customer_id' => ['required', 'exists:customers,id'],
             'package_id' => ['nullable', 'exists:packages,id'],
             'notes' => ['nullable', 'string', 'max:1000'],
-            'renew' => ['nullable', 'boolean'],
         ]);
         $customer = Customer::with(['package', 'router', 'branch'])->findOrFail($data['customer_id']);
         $this->ensureCustomerAccess($request, $customer);
@@ -122,7 +116,7 @@ class PaymentController extends Controller
                 'operator_commission' => $amounts['commission'],
                 'amount' => $amounts['payable'],
                 'currency' => 'INR',
-                'renew' => $request->boolean('renew'),
+                'renew' => true,
                 'notes' => $data['notes'] ?? null,
                 'external_response' => $external,
             ]);
@@ -455,11 +449,10 @@ class PaymentController extends Controller
             return 'The package selected during checkout no longer exists.';
         }
 
-        $base = $customer->expires_at && $customer->expires_at->isFuture() ? $customer->expires_at : today();
         $customer->setRelation('package', $package);
         $customer->update([
             'package_id' => $package->id,
-            'expires_at' => $base->copy()->addDays($package->validity_days),
+            'expires_at' => $customer->nextExpiryDate(),
             'status' => 'active',
         ]);
         try {

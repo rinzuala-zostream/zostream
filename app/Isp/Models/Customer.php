@@ -2,6 +2,7 @@
 
 namespace App\Isp\Models;
 
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -11,6 +12,8 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 class Customer extends Model
 {
     use HasFactory;
+
+    public const ACCESS_PERIOD_DAYS = 30;
 
     protected $fillable = ['router_id', 'package_id', 'branch_id', 'name', 'phone', 'address', 'router_device_condition', 'aadhaar_front_path', 'aadhaar_back_path', 'aadhaar_qr_verified_at', 'username', 'password', 'status', 'expires_at', 'wifi_reminder_sent_for', 'expiry_suspended_for', 'mikrotik_id', 'last_synced_at'];
 
@@ -44,5 +47,19 @@ class Customer extends Model
     public function routerPayment(): HasOne
     {
         return $this->hasOne(CustomerRouterPayment::class);
+    }
+
+    public static function initialExpiryDate(): Carbon
+    {
+        return today()->addDays(self::ACCESS_PERIOD_DAYS);
+    }
+
+    public function nextExpiryDate(): Carbon
+    {
+        $base = $this->expires_at?->greaterThanOrEqualTo(today())
+            ? $this->expires_at->copy()
+            : today();
+
+        return $base->addDays(self::ACCESS_PERIOD_DAYS);
     }
 }
