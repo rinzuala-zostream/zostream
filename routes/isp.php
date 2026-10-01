@@ -33,7 +33,6 @@ Route::prefix('isp')->name('isp.')->group(function (): void {
 
             Route::get('/customers/import', [CustomerImportController::class, 'create'])->name('customers.import.create');
             Route::post('/customers/import', [CustomerImportController::class, 'store'])->name('customers.import.store');
-            Route::get('/customers/export', [CustomerController::class, 'export'])->name('customers.export');
             Route::get('/customers-import-template', [CustomerImportController::class, 'template'])->name('customers.import.template');
             Route::get('/customers/import-mikrotik', [MikroTikCustomerImportController::class, 'create'])->name('customers.import-mikrotik.create');
             Route::post('/customers/import-mikrotik', [MikroTikCustomerImportController::class, 'store'])->name('customers.import-mikrotik.store');
@@ -42,6 +41,7 @@ Route::prefix('isp')->name('isp.')->group(function (): void {
             Route::resource('users', UserController::class)->except('show');
         });
 
+        Route::get('/customers/export', [CustomerController::class, 'export'])->name('customers.export');
         Route::post('/customers/sync-all', [CustomerController::class, 'syncAll'])->name('customers.sync-all');
         Route::post('/customers/onboarding/cashfree/complete', [CustomerController::class, 'completeOnboarding'])->name('customers.onboarding.cashfree.complete');
         Route::get('/customers/{customer}/documents/{side}', [CustomerController::class, 'document'])->name('customers.document');

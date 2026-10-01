@@ -67,7 +67,50 @@ class CustomerController extends Controller
         ]);
     }
 
-    public function export(): StreamedResponse
+    public function export(Request $request, MikroTikService $mikrotik): StreamedResponse
+    {
+        $user = $request->user();
+        abort_unless($user->isAdmin() || ($user->isBranchOperator() && $user->branch_id), 403);
+        // Full records include credentials and financial details: never expose them to operators.
+        if ($request->input('mode') === 'full') {
+            abort_unless($user->isAdmin(), 403);
+
+            return $this->fullExport();
+        }
+
+        $request->validate([
+            'mode' => ['nullable', Rule::in(['filtered'])],
+            'status' => ['required', Rule::in(['active', 'suspended', 'expired', 'online', 'offline', 'unknown'])],
+            'search' => ['nullable', 'string', 'max:150'],
+            'router_id' => ['nullable', 'integer'],
+            'branch_id' => ['nullable', 'integer'],
+        ]);
+
+        $query = $this->filteredQuery($request, $this->liveStatusIds($request, $mikrotik));
+        $columns = ['id', 'name', 'phone', 'username', 'branch_id', 'status', 'expires_at'];
+
+        return response()->streamDownload(function () use ($query, $columns): void {
+            $output = fopen('php://output', 'wb');
+            if ($output === false) {
+                throw new \RuntimeException('Unable to open the customer export stream.');
+            }
+            fwrite($output, "\xEF\xBB\xBF");
+            fputcsv($output, $columns, ',', '"', '');
+            $query->select($columns)->chunkById(250, function ($customers) use ($output): void {
+                foreach ($customers as $customer) {
+                    fputcsv($output, array_map($this->exportValue(...), [
+                        $customer->id, $customer->name, $customer->phone, $customer->username,
+                        $customer->branch_id, $customer->status, $customer->expires_at?->toDateString(),
+                    ]), ',', '"', '');
+                }
+            });
+            fclose($output);
+        }, 'isp-customers-'.$request->input('status').'-'.today()->format('Y-m-d').'.csv', [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
+    private function fullExport(): StreamedResponse
     {
         return response()->streamDownload(function (): void {
             $output = fopen('php://output', 'wb');

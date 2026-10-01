@@ -31,7 +31,7 @@
     <div class="customers-hero-actions">
         @if(auth()->user()->isAdmin())
             <div class="customer-import-menu">
-                <a class="customer-hero-button subtle" href="{{ route('isp.customers.export') }}">
+                <a class="customer-hero-button subtle" href="{{ route('isp.customers.export', ['mode' => 'full']) }}">
                     <i aria-hidden="true">↓</i>
                     <span><small>ALL CUSTOMER DATA</small>Full export</span>
                 </a>
@@ -102,6 +102,8 @@
                 </select>
             </label>
             <button class="customer-filter-button" type="submit">Apply filters</button>
+            <button class="customer-filter-button" type="submit" formaction="{{ route('isp.customers.export') }}">Export filtered CSV</button>
+            <small>To export, select a status such as Expired. Exports include contact and service details{{ auth()->user()->isBranchOperator() ? ' for your branch only' : '' }}.</small>
         </form>
 
         @if(auth()->user()->isAdmin())
