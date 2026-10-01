@@ -31,6 +31,10 @@
     <div class="customers-hero-actions">
         @if(auth()->user()->isAdmin())
             <div class="customer-import-menu">
+                <a class="customer-hero-button subtle" href="{{ route('isp.customers.export') }}">
+                    <i aria-hidden="true">↓</i>
+                    <span><small>ALL CUSTOMER DATA</small>Full export</span>
+                </a>
                 <a class="customer-hero-button subtle" href="{{ route('isp.customers.import-mikrotik.create') }}">
                     <i aria-hidden="true">⇄</i>
                     <span><small>ROUTER DATA</small>Import MikroTik</span>

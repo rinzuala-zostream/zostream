@@ -67,6 +67,86 @@ class CustomerController extends Controller
         ]);
     }
 
+    public function export(): StreamedResponse
+    {
+        return response()->streamDownload(function (): void {
+            $output = fopen('php://output', 'wb');
+            if ($output === false) {
+                throw new \RuntimeException('Unable to open the customer export stream.');
+            }
+
+            // The UTF-8 BOM keeps names and addresses readable when opened in Excel.
+            fwrite($output, "\xEF\xBB\xBF");
+            fputcsv($output, [
+                'customer_id', 'name', 'phone', 'installation_address',
+                'branch_id', 'branch', 'router_id', 'router', 'router_host',
+                'package_id', 'package', 'mikrotik_profile', 'rate_limit',
+                'package_price', 'package_validity_days', 'pppoe_username',
+                'pppoe_password', 'status', 'expires_at', 'wifi_reminder_sent_for',
+                'expiry_suspended_for', 'router_device_condition',
+                'aadhaar_qr_verified_at', 'mikrotik_id', 'last_synced_at',
+                'payment_count', 'payment_total', 'last_payment_at',
+                'router_payment_amount', 'router_payment_status',
+                'router_payment_method', 'router_payment_reference',
+                'router_payment_notes', 'router_paid_at', 'created_at', 'updated_at',
+            ], ',', '"', '');
+
+            Customer::query()
+                ->with(['branch', 'router', 'package', 'routerPayment'])
+                ->withCount('payments')
+                ->withSum('payments', 'amount')
+                ->withMax('payments', 'paid_at')
+                ->orderBy('id')
+                ->chunkById(250, function ($customers) use ($output): void {
+                    foreach ($customers as $customer) {
+                        fputcsv($output, array_map($this->exportValue(...), [
+                            $customer->id,
+                            $customer->name,
+                            $customer->phone,
+                            $customer->address,
+                            $customer->branch_id,
+                            $customer->branch?->name,
+                            $customer->router_id,
+                            $customer->router?->name,
+                            $customer->router?->host,
+                            $customer->package_id,
+                            $customer->package?->name,
+                            $customer->package?->mikrotik_profile,
+                            $customer->package?->rate_limit,
+                            $customer->package?->price,
+                            $customer->package?->validity_days,
+                            $customer->username,
+                            $customer->password,
+                            $customer->status,
+                            $customer->expires_at?->toDateString(),
+                            $customer->wifi_reminder_sent_for?->toDateString(),
+                            $customer->expiry_suspended_for?->toDateString(),
+                            $customer->router_device_condition,
+                            $customer->aadhaar_qr_verified_at?->toDateTimeString(),
+                            $customer->mikrotik_id,
+                            $customer->last_synced_at?->toDateTimeString(),
+                            $customer->payments_count,
+                            $customer->payments_sum_amount,
+                            $customer->payments_max_paid_at,
+                            $customer->routerPayment?->amount,
+                            $customer->routerPayment?->status,
+                            $customer->routerPayment?->method,
+                            $customer->routerPayment?->gateway_payment_id
+                                ?: $customer->routerPayment?->gateway_order_id,
+                            $customer->routerPayment?->notes,
+                            $customer->routerPayment?->paid_at?->toDateTimeString(),
+                            $customer->created_at?->toDateTimeString(),
+                            $customer->updated_at?->toDateTimeString(),
+                        ]), ',', '"', '');
+                    }
+                });
+
+            fclose($output);
+        }, 'isp-customers-full-'.today()->format('Y-m-d').'.csv', [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
     public function store(
         Request $request,
         CustomerOnboardingService $onboarding,
@@ -615,5 +695,17 @@ class CustomerController extends Controller
         if ($request->user()?->isBranchOperator()) {
             abort_unless($customer->branch_id === $request->user()->branch_id, 403);
         }
+    }
+
+    private function exportValue(mixed $value): string|int|float
+    {
+        if (is_int($value) || is_float($value)) {
+            return $value;
+        }
+
+        $value = (string) ($value ?? '');
+
+        // Prevent spreadsheet applications from executing customer-controlled formulae.
+        return preg_match('/^[=+\-@]/', $value) === 1 ? "'{$value}" : $value;
     }
 }
