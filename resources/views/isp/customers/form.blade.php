@@ -33,10 +33,10 @@
             @endif
             <label>PPPoE password<input type="password" name="password" {{ $customer->exists ? '' : 'required' }} autocomplete="new-password" placeholder="{{ $customer->exists ? 'Leave blank to keep current password' : 'PPPoE password' }}"></label>
             <label>Status<select name="status"><option value="active" @selected(old('status', $customer->status ?: 'active') === 'active')>Active</option><option value="suspended" @selected(old('status', $customer->status) === 'suspended')>Suspended</option></select></label>
-            @if($customer->exists && auth()->user()->isAdmin())
+            @if(auth()->user()->isAdmin())
                 <label>Expiry date<input type="date" name="expires_at" value="{{ old('expires_at', $customer->expires_at?->toDateString()) }}"><small class="form-help">Administrator only. The selected date remains active through the end of that day.</small></label>
             @endif
-            <div class="form-help full">New customers receive 30 days automatically. Future payments extend an active plan from its current expiry date.</div>
+            <div class="form-help full">New customers receive 30 days automatically unless an administrator selects an expiry date. Future payments extend an active plan from its current expiry date.</div>
         </div>
     </section>
 
@@ -53,9 +53,9 @@
     </section>
 
     <section class="customer-form-section">
-        <div class="customer-form-section-head"><span>04</span><div><strong>Documents & installation</strong><small>Aadhaar Secure QR is verified before the customer or payment order is created.</small></div></div>
+        <div class="customer-form-section-head"><span>04</span><div><strong>Documents & installation</strong><small>Aadhaar is optional. Uploaded documents are verified before saving.</small></div></div>
         <div class="customer-form-section-grid">
-            <div class="aadhaar-verification-note full"><span>✓</span><div><strong>UIDAI Secure QR verification required</strong><small>Upload clear, uncropped front and back images together. Payment cannot start until the QR signature is valid.</small></div></div>
+            <div class="aadhaar-verification-note full"><span>✓</span><div><strong>Aadhaar documents (optional)</strong><small>You can add a customer without Aadhaar. If uploading documents, provide clear front and back images together for QR verification.</small></div></div>
             <div id="aadhaarVerificationError" class="aadhaar-verification-error full" role="alert" tabindex="-1" @if(!$errors->hasAny(['aadhaar_front', 'aadhaar_back'])) hidden @endif>
                 <span aria-hidden="true">!</span>
                 <div>
@@ -64,8 +64,8 @@
                     <small>Check that the QR is fully visible, the photo is not blurred or cropped, then choose both images and try again.</small>
                 </div>
             </div>
-            <label>Aadhaar front<input type="file" name="aadhaar_front" accept=".jpg,.jpeg,.png,image/jpeg,image/png" @required(! $customer->exists)><small class="form-help">JPG or PNG; maximum 5 MB. Keep the QR visible.</small>@if($customer->exists && $customer->aadhaar_front_path)<a class="text-link" href="{{ route('isp.customers.document', [$customer, 'front']) }}">Download current front</a>@endif</label>
-            <label>Aadhaar back<input type="file" name="aadhaar_back" accept=".jpg,.jpeg,.png,image/jpeg,image/png" @required(! $customer->exists)><small class="form-help">JPG or PNG; maximum 5 MB. Keep the QR visible.</small>@if($customer->exists && $customer->aadhaar_back_path)<a class="text-link" href="{{ route('isp.customers.document', [$customer, 'back']) }}">Download current back</a>@endif</label>
+            <label>Aadhaar front<input type="file" name="aadhaar_front" accept=".jpg,.jpeg,.png,image/jpeg,image/png"><small class="form-help">JPG or PNG; maximum 5 MB. Keep the QR visible.</small>@if($customer->exists && $customer->aadhaar_front_path)<a class="text-link" href="{{ route('isp.customers.document', [$customer, 'front']) }}">Download current front</a>@endif</label>
+            <label>Aadhaar back<input type="file" name="aadhaar_back" accept=".jpg,.jpeg,.png,image/jpeg,image/png"><small class="form-help">JPG or PNG; maximum 5 MB. Keep the QR visible.</small>@if($customer->exists && $customer->aadhaar_back_path)<a class="text-link" href="{{ route('isp.customers.document', [$customer, 'back']) }}">Download current back</a>@endif</label>
             <label class="full">Installation address<textarea name="address" placeholder="House, locality, landmark">{{ old('address', $customer->address) }}</textarea></label>
         </div>
     </section>

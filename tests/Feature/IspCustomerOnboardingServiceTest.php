@@ -134,7 +134,7 @@ class IspCustomerOnboardingServiceTest extends TestCase
 
         $onboarding = CustomerOnboarding::create([
             'operator_id' => 7,
-            'customer_payload' => $this->customerPayload('pay-now-user'),
+            'customer_payload' => array_merge($this->customerPayload('pay-now-user'), ['expires_at' => today()->addDays(12)->toDateString()]),
             'username' => 'pay-now-user',
             'router_amount' => 3000,
             'cashfree_order_id' => 'isp_router_1_test',
@@ -149,7 +149,7 @@ class IspCustomerOnboardingServiceTest extends TestCase
         $this->assertTrue($first['created']);
         $this->assertFalse($second['created']);
         $this->assertSame($first['customer']->id, $second['customer']->id);
-        $this->assertSame(today()->addDays(30)->toDateString(), $first['customer']->expires_at->toDateString());
+        $this->assertSame(today()->addDays(12)->toDateString(), $first['customer']->expires_at->toDateString());
         $this->assertDatabaseCount('customers', 1);
         $this->assertDatabaseHas('customer_router_payments', [
             'customer_id' => $first['customer']->id,
@@ -157,6 +157,21 @@ class IspCustomerOnboardingServiceTest extends TestCase
             'method' => 'cashfree',
             'gateway_payment_id' => 'cf-router-payment',
         ]);
+    }
+
+    public function test_custom_expiry_is_preserved_without_payment_or_aadhaar(): void
+    {
+        $radius = Mockery::mock(RadiusService::class);
+        $radius->shouldReceive('syncCustomer')->once()->andReturn(['active' => true, 'disconnected' => 0]);
+        $subscriptions = Mockery::mock(ZoStreamSubscriptionService::class);
+        $subscriptions->shouldReceive('activateComplimentaryAccess')->once()->andReturn([]);
+        $service = new CustomerOnboardingService(Mockery::mock(CashFreeController::class), $radius, $subscriptions);
+        $payload = $this->customerPayload('custom-expiry');
+        $payload['expires_at'] = today()->addDays(10)->toDateString();
+        $result = $service->createWithoutPayment($payload, 'old', 0, null, 7);
+        $this->assertSame($payload['expires_at'], $result['customer']->expires_at->toDateString());
+        $this->assertNull($result['customer']->aadhaar_qr_verified_at);
+        $this->assertNull($result['customer']->aadhaar_front_path);
     }
 
     private function customerPayload(string $username): array
@@ -169,11 +184,11 @@ class IspCustomerOnboardingServiceTest extends TestCase
             'phone' => '9876543210',
             'address' => 'Test address',
             'router_device_condition' => 'new',
-            'aadhaar_qr_verified_at' => now(),
+            'aadhaar_qr_verified_at' => null,
             'username' => $username,
             'password' => 'secret-password',
             'status' => 'active',
-            'expires_at' => today()->addMonth()->toDateString(),
+            'expires_at' => null,
         ];
     }
 }

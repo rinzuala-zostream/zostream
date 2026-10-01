@@ -196,20 +196,23 @@ class CustomerController extends Controller
         AadhaarQrVerificationService $aadhaar,
     ): RedirectResponse|JsonResponse {
         $data = $this->validated($request);
-        try {
-            $aadhaar->verifyUploadedFiles([
-                $request->file('aadhaar_front'),
-                $request->file('aadhaar_back'),
-            ]);
-        } catch (AadhaarQrVerificationException $e) {
-            throw ValidationException::withMessages(['aadhaar_front' => $e->getMessage()]);
+        $hasAadhaar = $request->hasFile('aadhaar_front') || $request->hasFile('aadhaar_back');
+        if ($hasAadhaar) {
+            try {
+                $aadhaar->verifyUploadedFiles([
+                    $request->file('aadhaar_front'),
+                    $request->file('aadhaar_back'),
+                ]);
+            } catch (AadhaarQrVerificationException $e) {
+                throw ValidationException::withMessages(['aadhaar_front' => $e->getMessage()]);
+            }
         }
 
         $customerData = Arr::only($data, [
             'router_id', 'package_id', 'branch_id', 'name', 'phone', 'address', 'username',
-            'password', 'status', 'router_device_condition',
+            'password', 'status', 'router_device_condition', 'expires_at',
         ]);
-        $customerData['aadhaar_qr_verified_at'] = now();
+        $customerData['aadhaar_qr_verified_at'] = $hasAadhaar ? now() : null;
         $storedPaths = [];
 
         try {
@@ -695,15 +698,15 @@ class CustomerController extends Controller
             ],
             'password' => [$customer ? 'nullable' : 'required', 'string', 'max:255'],
             'status' => ['required', Rule::in(['active', 'suspended'])],
-            'expires_at' => $customer && $request->user()->isAdmin()
+            'expires_at' => $request->user()->isAdmin()
                 ? ['nullable', 'date']
                 : ['prohibited'],
             'router_device_condition' => ['required', Rule::in(['old', 'new'])],
             'router_payment_choice' => [$customer ? 'nullable' : Rule::requiredIf(fn (): bool => $request->input('router_device_condition') === 'new'), Rule::in(['pay_now', 'pay_later'])],
             'router_amount' => [Rule::requiredIf(fn (): bool => ! $customer && $request->input('router_device_condition') === 'new' && $request->input('router_payment_choice') === 'pay_now'), 'nullable', 'numeric', 'min:1', 'max:999999.99'],
             'router_payment_note' => [Rule::requiredIf(fn (): bool => ! $customer && $request->input('router_device_condition') === 'new' && $request->input('router_payment_choice') === 'pay_later'), 'nullable', 'string', 'max:1000'],
-            'aadhaar_front' => [$customer ? 'required_with:aadhaar_back' : 'required', File::image()->max(5 * 1024)],
-            'aadhaar_back' => [$customer ? 'required_with:aadhaar_front' : 'required', File::image()->max(5 * 1024)],
+            'aadhaar_front' => ['nullable', 'required_with:aadhaar_back', File::image()->max(5 * 1024)],
+            'aadhaar_back' => ['nullable', 'required_with:aadhaar_front', File::image()->max(5 * 1024)],
         ]);
 
         if ($request->user()->isBranchOperator()) {

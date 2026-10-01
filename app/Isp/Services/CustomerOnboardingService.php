@@ -34,7 +34,7 @@ class CustomerOnboardingService
             'username' => $customerData['username'],
             'aadhaar_front_path' => $customerData['aadhaar_front_path'] ?? null,
             'aadhaar_back_path' => $customerData['aadhaar_back_path'] ?? null,
-            'aadhaar_qr_verified_at' => $customerData['aadhaar_qr_verified_at'],
+            'aadhaar_qr_verified_at' => $customerData['aadhaar_qr_verified_at'] ?? null,
             'router_amount' => $routerAmount,
             'notes' => $notes,
             'status' => 'pending',
@@ -83,7 +83,7 @@ class CustomerOnboardingService
         ?string $notes,
         ?int $operatorId,
     ): array {
-        $customerData['expires_at'] = Customer::initialExpiryDate()->toDateString();
+        $customerData['expires_at'] ??= Customer::initialExpiryDate()->toDateString();
 
         $customer = DB::transaction(function () use ($customerData, $routerCondition, $routerAmount, $notes, $operatorId): Customer {
             $customer = Customer::withoutEvents(fn (): Customer => Customer::create($customerData));
@@ -113,7 +113,7 @@ class CustomerOnboardingService
             }
 
             $customerData = $locked->customer_payload;
-            $customerData['expires_at'] = Customer::initialExpiryDate()->toDateString();
+            $customerData['expires_at'] ??= Customer::initialExpiryDate()->toDateString();
             $customer = Customer::withoutEvents(fn (): Customer => Customer::create($customerData));
             CustomerRouterPayment::create([
                 'customer_id' => $customer->id,
