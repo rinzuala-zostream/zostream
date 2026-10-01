@@ -487,3 +487,27 @@
 /* ZoStream supplied brand artwork */
 .brand-logo{width:44px;height:44px;flex:0 0 44px;display:block;object-fit:cover;border-radius:12px;background:#fff;box-shadow:0 5px 16px rgba(3,24,18,.2),inset 0 0 0 1px rgba(255,255,255,.4)}
 .login-brand .brand-logo{width:56px;height:56px;flex-basis:56px;border-radius:15px;box-shadow:0 8px 24px rgba(17,70,52,.15)}
+
+/* Payment collection workspace */
+.payment-view-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:20px;padding:6px;border:1px solid var(--line);border-radius:16px;background:#fff;box-shadow:0 8px 25px rgba(29,59,47,.04)}
+.payment-view-tabs>a{display:flex;align-items:center;gap:11px;padding:13px 15px;border-radius:11px;color:#60736b;transition:.18s}
+.payment-view-tabs>a:hover{background:#f4f8f6;color:var(--green)}
+.payment-view-tabs>a.active{background:#123f33;color:#fff;box-shadow:0 7px 17px rgba(18,63,51,.15)}
+.payment-view-tabs i{width:34px;height:34px;display:grid;place-items:center;flex:0 0 auto;border-radius:10px;background:#edf7f2;color:var(--green);font-style:normal;font-weight:900}
+.payment-view-tabs .active i{background:#c9f36c;color:#183f31}
+.payment-view-tabs strong,.payment-view-tabs small{display:block}.payment-view-tabs strong{font-size:13px}.payment-view-tabs small{margin-top:2px;font-size:10px;opacity:.72}
+.collection-filter{display:flex;align-items:end;justify-content:flex-end;gap:10px;margin-bottom:16px;padding:15px 17px;border:1px solid var(--line);border-radius:14px;background:#fff}
+.collection-filter label{display:grid;gap:6px}.collection-filter label>span{font-size:10px;font-weight:800;letter-spacing:.07em;color:#61746c;text-transform:uppercase}
+.collection-filter input{min-width:190px;border:1px solid #ccd8d2;border-radius:9px;padding:10px 12px;background:#fbfdfc;color:var(--ink);outline:none}.collection-filter input:focus{border-color:#2a9a73;box-shadow:0 0 0 3px rgba(42,154,115,.1)}
+.collection-summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:16px}
+.collection-summary-card{min-width:0;padding:20px;border:1px solid var(--line);border-radius:15px;background:#fff;box-shadow:0 8px 25px rgba(29,59,47,.04)}
+.collection-summary-card.revenue{background:linear-gradient(145deg,#123f33,#0d7555);border-color:transparent;color:#fff}
+.collection-summary-card>span{display:block;font-size:9px;font-weight:900;letter-spacing:.11em;color:#668078}.collection-summary-card.revenue>span{color:#d8f49a}
+.collection-summary-card>strong{display:block;overflow:hidden;margin:14px 0 4px;font:800 clamp(20px,2.1vw,28px) 'Manrope';text-overflow:ellipsis;white-space:nowrap}
+.collection-summary-card>small{color:var(--muted);font-size:10px}.collection-summary-card.revenue>small{color:#c9e3da}
+.revenue-comparison{display:flex;align-items:center;justify-content:space-between;gap:24px;margin-bottom:20px;padding:20px 22px;border:1px solid #dfe8e3;border-radius:16px;background:#fff;box-shadow:0 8px 25px rgba(29,59,47,.04)}
+.revenue-comparison>div>span{font-size:9px;font-weight:900;letter-spacing:.12em;color:#6b7d75}.revenue-comparison h3{margin:5px 0 4px;font:800 18px 'Manrope'}.revenue-comparison p{margin:0;color:var(--muted);font-size:11px}
+.revenue-change{display:flex;align-items:center;gap:11px;min-width:220px;padding:12px 15px;border-radius:12px;background:#eef7f3;color:#197252}.revenue-comparison.down .revenue-change{background:#fff0f0;color:var(--danger)}.revenue-comparison.flat .revenue-change{background:#f1f4f2;color:#63736c}
+.revenue-change>i{width:36px;height:36px;display:grid;place-items:center;border-radius:10px;background:rgba(255,255,255,.72);font-style:normal;font-size:20px}.revenue-change strong,.revenue-change small{display:block}.revenue-change strong{font:800 17px 'Manrope'}.revenue-change small{margin-top:2px;font-size:10px;opacity:.78}
+@media(max-width:1050px){.collection-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:650px){.payment-view-tabs{grid-template-columns:1fr}.collection-filter{align-items:stretch;flex-direction:column}.collection-filter input{width:100%;min-width:0}.collection-summary-grid{grid-template-columns:1fr}.revenue-comparison{align-items:stretch;flex-direction:column}.revenue-change{min-width:0}.collection-summary-card>strong{font-size:25px}}

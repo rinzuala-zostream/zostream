@@ -13,6 +13,7 @@ use App\Isp\Services\CustomerOnboardingService;
 use App\Isp\Services\PaymentInvoicePdf;
 use App\Isp\Services\RadiusService;
 use App\Isp\Services\ZoStreamSubscriptionService;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -29,16 +30,61 @@ class PaymentController extends Controller
     public function index(Request $request): View
     {
         $branchId = $request->user()->isBranchOperator() ? $request->user()->branch_id : null;
+        $activeView = $request->filled('customer') || $request->query('view') === 'collect'
+            ? 'collect'
+            : 'collections';
+        $requestedMonth = (string) $request->query('month', '');
+        if (preg_match('/\A(\d{4})-(\d{2})\z/', $requestedMonth, $matches)
+            && checkdate((int) $matches[2], 1, (int) $matches[1])) {
+            $selectedMonth = CarbonImmutable::create((int) $matches[1], (int) $matches[2], 1)->startOfDay();
+        } else {
+            $selectedMonth = CarbonImmutable::now()->startOfMonth();
+        }
+        $nextMonth = $selectedMonth->addMonth();
+        $previousMonth = $selectedMonth->subMonth();
+
+        $scopeToBranch = static fn ($query) => $query
+            ->when($branchId, fn ($query) => $query->whereHas(
+                'customer',
+                fn ($query) => $query->where('branch_id', $branchId)
+            ));
+        $summaryFor = static function (CarbonImmutable $from, CarbonImmutable $until) use ($scopeToBranch): object {
+            return $scopeToBranch(Payment::query())
+                ->where('paid_at', '>=', $from)
+                ->where('paid_at', '<', $until)
+                ->selectRaw('COUNT(*) as payment_count')
+                ->selectRaw('COALESCE(SUM(amount), 0) as revenue')
+                ->selectRaw('COALESCE(SUM(COALESCE(package_amount, amount)), 0) as package_total')
+                ->selectRaw('COALESCE(SUM(operator_commission), 0) as operator_commission')
+                ->first();
+        };
+
+        $collectionSummary = $summaryFor($selectedMonth, $nextMonth);
+        $previousSummary = $summaryFor($previousMonth, $selectedMonth);
+        $revenueDifference = (float) $collectionSummary->revenue - (float) $previousSummary->revenue;
+        $revenuePercentage = (float) $previousSummary->revenue > 0
+            ? round(($revenueDifference / (float) $previousSummary->revenue) * 100, 1)
+            : null;
 
         return view('isp.payments.index', [
-            'payments' => Payment::with(['customer', 'operator', 'package'])
-                ->when($branchId, fn ($query) => $query->whereHas('customer', fn ($query) => $query->where('branch_id', $branchId)))
-                ->latest('paid_at')->paginate(20),
+            'payments' => $scopeToBranch(Payment::with(['customer', 'operator', 'package']))
+                ->where('paid_at', '>=', $selectedMonth)
+                ->where('paid_at', '<', $nextMonth)
+                ->latest('paid_at')
+                ->paginate(20)
+                ->withQueryString(),
             'customers' => Customer::when($branchId, fn ($query) => $query->where('branch_id', $branchId))
                 ->with(['package:id,name,price,validity_days', 'branch:id,name,operator_percentage,ott_deduction', 'branch.packages:id'])
                 ->orderBy('name')->get(['id', 'package_id', 'branch_id', 'name', 'phone', 'username']),
             'packages' => Package::where('is_active', true)->orderBy('name')->get(),
             'selectedCustomer' => $request->integer('customer'),
+            'activeView' => $activeView,
+            'selectedMonth' => $selectedMonth,
+            'previousMonth' => $previousMonth,
+            'collectionSummary' => $collectionSummary,
+            'previousSummary' => $previousSummary,
+            'revenueDifference' => $revenueDifference,
+            'revenuePercentage' => $revenuePercentage,
         ]);
     }
 

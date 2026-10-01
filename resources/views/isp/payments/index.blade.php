@@ -3,10 +3,21 @@
 @section('eyebrow', 'Collections')
 @section('content')
 <section class="payment-hero">
-    <div><span>SMART COLLECTION</span><h2>Collect, split and activate.</h2><p>Select a customer and the panel will calculate every share before payment.</p></div>
-    <div class="payment-hero-badge"><i>✓</i><span><strong>Secure checkout</strong><small>Server-verified Cashfree payment</small></span></div>
+    @if($activeView === 'collect')
+        <div><span>SMART COLLECTION</span><h2>Collect, split and activate.</h2><p>Select a customer and the panel will calculate every share before payment.</p></div>
+        <div class="payment-hero-badge"><i>✓</i><span><strong>Secure checkout</strong><small>Server-verified Cashfree payment</small></span></div>
+    @else
+        <div><span>MONTHLY REVENUE</span><h2>Track every collection.</h2><p>Review a month, compare it with the previous month and inspect every transaction.</p></div>
+        <div class="payment-hero-badge"><i>↗</i><span><strong>{{ $selectedMonth->format('F Y') }}</strong><small>{{ number_format($collectionSummary->payment_count) }} completed payments</small></span></div>
+    @endif
 </section>
 
+<nav class="payment-view-tabs" aria-label="Payment views">
+    <a class="{{ $activeView === 'collections' ? 'active' : '' }}" href="{{ route('isp.payments.index', ['view' => 'collections', 'month' => $selectedMonth->format('Y-m')]) }}"><i>▦</i><span><strong>Payment Collections</strong><small>Monthly revenue and history</small></span></a>
+    <a class="{{ $activeView === 'collect' ? 'active' : '' }}" href="{{ route('isp.payments.index', ['view' => 'collect']) }}"><i>₹</i><span><strong>Collect Payment</strong><small>Renew a customer package</small></span></a>
+</nav>
+
+@if($activeView === 'collect')
 <form id="paymentForm" class="payment-workspace" method="POST" action="{{ route('isp.payments.store') }}" data-checkout-url="{{ route('isp.payments.checkout') }}" data-complete-url="{{ route('isp.payments.cashfree.complete') }}" data-ott-deduction="0" data-operator-percentage="{{ config('services.zostream_subscription.operator_percentage', 20) }}">@csrf
     <section class="payment-entry-card">
         <div class="payment-section-head"><span>01</span><div><h3>Customer & payment</h3><p>Choose the subscriber and how the payment was received.</p></div></div>
@@ -42,9 +53,54 @@
         <small class="payment-security">🔒 Amount is recalculated and verified by the server.</small>
     </aside>
 </form>
+@else
+<form class="collection-filter" method="GET" action="{{ route('isp.payments.index') }}">
+    <input type="hidden" name="view" value="collections">
+    <label><span>Collection month</span><input type="month" name="month" value="{{ $selectedMonth->format('Y-m') }}" max="{{ now()->format('Y-m') }}"></label>
+    <button class="button primary" type="submit">View month</button>
+</form>
+
+@php
+    $trend = $revenueDifference > 0 ? 'up' : ($revenueDifference < 0 ? 'down' : 'flat');
+@endphp
+<section class="collection-summary-grid">
+    <article class="collection-summary-card revenue">
+        <span>COLLECTED REVENUE</span>
+        <strong>₹{{ number_format($collectionSummary->revenue, 2) }}</strong>
+        <small>{{ $selectedMonth->format('F Y') }}</small>
+    </article>
+    <article class="collection-summary-card">
+        <span>PAYMENTS</span>
+        <strong>{{ number_format($collectionSummary->payment_count) }}</strong>
+        <small>Completed transactions</small>
+    </article>
+    <article class="collection-summary-card">
+        <span>PACKAGE VALUE</span>
+        <strong>₹{{ number_format($collectionSummary->package_total, 2) }}</strong>
+        <small>Gross value before revenue split</small>
+    </article>
+    <article class="collection-summary-card">
+        <span>OPERATOR EARNINGS</span>
+        <strong>₹{{ number_format($collectionSummary->operator_commission, 2) }}</strong>
+        <small>Commission for selected month</small>
+    </article>
+</section>
+
+<section class="revenue-comparison {{ $trend }}">
+    <div>
+        <span>PREVIOUS-MONTH COMPARISON</span>
+        <h3>{{ $selectedMonth->format('F') }} vs {{ $previousMonth->format('F Y') }}</h3>
+        <p>Previous revenue: <strong>₹{{ number_format($previousSummary->revenue, 2) }}</strong></p>
+    </div>
+    <div class="revenue-change">
+        <i>{{ $trend === 'up' ? '↑' : ($trend === 'down' ? '↓' : '→') }}</i>
+        <span><strong>{{ $revenueDifference >= 0 ? '+' : '−' }}₹{{ number_format(abs($revenueDifference), 2) }}</strong>
+        <small>@if($revenuePercentage === null) No previous-month baseline @else {{ $revenuePercentage >= 0 ? '+' : '' }}{{ number_format($revenuePercentage, 1) }}% from previous month @endif</small></span>
+    </div>
+</section>
 
 <section class="payment-history panel">
-    <div class="panel-head"><div><span>COLLECTION HISTORY</span><h3>Latest transactions</h3></div><small>{{ $payments->total() }} records</small></div>
+    <div class="panel-head"><div><span>COLLECTION HISTORY</span><h3>{{ $selectedMonth->format('F Y') }} transactions</h3></div><small>{{ $payments->total() }} records</small></div>
     <div class="payment-history-list">
     @forelse($payments as $payment)
         <article class="payment-history-item">
@@ -61,6 +117,9 @@
     </div>
     <div class="pagination">{{ $payments->links() }}</div>
 </section>
+@endif
+
+@if($activeView === 'collect')
 <dialog id="paymentConfirmation" class="confirmation-dialog">
     <form method="dialog">
         <div class="confirmation-head"><span>CONFIRM PAYMENT</span><h3>Review before continuing</h3></div>
@@ -81,7 +140,9 @@
         </div>
     </form>
 </dialog>
+@endif
 @endsection
+@if($activeView === 'collect')
 @push('scripts')
 <script src="https://sdk.cashfree.com/js/v3/cashfree.js"></script>
 <script>
@@ -263,3 +324,4 @@
 })();
 </script>
 @endpush
+@endif
