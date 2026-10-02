@@ -12,7 +12,7 @@ class SuspendExpiredIspCustomers extends Command
 {
     protected $signature = 'isp:suspend-expired';
 
-    protected $description = 'Suspend expired ISP customers, reject RADIUS access, and disconnect active PPP sessions.';
+    protected $description = 'Reject RADIUS access and disconnect active PPP sessions for expired ISP customers.';
 
     public function __construct(
         private readonly RadiusService $radius,
@@ -52,11 +52,11 @@ class SuspendExpiredIspCustomers extends Command
                         'expiry_suspended_for' => $expiryDate,
                     ]);
                     $processed++;
-                    $this->info("Suspended customer #{$customer->id}; disconnected {$result['disconnected']} session(s).");
+                    $this->info("Processed expired customer #{$customer->id}; disconnected {$result['disconnected']} session(s).");
                 } catch (Throwable $e) {
                     $failed++;
-                    $this->warn("Failed to suspend customer #{$customer->id}: {$e->getMessage()}");
-                    Log::error('Expired ISP customer suspension failed', [
+                    $this->warn("Failed to process expired customer #{$customer->id}: {$e->getMessage()}");
+                    Log::error('Expired ISP customer processing failed', [
                         'customer_id' => $customer->id,
                         'expiry_date' => $expiryDate,
                         'error' => $e->getMessage(),
@@ -64,7 +64,7 @@ class SuspendExpiredIspCustomers extends Command
                 }
             });
 
-        $this->info("ISP expiry suspension complete: {$processed} processed, {$failed} failed, {$skipped} skipped.");
+        $this->info("ISP expiry processing complete: {$processed} processed, {$failed} failed, {$skipped} skipped.");
 
         return $failed === 0 ? self::SUCCESS : self::FAILURE;
     }

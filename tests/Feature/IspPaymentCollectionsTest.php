@@ -2,11 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Isp\Models\Customer;
 use App\Isp\Models\User;
+use App\Isp\Services\RadiusService;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Mockery;
 use Tests\TestCase;
 
 class IspPaymentCollectionsTest extends TestCase
@@ -58,6 +61,8 @@ class IspPaymentCollectionsTest extends TestCase
             $table->string('phone')->nullable();
             $table->string('username');
             $table->string('status')->default('active');
+            $table->date('expires_at')->nullable();
+            $table->date('expiry_suspended_for')->nullable();
             $table->timestamps();
         });
         Schema::create('payments', function (Blueprint $table): void {
@@ -166,6 +171,60 @@ class IspPaymentCollectionsTest extends TestCase
             ->assertOk()
             ->assertViewHas('activeView', 'collect')
             ->assertSee('Customer & payment', false);
+    }
+
+    public function test_renewal_does_not_clear_a_manual_suspension(): void
+    {
+        $packageId = DB::table('packages')->insertGetId([
+            'name' => 'Home 30',
+            'price' => 500,
+            'validity_days' => 30,
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $admin = User::create([
+            'name' => 'ISP Admin',
+            'email' => 'renewal-admin@example.test',
+            'password' => 'secret-password',
+            'role' => 'admin',
+            'is_active' => true,
+        ]);
+        $customerId = DB::table('customers')->insertGetId([
+            'package_id' => $packageId,
+            'name' => 'Manually Suspended',
+            'username' => 'manual-suspension',
+            'status' => 'suspended',
+            'expires_at' => today()->addDays(5)->toDateString(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $radius = Mockery::mock(RadiusService::class);
+        $radius->shouldReceive('syncCustomer')->once()
+            ->with(Mockery::on(fn (Customer $customer): bool => $customer->id === $customerId
+                && $customer->status === 'suspended'), false)
+            ->andReturn(['active' => false, 'disconnected' => 0]);
+        $radius->shouldReceive('syncCustomer')->once()
+            ->with(Mockery::on(fn (Customer $customer): bool => $customer->id === $customerId
+                && $customer->status === 'suspended'))
+            ->andReturn(['active' => false, 'disconnected' => 0]);
+        $this->app->instance(RadiusService::class, $radius);
+
+        $this->actingAs($admin, 'isp')->post(route('isp.payments.store'), [
+            'customer_id' => $customerId,
+            'package_id' => $packageId,
+            'method' => 'cash',
+        ])->assertSessionHas('success');
+
+        $this->assertDatabaseHas('customers', [
+            'id' => $customerId,
+            'status' => 'suspended',
+        ]);
+        $this->assertSame(
+            today()->addDays(35)->toDateString(),
+            Customer::findOrFail($customerId)->expires_at->toDateString(),
+        );
     }
 
     private function insertPayment(

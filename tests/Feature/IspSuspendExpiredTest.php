@@ -34,7 +34,7 @@ class IspSuspendExpiredTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_it_suspends_only_customers_whose_inclusive_expiry_date_has_ended(): void
+    public function test_it_processes_expired_access_without_changing_manual_status(): void
     {
         $expiredId = DB::table('customers')->insertGetId([
             'name' => 'Expired Customer',
@@ -67,20 +67,16 @@ class IspSuspendExpiredTest extends TestCase
         $radius->shouldReceive('syncCustomer')
             ->once()
             ->with(Mockery::on(fn (Customer $customer): bool => $customer->id === $expiredId))
-            ->andReturnUsing(function (Customer $customer): array {
-                $customer->forceFill(['status' => 'suspended'])->saveQuietly();
-
-                return ['active' => false, 'disconnected' => 1];
-            });
+            ->andReturn(['active' => false, 'disconnected' => 1]);
         $this->app->instance(RadiusService::class, $radius);
 
         $this->artisan('isp:suspend-expired')
-            ->expectsOutput("Suspended customer #{$expiredId}; disconnected 1 session(s).")
-            ->expectsOutput('ISP expiry suspension complete: 1 processed, 0 failed, 0 skipped.')
+            ->expectsOutput("Processed expired customer #{$expiredId}; disconnected 1 session(s).")
+            ->expectsOutput('ISP expiry processing complete: 1 processed, 0 failed, 0 skipped.')
             ->assertSuccessful();
 
         $expired = DB::table('customers')->find($expiredId);
-        $this->assertSame('suspended', $expired->status);
+        $this->assertSame('active', $expired->status);
         $this->assertSame(today()->subDay()->toDateString(), substr($expired->expiry_suspended_for, 0, 10));
 
         $this->assertDatabaseHas('customers', [
@@ -89,7 +85,7 @@ class IspSuspendExpiredTest extends TestCase
         ]);
 
         $this->artisan('isp:suspend-expired')
-            ->expectsOutput('ISP expiry suspension complete: 0 processed, 0 failed, 0 skipped.')
+            ->expectsOutput('ISP expiry processing complete: 0 processed, 0 failed, 0 skipped.')
             ->assertSuccessful();
     }
 
@@ -110,8 +106,8 @@ class IspSuspendExpiredTest extends TestCase
         $this->app->instance(RadiusService::class, $radius);
 
         $this->artisan('isp:suspend-expired')
-            ->expectsOutput("Failed to suspend customer #{$customerId}: Router unavailable")
-            ->expectsOutput('ISP expiry suspension complete: 0 processed, 1 failed, 0 skipped.')
+            ->expectsOutput("Failed to process expired customer #{$customerId}: Router unavailable")
+            ->expectsOutput('ISP expiry processing complete: 0 processed, 1 failed, 0 skipped.')
             ->assertFailed();
 
         $this->assertDatabaseHas('customers', [

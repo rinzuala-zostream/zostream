@@ -81,9 +81,8 @@ class DashboardController extends Controller
         $onlineIds = $onlineIds->unique();
         $offlineIds = $offlineIds->unique();
         $unknownIds = $unknownIds->unique();
-        $suspended = $customers->where('status', 'suspended');
-        $chartExpired = $customers->filter(fn (Customer $customer) => $customer->status !== 'suspended' && ($customer->expires_at?->lt(today()) ?? false)
-        );
+        $suspended = $customers->filter(fn (Customer $customer) => $customer->status === 'suspended'
+            && ! ($customer->expires_at?->lt(today()) ?? false));
 
         return view('isp.dashboard', [
             'stats' => [
@@ -101,7 +100,7 @@ class DashboardController extends Controller
             'statusChart' => [
                 'online' => $onlineIds->count(),
                 'offline' => $offlineIds->count(),
-                'expired' => $chartExpired->count(),
+                'expired' => $expired->count(),
                 'suspended' => $suspended->count(),
                 'unknown' => $unknownIds->count(),
             ],

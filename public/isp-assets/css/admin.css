@@ -1,6 +1,8 @@
 :root{--ink:#17211d;--muted:#718079;--line:#dfe7e2;--paper:#f3f7f4;--white:#fff;--green:#0d6b4f;--green2:#19a878;--mint:#daf4e9;--lime:#e8f5c7;--blue:#dceefb;--violet:#e9e2fb;--danger:#b83b42;--warning:#96620b;--shadow:0 18px 45px rgba(29,59,47,.08)}
 #routerAmountField[hidden],#routerPaymentField[hidden],#routerNoteField[hidden]{display:none!important}
 .customer-form{max-width:1100px;padding:0;gap:0;overflow:hidden}.customer-form-section{grid-column:1/-1;display:grid;grid-template-columns:minmax(200px,.34fr) minmax(0,1fr);gap:30px;padding:27px 29px;border-bottom:1px solid #e8eeeb}.customer-form-section:nth-of-type(even){background:#fbfdfc}.customer-form-section-head{display:flex;align-items:flex-start;gap:12px}.customer-form-section-head>span{width:32px;height:32px;display:grid;place-items:center;flex:0 0 auto;border-radius:9px;background:#e5f5ed;color:var(--green);font-size:10px;font-weight:900}.customer-form-section-head strong,.customer-form-section-head small{display:block}.customer-form-section-head strong{font:800 15px 'Manrope'}.customer-form-section-head small{margin-top:5px;color:var(--muted);font-size:11px;line-height:1.5}.customer-form-section-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:start;gap:18px}.customer-form-section-grid>label{align-self:start;min-width:0}.customer-form-section-grid>.full{grid-column:1/-1}.customer-form-section-grid input,.customer-form-section-grid select,.customer-form-section-grid textarea{width:100%;min-width:0}.customer-router-section{background:#f4faf7!important}.customer-form-actions{grid-column:1/-1;margin:0;padding:20px 29px;background:#fff;border-top:0}.customer-form input[type=file]{min-height:42px;padding:8px;background:#fbfdfc}
+.customer-form .plan-status-field:disabled{opacity:1;border-color:#cfe1d8;background:#f2f8f5;color:#28614e;font-weight:800}
+.customer-form .plan-status-field.is-expired-plan-status:disabled{border-color:#efc9cc;background:#fff0f0;color:#a23e45}
 .aadhaar-verification-note{display:flex;align-items:center;gap:11px;padding:13px 14px;border:1px solid #c9e8da;border-radius:11px;background:#edf9f3;color:#205e49}.aadhaar-verification-note>span{width:28px;height:28px;display:grid;place-items:center;flex:0 0 auto;border-radius:50%;background:#1b9870;color:#fff;font-weight:900}.aadhaar-verification-note strong,.aadhaar-verification-note small{display:block}.aadhaar-verification-note strong{font-size:12px}.aadhaar-verification-note small{margin-top:2px;color:#5f786e;font-size:10px;line-height:1.4}
 .aadhaar-verification-error{display:flex;align-items:flex-start;gap:11px;padding:14px;border:1px solid #efbfc3;border-radius:11px;background:#fff0f1;color:#96363d}.aadhaar-verification-error[hidden]{display:none!important}.aadhaar-verification-error>span{width:28px;height:28px;display:grid;place-items:center;flex:0 0 auto;border-radius:50%;background:#ba4149;color:#fff;font-weight:900}.aadhaar-verification-error strong,.aadhaar-verification-error small{display:block}.aadhaar-verification-error p{margin:4px 0 5px;font-size:12px;font-weight:700;line-height:1.45}.aadhaar-verification-error small{color:#835a5e;font-size:10px;line-height:1.45}
 .aadhaar-upload-field{display:grid;align-content:start;gap:10px;min-width:0}.aadhaar-image-preview{min-height:150px;display:grid;place-items:center;overflow:hidden;border:1px dashed #bfd2c9;border-radius:11px;background:#f7faf8}.aadhaar-image-preview img{display:block;width:100%;height:190px;object-fit:contain;background:#eef4f1}.aadhaar-image-preview img[hidden]{display:none}.aadhaar-image-preview span{padding:20px;color:var(--muted);font-size:11px;text-align:center}
@@ -293,7 +295,9 @@
 
 /* Customer directory cards v2 */
 .customer-hero-metrics{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:18px}
-.customer-hero-metrics>span{display:inline-flex;align-items:center;gap:6px;padding:7px 10px;border:1px solid rgba(255,255,255,.14);border-radius:99px;background:rgba(255,255,255,.09);color:#d7e9e2;font-size:10px;font-weight:700;backdrop-filter:blur(8px)}
+.customer-hero-metrics>span,.customer-hero-metrics>a{display:inline-flex;align-items:center;gap:6px;padding:7px 10px;border:1px solid rgba(255,255,255,.14);border-radius:99px;background:rgba(255,255,255,.09);color:#d7e9e2;font-size:10px;font-weight:700;backdrop-filter:blur(8px)}
+.customer-hero-metrics>a{cursor:pointer;transition:background .16s,border-color .16s,transform .16s}
+.customer-hero-metrics>a:hover,.customer-hero-metrics>a.is-selected{border-color:rgba(217,246,154,.65);background:rgba(217,246,154,.18);color:#fff;transform:translateY(-1px)}
 .customer-hero-metrics b{color:#fff;font:800 12px 'Manrope'}
 .customer-hero-metrics i{width:7px;height:7px;border-radius:50%;background:#91e0be;box-shadow:0 0 0 4px rgba(145,224,190,.12)}
 .customer-hero-metrics i.metric-alert{background:#f4ca70;box-shadow:0 0 0 4px rgba(244,202,112,.12)}
@@ -302,9 +306,16 @@
 .customer-card:before{content:"";position:absolute;z-index:1;left:22px;right:22px;top:-1px;height:3px;border-radius:0 0 99px 99px;background:linear-gradient(90deg,#24a578,#92cf65);opacity:.85}
 .customer-card--expired:before,.customer-card--suspended:before{background:linear-gradient(90deg,#dc6a6f,#f1b17e)}
 .customer-card--unknown:before,.customer-card--offline:before{background:linear-gradient(90deg,#d19a35,#f0cf79)}
+.customer-card--offline{border-color:#ead9ae;background:linear-gradient(180deg,#fffdf8 0%,#fffaf0 100%)}
 .customer-card:hover{border-color:#c9dad2;box-shadow:0 17px 42px rgba(24,63,48,.095);transform:translateY(-2px)}
+.customer-card--offline:hover{border-color:#dfc67f}
 .customer-card.is-menu-open{z-index:30;border-color:#a8cdbd;box-shadow:0 20px 50px rgba(24,63,48,.14)}
 .customer-card-top{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:21px 22px 17px;border-bottom:1px solid #edf2ef}
+.customer-attention-summary{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 22px;border-bottom:1px solid #f2dfbc;background:#fff9ed;color:#70511d}
+.customer-attention-summary>strong{display:inline-flex;align-items:center;gap:7px;font-size:11px;white-space:nowrap}
+.customer-attention-summary>strong i{width:18px;height:18px;display:grid;place-items:center;border-radius:50%;background:#e9ab40;color:#fff;font-style:normal;font-size:11px}
+.customer-attention-summary>div{display:flex;justify-content:flex-end;gap:6px;flex-wrap:wrap}
+.customer-attention-summary span{padding:4px 8px;border:1px solid #efd7aa;border-radius:99px;background:#fff;color:#75541d;font-size:9px;font-weight:800}
 .customer-card .customer-main{display:flex;align-items:center;gap:13px;min-width:0}
 .customer-card .customer-avatar{position:relative;width:50px;height:50px;display:grid;place-items:center;flex:0 0 auto;border:1px solid #d0e8dd;border-radius:15px;background:linear-gradient(145deg,#dff5eb,#edf8d8);color:#15523e;font:800 14px 'Manrope';box-shadow:inset 0 0 0 4px rgba(255,255,255,.45)}
 .customer-card .customer-avatar:after{content:"";position:absolute;right:-2px;bottom:-2px;width:11px;height:11px;border:3px solid #fff;border-radius:50%;background:#28ad7d}
@@ -334,6 +345,8 @@
 .customer-menu-popover form{display:block;margin:0}
 .customer-menu-item{width:100%;display:flex;align-items:center;gap:10px;border:0;border-radius:10px;padding:10px;background:transparent;color:#304f44;text-align:left;text-decoration:none;cursor:pointer;transition:.14s}
 .customer-menu-item:hover,.customer-menu-item:focus-visible{outline:0;background:#f0f7f3;color:#087453}
+.customer-menu-item:disabled{opacity:.58;cursor:not-allowed}
+.customer-menu-item:disabled:hover{background:transparent;color:#304f44}
 .customer-menu-item>i{width:32px;height:32px;display:grid;place-items:center;flex:0 0 auto;border-radius:9px;background:#edf5f1;color:#287159;font-style:normal;font-weight:800}
 .customer-menu-item>span,.customer-menu-item strong,.customer-menu-item small{display:block}
 .customer-menu-item strong{font:800 12px 'Manrope'}
@@ -378,7 +391,7 @@
 .customer-expiry-summary.is-expired strong{color:#a23e45}
 .operator-customer-card .customer-card-footer{border-top:0}
 @media(min-width:1500px){.customer-card-list{grid-template-columns:repeat(2,minmax(0,1fr))}.customer-card-footer{align-items:stretch;flex-direction:column}.customer-expiry-summary{padding:13px 0 0;border-top:1px solid #e1e9e5;border-left:0}}
-@media(max-width:650px){.customer-hero-metrics{gap:6px}.customer-hero-metrics>span{font-size:9px}.customer-card-top{align-items:flex-start;padding:19px 16px 15px}.customer-card .customer-avatar{width:44px;height:44px;border-radius:13px}.customer-card .customer-identity h3{font-size:15px}.customer-card-tools{align-items:flex-end;flex-direction:column-reverse}.customer-card .customer-status{font-size:8px}.customer-menu-popover{width:min(310px,calc(100vw - 48px))}.customer-service-grid{grid-template-columns:1fr;padding:14px 16px}.customer-card-footer{align-items:stretch;flex-direction:column;padding:14px 16px 17px}.customer-usage-summary{align-items:flex-start;flex-direction:column}.customer-traffic-pills{width:100%}.customer-traffic-pills>span{flex:1}.customer-expiry-summary{padding:13px 0 0;border-top:1px solid #e1e9e5;border-left:0}.customer-card:hover{transform:none}}
+@media(max-width:650px){.customer-hero-metrics{gap:6px}.customer-hero-metrics>span,.customer-hero-metrics>a{font-size:9px}.customer-card-top{align-items:flex-start;padding:19px 16px 15px}.customer-attention-summary{align-items:flex-start;flex-direction:column;padding:10px 16px}.customer-attention-summary>div{justify-content:flex-start}.customer-card .customer-avatar{width:44px;height:44px;border-radius:13px}.customer-card .customer-identity h3{font-size:15px}.customer-card-tools{align-items:flex-end;flex-direction:column-reverse}.customer-card .customer-status{font-size:8px}.customer-menu-popover{width:min(310px,calc(100vw - 48px))}.customer-service-grid{grid-template-columns:1fr;padding:14px 16px}.customer-card-footer{align-items:stretch;flex-direction:column;padding:14px 16px 17px}.customer-usage-summary{align-items:flex-start;flex-direction:column}.customer-traffic-pills{width:100%}.customer-traffic-pills>span{flex:1}.customer-expiry-summary{padding:13px 0 0;border-top:1px solid #e1e9e5;border-left:0}.customer-card:hover{transform:none}}
 @media(max-width:390px){.customer-contact-row{align-items:flex-start;flex-direction:column;gap:4px}.customer-card .customer-status{display:none}.customer-menu-popover{right:-2px}.customer-traffic-pills{flex-direction:column}.customer-traffic-pills>span{width:100%}}
 
 /* Packages, routers and panel users */

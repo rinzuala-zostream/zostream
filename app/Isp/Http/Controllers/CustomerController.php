@@ -34,10 +34,12 @@ class CustomerController extends Controller
         $customers = $this->filteredQuery($request, $liveStatusIds)
             ->with(['router', 'package', 'branch', 'routerPayment'])
             ->orderBy('username')->paginate(15)->withQueryString();
+        $this->attachLiveStatuses($customers->getCollection(), $mikrotik);
         $this->attachAccountingUsage($customers->getCollection());
 
         return view('isp.customers.index', [
             'customers' => $customers,
+            'customerSummary' => $this->customerSummary($request),
             'routers' => $request->user()->isBranchOperator()
                 ? Router::whereKey($request->user()->branch?->router_id)->get()
                 : Router::orderBy('name')->get(),
@@ -77,7 +79,7 @@ class CustomerController extends Controller
 
         $request->validate([
             'mode' => ['nullable', Rule::in(['filtered'])],
-            'status' => ['required', Rule::in(['active', 'suspended', 'expired', 'online', 'offline', 'unknown'])],
+            'status' => ['required', Rule::in(['active', 'suspended', 'expired', 'online', 'offline', 'unknown', 'attention'])],
             'search' => ['nullable', 'string', 'max:150'],
             'router_id' => ['nullable', 'integer'],
             'branch_id' => ['nullable', 'integer'],
@@ -409,7 +411,7 @@ class CustomerController extends Controller
     {
         $request->validate([
             'search' => ['nullable', 'string', 'max:150'],
-            'status' => ['nullable', Rule::in(['active', 'suspended', 'online', 'offline', 'expired', 'unknown'])],
+            'status' => ['nullable', Rule::in(['active', 'suspended', 'online', 'offline', 'expired', 'unknown', 'attention'])],
             'router_id' => ['nullable', 'exists:routers,id'],
             'branch_id' => ['nullable', 'exists:branches,id'],
             'after_id' => ['nullable', 'integer', 'min:0'],
@@ -473,7 +475,7 @@ class CustomerController extends Controller
     {
         $this->ensureCustomerAccess(request(), $customer);
 
-        if ($customer->status === 'suspended' && $customer->expires_at?->lt(today())) {
+        if ($customer->expires_at?->lt(today())) {
             return redirect()->route('isp.customers.index')->with(
                 'warning',
                 'This customer is expired. Record a payment/renewal or move the expiry date before activating PPPoE.'
@@ -526,21 +528,25 @@ class CustomerController extends Controller
 
     private function filteredQuery(Request $request, array $liveStatusIds = []): Builder
     {
-        return $this->baseCustomerQuery($request)
+        $query = $this->baseCustomerQuery($request)
             ->when($request->input('status') === 'active', fn ($q) => $q
                 ->where('status', 'active')
                 ->where(fn ($q) => $q->whereNull('expires_at')->orWhereDate('expires_at', '>=', today())))
-            ->when($request->input('status') === 'suspended', fn ($q) => $q->where('status', 'suspended'))
+            ->when($request->input('status') === 'suspended', fn ($q) => $q
+                ->where('status', 'suspended')
+                ->where(fn ($q) => $q->whereNull('expires_at')->orWhereDate('expires_at', '>=', today())))
             ->when($request->input('status') === 'expired', fn ($q) => $q->whereDate('expires_at', '<', today()))
             ->when(in_array($request->input('status'), ['online', 'offline', 'unknown'], true), fn ($q) => $q
                 ->whereIn('id', $liveStatusIds[$request->input('status')] ?? []));
+
+        return $request->input('status') === 'attention'
+            ? $this->needsAttentionQuery($query)
+            : $query;
     }
 
     private function baseCustomerQuery(Request $request): Builder
     {
-        return Customer::query()
-            ->when($request->user()?->isBranchOperator(), fn ($query) => $query
-                ->where('branch_id', $request->user()->branch_id))
+        return $this->accessibleCustomerQuery($request)
             ->when($request->filled('search'), fn ($q) => $q->where(fn ($q) => $q
                 ->where('name', 'like', '%'.$request->string('search').'%')
                 ->orWhere('username', 'like', '%'.$request->string('search').'%')
@@ -549,6 +555,45 @@ class CustomerController extends Controller
                     ->where('name', 'like', '%'.$request->string('search').'%'))))
             ->when(! $request->user()?->isBranchOperator() && $request->filled('router_id'), fn ($q) => $q->where('router_id', $request->integer('router_id')))
             ->when(! $request->user()?->isBranchOperator() && $request->filled('branch_id'), fn ($q) => $q->where('branch_id', $request->integer('branch_id')));
+    }
+
+    private function accessibleCustomerQuery(Request $request): Builder
+    {
+        return Customer::query()
+            ->when($request->user()?->isBranchOperator(), fn ($query) => $query
+                ->where('branch_id', $request->user()->branch_id));
+    }
+
+    private function customerSummary(Request $request): array
+    {
+        $accessible = $this->accessibleCustomerQuery($request);
+
+        return [
+            'active' => (clone $accessible)
+                ->where('status', 'active')
+                ->where(fn ($query) => $query
+                    ->whereNull('expires_at')
+                    ->orWhereDate('expires_at', '>=', today()))
+                ->count(),
+            'needs_attention' => $this->needsAttentionQuery(clone $accessible)->count(),
+        ];
+    }
+
+    private function needsAttentionQuery(Builder $query): Builder
+    {
+        return $query->where(function (Builder $query): void {
+            $query->where('status', 'suspended')
+                ->orWhereDate('expires_at', '<', today())
+                ->orWhere(function (Builder $query): void {
+                    $query->whereNull('router_device_condition')
+                        ->orWhereNotIn('router_device_condition', ['old', 'new']);
+                })
+                ->orWhere(function (Builder $query): void {
+                    $query->where('router_device_condition', 'new')
+                        ->whereHas('routerPayment', fn (Builder $payment) => $payment
+                            ->where('status', 'unpaid'));
+                });
+        });
     }
 
     private function liveStatusIds(Request $request, MikroTikService $mikrotik): array
@@ -592,6 +637,43 @@ class CustomerController extends Controller
         }
 
         return $ids;
+    }
+
+    private function attachLiveStatuses($customers, MikroTikService $mikrotik): void
+    {
+        $eligible = $customers->filter(fn (Customer $customer) => $customer->status === 'active'
+            && ! ($customer->expires_at?->lt(today()) ?? false));
+
+        foreach ($eligible->groupBy('router_id') as $routerCustomers) {
+            $router = $routerCustomers->first()->router;
+            if (! $router?->is_active) {
+                $routerCustomers->each(fn (Customer $customer) => $customer
+                    ->setAttribute('live_connection_status', 'unknown'));
+
+                continue;
+            }
+
+            try {
+                $sessions = Cache::remember(
+                    "dashboard.router.{$router->id}.ppp-active",
+                    now()->addSeconds(20),
+                    fn () => $mikrotik->activePppUsers($router),
+                );
+                $activeNames = collect($sessions)->pluck('name')->filter()
+                    ->map(fn ($name) => mb_strtolower((string) $name));
+
+                $routerCustomers->each(function (Customer $customer) use ($activeNames): void {
+                    $customer->setAttribute(
+                        'live_connection_status',
+                        $activeNames->contains(mb_strtolower($customer->username)) ? 'online' : 'offline',
+                    );
+                });
+            } catch (Throwable $e) {
+                report($e);
+                $routerCustomers->each(fn (Customer $customer) => $customer
+                    ->setAttribute('live_connection_status', 'unknown'));
+            }
+        }
     }
 
     private function attachAccountingUsage($customers): void

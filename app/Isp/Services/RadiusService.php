@@ -24,9 +24,6 @@ class RadiusService
         }
 
         $expired = $customer->expires_at?->lt(today()) ?? false;
-        if ($expired && $customer->status === 'active') {
-            $customer->forceFill(['status' => 'suspended'])->saveQuietly();
-        }
         $active = $customer->status === 'active' && ! $expired;
 
         DB::transaction(function () use ($customer, $active): void {

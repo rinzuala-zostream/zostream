@@ -11,10 +11,6 @@
     $activeFilters = collect($filterKeys)
         ->filter(fn ($key) => request()->filled($key))
         ->count();
-    $pageActive = $visibleCustomers->filter(fn ($customer) => $customer->status === 'active'
-        && ! ($customer->expires_at?->lt(today()) ?? false))->count();
-    $pageNeedsAttention = $visibleCustomers->filter(fn ($customer) => $customer->status === 'suspended'
-        || ($customer->expires_at?->lt(today()) ?? false))->count();
 @endphp
 
 <section class="customers-hero">
@@ -22,10 +18,10 @@
         <span>SUBSCRIBER CONTROL</span>
         <h2>PPPoE subscribers</h2>
         <p>Create, renew, suspend and monitor customer access from one familiar workspace.</p>
-        <div class="customer-hero-metrics" aria-label="Current page summary">
+        <div class="customer-hero-metrics" aria-label="All customer summary">
             <span><b>{{ $visibleCustomers->count() }}</b> on this page</span>
-            <span><i class="metric-online"></i><b>{{ $pageActive }}</b> active</span>
-            <span><i class="metric-alert"></i><b>{{ $pageNeedsAttention }}</b> need attention</span>
+            <a href="{{ route('isp.customers.index', ['status' => 'active']) }}" @class(['is-selected' => request('status') === 'active'])><i class="metric-online"></i><b>{{ $customerSummary['active'] }}</b> active total</a>
+            <a href="{{ route('isp.customers.index', ['status' => 'attention']) }}" @class(['is-selected' => request('status') === 'attention'])><i class="metric-alert"></i><b>{{ $customerSummary['needs_attention'] }}</b> need attention</a>
         </div>
     </div>
     <div class="customers-hero-actions">
@@ -99,6 +95,7 @@
                     <option value="expired" @selected(request('status') === 'expired')>Expired</option>
                     <option value="suspended" @selected(request('status') === 'suspended')>Suspended</option>
                     <option value="unknown" @selected(request('status') === 'unknown')>Unknown / router unreachable</option>
+                    <option value="attention" @selected(request('status') === 'attention')>Need attention</option>
                 </select>
             </label>
             <button class="customer-filter-button" type="submit">Apply filters</button>
@@ -141,9 +138,11 @@
     @forelse($customers as $customer)
         @php
             $isExpired = $customer->expires_at?->lt(today()) ?? false;
-            $displayStatus = $customer->status === 'suspended'
-                ? 'suspended'
-                : ($isExpired ? 'expired' : $customer->status);
+            $displayStatus = $isExpired
+                ? 'expired'
+                : ($customer->status === 'suspended'
+                    ? 'suspended'
+                    : ($customer->live_connection_status ?? $customer->status));
             $initials = collect(preg_split('/\s+/', trim($customer->name)))
                 ->filter()
                 ->take(2)
@@ -159,6 +158,14 @@
                 $daysToExpiry === 1 => 'Ends tomorrow',
                 default => $daysToExpiry.' days remaining',
             };
+            $attentionReasons = collect([
+                ! $isExpired && $customer->status === 'suspended' ? 'Customer access suspended' : null,
+                $isExpired ? 'Internet plan expired' : null,
+                ! in_array($customer->router_device_condition, ['old', 'new'], true) ? 'Unknown customer device' : null,
+                $customer->router_device_condition === 'new' && $customer->routerPayment?->status === 'unpaid'
+                    ? 'New customer device · unpaid'
+                    : null,
+            ])->filter();
         @endphp
         <article class="customer-card customer-card--{{ $displayStatus }} {{ auth()->user()->isBranchOperator() ? 'operator-customer-card' : '' }}">
             <div class="customer-card-top">
@@ -179,10 +186,14 @@
                         <div class="customer-menu-popover" role="menu" hidden>
                             <div class="customer-menu-heading"><span>QUICK ACTIONS</span><strong>{{ $customer->name }}</strong></div>
                             <a class="customer-menu-item is-primary" role="menuitem" href="{{ route('isp.payments.index', ['customer' => $customer]) }}"><i aria-hidden="true">₹</i><span><strong>Collect payment</strong><small>Renew internet for 30 days</small></span></a>
-                            <form method="POST" action="{{ route('isp.customers.toggle', $customer) }}">
-                                @csrf
-                                <button class="customer-menu-item" role="menuitem" type="submit"><i aria-hidden="true">{{ $customer->status === 'active' ? 'Ⅱ' : '▶' }}</i><span><strong>{{ $customer->status === 'active' ? 'Suspend access' : 'Activate access' }}</strong><small>{{ $customer->status === 'active' ? 'Pause PPPoE authentication' : 'Restore PPPoE authentication' }}</small></span></button>
-                            </form>
+                            @if($isExpired)
+                                <button class="customer-menu-item" role="menuitem" type="button" disabled><i aria-hidden="true">⌛</i><span><strong>Expired plan</strong><small>Collect payment to restore access</small></span></button>
+                            @else
+                                <form method="POST" action="{{ route('isp.customers.toggle', $customer) }}">
+                                    @csrf
+                                    <button class="customer-menu-item" role="menuitem" type="submit"><i aria-hidden="true">{{ $customer->status === 'active' ? 'Ⅱ' : '▶' }}</i><span><strong>{{ $customer->status === 'active' ? 'Suspend access' : 'Activate access' }}</strong><small>{{ $customer->status === 'active' ? 'Pause PPPoE authentication' : 'Restore PPPoE authentication' }}</small></span></button>
+                                </form>
+                            @endif
                             @if(auth()->user()->isAdmin())
                                 <form method="POST" action="{{ route('isp.customers.sync', $customer) }}">
                                     @csrf
@@ -200,6 +211,13 @@
                     </div>
                 </div>
             </div>
+
+            @if($attentionReasons->isNotEmpty())
+                <div class="customer-attention-summary">
+                    <strong><i aria-hidden="true">!</i> Needs attention</strong>
+                    <div>@foreach($attentionReasons as $reason)<span>{{ $reason }}</span>@endforeach</div>
+                </div>
+            @endif
 
             @if(auth()->user()->isAdmin())
                 <div class="customer-service-grid">

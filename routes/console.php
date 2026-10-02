@@ -34,7 +34,7 @@ Schedule::command('isp:send-wifi-reminders')
     ->dailyAt('10:00')
     ->withoutOverlapping(30);
 
-// 12 AM IST: suspend customers after their inclusive expiry date has ended.
+// 12 AM IST: enforce expiry in RADIUS and disconnect sessions without changing manual status.
 Schedule::command('isp:suspend-expired')
     ->dailyAt('00:00')
     ->timezone('Asia/Kolkata')

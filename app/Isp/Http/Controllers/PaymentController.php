@@ -496,11 +496,19 @@ class PaymentController extends Controller
         }
 
         $customer->setRelation('package', $package);
-        $customer->update([
+        $renewal = [
             'package_id' => $package->id,
             'expires_at' => $customer->nextExpiryDate(),
-            'status' => 'active',
-        ]);
+        ];
+        // Older expiry processing also changed status to suspended. Restore
+        // only those legacy rows; a genuine manual suspension must survive a
+        // plan renewal now that expiry and suspension are separate states.
+        if ($customer->status === 'suspended'
+            && $customer->expires_at
+            && $customer->expiry_suspended_for?->isSameDay($customer->expires_at)) {
+            $renewal['status'] = 'active';
+        }
+        $customer->update($renewal);
         try {
             $radius->syncCustomer($customer);
         } catch (Throwable $e) {
