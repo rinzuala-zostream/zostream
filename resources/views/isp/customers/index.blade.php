@@ -165,6 +165,9 @@
                 $customer->router_device_condition === 'new' && $customer->routerPayment?->status === 'unpaid'
                     ? 'New customer device · unpaid'
                     : null,
+                blank($customer->aadhaar_front_path) || blank($customer->aadhaar_back_path)
+                    ? 'Aadhaar documents missing'
+                    : null,
             ])->filter();
         @endphp
         <article class="customer-card customer-card--{{ $displayStatus }} {{ auth()->user()->isBranchOperator() ? 'operator-customer-card' : '' }}">

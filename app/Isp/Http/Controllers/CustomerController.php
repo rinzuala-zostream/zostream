@@ -592,6 +592,12 @@ class CustomerController extends Controller
                     $query->where('router_device_condition', 'new')
                         ->whereHas('routerPayment', fn (Builder $payment) => $payment
                             ->where('status', 'unpaid'));
+                })
+                ->orWhere(function (Builder $query): void {
+                    $query->whereNull('aadhaar_front_path')
+                        ->orWhere('aadhaar_front_path', '')
+                        ->orWhereNull('aadhaar_back_path')
+                        ->orWhere('aadhaar_back_path', '');
                 });
         });
     }
@@ -757,7 +763,7 @@ class CustomerController extends Controller
                 Rule::unique('customers', 'username')->ignore($customer),
             ],
             'password' => [$customer ? 'nullable' : 'required', 'string', 'max:255'],
-            'status' => ['required', Rule::in(['active', 'suspended'])],
+            'status' => ['required', Rule::in(['active', 'suspended', 'expired'])],
             'expires_at' => $request->user()->isAdmin()
                 ? ['nullable', 'date']
                 : ['prohibited'],
@@ -776,6 +782,13 @@ class CustomerController extends Controller
                 File::image()->max(5 * 1024),
             ],
         ]);
+
+        if ($data['status'] === 'expired') {
+            $data['status'] = 'active';
+            $data['expires_at'] = $customer?->expires_at?->lt(today())
+                ? $customer->expires_at->toDateString()
+                : today()->subDay()->toDateString();
+        }
 
         if ($request->user()->isBranchOperator()) {
             $data['branch_id'] = $request->user()->branch_id;

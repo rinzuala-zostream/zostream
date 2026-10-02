@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Isp\Http\Controllers\CustomerController;
+use App\Isp\Models\Customer;
 use App\Isp\Models\User;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
@@ -68,5 +69,44 @@ class IspCustomerAadhaarRequirementTest extends TestCase
             $this->assertArrayHasKey('aadhaar_front', $exception->errors());
             $this->assertArrayHasKey('aadhaar_back', $exception->errors());
         }
+    }
+
+    public function test_expired_administrative_option_sets_expiry_without_overloading_manual_status(): void
+    {
+        DB::table('customers')->insert(['id' => 1, 'username' => 'existing-customer']);
+        $customer = new Customer([
+            'router_id' => 1,
+            'package_id' => 1,
+            'name' => 'Existing Customer',
+            'username' => 'existing-customer',
+            'status' => 'active',
+            'expires_at' => today()->addDays(10),
+            'router_device_condition' => 'old',
+            'aadhaar_front_path' => 'isp/customers/aadhaar/front.jpg',
+            'aadhaar_back_path' => 'isp/customers/aadhaar/back.jpg',
+        ]);
+        $customer->setAttribute('id', 1);
+        $customer->exists = true;
+        $request = Request::create('/isp/customers/1', 'PUT', [
+            'router_id' => 1,
+            'package_id' => 1,
+            'name' => 'Existing Customer',
+            'phone' => '9876543210',
+            'username' => 'existing-customer',
+            'status' => 'expired',
+            'expires_at' => today()->addDays(10)->toDateString(),
+            'router_device_condition' => 'old',
+        ]);
+        $request->setUserResolver(fn (): User => new User([
+            'role' => 'admin',
+            'is_active' => true,
+        ]));
+
+        $data = (function (Request $request, Customer $customer): array {
+            return $this->validated($request, $customer);
+        })->call(new CustomerController, $request, $customer);
+
+        $this->assertSame('active', $data['status']);
+        $this->assertSame(today()->subDay()->toDateString(), $data['expires_at']);
     }
 }

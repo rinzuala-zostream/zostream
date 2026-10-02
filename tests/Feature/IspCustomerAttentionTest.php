@@ -29,6 +29,8 @@ class IspCustomerAttentionTest extends TestCase
             $table->string('status');
             $table->date('expires_at')->nullable();
             $table->string('router_device_condition')->nullable();
+            $table->string('aadhaar_front_path')->nullable();
+            $table->string('aadhaar_back_path')->nullable();
         });
         Schema::create('customer_router_payments', function (Blueprint $table): void {
             $table->id();
@@ -43,6 +45,7 @@ class IspCustomerAttentionTest extends TestCase
         $this->ids['unpaid_device'] = $this->customer('active', today()->addDay(), 'new');
         $this->ids['paid_device'] = $this->customer('active', today()->addDay(), 'new');
         $this->ids['other_branch_unknown'] = $this->customer('active', today()->addDay(), null, 2);
+        $this->ids['missing_aadhaar'] = $this->customer('active', today()->addDay(), 'old', 1, false);
 
         DB::table('customer_router_payments')->insert([
             ['customer_id' => $this->ids['unpaid_device'], 'status' => 'unpaid'],
@@ -63,20 +66,21 @@ class IspCustomerAttentionTest extends TestCase
             'status' => 'suspended',
         ]));
 
-        $this->assertSame(5, $summary['active']);
-        $this->assertSame(5, $summary['needs_attention']);
+        $this->assertSame(6, $summary['active']);
+        $this->assertSame(6, $summary['needs_attention']);
     }
 
     public function test_attention_filter_includes_device_issues_and_respects_operator_branch(): void
     {
         $request = $this->request('branch_operator', 1, ['status' => 'attention']);
 
-        $this->assertSame(4, $this->summary($request)['needs_attention']);
+        $this->assertSame(5, $this->summary($request)['needs_attention']);
         $this->assertSame([
             $this->ids['suspended'],
             $this->ids['expired'],
             $this->ids['unknown_device'],
             $this->ids['unpaid_device'],
+            $this->ids['missing_aadhaar'],
         ], $this->attentionIds($request));
     }
 
@@ -117,13 +121,21 @@ class IspCustomerAttentionTest extends TestCase
         $this->assertNull($expired->live_connection_status);
     }
 
-    private function customer(string $status, mixed $expiresAt, ?string $condition, int $branchId = 1): int
+    private function customer(
+        string $status,
+        mixed $expiresAt,
+        ?string $condition,
+        int $branchId = 1,
+        bool $hasAadhaar = true,
+    ): int
     {
         return DB::table('customers')->insertGetId([
             'branch_id' => $branchId,
             'status' => $status,
             'expires_at' => $expiresAt->toDateString(),
             'router_device_condition' => $condition,
+            'aadhaar_front_path' => $hasAadhaar ? 'isp/customers/aadhaar/front.jpg' : null,
+            'aadhaar_back_path' => $hasAadhaar ? 'isp/customers/aadhaar/back.jpg' : null,
         ]);
     }
 

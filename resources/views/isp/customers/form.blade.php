@@ -2,15 +2,7 @@
 @section('title', $customer->exists ? 'Edit customer' : 'Add customer')
 @section('eyebrow', 'Subscriber management')
 @section('content')
-@php
-    $planStatus = match (true) {
-        ! $customer->exists => 'Valid for 30 days after saving',
-        ! $customer->expires_at => 'Valid · no expiry date',
-        $customer->expires_at->lt(today()) => 'Expired',
-        $customer->expires_at->isToday() => 'Valid · ends today',
-        default => 'Valid · until '.$customer->expires_at->format('d M Y'),
-    };
-@endphp
+@php($formStatus = old('status', $customer->exists && $customer->expires_at?->lt(today()) ? 'expired' : ($customer->status ?: 'active')))
 <div class="page-actions"><div><h2>{{ $customer->exists ? $customer->name : 'New PPPoE subscriber' }}</h2><p>Saving will also create or update the MikroTik PPP secret.</p></div></div>
 @if($packages->isEmpty() || (!auth()->user()->isBranchOperator() && $routers->isEmpty()))<div class="alert warning">You need at least one active router and one active package before adding a customer.</div>@endif
 @if(!$customer->exists && auth()->user()->isBranchOperator() && !$operatorBranch?->router_id)<div class="alert warning">Your branch has no default router. Ask an administrator to assign one from the Branches page before adding a customer.</div>@endif
@@ -41,8 +33,7 @@
                 <label>PPPoE username<input name="username" value="{{ old('username', $customer->username) }}" required autocomplete="off" placeholder="customer001"></label>
             @endif
             <label>PPPoE password<input type="password" name="password" {{ $customer->exists ? '' : 'required' }} autocomplete="new-password" placeholder="{{ $customer->exists ? 'Leave blank to keep current password' : 'PPPoE password' }}"></label>
-            <label>Administrative status<select name="status"><option value="active" @selected(old('status', $customer->status ?: 'active') === 'active')>Active</option><option value="suspended" @selected(old('status', $customer->status) === 'suspended')>Suspended</option></select><small class="form-help">Active or manually suspended; this is separate from plan expiry.</small></label>
-            <label>Plan status<input value="{{ $planStatus }}" disabled @class(['plan-status-field', 'is-expired-plan-status' => $customer->exists && $customer->expires_at?->lt(today())])><small class="form-help">Calculated automatically from the expiry date.</small></label>
+            <label>Administrative status<select name="status"><option value="active" @selected($formStatus === 'active')>Active</option><option value="suspended" @selected($formStatus === 'suspended')>Suspended</option><option value="expired" @selected($formStatus === 'expired')>Expired</option></select><small class="form-help">Expired immediately ends access by setting the plan expiry date.</small></label>
             @if(auth()->user()->isAdmin())
                 <label>Expiry date<input type="date" name="expires_at" value="{{ old('expires_at', $customer->expires_at?->toDateString()) }}"><small class="form-help">Administrator only. The selected date remains active through the end of that day.</small></label>
             @endif
