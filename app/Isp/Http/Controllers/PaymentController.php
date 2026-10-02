@@ -9,6 +9,7 @@ use App\Isp\Models\CustomerOnboarding;
 use App\Isp\Models\Package;
 use App\Isp\Models\Payment;
 use App\Isp\Models\PaymentCheckout;
+use App\Isp\Models\Router;
 use App\Isp\Services\CustomerOnboardingService;
 use App\Isp\Services\PaymentInvoicePdf;
 use App\Isp\Services\RadiusService;
@@ -30,6 +31,9 @@ class PaymentController extends Controller
     public function index(Request $request): View
     {
         $branchId = $request->user()->isBranchOperator() ? $request->user()->branch_id : null;
+        $routerId = $request->user()->isAdmin() && $request->filled('router_id')
+            ? $request->integer('router_id')
+            : null;
         $activeView = $request->filled('customer') || $request->query('view') === 'collect'
             ? 'collect'
             : 'collections';
@@ -43,13 +47,17 @@ class PaymentController extends Controller
         $nextMonth = $selectedMonth->addMonth();
         $previousMonth = $selectedMonth->subMonth();
 
-        $scopeToBranch = static fn ($query) => $query
+        $scopePayments = static fn ($query) => $query
             ->when($branchId, fn ($query) => $query->whereHas(
                 'customer',
                 fn ($query) => $query->where('branch_id', $branchId)
+            ))
+            ->when($routerId, fn ($query) => $query->whereHas(
+                'customer',
+                fn ($query) => $query->where('router_id', $routerId)
             ));
-        $summaryFor = static function (CarbonImmutable $from, CarbonImmutable $until) use ($scopeToBranch): object {
-            return $scopeToBranch(Payment::query())
+        $summaryFor = static function (CarbonImmutable $from, CarbonImmutable $until) use ($scopePayments): object {
+            return $scopePayments(Payment::query())
                 ->where('paid_at', '>=', $from)
                 ->where('paid_at', '<', $until)
                 ->selectRaw('COUNT(*) as payment_count')
@@ -67,7 +75,7 @@ class PaymentController extends Controller
             : null;
 
         return view('isp.payments.index', [
-            'payments' => $scopeToBranch(Payment::with(['customer', 'operator', 'package']))
+            'payments' => $scopePayments(Payment::with(['customer.router', 'operator', 'package']))
                 ->where('paid_at', '>=', $selectedMonth)
                 ->where('paid_at', '<', $nextMonth)
                 ->latest('paid_at')
@@ -77,6 +85,10 @@ class PaymentController extends Controller
                 ->with(['package:id,name,price,validity_days', 'branch:id,name,operator_percentage,ott_deduction', 'branch.packages:id'])
                 ->orderBy('name')->get(['id', 'package_id', 'branch_id', 'name', 'phone', 'username']),
             'packages' => Package::where('is_active', true)->orderBy('name')->get(),
+            'routers' => $request->user()->isAdmin()
+                ? Router::orderBy('name')->get(['id', 'name'])
+                : collect(),
+            'selectedRouterId' => $routerId,
             'selectedCustomer' => $request->integer('customer'),
             'activeView' => $activeView,
             'selectedMonth' => $selectedMonth,

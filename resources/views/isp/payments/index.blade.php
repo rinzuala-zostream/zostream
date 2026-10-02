@@ -13,7 +13,7 @@
 </section>
 
 <nav class="payment-view-tabs" aria-label="Payment views">
-    <a class="{{ $activeView === 'collections' ? 'active' : '' }}" href="{{ route('isp.payments.index', ['view' => 'collections', 'month' => $selectedMonth->format('Y-m')]) }}"><i>▦</i><span><strong>Payment Collections</strong><small>Monthly revenue and history</small></span></a>
+    <a class="{{ $activeView === 'collections' ? 'active' : '' }}" href="{{ route('isp.payments.index', array_filter(['view' => 'collections', 'month' => $selectedMonth->format('Y-m'), 'router_id' => $selectedRouterId])) }}"><i>▦</i><span><strong>Payment Collections</strong><small>Monthly revenue and history</small></span></a>
     <a class="{{ $activeView === 'collect' ? 'active' : '' }}" href="{{ route('isp.payments.index', ['view' => 'collect']) }}"><i>₹</i><span><strong>Collect Payment</strong><small>Renew a customer package</small></span></a>
 </nav>
 
@@ -56,6 +56,9 @@
 @else
 <form class="collection-filter" method="GET" action="{{ route('isp.payments.index') }}">
     <input type="hidden" name="view" value="collections">
+    @if(auth()->user()->isAdmin())
+        <label><span>Router</span><select name="router_id"><option value="">All routers</option>@foreach($routers as $router)<option value="{{ $router->id }}" @selected($selectedRouterId === $router->id)>{{ $router->name }}</option>@endforeach</select></label>
+    @endif
     <label><span>Collection month</span><input type="month" name="month" value="{{ $selectedMonth->format('Y-m') }}" max="{{ now()->format('Y-m') }}"></label>
     <button class="button primary" type="submit">View month</button>
 </form>
@@ -105,7 +108,7 @@
     @forelse($payments as $payment)
         <article class="payment-history-item">
             <span class="payment-method-icon">{{ $payment->method === 'cashfree' ? 'C' : ($payment->method === 'razorpay' ? 'R' : '₹') }}</span>
-            <div class="payment-history-copy"><strong>{{ $payment->customer?->name ?? 'Deleted customer' }}</strong><small>{{ ucfirst($payment->method) }} · {{ $payment->paid_at->format('d M Y, h:i A') }} · {{ $payment->operator?->name ?? 'Unknown operator' }}</small></div>
+            <div class="payment-history-copy"><strong>{{ $payment->customer?->name ?? 'Deleted customer' }}</strong><small>{{ ucfirst($payment->method) }} · {{ $payment->paid_at->format('d M Y, h:i A') }} · {{ $payment->operator?->name ?? 'Unknown operator' }}@if(auth()->user()->isAdmin() && $payment->customer?->router) · {{ $payment->customer->router->name }}@endif</small></div>
             <div class="payment-history-split"><span>Package ₹{{ number_format($payment->package_amount ?? $payment->amount, 0) }}</span><span>Operator ₹{{ number_format($payment->operator_commission ?? 0, 0) }}</span></div>
             <strong class="payment-history-amount">₹{{ number_format($payment->amount, 2) }}</strong>
             <a class="payment-invoice" href="{{ route('isp.payments.invoice', $payment) }}" title="Download invoice PDF" aria-label="Download invoice PDF">PDF</a>

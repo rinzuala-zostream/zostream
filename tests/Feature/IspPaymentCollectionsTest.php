@@ -26,6 +26,11 @@ class IspPaymentCollectionsTest extends TestCase
             $table->boolean('is_active')->default(true);
             $table->timestamps();
         });
+        Schema::create('routers', function (Blueprint $table): void {
+            $table->id();
+            $table->string('name');
+            $table->timestamps();
+        });
         Schema::create('isp_users', function (Blueprint $table): void {
             $table->id();
             $table->string('name');
@@ -55,6 +60,7 @@ class IspPaymentCollectionsTest extends TestCase
         });
         Schema::create('customers', function (Blueprint $table): void {
             $table->id();
+            $table->unsignedBigInteger('router_id')->nullable();
             $table->unsignedBigInteger('package_id')->nullable();
             $table->unsignedBigInteger('branch_id')->nullable();
             $table->string('name');
@@ -86,7 +92,7 @@ class IspPaymentCollectionsTest extends TestCase
 
     protected function tearDown(): void
     {
-        foreach (['payments', 'customers', 'branch_package', 'packages', 'isp_users', 'branches'] as $table) {
+        foreach (['payments', 'customers', 'branch_package', 'packages', 'isp_users', 'routers', 'branches'] as $table) {
             Schema::dropIfExists($table);
         }
 
@@ -171,6 +177,113 @@ class IspPaymentCollectionsTest extends TestCase
             ->assertOk()
             ->assertViewHas('activeView', 'collect')
             ->assertSee('Customer & payment', false);
+    }
+
+    public function test_administrator_can_filter_collection_totals_and_history_by_router(): void
+    {
+        CarbonImmutable::setTestNow('2026-10-15 12:00:00');
+        $routerId = DB::table('routers')->insertGetId([
+            'name' => 'Aizawl Core', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $otherRouterId = DB::table('routers')->insertGetId([
+            'name' => 'Lunglei Core', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $packageId = DB::table('packages')->insertGetId([
+            'name' => 'Home 30', 'price' => 500, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $admin = User::create([
+            'name' => 'ISP Admin',
+            'email' => 'router-filter-admin@example.test',
+            'password' => 'secret-password',
+            'role' => 'admin',
+            'is_active' => true,
+        ]);
+        $customerId = DB::table('customers')->insertGetId([
+            'router_id' => $routerId,
+            'package_id' => $packageId,
+            'name' => 'Aizawl Customer',
+            'username' => 'aizawl-customer',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $otherCustomerId = DB::table('customers')->insertGetId([
+            'router_id' => $otherRouterId,
+            'package_id' => $packageId,
+            'name' => 'Lunglei Customer',
+            'username' => 'lunglei-customer',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->insertPayment($customerId, $packageId, $admin->id, '2026-09-18 10:00:00', 50, 100, 20);
+        $this->insertPayment($customerId, $packageId, $admin->id, '2026-10-05 10:00:00', 100, 125, 25);
+        $this->insertPayment($otherCustomerId, $packageId, $admin->id, '2026-10-08 10:00:00', 900, 1000, 100);
+
+        $this->actingAs($admin, 'isp')
+            ->get(route('isp.payments.index', [
+                'view' => 'collections',
+                'month' => '2026-10',
+                'router_id' => $routerId,
+            ]))
+            ->assertOk()
+            ->assertSee('Aizawl Core')
+            ->assertSee('Aizawl Customer')
+            ->assertDontSee('Lunglei Customer')
+            ->assertViewHas('selectedRouterId', $routerId)
+            ->assertViewHas('collectionSummary', fn (object $summary): bool => (int) $summary->payment_count === 1
+                && (float) $summary->revenue === 100.0
+                && (float) $summary->package_total === 125.0
+                && (float) $summary->operator_commission === 25.0
+            )
+            ->assertViewHas('revenueDifference', 50.0)
+            ->assertViewHas('revenuePercentage', 100.0);
+    }
+
+    public function test_branch_operator_cannot_replace_role_scope_with_router_filter(): void
+    {
+        CarbonImmutable::setTestNow('2026-10-15 12:00:00');
+        $branchId = DB::table('branches')->insertGetId(['name' => 'Aizawl', 'created_at' => now(), 'updated_at' => now()]);
+        $otherBranchId = DB::table('branches')->insertGetId(['name' => 'Lunglei', 'created_at' => now(), 'updated_at' => now()]);
+        $routerId = DB::table('routers')->insertGetId(['name' => 'Aizawl Core', 'created_at' => now(), 'updated_at' => now()]);
+        $otherRouterId = DB::table('routers')->insertGetId(['name' => 'Lunglei Core', 'created_at' => now(), 'updated_at' => now()]);
+        $packageId = DB::table('packages')->insertGetId([
+            'name' => 'Home 30', 'price' => 500, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $operator = User::create([
+            'name' => 'Branch Operator',
+            'email' => 'router-filter-operator@example.test',
+            'password' => 'secret-password',
+            'role' => 'branch_operator',
+            'branch_id' => $branchId,
+            'is_active' => true,
+        ]);
+        $customerId = DB::table('customers')->insertGetId([
+            'router_id' => $routerId, 'package_id' => $packageId, 'branch_id' => $branchId,
+            'name' => 'Current Branch Customer', 'username' => 'current-router-customer',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $otherCustomerId = DB::table('customers')->insertGetId([
+            'router_id' => $otherRouterId, 'package_id' => $packageId, 'branch_id' => $otherBranchId,
+            'name' => 'Other Branch Customer', 'username' => 'other-router-customer',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $this->insertPayment($customerId, $packageId, $operator->id, '2026-10-05 10:00:00', 100, 125, 25);
+        $this->insertPayment($otherCustomerId, $packageId, $operator->id, '2026-10-08 10:00:00', 900, 1000, 100);
+
+        $this->actingAs($operator, 'isp')
+            ->get(route('isp.payments.index', [
+                'view' => 'collections',
+                'month' => '2026-10',
+                'router_id' => $otherRouterId,
+            ]))
+            ->assertOk()
+            ->assertSee('Current Branch Customer')
+            ->assertDontSee('Other Branch Customer')
+            ->assertDontSee('All routers')
+            ->assertViewHas('selectedRouterId', null)
+            ->assertViewHas('collectionSummary', fn (object $summary): bool => (int) $summary->payment_count === 1
+                && (float) $summary->revenue === 100.0
+            );
     }
 
     public function test_renewal_does_not_clear_a_manual_suspension(): void
