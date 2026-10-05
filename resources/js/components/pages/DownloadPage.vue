@@ -9,7 +9,7 @@ import { links } from '../../data/landing';
 
         <section class="app-download-showcase section-pad" data-reveal>
             <div class="download-card-copy"><span>ANDROID APP</span><h2>Entertainment chu<br /><b>kalpui zel rawh.</b></h2><p>Zo Stream Android app-ah streaming quality thlan, offline access, device management leh content update thar te i dawng ang.</p><div class="download-meta"><div><strong>100K+</strong><small>Downloads</small></div><div><strong>4.2 ★</strong><small>User rating</small></div><div><strong>3+</strong><small>Content rating</small></div></div><a class="primary-button play-store-button" :href="links.playStore" target="_blank" rel="noreferrer"><AppIcon name="play-store" /><span><small>GET IT ON</small>Google Play</span></a></div>
-            <div class="download-phone" aria-hidden="true"><div class="download-phone-screen"><div class="download-phone-brand">Z</div><span>ZO STREAM</span><h3>Kan stories.<br />Kan tawng.</h3><div class="download-phone-rail"><i></i><i></i><i></i></div><div class="download-phone-nav"><i></i><i></i><i></i><i></i></div></div></div>
+            <div class="download-phone" aria-hidden="true"><div class="download-phone-screen"><div class="download-phone-brand">Z</div><span>Zo Stream</span><h3>Kan stories.<br />Kan tawng.</h3><div class="download-phone-rail"><i></i><i></i><i></i></div><div class="download-phone-nav"><i></i><i></i><i></i><i></i></div></div></div>
         </section>
 
         <section class="device-options section-pad">

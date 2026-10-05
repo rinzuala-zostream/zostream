@@ -8,7 +8,7 @@ const experiences = [
 
 <template>
     <section id="featured" class="experience section-pad">
-        <div class="experience-heading" data-reveal><span class="section-kicker">THE ZO STREAM EXPERIENCE</span><h2>Entertainment hi<br /><b>i nun dan milin.</b></h2><p>Technology harsa tak chu kan thukru. Nangman enjoy mai tur a ni.</p></div>
+        <div class="experience-heading" data-reveal><span class="section-kicker">THE Zo Stream EXPERIENCE</span><h2>Entertainment hi<br /><b>i nun dan milin.</b></h2><p>Technology harsa tak chu kan thukru. Nangman enjoy mai tur a ni.</p></div>
         <div class="experience-stage" data-reveal>
             <div class="experience-orbit orbit-one"></div><div class="experience-orbit orbit-two"></div>
             <div class="experience-logo"><img :src="'/images/zostream-logo.jpg'" alt="Zo Stream" /><span>ZO <b>STREAM</b></span></div>

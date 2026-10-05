@@ -193,7 +193,7 @@ function logout() { clearPublicSession(); session.value = null; result.value = n
                     <div class="ad-device-frame">
                         <div class="ad-device-camera" />
                         <div class="ad-preview-app">
-                            <header><b>ZO</b><span>HOME</span><i>⌕</i></header>
+                            <header><b>Zo</b><span>HOME</span><i>⌕</i></header>
                             <div class="ad-preview-hero"><small>Featured in Mizo</small><strong>Stories worth watching.</strong></div>
                             <div v-if="!previewAtTop" class="ad-preview-rail"><b /><b /><b /></div>
                             <article class="ad-live-creative">

@@ -166,6 +166,49 @@ a { text-decoration: none; }
 .number strong span { color: var(--cyan); }
 .number p { margin: 7px 0 0; color: #6e7681; font-size: 8px; letter-spacing: 1.2px; text-transform: uppercase; }
 
+/* Services */
+.services { padding-top: 130px; padding-bottom: 20px; }
+.service-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.service-card { position: relative; display: grid; grid-template-columns: 1.05fr .95fr; min-height: 430px; overflow: hidden; padding: clamp(28px,3.5vw,52px); border: 1px solid var(--glass-line); border-top-color: rgba(255,255,255,.25); border-radius: 28px; background: linear-gradient(145deg,rgba(27,36,49,.7),rgba(10,15,23,.55)); box-shadow: var(--glass-shadow),inset 0 1px 0 rgba(255,255,255,.07); backdrop-filter: blur(24px) saturate(1.3); -webkit-backdrop-filter: blur(24px) saturate(1.3); }
+.service-card::before { content: ''; position: absolute; width: 310px; height: 310px; border-radius: 50%; filter: blur(70px); pointer-events: none; }
+.service-streaming::before { right: -100px; bottom: -120px; background: rgba(23,191,243,.22); }
+.service-wifi::before { right: -80px; top: -130px; background: rgba(201,255,61,.15); }
+.service-copy { position: relative; z-index: 2; display: flex; align-items: flex-start; flex-direction: column; }
+.service-index { color: var(--cyan-soft); font-size: 10px; font-weight: 800; letter-spacing: 1.7px; }
+.service-wifi .service-index { color: var(--lime); }
+.service-icon { display: grid; place-items: center; width: 54px; height: 54px; margin-top: 42px; border: 1px solid rgba(255,255,255,.13); border-radius: 16px; background: rgba(255,255,255,.07); color: var(--cyan); }
+.service-wifi .service-icon { color: var(--lime); }
+.service-icon svg { width: 25px; height: 25px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.service-card h3 { margin: 23px 0 12px; font: 750 clamp(30px,3vw,44px)/1 var(--display); letter-spacing: -2px; }
+.service-card p { max-width: 330px; margin: 0; color: #8f98a4; font-size: 14px; line-height: 1.7; }
+.service-link { display: inline-flex; align-items: center; gap: 15px; margin-top: auto; padding-top: 28px; color: var(--white); font-size: 13px; font-weight: 700; }
+.service-link span { display: grid; place-items: center; width: 31px; height: 31px; border: 1px solid rgba(255,255,255,.16); border-radius: 50%; color: var(--cyan); transition: .2s ease; }
+.service-wifi .service-link span { color: var(--lime); }
+.service-link:hover span { border-color: currentColor; transform: translate(2px,-2px); }
+.streaming-visual, .wifi-visual { position: relative; z-index: 1; min-width: 0; }
+.streaming-screen { position: absolute; top: 42px; right: -50px; width: 250px; aspect-ratio: 4/5; padding: 28px 24px; border: 1px solid rgba(255,255,255,.18); border-radius: 25px; background: radial-gradient(circle at 68% 32%,rgba(23,191,243,.3),transparent 33%),linear-gradient(150deg,#1b2c40,#090e15 70%); box-shadow: 0 30px 65px rgba(0,0,0,.38); transform: rotate(5deg); }
+.streaming-screen span { color: var(--cyan-soft); font-size: 8px; font-weight: 800; letter-spacing: 1.5px; }
+.streaming-screen b { display: block; margin-top: 68px; font: 700 25px/1.05 var(--display); letter-spacing: -1px; }
+.streaming-screen > i { display: grid; place-items: center; width: 42px; height: 42px; margin-top: 21px; border-radius: 50%; background: var(--cyan); color: #00151d; font-size: 10px; font-style: normal; }
+.streaming-rail { position: absolute; right: -36px; bottom: 8px; display: flex; gap: 8px; width: 245px; transform: rotate(5deg); }
+.streaming-rail i { flex: 1; height: 62px; border: 1px solid rgba(255,255,255,.08); border-radius: 11px; background: linear-gradient(145deg,rgba(23,191,243,.2),rgba(255,255,255,.04)); }
+.streaming-rail i:nth-child(2) { background: linear-gradient(145deg,rgba(126,76,228,.24),rgba(255,255,255,.04)); }
+.streaming-rail i:nth-child(3) { background: linear-gradient(145deg,rgba(201,255,61,.13),rgba(255,255,255,.04)); }
+.wifi-visual { display: grid; place-items: center; }
+.wifi-ring { position: absolute; border: 1px solid rgba(201,255,61,.15); border-radius: 50%; }
+.wifi-ring-one { width: 310px; height: 310px; }
+.wifi-ring-two { width: 220px; height: 220px; border-color: rgba(23,191,243,.18); }
+.wifi-ring-three { width: 135px; height: 135px; border-color: rgba(255,255,255,.12); }
+.wifi-router { position: relative; z-index: 2; display: flex; align-items: center; gap: 7px; width: 185px; height: 82px; padding: 22px; border: 1px solid rgba(255,255,255,.24); border-radius: 20px; background: linear-gradient(145deg,rgba(42,51,62,.94),rgba(14,19,25,.92)); box-shadow: 0 30px 65px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.11); }
+.wifi-router span { width: 6px; height: 6px; border-radius: 50%; background: var(--lime); box-shadow: 0 0 11px rgba(201,255,61,.7); }
+.wifi-router span:nth-child(2) { background: var(--cyan); box-shadow: 0 0 11px rgba(23,191,243,.7); }
+.wifi-router b { margin-left: auto; color: #b7bec7; font: 800 18px var(--display); letter-spacing: 1px; }
+.wifi-status { position: absolute; z-index: 3; right: -38px; bottom: 44px; display: flex; align-items: center; gap: 11px; min-width: 155px; padding: 13px 16px; border: 1px solid rgba(255,255,255,.19); border-radius: 15px; background: rgba(18,24,32,.76); box-shadow: 0 20px 45px rgba(0,0,0,.3); backdrop-filter: blur(18px); }
+.wifi-status > i { width: 9px; height: 9px; border-radius: 50%; background: var(--lime); box-shadow: 0 0 12px rgba(201,255,61,.65); }
+.wifi-status span, .wifi-status b, .wifi-status small { display: block; }
+.wifi-status b { font-size: 11px; }
+.wifi-status small { margin-top: 3px; color: #7c8590; font-size: 8px; }
+
 /* Bento features */
 .features { padding-top: 130px; padding-bottom: 145px; background: transparent; }
 .feature-grid { display: grid; grid-template-columns: repeat(4,1fr); grid-auto-rows: 235px; gap: 14px; }
@@ -243,7 +286,7 @@ a { text-decoration: none; }
 
 /* Devices CTA */
 .download { position: relative; display: grid; grid-template-columns: .85fr 1.15fr; align-items: center; width: calc(100% - (var(--page) * 2)); min-height: 590px; margin: 0 var(--page) 120px; padding-inline: clamp(28px,5vw,74px); overflow: hidden; border: 1px solid rgba(121,224,255,.35); border-top-color: rgba(255,255,255,.33); border-radius: 32px; background: linear-gradient(125deg,rgba(10,164,210,.42),rgba(17,40,59,.55) 55%,rgba(24,31,45,.56)); box-shadow: 0 35px 100px rgba(0,0,0,.27),inset 0 1px 0 rgba(255,255,255,.13); color: white; backdrop-filter: blur(28px) saturate(1.45); -webkit-backdrop-filter: blur(28px) saturate(1.45); }
-.download::before { content: 'ZO'; position: absolute; left: -30px; bottom: -120px; color: rgba(0,0,0,.055); font: 900 370px/.8 var(--display); letter-spacing: -35px; }
+.download::before { content: 'Zo'; position: absolute; left: -30px; bottom: -120px; color: rgba(0,0,0,.055); font: 900 370px/.8 var(--display); letter-spacing: -35px; }
 .download-glow { display: none; }
 .download-copy { position: relative; z-index: 2; }
 .download .section-kicker { color: var(--cyan-soft); }
@@ -530,6 +573,9 @@ a { text-decoration: none; }
     .feature-grid { grid-template-columns: repeat(3,1fr); }
     .feature-card:nth-child(1), .feature-card:nth-child(6) { grid-column: auto; }
     .plan-grid { grid-template-columns: repeat(2,1fr); }
+    .service-card { grid-template-columns: 1fr; }
+    .service-card p { max-width: 410px; }
+    .streaming-visual, .wifi-visual { display: none; }
 }
 
 @media (max-width: 900px) {
@@ -544,6 +590,8 @@ a { text-decoration: none; }
     .numbers { grid-template-columns: repeat(4,1fr); padding-inline: 0; }
     .numbers-label { display: none; }
     .feature-grid { grid-template-columns: repeat(2,1fr); }
+    .service-grid { grid-template-columns: 1fr; }
+    .service-card { min-height: 370px; }
     .experience-heading, .section-heading { grid-template-columns: 1fr; }
     .experience-heading > p, .section-heading p { margin: 20px 0 0; }
     .download { grid-template-columns: 1fr; padding-top: 90px; }
@@ -583,7 +631,9 @@ a { text-decoration: none; }
     .numbers { grid-template-columns: repeat(2,1fr); }
     .number { min-height: 120px; border-bottom: 1px solid var(--line); }
     .number:nth-child(2) { border-right: 0; }
-    .features, .experience, .plans { padding-top: 90px; padding-bottom: 95px; }
+    .services, .features, .experience, .plans { padding-top: 90px; padding-bottom: 95px; }
+    .service-card { min-height: 385px; padding: 28px; border-radius: 22px; }
+    .service-icon { margin-top: 32px; }
     .section-heading h2, .experience-heading h2 { font-size: 38px; letter-spacing: -2px; }
     .feature-grid { grid-template-columns: 1fr; grid-auto-rows: 195px; }
     .feature-card:nth-child(2) { grid-row: auto; }

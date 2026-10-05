@@ -9,5 +9,7 @@ defineProps({ name: { type: String, required: true } });
     <svg v-else-if="name === 'message'" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v12H9l-5 4V5Z"/><path d="M8 9h8M8 13h5"/></svg>
     <svg v-else-if="name === 'bolt'" viewBox="0 0 24 24" aria-hidden="true"><path d="m13 2-9 12h7l-1 8 9-12h-7l1-8Z"/></svg>
     <svg v-else-if="name === 'quality'" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h18v12H3zM7 7l2-3h6l2 3"/><path d="m9 15 2-2 2 2 3-4"/></svg>
+    <svg v-else-if="name === 'play'" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="m10 9 5 3-5 3V9Z"/></svg>
+    <svg v-else-if="name === 'wifi'" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9a14 14 0 0 1 18 0M6 13a9 9 0 0 1 12 0M9.5 16.5a4 4 0 0 1 5 0"/><circle cx="12" cy="20" r="1"/></svg>
     <svg v-else-if="name === 'play-store'" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 2 13.5 10L3 22V2Zm15 11.1 2-1.1-2-1.1-2.2 1.1 2.2 1.1Z"/></svg>
 </template>

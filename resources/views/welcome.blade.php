@@ -3,7 +3,7 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <meta name="description" content="Zo Stream — Mizo entertainment experience, i screen zawng zawngah." />
+        <meta name="description" content="Zo Stream — Mizo entertainment experience leh Zo Stream WiFi internet service." />
         <meta name="theme-color" content="#030816" />
         <title>{{ request()->is('admin', 'admin/*') ? 'Zo Stream Admin' : 'Zo Stream — All in Mizo' }}</title>
         <link rel="icon" href="/images/zostream-logo.jpg" />

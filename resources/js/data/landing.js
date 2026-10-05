@@ -1,6 +1,6 @@
 export const navigation = [
     { label: 'Home', target: '/' },
-    { label: 'Experience', target: '/#featured' },
+    { label: 'Services', target: '/#services' },
     { label: 'About us', target: '/about-us' },
     { label: 'Plans', target: '/#plans' },
     { label: 'Advertise', target: '/advertise' },
@@ -34,6 +34,7 @@ export const plans = [
 export const links = {
     downloadPage: '/download',
     playStore: 'https://play.google.com/store/apps/details?hl=en_IN&id=com.buannel.studio.pvt.ltd.zostream',
+    wifiWhatsApp: 'https://wa.me/918837076347?text=Hello%2C%20Zo%20Stream%20WiFi%20service%20chungchang%20ka%20zawt%20duh%20e.',
     supportEmail: 'support@zostream.in',
 };
 

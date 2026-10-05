@@ -25,7 +25,7 @@ const isActive = (item) => {
     <header class="site-header" :class="{ scrolled }">
         <a class="brand" href="/" aria-label="Zo Stream home" @click.prevent="navigate('/')">
             <img :src="'/images/zostream-logo.jpg'" alt="" />
-            <span>ZO <b>STREAM</b></span>
+            <span>Zo <b>Stream</b></span>
         </a>
         <nav class="desktop-nav" aria-label="Main navigation">
             <a v-for="item in navigation" :key="item.target" :class="{ active: isActive(item) }" :href="item.target" @click.prevent="navigate(item.target)">{{ item.label }}</a>
