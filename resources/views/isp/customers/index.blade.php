@@ -269,7 +269,7 @@
     @endforelse
 </section>
 
-<div class="pagination customer-pagination">{{ $customers->links() }}</div>
+{{ $customers->onEachSide(1)->links('isp.partials.pagination') }}
 @endsection
 
 @push('scripts')

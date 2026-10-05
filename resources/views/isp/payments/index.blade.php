@@ -118,7 +118,7 @@
         <div class="payment-history-empty"><i>₹</i><strong>No payments yet</strong><small>Completed transactions will appear here.</small></div>
     @endforelse
     </div>
-    <div class="pagination">{{ $payments->links() }}</div>
+    {{ $payments->onEachSide(1)->links('isp.partials.pagination') }}
 </section>
 @endif
 
