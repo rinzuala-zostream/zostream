@@ -100,21 +100,11 @@ class LiveHomeSectionService
         }
         if (in_array('last_month_top_10', $requested, true)) {
             try {
-                $monthKey = now()->subMonthNoOverflow()->format('Y-m');
-                $cacheKey = sprintf(
-                    'home:last-month-top-10:%s:%s:%d',
-                    $monthKey,
-                    $mode,
-                    (int) $includeAgeRestricted
-                );
-                $sections['last_month_top_10'] = Cache::remember(
-                    $cacheKey,
-                    now()->addHour(),
-                    fn (): array => $this->lastMonthTopTen(
-                        10,
-                        $mode,
-                        $includeAgeRestricted
-                    )
+                // Never aggregate watch history on the request path, even on
+                // a cold cache. The scheduled warmer publishes this shelf.
+                $sections['last_month_top_10'] = Cache::get(
+                    $this->lastMonthCacheKey($mode, $includeAgeRestricted),
+                    []
                 );
             } catch (Throwable $exception) {
                 // An optional ranking shelf must never make the complete home
@@ -269,14 +259,29 @@ class LiveHomeSectionService
         return $cards;
     }
 
-    /**
-     * Rank titles by distinct watch-position records touched in the previous
-     * calendar month. Episode activity is rolled up to its parent series.
-     */
-    private function lastMonthTopTen(int $limit, string $mode, bool $includeAgeRestricted): array
+    private function lastMonthCacheKey(string $mode, bool $includeAgeRestricted, ?string $month = null): string
     {
-        $monthStart = now()->subMonthNoOverflow()->startOfMonth();
+        return sprintf(
+            'home:last-month-top-10:%s:%s:%d',
+            $month ?? now()->subMonthNoOverflow()->format('Y-m'),
+            $mode,
+            (int) $includeAgeRestricted
+        );
+    }
+
+    /** Refresh all audiences off the request path, scanning history only once per type. */
+    public function warmLastMonthTopTen(): void
+    {
         $monthEnd = now()->startOfMonth();
+        $monthStart = $monthEnd->copy()->subMonth();
+        // Capture keys before querying so a refresh crossing midnight cannot
+        // publish the previous month's ranking under the new month's key.
+        $audiences = [];
+        foreach (['adult', 'kids'] as $mode) {
+            foreach ([false, true] as $includeAgeRestricted) {
+                $audiences[] = [$mode, $includeAgeRestricted, $this->lastMonthCacheKey($mode, $includeAgeRestricted, $monthStart->format('Y-m'))];
+            }
+        }
 
         $movieCounts = DB::table('watch_position')
             ->where('updated_at', '>=', $monthStart)
@@ -296,6 +301,17 @@ class LiveHomeSectionService
             ->select('seasons.movie_id', DB::raw('COUNT(*) as monthly_views'))
             ->get();
 
+        foreach ($audiences as [$mode, $includeAgeRestricted, $key]) {
+            $cards = $this->lastMonthTopTen($movieCounts, $episodeCounts, $mode, $includeAgeRestricted);
+            // Preserve the last successful result during transient refresh
+            // failures. Month-specific keys prevent displaying the wrong month.
+            Cache::put($key, $cards, now()->addDays(35));
+        }
+    }
+
+    /** Roll episode activity up to its parent series and apply audience filters. */
+    private function lastMonthTopTen($movieCounts, $episodeCounts, string $mode, bool $includeAgeRestricted): array
+    {
         $scores = [];
         $movies = $this->allowedMovies($mode, $includeAgeRestricted)
             ->whereIn('id', $movieCounts->pluck('movie_id'))
@@ -339,7 +355,7 @@ class LiveHomeSectionService
             return $this->movieCard($ranked['movie']) + [
                 'monthly_views' => $ranked['views'],
             ];
-        }, array_slice($scores, 0, $limit));
+        }, array_slice($scores, 0, 10));
     }
 
     /**

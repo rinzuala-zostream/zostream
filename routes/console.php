@@ -60,3 +60,8 @@ Schedule::command('recommender:train-sql-backup')
     ->timezone((string) config('recommender.train_timezone', config('app.timezone', 'UTC')))
     ->withoutOverlapping(180)
     ->onOneServer();
+
+// Home requests only read this cache; refresh expensive monthly rankings here.
+Schedule::command('home:warm-monthly-top-ten')
+    ->hourly()
+    ->withoutOverlapping(120);

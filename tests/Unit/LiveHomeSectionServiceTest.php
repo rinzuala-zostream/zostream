@@ -89,6 +89,8 @@ class LiveHomeSectionServiceTest extends TestCase
             ['user_id' => 'u6', 'movie_id' => 'movie-current', 'movie_type' => 'movie', 'updated_at' => '2026-09-01 00:00:00'],
         ]);
 
+        $this->artisan('home:warm-monthly-top-ten')->assertSuccessful();
+
         $snapshot = app(LiveHomeSectionService::class)->snapshot(
             'trusted-user',
             50,
@@ -103,6 +105,56 @@ class LiveHomeSectionServiceTest extends TestCase
         $this->assertSame(['series-b', 'movie-a'], array_column($items, 'id'));
         $this->assertSame([3, 2], array_column($items, 'monthly_views'));
         $this->assertCount(2, $items);
+    }
+
+    public function test_cold_home_request_never_queries_watch_history(): void
+    {
+        DB::enableQueryLog();
+        $snapshot = app(LiveHomeSectionService::class)->snapshot(
+            'user', 10, 'adult', false, ['last_month_top_10'], false
+        );
+
+        $this->assertSame([], $snapshot['sections']['last_month_top_10']);
+        $this->assertSame([], DB::getQueryLog());
+        DB::disableQueryLog();
+    }
+
+    public function test_warmed_rankings_survive_hourly_expiry_and_remain_isolated_by_audience_and_month(): void
+    {
+        DB::table('movie')->insert([
+            ['id' => 'family', 'title' => 'Family', 'isChildMode' => true, 'isAgeRestricted' => false],
+            ['id' => 'adult', 'title' => 'Adult', 'isChildMode' => false, 'isAgeRestricted' => true],
+        ]);
+        foreach (['family', 'adult'] as $id) {
+            DB::table('watch_position')->insert([
+                'user_id' => 'user', 'movie_id' => $id, 'movie_type' => 'movie',
+                'updated_at' => '2026-08-01 00:00:00',
+            ]);
+        }
+        $service = app(LiveHomeSectionService::class);
+        $service->warmLastMonthTopTen();
+        Carbon::setTestNow('2026-09-29 14:00:00');
+        Schema::drop('watch_position');
+
+        // Failed background refreshes must not replace the last good result.
+        try {
+            $service->warmLastMonthTopTen();
+            $this->fail('Expected the refresh to fail without watch history.');
+        } catch (\Illuminate\Database\QueryException $exception) {
+            // The request below must still serve the existing cache.
+        }
+
+        DB::enableQueryLog();
+        foreach ([['adult', false, ['family']], ['adult', true, ['adult', 'family']], ['kids', false, ['family']], ['kids', true, ['family']]] as [$mode, $restricted, $ids]) {
+            $snapshot = $service->snapshot('another-user', 50, $mode, $restricted, ['last_month_top_10'], false);
+            $this->assertSame($ids, array_column($snapshot['sections']['last_month_top_10'], 'id'));
+        }
+        $this->assertSame([], DB::getQueryLog());
+        DB::disableQueryLog();
+
+        Carbon::setTestNow('2026-10-01 00:00:00');
+        $snapshot = $service->snapshot('user', 10, 'adult', false, ['last_month_top_10'], false);
+        $this->assertSame([], $snapshot['sections']['last_month_top_10']);
     }
 
     public function test_last_month_top_ten_failure_does_not_break_the_home_snapshot(): void
