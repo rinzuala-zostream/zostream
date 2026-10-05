@@ -61,7 +61,7 @@ Schedule::command('recommender:train-sql-backup')
     ->withoutOverlapping(180)
     ->onOneServer();
 
-// Home requests only read this cache; refresh expensive monthly rankings here.
+// Home requests only read this cache; compute last month's rankings on the first of each month.
 Schedule::command('home:warm-monthly-top-ten')
-    ->hourly()
+    ->monthlyOn(1, '00:00')
     ->withoutOverlapping(120);
