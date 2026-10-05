@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Schema;
 use Mockery;
+use PHPUnit\Framework\Attributes\TestWith;
 use Tests\TestCase;
 
 class OfflineAccessTest extends TestCase
@@ -418,15 +419,19 @@ class OfflineAccessTest extends TestCase
         $this->assertSame($rentalExpiry->timestamp, Carbon::parse($data['expires_at'])->timestamp);
     }
 
-    public function test_premium_download_expires_at_plan_end_when_less_than_thirty_days_remain(): void
+    #[TestWith([5])]
+    #[TestWith([30])]
+    #[TestWith([90])]
+    public function test_premium_download_expires_at_the_earlier_of_plan_end_or_thirty_days(int $remainingDays): void
     {
+        Carbon::setTestNow(Carbon::parse('2026-10-05 12:00:00', 'Asia/Kolkata'));
         DB::table('movie')->insert([
             'id' => 'premium-expiry',
             'title' => 'Premium expiry movie',
             'isPremium' => true,
             'isPayPerView' => false,
         ]);
-        $planExpiry = now()->addDays(5)->startOfSecond();
+        $planExpiry = now()->addDays($remainingDays)->startOfSecond();
         Subscription::query()->update(['end_at' => $planExpiry]);
 
         $movies = Mockery::mock(MovieController::class);
@@ -440,7 +445,8 @@ class OfflineAccessTest extends TestCase
 
         $this->assertSame(200, $response->getStatusCode());
         $this->assertSame('subscription', $data['access_type']);
-        $this->assertSame($planExpiry->timestamp, Carbon::parse($data['expires_at'])->timestamp);
+        $expectedExpiry = now()->addDays(min($remainingDays, 30));
+        $this->assertSame($expectedExpiry->timestamp, Carbon::parse($data['expires_at'])->timestamp);
     }
 
     public function test_daily_download_limit_allows_three_unique_items_and_does_not_charge_retries(): void
