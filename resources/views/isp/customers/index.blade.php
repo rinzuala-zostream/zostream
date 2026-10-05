@@ -159,6 +159,7 @@
                 default => $daysToExpiry.' days remaining',
             };
             $attentionReasons = collect([
+                blank($customer->phone) ? 'Phone number missing' : null,
                 ! $isExpired && $customer->status === 'suspended' ? 'Customer access suspended' : null,
                 $isExpired ? 'Internet plan expired' : null,
                 ! in_array($customer->router_device_condition, ['old', 'new'], true) ? 'Unknown customer device' : null,

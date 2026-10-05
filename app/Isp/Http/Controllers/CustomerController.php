@@ -584,6 +584,8 @@ class CustomerController extends Controller
         return $query->where(function (Builder $query): void {
             $query->where('status', 'suspended')
                 ->orWhereDate('expires_at', '<', today())
+                ->orWhereNull('phone')
+                ->orWhereRaw("TRIM(phone) = ''")
                 ->orWhere(function (Builder $query): void {
                     $query->whereNull('router_device_condition')
                         ->orWhereNotIn('router_device_condition', ['old', 'new']);

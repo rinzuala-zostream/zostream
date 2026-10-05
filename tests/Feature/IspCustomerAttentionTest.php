@@ -26,6 +26,7 @@ class IspCustomerAttentionTest extends TestCase
         Schema::create('customers', function (Blueprint $table): void {
             $table->id();
             $table->unsignedBigInteger('branch_id')->nullable();
+            $table->string('phone')->nullable();
             $table->string('status');
             $table->date('expires_at')->nullable();
             $table->string('router_device_condition')->nullable();
@@ -84,6 +85,31 @@ class IspCustomerAttentionTest extends TestCase
         ], $this->attentionIds($request));
     }
 
+    public function test_missing_phone_requires_attention_and_respects_operator_branch(): void
+    {
+        $missingPhoneIds = [];
+        foreach ([null, '', '   '] as $phone) {
+            $id = $this->customer('active', today()->addDay(), 'old');
+            DB::table('customers')->where('id', $id)->update(['phone' => $phone]);
+            $missingPhoneIds[] = $id;
+        }
+        $otherBranch = $this->customer('active', today()->addDay(), 'old', 2);
+        DB::table('customers')->where('id', $otherBranch)->update(['phone' => null]);
+
+        $admin = $this->request('admin', null, ['status' => 'attention']);
+        $operator = $this->request('branch_operator', 1, ['status' => 'attention']);
+
+        $this->assertSame(10, $this->summary($admin)['needs_attention']);
+        $this->assertSame(8, $this->summary($operator)['needs_attention']);
+        foreach ($missingPhoneIds as $id) {
+            $this->assertContains($id, $this->attentionIds($admin));
+            $this->assertContains($id, $this->attentionIds($operator));
+        }
+        $this->assertContains($otherBranch, $this->attentionIds($admin));
+        $this->assertNotContains($otherBranch, $this->attentionIds($operator));
+        $this->assertNotContains($this->ids['healthy'], $this->attentionIds($admin));
+    }
+
     public function test_expired_and_suspended_filters_are_mutually_exclusive(): void
     {
         $expiredSuspended = $this->customer('suspended', today()->subDay(), 'old');
@@ -127,10 +153,10 @@ class IspCustomerAttentionTest extends TestCase
         ?string $condition,
         int $branchId = 1,
         bool $hasAadhaar = true,
-    ): int
-    {
+    ): int {
         return DB::table('customers')->insertGetId([
             'branch_id' => $branchId,
+            'phone' => '9876543210',
             'status' => $status,
             'expires_at' => $expiresAt->toDateString(),
             'router_device_condition' => $condition,
