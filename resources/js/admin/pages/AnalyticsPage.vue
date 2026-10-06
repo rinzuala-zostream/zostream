@@ -8,7 +8,7 @@ const today = new Date();
 const dateValue = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 const prior = new Date(today);
 prior.setDate(prior.getDate() - 6);
-const filters = ref({ from: dateValue(prior), to: dateValue(today), timezone: 'Asia/Kolkata', platform: '', app_version: '', content_type: '' });
+const filters = ref({ from: dateValue(prior), to: dateValue(today), timezone: 'Asia/Kolkata', platform: '', app_version: '', content_type: '', user_id: '' });
 const tabs = [
     { id: 'overview', label: 'Overview' }, { id: 'content', label: 'Content' },
     { id: 'sessions', label: 'Playback sessions' }, { id: 'events', label: 'Product events' },
@@ -23,7 +23,7 @@ const sessionPage = ref({ data: [], current_page: 1, last_page: 1, total: 0 });
 const eventPage = ref({ data: [], current_page: 1, last_page: 1, total: 0 });
 const errorPage = ref({ data: [], current_page: 1, last_page: 1, total: 0 });
 const errorGroups = ref([]);
-const detailFilters = ref({ q: '', name: '', category: '', user_id: '', content_id: '', end_reason: '' });
+const detailFilters = ref({ q: '', name: '', category: '', content_id: '', end_reason: '' });
 const page = ref(1);
 const loading = ref(false);
 const configLoading = ref(true);
@@ -169,6 +169,7 @@ onMounted(() => { void loadConfig(); void loadAll(); });
             <label>Platform<select v-model="filters.platform"><option value="">All platforms</option><option value="ios">iOS</option><option value="tvos">Apple TV</option><option value="android">Android</option><option value="tv">Android TV</option></select></label>
             <label>App version<input v-model="filters.app_version" placeholder="All versions"></label>
             <label>Content type<select v-model="filters.content_type"><option value="">All content</option><option value="movie">Movie</option><option value="episode">Episode</option><option value="live">Live</option></select></label>
+            <label>User ID<input v-model="filters.user_id" placeholder="All users"></label>
             <button class="admin-primary" type="submit" :disabled="loading">{{ loading ? 'Loading…' : 'Apply filters' }}</button>
         </form>
 
@@ -236,7 +237,7 @@ onMounted(() => { void loadConfig(); void loadAll(); });
 
         <section v-else-if="!error && activeTab === 'sessions'" class="admin-panel analytics-panel">
             <header><div><span class="analytics-eyebrow">PLAYBACK DATA</span><h2>Session explorer</h2><p>{{ number(sessionPage.total) }} sessions · open a row to inspect the complete SDK payload.</p></div><button v-if="sessionPage.data?.length" class="admin-secondary" type="button" @click="exportCurrentPage">Export page JSON</button></header>
-            <form class="detail-filter-row" @submit.prevent="page = 1; loadDetails()"><label>Find session/content/user<input v-model="detailFilters.q" placeholder="ID or user"></label><label>User ID<input v-model="detailFilters.user_id" placeholder="Any user"></label><label>Content ID<input v-model="detailFilters.content_id" placeholder="Any content"></label><label>End reason<input v-model="detailFilters.end_reason" placeholder="Any reason"></label><button class="admin-secondary" type="submit">Search</button></form>
+            <form class="detail-filter-row" @submit.prevent="page = 1; loadDetails()"><label>Find session/content/user<input v-model="detailFilters.q" placeholder="ID or user"></label><label>Content ID<input v-model="detailFilters.content_id" placeholder="Any content"></label><label>End reason<input v-model="detailFilters.end_reason" placeholder="Any reason"></label><button class="admin-secondary" type="submit">Search</button></form>
             <div class="analytics-table-wrap"><table><thead><tr><th>Started</th><th>Content</th><th>User</th><th>Platform / app</th><th>Watch</th><th>Completion</th><th>Result</th><th>Full SDK data</th></tr></thead><tbody><tr v-for="row in sessionPage.data" :key="row.session_id"><td>{{ row.started_at }}</td><td>{{ row.content_type }}<small>{{ row.content_id }}</small></td><td>{{ row.user_id }}</td><td>{{ row.platform }}<small>{{ row.app_version }} · SDK {{ row.sdk_version || 'unknown' }}</small></td><td>{{ duration(row.watched_ms) }}<small>{{ duration(row.unique_watched_ms) }} unique</small></td><td>{{ percent(row.completion_percent) }}</td><td>{{ row.completed ? 'Completed' : humanize(row.end_reason) }}<small>{{ number(row.error_count) }} errors · {{ number(row.buffer_count) }} buffers</small></td><td><details><summary>Inspect</summary><pre>{{ JSON.stringify(row.metrics, null, 2) }}</pre></details></td></tr></tbody></table><div v-if="!sessionPage.data?.length" class="admin-empty">No playback sessions for these filters.</div></div>
         </section>
 

@@ -317,6 +317,9 @@ class AnalyticsReportController extends Controller
         if ($request->filled('name')) {
             $query->where('name', (string) $request->query('name'));
         }
+        if ($filters['user_id']) {
+            $query->where('user_id', $filters['user_id']);
+        }
 
         $rows = $query->orderByDesc('occurred_at')->paginate($perPage, [
             'event_id', 'user_id', 'device_id', 'app_session_id', 'name',
@@ -340,9 +343,6 @@ class AnalyticsReportController extends Controller
     {
         [$query, $filters] = $this->playbackQuery($request);
         $perPage = min(100, max(1, (int) $request->query('per_page', 50)));
-        if ($request->filled('user_id')) {
-            $query->where('user_id', (string) $request->query('user_id'));
-        }
         if ($request->filled('content_id')) {
             $query->where('content_id', (string) $request->query('content_id'));
         }
@@ -425,6 +425,9 @@ class AnalyticsReportController extends Controller
         if ($filters['content_type']) {
             $query->where('content_type', $filters['content_type']);
         }
+        if ($filters['user_id']) {
+            $query->where('user_id', $filters['user_id']);
+        }
 
         return [$query, $filters];
     }
@@ -455,6 +458,9 @@ class AnalyticsReportController extends Controller
                     ->where('playback_sessions.content_type', $filters['content_type']);
             });
         }
+        if ($filters['user_id']) {
+            $query->where('user_id', $filters['user_id']);
+        }
     }
 
     private function filters(Request $request): array
@@ -466,6 +472,7 @@ class AnalyticsReportController extends Controller
             'platform' => ['nullable', Rule::in(['ios', 'tvos', 'android', 'tv'])],
             'app_version' => ['nullable', 'string', 'max:64'],
             'content_type' => ['nullable', Rule::in(['movie', 'episode', 'live'])],
+            'user_id' => ['nullable', 'string', 'max:128'],
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'between:1,100'],
         ])->validate();
@@ -489,6 +496,7 @@ class AnalyticsReportController extends Controller
             'platform' => $data['platform'] ?? null,
             'app_version' => $data['app_version'] ?? null,
             'content_type' => $data['content_type'] ?? null,
+            'user_id' => $data['user_id'] ?? null,
         ];
     }
 
@@ -501,6 +509,9 @@ class AnalyticsReportController extends Controller
         }
         if ($filters['app_version']) {
             $query->where('app_version', $filters['app_version']);
+        }
+        if ($filters['user_id']) {
+            $query->where('user_id', $filters['user_id']);
         }
 
         return $query->selectRaw('name, COUNT(*) AS count, COUNT(DISTINCT user_id) AS unique_users')
@@ -525,6 +536,9 @@ class AnalyticsReportController extends Controller
         }
         if ($filters['app_version']) {
             $query->where('app_version', $filters['app_version']);
+        }
+        if ($filters['user_id']) {
+            $query->where('user_id', $filters['user_id']);
         }
 
         return $query->distinct()->count('app_session_id');
@@ -554,7 +568,7 @@ class AnalyticsReportController extends Controller
     private function publicFilters(array $filters): array
     {
         return collect($filters)->only([
-            'from', 'to', 'timezone', 'platform', 'app_version', 'content_type',
+            'from', 'to', 'timezone', 'platform', 'app_version', 'content_type', 'user_id',
         ])->all();
     }
 }
