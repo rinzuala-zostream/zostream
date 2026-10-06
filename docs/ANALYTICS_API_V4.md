@@ -611,6 +611,9 @@ next app launch. Playback and UI never wait for these retries.
 | `GET` | `/api/v4/analytic/reports/content/{type}/{id}` | One title or episode |
 | `GET` | `/api/v4/analytic/reports/quality` | Startup, buffering and quality metrics |
 | `GET` | `/api/v4/analytic/reports/errors` | Error groups and affected sessions |
+| `GET` | `/api/v4/analytic/reports/errors/events` | Paginated individual playback-error records |
+| `GET` | `/api/v4/analytic/reports/events` | Paginated product events and sanitized properties |
+| `GET` | `/api/v4/analytic/reports/sessions` | Paginated playback sessions with the complete SDK payload |
 | `GET` | `/api/v4/analytic/reports/users/{user_id}/sessions` | Support investigation, audited |
 
 Common query parameters:
@@ -619,7 +622,7 @@ Common query parameters:
 from=2026-10-01
 to=2026-10-06
 timezone=Asia/Kolkata
-platform=ios|android|tv
+platform=ios|tvos|android|tv
 app_version=2.4.0
 content_type=movie|episode|live
 page=1

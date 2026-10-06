@@ -46,6 +46,49 @@ class AnalyticsReportController extends Controller
             'app_sessions' => $this->appSessionCount($filters),
         ];
 
+        $detailTotals = (clone $query)->selectRaw(
+            "COALESCE(SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.timing.unique_watched_ms')) AS UNSIGNED)), 0) AS unique_watch_ms,
+             COALESCE(SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.timing.replayed_ms')) AS UNSIGNED)), 0) AS replayed_ms,
+             COALESCE(SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.timing.foreground_watch_ms')) AS UNSIGNED)), 0) AS foreground_watch_ms,
+             COALESCE(SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.timing.background_play_ms')) AS UNSIGNED)), 0) AS background_play_ms,
+             COALESCE(SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.interaction.play_count')) AS UNSIGNED)), 0) AS play_count,
+             COALESCE(SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.interaction.pause_count')) AS UNSIGNED)), 0) AS pause_count,
+             COALESCE(SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.interaction.resume_count')) AS UNSIGNED)), 0) AS resume_count,
+             COALESCE(SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.interaction.seek_count')) AS UNSIGNED)), 0) AS seek_count,
+             COALESCE(SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.interaction.seek_forward_ms')) AS UNSIGNED)), 0) AS seek_forward_ms,
+             COALESCE(SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.interaction.seek_backward_ms')) AS UNSIGNED)), 0) AS seek_backward_ms,
+             COALESCE(SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.interaction.fullscreen_count')) AS UNSIGNED)), 0) AS fullscreen_count,
+             COALESCE(SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.interaction.pip_count')) AS UNSIGNED)), 0) AS pip_count,
+             COALESCE(SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.interaction.cast_count')) AS UNSIGNED)), 0) AS cast_count,
+             COALESCE(SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.buffering.longest_ms')) AS UNSIGNED)), 0) AS longest_buffer_ms,
+             AVG(CAST(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.quality.average_bitrate_kbps')) AS DECIMAL(12,2))) AS average_bitrate_kbps,
+             COALESCE(SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.quality.dropped_frames')) AS UNSIGNED)), 0) AS dropped_frames,
+             COALESCE(SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.quality.rendered_frames')) AS UNSIGNED)), 0) AS rendered_frames,
+             AVG(CAST(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.tracks.playback_speed')) AS DECIMAL(5,2))) AS average_playback_speed,
+             SUM(CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.tracks.subtitle_enabled')) = 'true' THEN 1 ELSE 0 END) AS subtitle_sessions"
+        )->first();
+        $engagement = [
+            'unique_watch_hours' => round((int) $detailTotals->unique_watch_ms / 3_600_000, 2),
+            'replayed_hours' => round((int) $detailTotals->replayed_ms / 3_600_000, 2),
+            'foreground_watch_hours' => round((int) $detailTotals->foreground_watch_ms / 3_600_000, 2),
+            'background_play_hours' => round((int) $detailTotals->background_play_ms / 3_600_000, 2),
+            'play_count' => (int) $detailTotals->play_count,
+            'pause_count' => (int) $detailTotals->pause_count,
+            'resume_count' => (int) $detailTotals->resume_count,
+            'seek_count' => (int) $detailTotals->seek_count,
+            'seek_forward_hours' => round((int) $detailTotals->seek_forward_ms / 3_600_000, 2),
+            'seek_backward_hours' => round((int) $detailTotals->seek_backward_ms / 3_600_000, 2),
+            'fullscreen_count' => (int) $detailTotals->fullscreen_count,
+            'pip_count' => (int) $detailTotals->pip_count,
+            'cast_count' => (int) $detailTotals->cast_count,
+            'longest_buffer_seconds' => round((int) $detailTotals->longest_buffer_ms / 1000, 1),
+            'average_bitrate_kbps' => round((float) ($detailTotals->average_bitrate_kbps ?? 0), 1),
+            'dropped_frames' => (int) $detailTotals->dropped_frames,
+            'rendered_frames' => (int) $detailTotals->rendered_frames,
+            'average_playback_speed' => round((float) ($detailTotals->average_playback_speed ?? 0), 2),
+            'subtitle_sessions' => (int) $detailTotals->subtitle_sessions,
+        ];
+
         $watchTrend = (clone $query)
             ->selectRaw(
                 "DATE(CONVERT_TZ(started_at, '+00:00', ?)) AS date, COUNT(*) AS playback_starts,
@@ -128,6 +171,7 @@ class AnalyticsReportController extends Controller
 
         return V4Response::success($overview + [
             'overview' => $overview,
+            'engagement' => $engagement,
             'watch_trend' => $watchTrend,
             'streaming_health' => $streamingHealth,
             'platforms' => $platforms,
@@ -220,21 +264,9 @@ class AnalyticsReportController extends Controller
         $filters = $this->filters($request);
         $query = DB::connection('analytics')->table('playback_errors')
             ->whereBetween('occurred_at', [$filters['from_utc'], $filters['to_utc']]);
-        if ($filters['platform']) {
-            $query->whereExists(function ($subquery) use ($filters) {
-                $subquery->selectRaw('1')
-                    ->from('playback_sessions')
-                    ->whereColumn('playback_sessions.session_id', 'playback_errors.session_id')
-                    ->where('playback_sessions.platform', $filters['platform']);
-            });
-        }
-        if ($filters['app_version']) {
-            $query->whereExists(function ($subquery) use ($filters) {
-                $subquery->selectRaw('1')
-                    ->from('playback_sessions')
-                    ->whereColumn('playback_sessions.session_id', 'playback_errors.session_id')
-                    ->where('playback_sessions.app_version', $filters['app_version']);
-            });
+        $this->applyErrorDimensions($query, $filters);
+        if ($request->filled('category')) {
+            $query->where('category', (string) $request->query('category'));
         }
         $rows = $query->selectRaw(
             'category, stage, code, COUNT(*) AS occurrences,
@@ -246,6 +278,119 @@ class AnalyticsReportController extends Controller
             ->orderByDesc('occurrences')
             ->limit(200)
             ->get();
+
+        return V4Response::success($rows, meta: ['filters' => $this->publicFilters($filters)]);
+    }
+
+    public function errorEvents(Request $request): JsonResponse
+    {
+        $filters = $this->filters($request);
+        $perPage = min(100, max(1, (int) $request->query('per_page', 50)));
+        $query = DB::connection('analytics')->table('playback_errors')
+            ->whereBetween('occurred_at', [$filters['from_utc'], $filters['to_utc']]);
+        $this->applyErrorDimensions($query, $filters);
+        if ($request->filled('category')) {
+            $query->where('category', (string) $request->query('category'));
+        }
+
+        $rows = $query->orderByDesc('occurred_at')->paginate($perPage, [
+            'event_id', 'session_id', 'user_id', 'device_id', 'category', 'stage',
+            'code', 'http_status', 'position_ms', 'is_fatal', 'is_retryable',
+            'retry_count', 'network_type', 'sanitized_message', 'occurred_at',
+        ]);
+
+        return V4Response::success($rows, meta: ['filters' => $this->publicFilters($filters)]);
+    }
+
+    public function events(Request $request): JsonResponse
+    {
+        $filters = $this->filters($request);
+        $perPage = min(100, max(1, (int) $request->query('per_page', 50)));
+        $query = DB::connection('analytics')->table('analytics_events')
+            ->whereBetween('occurred_at', [$filters['from_utc'], $filters['to_utc']]);
+        if ($filters['platform']) {
+            $query->where('platform', $filters['platform']);
+        }
+        if ($filters['app_version']) {
+            $query->where('app_version', $filters['app_version']);
+        }
+        if ($request->filled('name')) {
+            $query->where('name', (string) $request->query('name'));
+        }
+
+        $rows = $query->orderByDesc('occurred_at')->paginate($perPage, [
+            'event_id', 'user_id', 'device_id', 'app_session_id', 'name',
+            'occurred_at', 'platform', 'app_version', 'properties_json',
+        ])->through(fn ($row) => [
+            'event_id' => $row->event_id,
+            'user_id' => $row->user_id,
+            'device_id' => $row->device_id,
+            'app_session_id' => $row->app_session_id,
+            'name' => $row->name,
+            'occurred_at' => $row->occurred_at,
+            'platform' => $row->platform,
+            'app_version' => $row->app_version,
+            'properties' => json_decode((string) $row->properties_json, true) ?: [],
+        ]);
+
+        return V4Response::success($rows, meta: ['filters' => $this->publicFilters($filters)]);
+    }
+
+    public function sessions(Request $request): JsonResponse
+    {
+        [$query, $filters] = $this->playbackQuery($request);
+        $perPage = min(100, max(1, (int) $request->query('per_page', 50)));
+        if ($request->filled('user_id')) {
+            $query->where('user_id', (string) $request->query('user_id'));
+        }
+        if ($request->filled('content_id')) {
+            $query->where('content_id', (string) $request->query('content_id'));
+        }
+        if ($request->filled('end_reason')) {
+            $query->where('end_reason', (string) $request->query('end_reason'));
+        }
+        if ($request->filled('q')) {
+            $term = '%'.str_replace(['%', '_'], ['\\%', '\\_'], (string) $request->query('q')).'%';
+            $query->where(function ($search) use ($term) {
+                $search->where('session_id', 'like', $term)
+                    ->orWhere('content_id', 'like', $term)
+                    ->orWhere('user_id', 'like', $term);
+            });
+        }
+
+        $rows = $query->orderByDesc('started_at')->paginate($perPage, [
+            'session_id', 'user_id', 'device_id', 'content_id', 'content_type',
+            'revision', 'state', 'started_at', 'ended_at', 'watch_position_ms',
+            'duration_ms', 'watched_ms', 'unique_watched_ms', 'startup_ms',
+            'buffer_count', 'buffer_ms', 'error_count', 'completion_percent',
+            'completed', 'end_reason', 'platform', 'app_version', 'sdk_version',
+            'metrics_json',
+        ])->through(fn ($row) => [
+            'session_id' => $row->session_id,
+            'user_id' => $row->user_id,
+            'device_id' => $row->device_id,
+            'content_id' => $row->content_id,
+            'content_type' => $row->content_type,
+            'revision' => (int) $row->revision,
+            'state' => $row->state,
+            'started_at' => $row->started_at,
+            'ended_at' => $row->ended_at,
+            'watch_position_ms' => (int) $row->watch_position_ms,
+            'duration_ms' => (int) $row->duration_ms,
+            'watched_ms' => (int) $row->watched_ms,
+            'unique_watched_ms' => (int) $row->unique_watched_ms,
+            'startup_ms' => $row->startup_ms === null ? null : (int) $row->startup_ms,
+            'buffer_count' => (int) $row->buffer_count,
+            'buffer_ms' => (int) $row->buffer_ms,
+            'error_count' => (int) $row->error_count,
+            'completion_percent' => (float) $row->completion_percent,
+            'completed' => (bool) $row->completed,
+            'end_reason' => $row->end_reason,
+            'platform' => $row->platform,
+            'app_version' => $row->app_version,
+            'sdk_version' => $row->sdk_version,
+            'metrics' => json_decode((string) $row->metrics_json, true) ?: [],
+        ]);
 
         return V4Response::success($rows, meta: ['filters' => $this->publicFilters($filters)]);
     }
@@ -282,6 +427,34 @@ class AnalyticsReportController extends Controller
         }
 
         return [$query, $filters];
+    }
+
+    private function applyErrorDimensions($query, array $filters): void
+    {
+        if ($filters['platform']) {
+            $query->whereExists(function ($subquery) use ($filters) {
+                $subquery->selectRaw('1')
+                    ->from('playback_sessions')
+                    ->whereColumn('playback_sessions.session_id', 'playback_errors.session_id')
+                    ->where('playback_sessions.platform', $filters['platform']);
+            });
+        }
+        if ($filters['app_version']) {
+            $query->whereExists(function ($subquery) use ($filters) {
+                $subquery->selectRaw('1')
+                    ->from('playback_sessions')
+                    ->whereColumn('playback_sessions.session_id', 'playback_errors.session_id')
+                    ->where('playback_sessions.app_version', $filters['app_version']);
+            });
+        }
+        if ($filters['content_type']) {
+            $query->whereExists(function ($subquery) use ($filters) {
+                $subquery->selectRaw('1')
+                    ->from('playback_sessions')
+                    ->whereColumn('playback_sessions.session_id', 'playback_errors.session_id')
+                    ->where('playback_sessions.content_type', $filters['content_type']);
+            });
+        }
     }
 
     private function filters(Request $request): array

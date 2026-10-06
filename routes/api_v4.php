@@ -243,6 +243,9 @@ Route::prefix('v4')
                     Route::get('/content/{type}/{id}', [AnalyticsReportController::class, 'contentShow']);
                     Route::get('/quality', [AnalyticsReportController::class, 'quality']);
                     Route::get('/errors', [AnalyticsReportController::class, 'errors']);
+                    Route::get('/errors/events', [AnalyticsReportController::class, 'errorEvents']);
+                    Route::get('/events', [AnalyticsReportController::class, 'events']);
+                    Route::get('/sessions', [AnalyticsReportController::class, 'sessions']);
                     Route::get('/users/{userId}/sessions', [AnalyticsReportController::class, 'userSessions']);
                 });
             });
