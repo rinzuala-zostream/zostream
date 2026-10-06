@@ -1,3 +1,7 @@
+import Link from "next/link";
+import { Suspense } from "react";
+import { analyticsHref, ReportError, ReportExplorer } from "@/app/features/analytics/components/report-explorer";
+import { SdkInsights } from "@/app/features/analytics/components/sdk-insights";
 import { cookies } from "next/headers";
 import {
   Activity,
@@ -16,6 +20,8 @@ import { AdminPageHeader } from "@/app/components/admin-page-header";
 import { AnalyticsCollectionSwitch } from "@/app/features/analytics/components/analytics-collection-switch";
 import {
   analyticsService,
+  type AnalyticsFilters,
+  type ReportTab,
   type AnalyticsContentStat,
   type AnalyticsDashboardData,
   type AnalyticsEventStat,
@@ -29,11 +35,7 @@ import { cn } from "@/lib/utils";
 export const dynamic = "force-dynamic";
 
 type AnalyticsPageProps = {
-  searchParams?: Promise<{
-    from?: string;
-    to?: string;
-    platform?: string;
-  }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
 const PLATFORM_OPTIONS: Array<{
@@ -50,14 +52,13 @@ const PLATFORM_OPTIONS: Array<{
 const platformColors = ["#22d3ee", "#6366f1", "#a855f7", "#f59e0b", "#10b981"];
 
 function formatDateInput(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
 }
 
 function safeDate(value: string | undefined, fallback: string) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(value ?? "") ? value! : fallback;
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return fallback;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value ? value : fallback;
 }
 
 function normalizePlatform(value?: string): AnalyticsPlatform | undefined {
@@ -160,7 +161,7 @@ function Panel({
   );
 }
 
-function WatchTrendChart({ points }: { points: AnalyticsTrendPoint[] }) {
+function WatchTrendChart({ points, from, to }: { points: AnalyticsTrendPoint[]; from: string; to: string }) {
   const width = 760;
   const height = 260;
   const left = 48;
@@ -171,8 +172,8 @@ function WatchTrendChart({ points }: { points: AnalyticsTrendPoint[] }) {
   const max = Math.max(...values, 1);
   const plotWidth = width - left - right;
   const plotHeight = height - top - bottom;
-  const coordinates = points.map((item, index) => ({
-    x: left + (index * plotWidth) / Math.max(points.length - 1, 1),
+  const coordinates = points.map((item) => ({
+    x: left + ((Date.parse(item.date) - Date.parse(from)) * plotWidth) / Math.max(Date.parse(to) - Date.parse(from), 86_400_000),
     y: top + plotHeight - ((item.watch_hours ?? 0) / max) * plotHeight,
     item,
   }));
@@ -202,7 +203,7 @@ function WatchTrendChart({ points }: { points: AnalyticsTrendPoint[] }) {
           <path d={area} fill="url(#watch-area)" />
           <polyline points={line} fill="none" stroke="url(#watch-line)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
           {coordinates.map(({ x, y, item }, index) => (
-            <g key={`${item.date}-${index}`}>
+            <g key={`${item.date}-${index}`}><title>{`${item.date}: ${formatNumber(item.watch_hours, 2)} hours`}</title>
               <circle cx={x} cy={y} r="5" fill="#020617" stroke="#67e8f9" strokeWidth="3" />
               {(points.length <= 8 || index % Math.ceil(points.length / 7) === 0 || index === points.length - 1) ? (
                 <text x={x} y={height - 14} textAnchor="middle" fill="#94a3b8" fontSize="11">
@@ -222,40 +223,7 @@ function WatchTrendChart({ points }: { points: AnalyticsTrendPoint[] }) {
 }
 
 function StreamingHealthChart({ points }: { points: AnalyticsHealthPoint[] }) {
-  const maxStartup = Math.max(...points.map((point) => point.average_startup_ms ?? 0), 1);
-
-  return (
-    <div className="mt-5 min-h-64 rounded-[1.35rem] border border-slate-200/80 bg-slate-950 p-4 text-white dark:border-white/10">
-      {points.length ? (
-        <>
-          <div className="flex flex-wrap gap-4 text-[0.68rem] font-semibold text-slate-300">
-            <span className="inline-flex items-center gap-2"><i className="size-2 rounded-full bg-cyan-400" />Startup time</span>
-            <span className="inline-flex items-center gap-2"><i className="size-2 rounded-full bg-fuchsia-400" />Rebuffer rate</span>
-            <span className="inline-flex items-center gap-2"><i className="size-2 rounded-full bg-emerald-400" />Playback success</span>
-          </div>
-          <div className="mt-6 grid h-44 grid-flow-col items-end gap-3 border-b border-white/10 px-1">
-            {points.map((point) => {
-              const startupHeight = Math.max(((point.average_startup_ms ?? 0) / maxStartup) * 100, 3);
-              const successHeight = Math.max(point.playback_success_rate ?? 0, 3);
-              const rebufferHeight = Math.max((point.rebuffer_rate ?? 0) * 5, 3);
-              return (
-                <div key={point.date} className="flex h-full min-w-10 flex-col justify-end">
-                  <div className="flex flex-1 items-end justify-center gap-1">
-                    <div className="w-2.5 rounded-t bg-cyan-400" style={{ height: `${startupHeight}%` }} title={`${formatNumber(point.average_startup_ms)} ms startup`} />
-                    <div className="w-2.5 rounded-t bg-fuchsia-400" style={{ height: `${rebufferHeight}%` }} title={`${formatPercent(point.rebuffer_rate)} rebuffer`} />
-                    <div className="w-2.5 rounded-t bg-emerald-400" style={{ height: `${successHeight}%` }} title={`${formatPercent(point.playback_success_rate)} success`} />
-                  </div>
-                  <p className="mt-2 truncate text-center text-[0.62rem] text-slate-400">{shortDate(point.date)}</p>
-                </div>
-              );
-            })}
-          </div>
-        </>
-      ) : (
-        <ChartEmpty message="Startup, buffering and playback success data will appear here." />
-      )}
-    </div>
-  );
+  return <div className="mt-5 max-h-80 overflow-auto rounded-xl border border-slate-200 dark:border-white/10">{points.length ? <table className="w-full text-left text-xs"><thead className="sticky top-0 bg-slate-100 dark:bg-slate-800"><tr>{["Date", "Startup (ms)", "Rebuffer (%)", "Success (%)"].map((label) => <th key={label} className="whitespace-nowrap p-3">{label}</th>)}</tr></thead><tbody>{points.map((point) => <tr key={point.date} className="border-t border-slate-100 dark:border-white/5"><td className="p-3">{shortDate(point.date)}</td><td className="p-3 tabular-nums">{formatNumber(point.average_startup_ms)}</td><td className="p-3 tabular-nums">{formatPercent(point.rebuffer_rate, 2)}</td><td className="p-3 tabular-nums">{formatPercent(point.playback_success_rate)}</td></tr>)}</tbody></table> : <p className="p-10 text-center text-sm text-slate-500">No streaming-health data for this period.</p>}</div>;
 }
 
 function ChartEmpty({ message }: { message: string }) {
@@ -313,14 +281,14 @@ function PlatformDonut({ items }: { items: AnalyticsPlatformStat[] }) {
   );
 }
 
-function TopContentTable({ items }: { items: AnalyticsContentStat[] }) {
+function TopContentTable({ items, filters }: { items: AnalyticsContentStat[]; filters: AnalyticsFilters }) {
   return (
     <div className="mt-5 overflow-x-auto rounded-[1.25rem] border border-slate-200/80 dark:border-white/10">
       <table className="w-full min-w-[620px] text-left text-sm">
         <thead className="bg-slate-950 text-[0.66rem] uppercase tracking-[0.16em] text-slate-300">
           <tr>
             <th className="px-4 py-3 font-bold">Content</th>
-            <th className="px-4 py-3 font-bold">Views</th>
+            <th className="px-4 py-3 font-bold">Valid views</th>
             <th className="px-4 py-3 font-bold">Watch hours</th>
             <th className="px-4 py-3 font-bold">Completion</th>
           </tr>
@@ -332,7 +300,7 @@ function TopContentTable({ items }: { items: AnalyticsContentStat[] }) {
                 <div className="flex items-center gap-3">
                   <span className="grid size-8 shrink-0 place-items-center rounded-xl bg-slate-950 text-xs font-black text-white dark:bg-white dark:text-slate-950">{index + 1}</span>
                   <div>
-                    <p className="font-bold text-slate-950 dark:text-white">{item.title || item.content_id}</p>
+                    <p className="font-bold text-slate-950 dark:text-white"><Link className="hover:underline" href={analyticsHref({ ...filters, content_type: item.content_type }, { tab: "sessions", content_id: item.content_id })}>{item.title || item.content_id}</Link></p>
                     <p className="mt-0.5 text-xs capitalize text-slate-500">{item.content_type || "content"}</p>
                   </div>
                 </div>
@@ -358,8 +326,8 @@ function TopContentTable({ items }: { items: AnalyticsContentStat[] }) {
 function ProductEvents({ items }: { items: AnalyticsEventStat[] }) {
   const max = Math.max(...items.map((item) => item.count ?? 0), 1);
   return (
-    <div className="mt-5 space-y-3">
-      {items.length ? items.slice(0, 7).map((item, index) => (
+    <div className="mt-5 max-h-96 space-y-3 overflow-y-auto pr-1">
+      {items.length ? items.map((item, index) => (
         <div key={item.name} className="rounded-xl border border-slate-200/80 bg-white/55 p-3 dark:border-white/10 dark:bg-white/[0.03]">
           <div className="flex items-center justify-between gap-3 text-xs">
             <span className="font-bold text-slate-800 dark:text-slate-100">{formatEventName(item.name)}</span>
@@ -376,26 +344,41 @@ function ProductEvents({ items }: { items: AnalyticsEventStat[] }) {
 }
 
 export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps) {
-  const [cookieStore, params] = await Promise.all([cookies(), searchParams]);
+  const [cookieStore, rawParams] = await Promise.all([cookies(), searchParams]);
+  const params = Object.fromEntries(Object.entries(rawParams ?? {}).map(([key, value]) => [key, Array.isArray(value) ? value[0] : value]));
   const initialMode = cookieStore.get("theme-mode")?.value === "dark" ? "dark" : "light";
-  const defaultTo = formatDateInput(new Date());
-  const fromDate = new Date();
-  fromDate.setDate(fromDate.getDate() - 6);
-  const defaultFrom = formatDateInput(fromDate);
-  const from = safeDate(params?.from, defaultFrom);
-  const to = safeDate(params?.to, defaultTo);
-  const platform = normalizePlatform(params?.platform);
-
+  const today = new Date();
+  const defaultTo = formatDateInput(today);
+  const defaultFrom = formatDateInput(new Date(today.getTime() - 6 * 86_400_000));
+  const from = safeDate(params.from, defaultFrom);
+  const to = safeDate(params.to, defaultTo);
+  const platform = normalizePlatform(params.platform);
+  const tab = (["insights", "content", "sessions", "quality", "errors", "events"].includes(params.tab ?? "") ? params.tab : "overview") as ReportTab | "overview" | "insights";
+  const filters: AnalyticsFilters = { from, to, platform, timezone: "Asia/Kolkata", app_version: params.app_version?.slice(0, 64) || undefined, user_id: params.user_id?.slice(0, 128) || undefined, content_type: ["movie", "episode", "live"].includes(params.content_type ?? "") ? params.content_type : undefined };
+  const page = /^\d+$/.test(params.page ?? "") && Number(params.page) > 0 ? params.page! : "1";
   let data: AnalyticsDashboardData = {};
-  let reportUnavailable = false;
-  try {
-    data = await analyticsService.getDashboard({ from, to, platform });
-  } catch {
-    reportUnavailable = true;
+  let reportError: unknown;
+  if (tab === "overview" && from <= to) {
+    try {
+      data = await analyticsService.getDashboard(filters);
+    } catch (error) {
+      reportError = error;
+    }
   }
 
   const overview = data.overview ?? data;
-  const trend = data.watch_trend ?? [];
+  const reportedTrend = new Map((data.watch_trend ?? []).map((point) => [point.date, point]));
+  const trend: AnalyticsTrendPoint[] = [];
+  // Fill missing days so the chart uses elapsed days rather than row positions.
+  const dayCount = Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000) + 1;
+  if (dayCount > 0 && dayCount <= 366 && reportedTrend.size) {
+    for (let day = 0; day < dayCount; day++) {
+      const date = new Date(Date.parse(from) + day * 86_400_000).toISOString().slice(0, 10);
+      trend.push(reportedTrend.get(date) ?? { date, watch_hours: 0 });
+    }
+  } else {
+    trend.push(...(data.watch_trend ?? []));
+  }
   const health = data.streaming_health ?? [];
   const platforms = data.platforms ?? [];
   const topContent = data.top_content ?? [];
@@ -410,54 +393,63 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
           <section className="relative overflow-hidden rounded-[2rem] border border-white/60 bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.2),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(99,102,241,0.22),transparent_38%),linear-gradient(135deg,#071326,#0b1f3b_52%,#111b3d)] p-5 text-white shadow-[0_28px_80px_rgba(2,6,23,0.24)] sm:p-6 dark:border-white/10">
             <div className="absolute -right-16 -top-16 size-56 rounded-full border border-cyan-300/20 bg-cyan-300/5" />
             <div className="absolute -bottom-24 right-24 size-64 rounded-full border border-indigo-300/20 bg-indigo-400/5" />
-            <div className="relative flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+            <div className="relative flex flex-col gap-5">
               <div className="max-w-3xl">
                 <span className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-[0.68rem] font-bold uppercase tracking-[0.22em] text-cyan-200"><Activity className="size-3.5" />Streaming intelligence</span>
-                <h2 className="mt-4 text-3xl font-black tracking-tight sm:text-4xl">Playback and audience health in one view.</h2>
+                <h2 className="mt-3 text-2xl font-bold tracking-tight sm:text-3xl">Analytics</h2>
                 <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">Watch time, playback quality, content performance and product behaviour from ZoAnalytics SDK sessions.</p>
               </div>
-              <form action="/analytics" className="grid gap-2 rounded-[1.35rem] border border-white/10 bg-white/7 p-3 backdrop-blur-xl sm:grid-cols-[1fr_1fr_150px_auto]">
-                <label><span className="mb-1.5 block text-[0.62rem] font-bold uppercase tracking-[0.16em] text-slate-400">From</span><input type="date" name="from" defaultValue={from} className="h-10 w-full rounded-xl border border-white/10 bg-slate-950/60 px-3 text-xs font-semibold text-white outline-none focus:border-cyan-300/60" /></label>
-                <label><span className="mb-1.5 block text-[0.62rem] font-bold uppercase tracking-[0.16em] text-slate-400">To</span><input type="date" name="to" defaultValue={to} className="h-10 w-full rounded-xl border border-white/10 bg-slate-950/60 px-3 text-xs font-semibold text-white outline-none focus:border-cyan-300/60" /></label>
-                <label><span className="mb-1.5 block text-[0.62rem] font-bold uppercase tracking-[0.16em] text-slate-400">Platform</span><select name="platform" defaultValue={platform ?? "all"} className="h-10 w-full rounded-xl border border-white/10 bg-slate-950/60 px-3 text-xs font-semibold text-white outline-none focus:border-cyan-300/60">{PLATFORM_OPTIONS.map((option) => <option key={option.value} value={option.value === "all" ? "" : option.value}>{option.label}</option>)}</select></label>
+              <form key={JSON.stringify(filters) + tab} action="/analytics" className="grid gap-2 rounded-[1.35rem] border border-white/10 bg-white/7 p-3 backdrop-blur-xl sm:grid-cols-3 xl:grid-cols-7">
+                <input type="hidden" name="tab" value={tab} />{tab === "insights" && params.dimension ? <input type="hidden" name="dimension" value={params.dimension} /> : null}{tab === "insights" && params.metric ? <input type="hidden" name="metric" value={params.metric} /> : null}{tab === "sessions" && params.content_id ? <input type="hidden" name="content_id" value={params.content_id} /> : null}{tab === "sessions" && params.session_id ? <input type="hidden" name="session_id" value={params.session_id} /> : null}{tab === "errors" && params.error_mode === "events" ? <input type="hidden" name="error_mode" value="events" /> : null}<label><span className="mb-1.5 block text-[0.62rem] font-bold uppercase tracking-[0.16em] text-slate-400">From</span><input type="date" name="from" defaultValue={from} required max={to} className="h-10 w-full rounded-xl border border-white/10 bg-slate-950/60 px-3 text-xs font-semibold text-white outline-none focus:border-cyan-300/60" /></label>
+                <label><span className="mb-1.5 block text-[0.62rem] font-bold uppercase tracking-[0.16em] text-slate-400">To</span><input type="date" name="to" defaultValue={to} required min={from} className="h-10 w-full rounded-xl border border-white/10 bg-slate-950/60 px-3 text-xs font-semibold text-white outline-none focus:border-cyan-300/60" /></label>
+                <label><span className="mb-1.5 block text-[0.62rem] font-bold uppercase tracking-[0.16em] text-slate-400">Platform</span><select name="platform" defaultValue={platform ?? ""} className="h-10 w-full rounded-xl border border-white/10 bg-slate-950/60 px-3 text-xs font-semibold text-white outline-none focus:border-cyan-300/60">{PLATFORM_OPTIONS.map((option) => <option key={option.value} value={option.value === "all" ? "" : option.value}>{option.label}</option>)}</select></label>
+                <label className="text-xs text-slate-300">Content type<select name="content_type" defaultValue={filters.content_type ?? ""} className="mt-1.5 h-10 w-full rounded-xl border border-white/10 bg-slate-950 px-3 text-white"><option value="">All content</option><option value="movie">Movies</option><option value="episode">Episodes</option><option value="live">Live</option></select></label>
+                <label className="text-xs text-slate-300">App version<input name="app_version" maxLength={64} defaultValue={filters.app_version} placeholder="All versions" className="mt-1.5 h-10 w-full rounded-xl border border-white/10 bg-slate-950 px-3 text-white" /></label>
+                <label className="text-xs text-slate-300">User ID<input name="user_id" maxLength={128} defaultValue={filters.user_id} placeholder="All users" className="mt-1.5 h-10 w-full rounded-xl border border-white/10 bg-slate-950 px-3 text-white" /></label>
                 <button type="submit" className="mt-auto inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-400 to-indigo-500 px-4 text-xs font-black text-white shadow-lg shadow-cyan-950/30 transition hover:brightness-110"><CalendarDays className="size-4" />Apply</button>
               </form>
+              <div className="flex items-center justify-between text-xs text-slate-300"><span>Report timezone: Asia/Kolkata (IST)</span><Link href="/analytics" className="underline">Reset filters</Link></div>
             </div>
           </section>
 
           <AnalyticsCollectionSwitch />
 
-          {reportUnavailable ? <div className="flex items-start gap-3 rounded-[1.2rem] border border-amber-300/50 bg-amber-50/90 px-4 py-3 text-sm text-amber-900 dark:border-amber-300/15 dark:bg-amber-300/8 dark:text-amber-100"><AlertTriangle className="mt-0.5 size-4 shrink-0" /><div><p className="font-bold">Analytics report API is not available yet.</p><p className="mt-0.5 text-xs opacity-80">The page is ready and will populate automatically when the backend report endpoint is enabled.</p></div></div> : null}
+          <nav aria-label="Analytics reports" className="flex gap-1 overflow-x-auto rounded-2xl border border-slate-200 bg-white p-1.5 dark:border-white/10 dark:bg-slate-900">
+            {["overview", "insights", "content", "sessions", "quality", "errors", "events"].map((item) => <Link key={item} href={analyticsHref(filters, { tab: item })} aria-current={tab === item ? "page" : undefined} className={cn("rounded-xl px-5 py-2.5 text-sm font-semibold capitalize whitespace-nowrap", tab === item ? "bg-slate-900 text-white dark:bg-cyan-300 dark:text-slate-950" : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-white/5")}>{item === "insights" ? "SDK insights" : item}</Link>)}
+          </nav>
+          {from > to ? <p role="alert" className="rounded-xl bg-amber-100 p-4 text-amber-950">From date must be on or before To date. Update the filters above.</p> : tab === "insights" ? <Suspense key={JSON.stringify(filters) + tab + page + params.dimension + params.metric} fallback={<p className="p-8 text-center" role="status">Loading SDK insights…</p>}><SdkInsights filters={filters} dimension={params.dimension} metric={params.metric} page={Number(page)} /></Suspense> : tab !== "overview" ? <Suspense key={JSON.stringify(filters) + tab + page + params.content_id + params.session_id + params.error_mode} fallback={<p className="p-8 text-center" role="status">Loading report…</p>}><ReportExplorer tab={tab} filters={filters} page={page} contentId={params.content_id} sessionId={params.session_id} errorMode={params.error_mode} /></Suspense> : reportError ? <ReportError error={reportError} href={analyticsHref(filters)} /> : <>
 
-          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-8">
+          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <MetricCard label="Playback starts" value={formatNumber(overview.playback_starts)} detail={rangeLabel} icon={CirclePlay} tone="from-blue-500 to-cyan-400" />
-            <MetricCard label="Valid views" value={formatNumber(overview.valid_views)} detail="Qualified playback sessions" icon={Eye} tone="from-cyan-500 to-teal-400" />
+            <MetricCard label="Valid views" value={formatNumber(overview.valid_views)} detail="At least 10 seconds watched" icon={Eye} tone="from-cyan-500 to-teal-400" />
             <MetricCard label="Unique viewers" value={formatNumber(overview.unique_viewers)} detail="Distinct viewers in range" icon={Users} tone="from-emerald-500 to-green-400" />
             <MetricCard label="Watch hours" value={`${formatNumber(overview.watch_hours, 1)}h`} detail="Foreground and background play" icon={Clock3} tone="from-violet-500 to-indigo-500" />
-            <MetricCard label="Avg. watch" value={`${formatNumber(overview.average_watch_minutes, 1)}m`} detail="Per valid view" icon={ChartNoAxesCombined} tone="from-fuchsia-500 to-pink-500" />
+            <MetricCard label="Avg. watch" value={`${formatNumber(overview.average_watch_minutes, 1)}m`} detail="Per playback session" icon={ChartNoAxesCombined} tone="from-fuchsia-500 to-pink-500" />
             <MetricCard label="Completion" value={formatPercent(overview.completion_rate)} detail="Completed playback sessions" icon={Gauge} tone="from-amber-500 to-orange-500" />
             <MetricCard label="Startup" value={`${formatNumber(overview.average_startup_ms)}ms`} detail="Average time to first frame" icon={RadioTower} tone="from-orange-500 to-rose-500" />
             <MetricCard label="Error rate" value={formatPercent(overview.playback_error_rate)} detail="Sessions with playback errors" icon={AlertTriangle} tone="from-rose-500 to-red-500" />
           </section>
 
+          {data.engagement ? <Panel eyebrow="Playback behaviour" title="Engagement details" caption="Watch-time totals, interaction counts and playback quality."><details className="mt-4"><summary className="cursor-pointer text-sm font-semibold text-cyan-700 dark:text-cyan-300">View engagement metrics</summary><div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">{Object.entries(data.engagement).map(([key, value]) => <div key={key} className="rounded-xl bg-slate-100 p-3 dark:bg-white/5"><p className="text-xs text-slate-500 dark:text-slate-400">{formatEventName(key)}</p><p className="mt-2 text-xl font-semibold tabular-nums">{formatNumber(value, 2)}</p></div>)}</div></details></Panel> : null}
+
           <div className="grid gap-4 2xl:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
-            <Panel eyebrow="Audience trend" title="Watch hours over time" caption="Playback consumption across the selected date range."><WatchTrendChart points={trend} /></Panel>
+            <Panel eyebrow="Audience trend" title="Watch hours over time" caption="Playback consumption across the selected date range."><WatchTrendChart points={trend} from={from} to={to} /></Panel>
             <Panel eyebrow="Quality of experience" title="Streaming health" caption="Startup speed, rebuffering and successful playback."><StreamingHealthChart points={health} /></Panel>
           </div>
 
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.7fr)]">
-            <Panel eyebrow="Content performance" title="Most watched titles" caption="Ranked by valid views, watch hours and completion."><TopContentTable items={topContent} /></Panel>
+            <Panel eyebrow="Content performance" title="Most watched titles" caption="Top 10 by valid views (10+ seconds), then watch time."><TopContentTable items={topContent} filters={filters} /></Panel>
             <Panel eyebrow="Device analytics" title="Sessions by platform" caption="iOS, Android and TV distribution."><PlatformDonut items={platforms} /></Panel>
           </div>
 
           <div className="grid gap-4 xl:grid-cols-[minmax(320px,0.75fr)_minmax(0,1.4fr)]">
-            <Panel eyebrow="Product behaviour" title="Top app events" caption="Actions recorded outside playback."><ProductEvents items={productEvents} /></Panel>
+            <Panel eyebrow="Product behaviour" title="Top app events" caption="Top 20 events. Content type does not apply to app events or app sessions."><ProductEvents items={productEvents} /></Panel>
             <Panel eyebrow="Operational summary" title="What needs attention" caption="Fast signals for the selected range.">
               <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 {[
                   { label: "App sessions", value: formatNumber(overview.app_sessions), icon: MonitorSmartphone, color: "text-cyan-600 dark:text-cyan-300" },
                   { label: "Rebuffer ratio", value: formatPercent((overview.rebuffer_ratio ?? 0) * 100), icon: Activity, color: "text-violet-600 dark:text-violet-300" },
-                  { label: "Playback success", value: formatPercent(Math.max(0, 100 - (overview.playback_error_rate ?? 0))), icon: RadioTower, color: "text-emerald-600 dark:text-emerald-300" },
+                  { label: "Playback success", value: overview.playback_starts ? formatPercent(Math.max(0, 100 - (overview.playback_error_rate ?? 0))) : "—", icon: RadioTower, color: "text-emerald-600 dark:text-emerald-300" },
                   { label: "Platform focus", value: platform ? platform.toUpperCase() : "ALL", icon: Gauge, color: "text-amber-600 dark:text-amber-300" },
                 ].map(({ label, value, icon: Icon, color }) => (
                   <article key={label} className="rounded-[1.2rem] border border-slate-200/80 bg-slate-950/[0.025] p-4 dark:border-white/10 dark:bg-white/[0.03]">
@@ -469,6 +461,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
               </div>
             </Panel>
           </div>
+          </>}
         </div>
       </div>
     </main>

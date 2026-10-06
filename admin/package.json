@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:analytics-contract": "node --test tests/analytics-contract.test.mjs"
   },
   "dependencies": {
     "@leenguyen/react-flip-clock-countdown": "^1.7.2",

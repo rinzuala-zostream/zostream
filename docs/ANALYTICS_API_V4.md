@@ -607,6 +607,7 @@ next app launch. Playback and UI never wait for these retries.
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/api/v4/analytic/reports/overview` | Main KPIs |
+| `GET` | `/api/v4/analytic/reports/insights` | All SDK v1 playback measurements, totals and paginated grouping |
 | `GET` | `/api/v4/analytic/reports/content` | Paginated content performance |
 | `GET` | `/api/v4/analytic/reports/content/{type}/{id}` | One title or episode |
 | `GET` | `/api/v4/analytic/reports/quality` | Startup, buffering and quality metrics |
@@ -628,6 +629,15 @@ content_type=movie|episode|live
 page=1
 per_page=50
 ```
+
+The insights endpoint also accepts `dimension` (default `platform`). Allowed
+dimensions cover content IDs and type, playback state/end reason, downloaded and
+autoplay status, initial/final quality, codecs and stream format, audio and
+subtitle settings, playback speed, and device/network/app context. `page` and
+`per_page` paginate the groups. The `summary` object covers the full filtered
+range; `groups.data` contains the same measurements for each dimension value.
+The admin dashboard offers these dimensions in SDK Insights and shows the
+complete original payload in each playback session's detail view.
 
 ### Overview response
 

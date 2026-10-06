@@ -239,6 +239,7 @@ Route::prefix('v4')
 
                 Route::prefix('reports')->middleware(['admin.token', 'throttle:analytics-reports'])->group(function () {
                     Route::get('/overview', [AnalyticsReportController::class, 'overview']);
+                    Route::get('/insights', [AnalyticsReportController::class, 'insights']);
                     Route::get('/content', [AnalyticsReportController::class, 'content']);
                     Route::get('/content/{type}/{id}', [AnalyticsReportController::class, 'contentShow']);
                     Route::get('/quality', [AnalyticsReportController::class, 'quality']);

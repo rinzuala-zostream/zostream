@@ -9,6 +9,9 @@ export type AnalyticsFilters = {
   to: string;
   platform?: AnalyticsPlatform;
   timezone?: string;
+  app_version?: string;
+  content_type?: string;
+  user_id?: string;
 };
 
 export type AnalyticsOverview = {
@@ -64,6 +67,7 @@ export type AnalyticsDashboardData = AnalyticsOverview & {
   // The nested shape lets the overview endpoint grow into one dashboard
   // response while remaining compatible with the flat v1 report contract.
   overview?: AnalyticsOverview;
+  engagement?: Record<string, number>;
   watch_trend?: AnalyticsTrendPoint[];
   streaming_health?: AnalyticsHealthPoint[];
   platforms?: AnalyticsPlatformStat[];
@@ -76,15 +80,40 @@ function toQuery(filters: AnalyticsFilters): QueryParams {
     from: filters.from,
     to: filters.to,
     platform: filters.platform,
+    app_version: filters.app_version,
+    content_type: filters.content_type,
+    user_id: filters.user_id,
     timezone: filters.timezone ?? "Asia/Kolkata",
   };
 }
 
+export type ReportRow = Record<string, unknown>;
+export type ReportPage = { data: ReportRow[]; current_page: number; last_page: number; total: number };
+export type ReportTab = "content" | "sessions" | "quality" | "errors" | "events";
+
+export type InsightsReport = {
+  dimension: string;
+  summary: Record<string, number | null>;
+  groups: ReportPage;
+};
+
 export const analyticsService = {
+  async getInsights(filters: AnalyticsFilters, dimension: string, page: number) {
+    return apiClient.get<InsightsReport>("/api/v4/analytic/reports/insights", {
+      query: { ...toQuery(filters), dimension, page, per_page: 25 },
+      cache: "no-store",
+    });
+  },
+  async getReport(tab: ReportTab | "errors/events", filters: AnalyticsFilters, query: QueryParams = {}) {
+    return apiClient.get<ReportPage | ReportRow[]>(`/api/v4/analytic/reports/${tab}`, {
+      query: { ...toQuery(filters), ...query },
+      cache: "no-store",
+    });
+  },
   async getDashboard(filters: AnalyticsFilters) {
     return apiClient.get<AnalyticsDashboardData>(
       "/api/v4/analytic/reports/overview",
-      { query: toQuery(filters) },
+      { query: toQuery(filters), cache: "no-store" },
     );
   },
 };

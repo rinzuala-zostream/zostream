@@ -187,7 +187,8 @@ public actor ZoAnalyticsClient {
         request.setValue(platform.rawValue, forHTTPHeaderField: "X-Platform")
         let (data, response) = try await transport.data(for: request)
         guard (200...299).contains(response.statusCode) else {
-            let retryable = response.statusCode == 404
+            let retryable = (response.statusCode == 403 && Self.isCollectionDisabled(data))
+                || response.statusCode == 404
                 || response.statusCode == 408
                 || response.statusCode == 429
                 || response.statusCode >= 500
@@ -294,14 +295,25 @@ public actor ZoAnalyticsClient {
         let payloadLimit = path.hasSuffix("/batch") ? 262_144 : 65_536
         if (request.httpBody?.count ?? 0) > payloadLimit { throw ZoAnalyticsError.payloadTooLarge }
 
-        let (_, response) = try await transport.data(for: request)
+        let (data, response) = try await transport.data(for: request)
         guard (200...299).contains(response.statusCode) else {
-            let retryable = response.statusCode == 404
+            // Firebase collection state can reach the server before the device's
+            // listener. Retain queued data until collection is enabled again.
+            let retryable = (response.statusCode == 403 && Self.isCollectionDisabled(data))
+                || response.statusCode == 404
                 || response.statusCode == 408
                 || response.statusCode == 429
                 || response.statusCode >= 500
             throw ZoAnalyticsError.http(status: response.statusCode, retryable: retryable)
         }
+    }
+
+    private static func isCollectionDisabled(_ data: Data) -> Bool {
+        guard let envelope = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let error = envelope["error"] as? [String: Any] else {
+            return false
+        }
+        return error["code"] as? String == "ANALYTICS_COLLECTION_DISABLED"
     }
 
     private static func defaultQueueDirectory() -> URL {

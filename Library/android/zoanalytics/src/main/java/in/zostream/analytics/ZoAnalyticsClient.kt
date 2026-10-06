@@ -259,7 +259,11 @@ class ZoAnalyticsClient @JvmOverloads constructor(
             connection.outputStream.use { it.write(bytes) }
             val status = connection.responseCode
             if (status !in 200..299) {
-                val retryable = status == 404 || status == 408 || status == 429 || status >= 500
+                val collectionDisabled = status == 403 && runCatching {
+                    JSONObject(connection.errorStream?.bufferedReader()?.use { it.readText() } ?: "")
+                        .optJSONObject("error")?.optString("code") == "ANALYTICS_COLLECTION_DISABLED"
+                }.getOrDefault(false)
+                val retryable = collectionDisabled || status == 404 || status == 408 || status == 429 || status >= 500
                 throw AnalyticsHttpException(status, retryable)
             }
         } finally {
@@ -284,7 +288,11 @@ class ZoAnalyticsClient @JvmOverloads constructor(
             connection.setRequestProperty("X-Platform", platform)
             val status = connection.responseCode
             if (status !in 200..299) {
-                val retryable = status == 404 || status == 408 || status == 429 || status >= 500
+                val collectionDisabled = status == 403 && runCatching {
+                    JSONObject(connection.errorStream?.bufferedReader()?.use { it.readText() } ?: "")
+                        .optJSONObject("error")?.optString("code") == "ANALYTICS_COLLECTION_DISABLED"
+                }.getOrDefault(false)
+                val retryable = collectionDisabled || status == 404 || status == 408 || status == 429 || status >= 500
                 throw AnalyticsHttpException(status, retryable)
             }
             return connection.inputStream.bufferedReader().use { JSONObject(it.readText()) }

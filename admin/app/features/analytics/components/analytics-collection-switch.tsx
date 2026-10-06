@@ -144,19 +144,15 @@ export function AnalyticsCollectionSwitch() {
                 : status === "error"
                   ? "Unavailable"
                   : enabled
-                    ? "Live"
+                    ? "On"
                     : "Off"}
             </span>
           </div>
           <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
-            Updates Firebase Realtime Database path
-            <code className="mx-1 rounded bg-slate-950/[0.06] px-1.5 py-0.5 font-bold text-slate-700 dark:bg-white/10 dark:text-slate-200">
-              /config/analytics/enabled
-            </code>
-            for iOS, Apple TV, Android and TV.
+            Collect playback quality and app activity across connected devices.
           </p>
           <p className="mt-1 text-[0.68rem] text-slate-400">
-            Connected devices apply this setting immediately through a live listener.
+            Turning this off pauses collection and uploads. Saved reports remain available.
           </p>
           {updatedAt ? (
             <p className="mt-1 text-[0.68rem] font-semibold text-slate-400">

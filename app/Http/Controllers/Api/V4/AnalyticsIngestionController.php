@@ -314,7 +314,8 @@ class AnalyticsIngestionController extends Controller
             $prefix.'result.error_count' => ['required', 'integer', 'min:0'],
             $prefix.'result.completion_percent' => ['required', 'numeric', 'between:0,100'],
             $prefix.'result.completed' => ['required', 'boolean'],
-            $prefix.'result.milestones' => ['required', 'array'],
+            // Sessions below 25% legitimately have no milestones.
+            $prefix.'result.milestones' => ['present', 'array'],
             $prefix.'result.milestones.*' => ['integer', 'distinct', Rule::in([25, 50, 75, 90])],
             $prefix.'context' => ['required', 'array'],
             $prefix.'context.platform' => ['required', Rule::in(self::PLATFORMS)],

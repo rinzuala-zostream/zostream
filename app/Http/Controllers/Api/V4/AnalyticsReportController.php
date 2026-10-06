@@ -13,6 +13,144 @@ use Illuminate\Validation\ValidationException;
 
 class AnalyticsReportController extends Controller
 {
+    private const INSIGHT_DIMENSIONS = [
+        'platform' => 'platform',
+        'app_version' => 'app_version',
+        'content_type' => 'content_type',
+        'content_id' => 'content_id',
+        'state' => 'state',
+        'end_reason' => 'end_reason',
+        'sdk_version' => 'sdk_version',
+        'series_id' => "NULLIF(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.content.series_id')), 'null')",
+        'season_id' => "NULLIF(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.content.season_id')), 'null')",
+        'episode_id' => "NULLIF(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.content.episode_id')), 'null')",
+        'downloaded' => "NULLIF(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.content.is_downloaded')), 'null')",
+        'autoplay' => "NULLIF(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.content.autoplay')), 'null')",
+        'initial_quality' => "NULLIF(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.quality.initial')), 'null')",
+        'final_quality' => "NULLIF(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.quality.final')), 'null')",
+        'video_codec' => "NULLIF(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.quality.video_codec')), 'null')",
+        'audio_codec' => "NULLIF(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.quality.audio_codec')), 'null')",
+        'stream_format' => "NULLIF(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.quality.stream_format')), 'null')",
+        'audio_language' => "NULLIF(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.tracks.audio_language')), 'null')",
+        'subtitle_enabled' => "NULLIF(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.tracks.subtitle_enabled')), 'null')",
+        'subtitle_language' => "NULLIF(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.tracks.subtitle_language')), 'null')",
+        'playback_speed' => "NULLIF(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.tracks.playback_speed')), 'null')",
+        'network_type' => "NULLIF(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.context.network_type')), 'null')",
+        'build_number' => "NULLIF(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.context.build_number')), 'null')",
+        'os_version' => "NULLIF(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.context.os_version')), 'null')",
+        'device_model' => "NULLIF(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.context.device_model')), 'null')",
+        'device_category' => "NULLIF(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.context.device_category')), 'null')",
+        'locale' => "NULLIF(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.context.locale')), 'null')",
+        'device_timezone' => "NULLIF(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.context.timezone')), 'null')",
+    ];
+
+    private const INSIGHT_SUMS = [
+        'max_position_ms' => 'timing.max_position_ms',
+        'watched_ms' => 'timing.watched_ms',
+        'unique_watched_ms' => 'timing.unique_watched_ms',
+        'replayed_ms' => 'timing.replayed_ms',
+        'foreground_watch_ms' => 'timing.foreground_watch_ms',
+        'background_play_ms' => 'timing.background_play_ms',
+        'play_count' => 'interaction.play_count',
+        'pause_count' => 'interaction.pause_count',
+        'resume_count' => 'interaction.resume_count',
+        'seek_count' => 'interaction.seek_count',
+        'seek_forward_ms' => 'interaction.seek_forward_ms',
+        'seek_backward_ms' => 'interaction.seek_backward_ms',
+        'fullscreen_count' => 'interaction.fullscreen_count',
+        'pip_count' => 'interaction.pip_count',
+        'cast_count' => 'interaction.cast_count',
+        'buffer_count' => 'buffering.count',
+        'buffer_ms' => 'buffering.total_ms',
+        'quality_changes' => 'quality.change_count',
+        'dropped_frames' => 'quality.dropped_frames',
+        'rendered_frames' => 'quality.rendered_frames',
+    ];
+
+    private const INSIGHT_AVERAGES = [
+        'average_duration_ms' => 'timing.duration_ms',
+        'average_watch_position_ms' => 'timing.watch_position_ms',
+        'average_startup_ms' => 'timing.startup_ms',
+        'average_bitrate_kbps' => 'quality.average_bitrate_kbps',
+        'average_playback_speed' => 'tracks.playback_speed',
+    ];
+
+    /** Aggregate every SDK v1 measurement for the selected sessions and dimension. */
+    public function insights(Request $request): JsonResponse
+    {
+        $dimension = (string) $request->query('dimension', 'platform');
+        if (! array_key_exists($dimension, self::INSIGHT_DIMENSIONS)) {
+            throw ValidationException::withMessages([
+                'dimension' => ['Select a supported analytics dimension.'],
+            ]);
+        }
+
+        [$query, $filters] = $this->playbackQuery($request);
+        $perPage = min(100, max(1, (int) $request->query('per_page', 25)));
+        $aggregates = $this->insightAggregateSql();
+        $summary = (clone $query)->selectRaw($aggregates)->first();
+        $expression = self::INSIGHT_DIMENSIONS[$dimension];
+        $groups = (clone $query)
+            ->selectRaw("{$expression} AS dimension_value, {$aggregates}")
+            ->groupByRaw($expression)
+            ->orderByDesc('sessions')
+            ->orderBy('dimension_value')
+            ->paginate($perPage);
+
+        return V4Response::success([
+            'dimension' => $dimension,
+            'summary' => $this->insightNumbers($summary),
+            'groups' => $groups->through(fn ($row) => [
+                'dimension_value' => $row->dimension_value,
+            ] + $this->insightNumbers($row)),
+        ], meta: ['filters' => $this->publicFilters($filters)]);
+    }
+
+    private function insightAggregateSql(): string
+    {
+        $parts = [
+            'COUNT(*) AS sessions',
+            'COUNT(DISTINCT user_id) AS unique_viewers',
+            'COALESCE(SUM(CASE WHEN watched_ms >= 10000 THEN 1 ELSE 0 END), 0) AS valid_views',
+            'COALESCE(SUM(CASE WHEN completed = 1 THEN 1 ELSE 0 END), 0) AS completed_sessions',
+            'COALESCE(SUM(CASE WHEN error_count > 0 THEN 1 ELSE 0 END), 0) AS error_sessions',
+            'COALESCE(SUM(error_count), 0) AS playback_error_count',
+            'COALESCE(SUM(CASE WHEN state = \'checkpoint\' THEN 1 ELSE 0 END), 0) AS pending_sessions',
+            'COALESCE(SUM(CASE WHEN (JSON_UNQUOTE(JSON_EXTRACT(metrics_json, \'$.content.is_downloaded\')) = \'true\' OR JSON_UNQUOTE(JSON_EXTRACT(metrics_json, \'$.content.is_downloaded\')) = 1) THEN 1 ELSE 0 END), 0) AS downloaded_sessions',
+            'COALESCE(SUM(CASE WHEN (JSON_UNQUOTE(JSON_EXTRACT(metrics_json, \'$.content.autoplay\')) = \'true\' OR JSON_UNQUOTE(JSON_EXTRACT(metrics_json, \'$.content.autoplay\')) = 1) THEN 1 ELSE 0 END), 0) AS autoplay_sessions',
+            'COALESCE(SUM(CASE WHEN (JSON_UNQUOTE(JSON_EXTRACT(metrics_json, \'$.tracks.subtitle_enabled\')) = \'true\' OR JSON_UNQUOTE(JSON_EXTRACT(metrics_json, \'$.tracks.subtitle_enabled\')) = 1) THEN 1 ELSE 0 END), 0) AS subtitle_sessions',
+            'COALESCE(MAX(CAST(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, \'$.buffering.longest_ms\')) AS UNSIGNED)), 0) AS longest_buffer_ms',
+            'AVG(completion_percent) AS average_completion_percent',
+        ];
+
+        foreach (self::INSIGHT_SUMS as $alias => $path) {
+            $parts[] = "COALESCE(SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.{$path}')) AS UNSIGNED)), 0) AS {$alias}";
+        }
+        foreach (self::INSIGHT_AVERAGES as $alias => $path) {
+            $parts[] = "AVG(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.{$path}')), 'null') AS DECIMAL(16, 3))) AS {$alias}";
+        }
+        foreach ([25, 50, 75, 90] as $milestone) {
+            $parts[] = "COALESCE(SUM(CASE WHEN JSON_CONTAINS(JSON_EXTRACT(metrics_json, '$.result.milestones'), '{$milestone}') THEN 1 ELSE 0 END), 0) AS milestone_{$milestone}";
+        }
+
+        return implode(', ', $parts);
+    }
+
+    private function insightNumbers(object $row): array
+    {
+        $result = [];
+        foreach ($row as $key => $value) {
+            if ($key === 'dimension_value') {
+                continue;
+            }
+            $result[$key] = $value === null ? null : (str_starts_with($key, 'average_')
+                ? round((float) $value, 2)
+                : (int) $value);
+        }
+
+        return $result;
+    }
+
     public function overview(Request $request): JsonResponse
     {
         [$query, $filters] = $this->playbackQuery($request);
@@ -60,11 +198,11 @@ class AnalyticsReportController extends Controller
              COALESCE(SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.interaction.fullscreen_count')) AS UNSIGNED)), 0) AS fullscreen_count,
              COALESCE(SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.interaction.pip_count')) AS UNSIGNED)), 0) AS pip_count,
              COALESCE(SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.interaction.cast_count')) AS UNSIGNED)), 0) AS cast_count,
-             COALESCE(SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.buffering.longest_ms')) AS UNSIGNED)), 0) AS longest_buffer_ms,
-             AVG(CAST(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.quality.average_bitrate_kbps')) AS DECIMAL(12,2))) AS average_bitrate_kbps,
+             COALESCE(MAX(CAST(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.buffering.longest_ms')) AS UNSIGNED)), 0) AS longest_buffer_ms,
+             AVG(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.quality.average_bitrate_kbps')), 'null') AS DECIMAL(12,2))) AS average_bitrate_kbps,
              COALESCE(SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.quality.dropped_frames')) AS UNSIGNED)), 0) AS dropped_frames,
              COALESCE(SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.quality.rendered_frames')) AS UNSIGNED)), 0) AS rendered_frames,
-             AVG(CAST(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.tracks.playback_speed')) AS DECIMAL(5,2))) AS average_playback_speed,
+             AVG(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.tracks.playback_speed')), 'null') AS DECIMAL(5,2))) AS average_playback_speed,
              SUM(CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.tracks.subtitle_enabled')) = 'true' THEN 1 ELSE 0 END) AS subtitle_sessions"
         )->first();
         $engagement = [
@@ -149,12 +287,16 @@ class AnalyticsReportController extends Controller
 
         $topContent = (clone $query)
             ->selectRaw(
-                'content_id, content_type, COUNT(*) AS views,
+                'content_id, content_type, COUNT(*) AS playback_starts,
+                 SUM(CASE WHEN watched_ms >= 10000 THEN 1 ELSE 0 END) AS views,
                  COALESCE(SUM(watched_ms), 0) AS watch_ms,
                  SUM(CASE WHEN completed = 1 THEN 1 ELSE 0 END) AS completed_views'
             )
             ->groupBy('content_id', 'content_type')
             ->orderByDesc('views')
+            ->orderByDesc('watch_ms')
+            ->orderBy('content_type')
+            ->orderBy('content_id')
             ->limit(10)
             ->get()
             ->map(fn ($row) => [
@@ -165,7 +307,7 @@ class AnalyticsReportController extends Controller
                 'watch_hours' => round(((int) $row->watch_ms) / 3_600_000, 2),
                 'completion_rate' => $this->percentage(
                     (int) $row->completed_views,
-                    (int) $row->views
+                    (int) $row->playback_starts
                 ),
             ])->all();
 
@@ -175,7 +317,7 @@ class AnalyticsReportController extends Controller
             'watch_trend' => $watchTrend,
             'streaming_health' => $streamingHealth,
             'platforms' => $platforms,
-            'top_content' => $topContent,
+            'top_content' => $this->withContentTitles($topContent),
             'product_events' => $this->eventStats($filters),
         ], meta: ['filters' => $this->publicFilters($filters)]);
     }
@@ -193,8 +335,12 @@ class AnalyticsReportController extends Controller
         )
             ->groupBy('content_id', 'content_type')
             ->orderByDesc('valid_views')
+            ->orderByDesc('watch_ms')
+            ->orderBy('content_type')
+            ->orderBy('content_id')
             ->paginate($perPage)
             ->through(fn ($row) => $this->contentRow($row));
+        $rows->setCollection(collect($this->withContentTitles($rows->items())));
 
         return V4Response::success($rows, meta: ['filters' => $this->publicFilters($filters)]);
     }
@@ -219,7 +365,7 @@ class AnalyticsReportController extends Controller
         }
 
         return V4Response::success(
-            $this->contentRow($row),
+            $this->withContentTitles([$this->contentRow($row)])[0],
             meta: ['filters' => $this->publicFilters($filters)]
         );
     }
@@ -293,7 +439,7 @@ class AnalyticsReportController extends Controller
             $query->where('category', (string) $request->query('category'));
         }
 
-        $rows = $query->orderByDesc('occurred_at')->paginate($perPage, [
+        $rows = $query->orderByDesc('occurred_at')->orderByDesc('id')->paginate($perPage, [
             'event_id', 'session_id', 'user_id', 'device_id', 'category', 'stage',
             'code', 'http_status', 'position_ms', 'is_fatal', 'is_retryable',
             'retry_count', 'network_type', 'sanitized_message', 'occurred_at',
@@ -321,7 +467,7 @@ class AnalyticsReportController extends Controller
             $query->where('user_id', $filters['user_id']);
         }
 
-        $rows = $query->orderByDesc('occurred_at')->paginate($perPage, [
+        $rows = $query->orderByDesc('occurred_at')->orderByDesc('id')->paginate($perPage, [
             'event_id', 'user_id', 'device_id', 'app_session_id', 'name',
             'occurred_at', 'platform', 'app_version', 'properties_json',
         ])->through(fn ($row) => [
@@ -358,7 +504,7 @@ class AnalyticsReportController extends Controller
             });
         }
 
-        $rows = $query->orderByDesc('started_at')->paginate($perPage, [
+        $rows = $query->orderByDesc('started_at')->orderByDesc('id')->paginate($perPage, [
             'session_id', 'user_id', 'device_id', 'content_id', 'content_type',
             'revision', 'state', 'started_at', 'ended_at', 'watch_position_ms',
             'duration_ms', 'watched_ms', 'unique_watched_ms', 'startup_ms',
@@ -542,6 +688,33 @@ class AnalyticsReportController extends Controller
         }
 
         return $query->distinct()->count('app_session_id');
+    }
+
+    /** Resolve catalog names in batches across the separate catalog connection. */
+    private function withContentTitles(array $rows): array
+    {
+        $titles = [];
+        foreach (['movie' => 'movie', 'episode' => 'episodes'] as $type => $table) {
+            $ids = array_values(array_unique(array_column(
+                array_filter($rows, fn ($row) => $row['content_type'] === $type),
+                'content_id'
+            )));
+            if ($ids === []) {
+                continue;
+            }
+            try {
+                $titles[$type] = DB::table($table)->whereIn('id', $ids)->pluck('title', 'id')->all();
+            } catch (\Throwable $error) {
+                // Historical analytics must remain readable when catalog lookup is unavailable.
+                report($error);
+            }
+        }
+
+        return array_map(function ($row) use ($titles) {
+            $row['title'] = $titles[$row['content_type']][$row['content_id']] ?? $row['content_id'];
+
+            return $row;
+        }, $rows);
     }
 
     private function contentRow(object $row): array
