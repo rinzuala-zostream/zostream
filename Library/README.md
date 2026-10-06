@@ -26,7 +26,7 @@ The host app supplies fresh credentials when flushing:
 Authorization: Bearer <access-token>
 Device-Token: <device-token>
 X-Analytics-SDK-Version: 1.2.0
-X-Platform: ios|android|tv
+X-Platform: ios|tvos|android|tv
 ```
 
 Access tokens are never persisted by the SDK. Pending records are partitioned

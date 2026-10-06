@@ -165,7 +165,7 @@ class ZoAnalytics private constructor(
         fun start(
             application: Application,
             configuration: ZoAnalyticsConfiguration = ZoAnalyticsConfiguration(),
-            collectionEnabled: () -> Boolean = { true },
+            collectionEnabled: () -> Boolean = { false },
             credentials: () -> AnalyticsCredentials?,
             context: () -> AnalyticsContext,
         ): ZoAnalytics {

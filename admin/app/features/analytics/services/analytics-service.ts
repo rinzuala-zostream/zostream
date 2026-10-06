@@ -2,7 +2,7 @@ import "server-only";
 
 import { apiClient, type QueryParams } from "@/app/lib/api-client";
 
-export type AnalyticsPlatform = "ios" | "android" | "tv";
+export type AnalyticsPlatform = "ios" | "tvos" | "android" | "tv";
 
 export type AnalyticsFilters = {
   from: string;

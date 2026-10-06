@@ -9,7 +9,9 @@ kill switch:
 
 The value is a native Boolean. `false` prevents collection, local persistence,
 and analytics API uploads. The admin Analytics page creates and updates the
-node, so Remote Config setup and template uploads are not required.
+node, so Remote Config setup and template uploads are not required. The
+authenticated analytics config endpoint reads this same value, and ingestion
+requests are rejected while it is false or Firebase cannot be reached.
 
 ## Initial data
 

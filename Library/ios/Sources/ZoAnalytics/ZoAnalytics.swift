@@ -23,7 +23,7 @@ public final class ZoAnalytics {
 
     public func start(
         configuration: ZoAnalyticsConfiguration = .init(),
-        collectionEnabled: @escaping () -> Bool = { true },
+        collectionEnabled: @escaping () -> Bool = { false },
         credentials: @escaping () -> AnalyticsCredentials?,
         context: @escaping () -> AnalyticsContext
     ) {

@@ -42,6 +42,7 @@ const PLATFORM_OPTIONS: Array<{
 }> = [
   { label: "All platforms", value: "all" },
   { label: "iOS", value: "ios" },
+  { label: "Apple TV", value: "tvos" },
   { label: "Android", value: "android" },
   { label: "TV", value: "tv" },
 ];
@@ -60,7 +61,7 @@ function safeDate(value: string | undefined, fallback: string) {
 }
 
 function normalizePlatform(value?: string): AnalyticsPlatform | undefined {
-  return value === "ios" || value === "android" || value === "tv"
+  return value === "ios" || value === "tvos" || value === "android" || value === "tv"
     ? value
     : undefined;
 }

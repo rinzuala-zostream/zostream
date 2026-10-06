@@ -48,11 +48,12 @@ class AnalyticsReportController extends Controller
 
         $watchTrend = (clone $query)
             ->selectRaw(
-                'DATE(started_at) AS date, COUNT(*) AS playback_starts,
+                "DATE(CONVERT_TZ(started_at, '+00:00', ?)) AS date, COUNT(*) AS playback_starts,
                  COUNT(DISTINCT user_id) AS unique_viewers,
-                 COALESCE(SUM(watched_ms), 0) AS watch_ms'
+                 COALESCE(SUM(watched_ms), 0) AS watch_ms",
+                [$filters['timezone']]
             )
-            ->groupByRaw('DATE(started_at)')
+            ->groupByRaw("DATE(CONVERT_TZ(started_at, '+00:00', ?))", [$filters['timezone']])
             ->orderBy('date')
             ->get()
             ->map(fn ($row) => [
@@ -64,13 +65,14 @@ class AnalyticsReportController extends Controller
 
         $streamingHealth = (clone $query)
             ->selectRaw(
-                'DATE(started_at) AS date, AVG(startup_ms) AS average_startup_ms,
+                "DATE(CONVERT_TZ(started_at, '+00:00', ?)) AS date, AVG(startup_ms) AS average_startup_ms,
                  COALESCE(SUM(buffer_ms), 0) AS buffer_ms,
                  COALESCE(SUM(watched_ms), 0) AS watch_ms,
                  SUM(CASE WHEN error_count = 0 THEN 1 ELSE 0 END) AS successful,
-                 COUNT(*) AS sessions'
+                 COUNT(*) AS sessions",
+                [$filters['timezone']]
             )
-            ->groupByRaw('DATE(started_at)')
+            ->groupByRaw("DATE(CONVERT_TZ(started_at, '+00:00', ?))", [$filters['timezone']])
             ->orderBy('date')
             ->get()
             ->map(function ($row) {
@@ -218,6 +220,22 @@ class AnalyticsReportController extends Controller
         $filters = $this->filters($request);
         $query = DB::connection('analytics')->table('playback_errors')
             ->whereBetween('occurred_at', [$filters['from_utc'], $filters['to_utc']]);
+        if ($filters['platform']) {
+            $query->whereExists(function ($subquery) use ($filters) {
+                $subquery->selectRaw('1')
+                    ->from('playback_sessions')
+                    ->whereColumn('playback_sessions.session_id', 'playback_errors.session_id')
+                    ->where('playback_sessions.platform', $filters['platform']);
+            });
+        }
+        if ($filters['app_version']) {
+            $query->whereExists(function ($subquery) use ($filters) {
+                $subquery->selectRaw('1')
+                    ->from('playback_sessions')
+                    ->whereColumn('playback_sessions.session_id', 'playback_errors.session_id')
+                    ->where('playback_sessions.app_version', $filters['app_version']);
+            });
+        }
         $rows = $query->selectRaw(
             'category, stage, code, COUNT(*) AS occurrences,
              COUNT(DISTINCT session_id) AS affected_sessions,
@@ -272,7 +290,7 @@ class AnalyticsReportController extends Controller
             'from' => ['nullable', 'date_format:Y-m-d'],
             'to' => ['nullable', 'date_format:Y-m-d'],
             'timezone' => ['nullable', 'timezone'],
-            'platform' => ['nullable', Rule::in(['ios', 'android', 'tv'])],
+            'platform' => ['nullable', Rule::in(['ios', 'tvos', 'android', 'tv'])],
             'app_version' => ['nullable', 'string', 'max:64'],
             'content_type' => ['nullable', Rule::in(['movie', 'episode', 'live'])],
             'page' => ['nullable', 'integer', 'min:1'],
@@ -331,6 +349,9 @@ class AnalyticsReportController extends Controller
             ->whereBetween('occurred_at', [$filters['from_utc'], $filters['to_utc']]);
         if ($filters['platform']) {
             $query->where('platform', $filters['platform']);
+        }
+        if ($filters['app_version']) {
+            $query->where('app_version', $filters['app_version']);
         }
 
         return $query->distinct()->count('app_session_id');

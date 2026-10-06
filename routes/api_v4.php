@@ -224,7 +224,7 @@ Route::prefix('v4')
                     ->middleware('throttle:playback-stop');
             });
 
-            Route::prefix('analytic')->group(function () {
+            Route::prefix('analytic')->middleware('auth.token')->group(function () {
                 Route::get('/config', [AnalyticsIngestionController::class, 'config'])
                     ->middleware('throttle:analytics-config');
                 Route::put('/playback/{sessionId}', [AnalyticsIngestionController::class, 'upsertPlayback'])

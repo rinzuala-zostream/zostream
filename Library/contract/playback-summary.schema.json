@@ -47,11 +47,11 @@
       "additionalProperties": false,
       "required": ["id", "type", "is_downloaded", "autoplay"],
       "properties": {
-        "id": { "type": "string", "minLength": 1, "maxLength": 225 },
+        "id": { "type": "string", "minLength": 1, "maxLength": 191 },
         "type": { "enum": ["movie", "episode", "live"] },
-        "series_id": { "type": ["string", "null"], "maxLength": 225 },
-        "season_id": { "type": ["string", "null"], "maxLength": 225 },
-        "episode_id": { "type": ["string", "null"], "maxLength": 225 },
+        "series_id": { "type": ["string", "null"], "maxLength": 191 },
+        "season_id": { "type": ["string", "null"], "maxLength": 191 },
+        "episode_id": { "type": ["string", "null"], "maxLength": 191 },
         "is_downloaded": { "type": "boolean" },
         "autoplay": { "type": "boolean" }
       }

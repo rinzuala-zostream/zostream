@@ -640,6 +640,10 @@ class NewStreamController extends Controller
         return response()->json([
             'status' => 'success',
             'stream_token' => $streamToken,
+            'analytics' => [
+                'session_id' => $streamToken,
+                'schema_version' => 1,
+            ],
             'max_quality' => $plan->quality ?? 'FULL_HD',
             'current_active' => $currentActiveSeats,
             'device_limit' => $limit,

@@ -30,7 +30,7 @@ class ZoAnalyticsClient @JvmOverloads constructor(
     context: Context,
     val configuration: ZoAnalyticsConfiguration = ZoAnalyticsConfiguration(),
     private val executor: ExecutorService = Executors.newSingleThreadExecutor(),
-    collectionEnabled: Boolean = true,
+    collectionEnabled: Boolean = false,
 ) {
     private val appContext = context.applicationContext
     private val queue = AnalyticsQueue(

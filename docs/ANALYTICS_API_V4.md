@@ -84,17 +84,17 @@ The existing route remains the source of playback authorization:
 POST /api/v4/playback/sessions
 ```
 
-Its response gains an optional `analytics` object. Failure to prepare this
-object must not fail playback.
+Its response includes an `analytics` object. `analytics.session_id` is the
+UUID in `stream_token`; playback remains usable by older clients that ignore
+this additional response field.
 
 ```json
 {
   "status": "success",
-  "stream_token": "existing-stream-token",
+  "stream_token": "019b1234-7e58-7000-a123-456789abcdef",
   "watch_position": 120000,
   "analytics": {
-    "enabled": true,
-    "session_id": "019b1234-7e58-7000-a123-456789abcdef",
+    "session_id": "<same UUID as stream_token>",
     "schema_version": 1,
     "upload_path": "/api/v4/analytic/playback/019b1234-7e58-7000-a123-456789abcdef",
     "max_batch_size": 20
@@ -113,8 +113,11 @@ If analytics is remotely disabled, the response is:
 }
 ```
 
-The SDK begins local collection after receiving the playback response. It does
-not call an analytics heartbeat endpoint.
+The SDK uses `analytics.session_id` as the playback summary ID. It matches the
+`stream_token` UUID for this playback attempt. Collection remains controlled by
+the Firebase Realtime Database flag at `/config/analytics/enabled`; the app
+must initialize collection disabled and enable it only after observing `true`.
+The SDK does not call an analytics heartbeat endpoint.
 
 ### 2. Collect locally
 
@@ -165,9 +168,11 @@ launch, the SDK finalizes an unfinished local session with
 
 ## GET `/api/v4/analytic/config`
 
-The app caches this response for 24 hours. Failure to fetch it leaves the last
-cached configuration active. With no cached value, analytics defaults to
-enabled with final-summary upload only.
+This authenticated endpoint reports the current Firebase collection switch
+alongside the server controls. Firebase is authoritative for the live client
+switch. A missing Firebase flag or Firebase read failure disables analytics.
+Clients should initialize collection as disabled and must not assume enabled
+when there is no cached setting.
 
 ### Response
 
@@ -177,7 +182,7 @@ enabled with final-summary upload only.
   "data": {
     "enabled": true,
     "schema_version": 1,
-    "minimum_sdk_version": "1.0.0",
+    "minimum_sdk_version": "1.2.0",
     "checkpoint_upload_enabled": false,
     "local_snapshot_interval_seconds": 30,
     "max_pending_sessions": 500,

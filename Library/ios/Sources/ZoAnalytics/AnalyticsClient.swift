@@ -75,7 +75,7 @@ public actor ZoAnalyticsClient {
         configuration: ZoAnalyticsConfiguration = .init(),
         queueDirectory: URL? = nil,
         transport: any AnalyticsTransport = URLSessionAnalyticsTransport(),
-        collectionEnabled: Bool = true
+        collectionEnabled: Bool = false
     ) {
         self.configuration = configuration
         self.transport = transport

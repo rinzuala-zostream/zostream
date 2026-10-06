@@ -153,7 +153,7 @@ export function AnalyticsCollectionSwitch() {
             <code className="mx-1 rounded bg-slate-950/[0.06] px-1.5 py-0.5 font-bold text-slate-700 dark:bg-white/10 dark:text-slate-200">
               /config/analytics/enabled
             </code>
-            for iOS and Android.
+            for iOS, Apple TV, Android and TV.
           </p>
           <p className="mt-1 text-[0.68rem] text-slate-400">
             Connected devices apply this setting immediately through a live listener.

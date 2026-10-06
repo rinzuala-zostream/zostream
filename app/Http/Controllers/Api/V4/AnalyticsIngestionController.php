@@ -9,11 +9,13 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
+use Kreait\Firebase\Factory;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class AnalyticsIngestionController extends Controller
 {
-    private const PLATFORMS = ['ios', 'android', 'tv'];
+    private const PLATFORMS = ['ios', 'tvos', 'android', 'tv'];
 
     private const EVENT_NAMES = [
         'app_opened',
@@ -48,7 +50,7 @@ class AnalyticsIngestionController extends Controller
         }
 
         return V4Response::success([
-            'enabled' => true,
+            'enabled' => $this->analyticsEnabled(),
             'schema_version' => 1,
             'minimum_sdk_version' => '1.2.0',
             'checkpoint_upload_enabled' => false,
@@ -63,6 +65,9 @@ class AnalyticsIngestionController extends Controller
 
     public function upsertPlayback(Request $request, string $sessionId): JsonResponse
     {
+        if ($error = $this->collectionDisabledError()) {
+            return $error;
+        }
         if ($error = $this->identityError($request)) {
             return $error;
         }
@@ -71,6 +76,7 @@ class AnalyticsIngestionController extends Controller
         }
 
         $payload = $request->validate($this->playbackRules());
+        $this->rejectUnknownPlaybackKeys($request->json()->all());
         $result = $this->storePlayback($request, $sessionId, $payload);
 
         return V4Response::success([
@@ -85,6 +91,9 @@ class AnalyticsIngestionController extends Controller
 
     public function batchPlayback(Request $request): JsonResponse
     {
+        if ($error = $this->collectionDisabledError()) {
+            return $error;
+        }
         if ($error = $this->identityError($request)) {
             return $error;
         }
@@ -102,6 +111,10 @@ class AnalyticsIngestionController extends Controller
             $rules[$key] = $rule;
         }
         $validated = $request->validate($rules);
+        foreach ($validated['sessions'] as $index => $item) {
+            $rawSummary = Arr::get($request->json()->all(), "sessions.{$index}.summary", []);
+            $this->rejectUnknownPlaybackKeys($rawSummary, "sessions.{$index}.summary");
+        }
 
         $accepted = [];
         $ignored = [];
@@ -123,12 +136,16 @@ class AnalyticsIngestionController extends Controller
 
     public function storePlaybackError(Request $request, string $sessionId): JsonResponse
     {
+        if ($error = $this->collectionDisabledError()) {
+            return $error;
+        }
         if ($error = $this->identityError($request)) {
             return $error;
         }
         if ($error = $this->payloadSizeError($request, 65_536)) {
             return $error;
         }
+        validator(['session_id' => $sessionId], ['session_id' => ['required', 'uuid']])->validate();
 
         $data = $request->validate([
             'schema_version' => ['required', 'integer', 'in:1'],
@@ -176,6 +193,9 @@ class AnalyticsIngestionController extends Controller
 
     public function batchEvents(Request $request): JsonResponse
     {
+        if ($error = $this->collectionDisabledError()) {
+            return $error;
+        }
         if ($error = $this->identityError($request)) {
             return $error;
         }
@@ -192,7 +212,7 @@ class AnalyticsIngestionController extends Controller
             'events.*.app_session_id' => ['required', 'uuid'],
             'events.*.properties' => ['present', 'array', 'max:50'],
             'context' => ['required', 'array'],
-            'context.platform' => ['nullable', 'string'],
+            'context.platform' => ['required', Rule::in(self::PLATFORMS)],
             'context.app_version' => ['required', 'string', 'max:64'],
         ]);
         $platform = $this->platform($request, $data['context']['platform'] ?? null);
@@ -239,24 +259,73 @@ class AnalyticsIngestionController extends Controller
             $prefix.'state' => ['required', Rule::in(['checkpoint', 'final'])],
             $prefix.'started_at' => ['required', 'date'],
             $prefix.'ended_at' => ['nullable', 'date'],
-            $prefix.'end_reason' => ['nullable', 'string', 'max:48'],
+            $prefix.'end_reason' => ['nullable', Rule::in([
+                'completed', 'user_closed', 'back_pressed', 'content_changed',
+                'next_episode', 'app_backgrounded', 'app_terminated', 'playback_error',
+                'network_lost', 'subscription_expired', 'player_destroyed', 'unknown',
+            ])],
             $prefix.'content' => ['required', 'array'],
-            $prefix.'content.id' => ['required', 'string', 'max:191'],
+            $prefix.'content.id' => ['required', 'string', 'min:1', 'max:191'],
             $prefix.'content.type' => ['required', Rule::in(['movie', 'episode', 'live'])],
+            $prefix.'content.series_id' => ['nullable', 'string', 'max:191'],
+            $prefix.'content.season_id' => ['nullable', 'string', 'max:191'],
+            $prefix.'content.episode_id' => ['nullable', 'string', 'max:191'],
+            $prefix.'content.is_downloaded' => ['required', 'boolean'],
+            $prefix.'content.autoplay' => ['required', 'boolean'],
             $prefix.'timing' => ['required', 'array'],
             $prefix.'timing.duration_ms' => ['required', 'integer', 'min:0', 'max:86400000'],
             $prefix.'timing.watch_position_ms' => ['required', 'integer', 'min:0', 'max:86400000'],
+            $prefix.'timing.max_position_ms' => ['required', 'integer', 'min:0', 'max:86400000'],
             $prefix.'timing.watched_ms' => ['required', 'integer', 'min:0', 'max:86400000'],
-            $prefix.'timing.unique_watched_ms' => ['nullable', 'integer', 'min:0', 'max:86400000'],
+            $prefix.'timing.unique_watched_ms' => ['required', 'integer', 'min:0', 'max:86400000'],
+            $prefix.'timing.replayed_ms' => ['required', 'integer', 'min:0', 'max:86400000'],
+            $prefix.'timing.foreground_watch_ms' => ['required', 'integer', 'min:0', 'max:86400000'],
+            $prefix.'timing.background_play_ms' => ['required', 'integer', 'min:0', 'max:86400000'],
             $prefix.'timing.startup_ms' => ['nullable', 'integer', 'min:0', 'max:600000'],
-            $prefix.'buffering.count' => ['nullable', 'integer', 'min:0', 'max:100000'],
-            $prefix.'buffering.total_ms' => ['nullable', 'integer', 'min:0', 'max:86400000'],
-            $prefix.'result.error_count' => ['nullable', 'integer', 'min:0', 'max:100000'],
-            $prefix.'result.completion_percent' => ['nullable', 'numeric', 'between:0,100'],
-            $prefix.'result.completed' => ['nullable', 'boolean'],
+            $prefix.'interaction' => ['required', 'array'],
+            $prefix.'interaction.play_count' => ['required', 'integer', 'min:0'],
+            $prefix.'interaction.pause_count' => ['required', 'integer', 'min:0'],
+            $prefix.'interaction.resume_count' => ['required', 'integer', 'min:0'],
+            $prefix.'interaction.seek_count' => ['required', 'integer', 'min:0'],
+            $prefix.'interaction.seek_forward_ms' => ['required', 'integer', 'min:0'],
+            $prefix.'interaction.seek_backward_ms' => ['required', 'integer', 'min:0'],
+            $prefix.'interaction.fullscreen_count' => ['required', 'integer', 'min:0'],
+            $prefix.'interaction.pip_count' => ['required', 'integer', 'min:0'],
+            $prefix.'interaction.cast_count' => ['required', 'integer', 'min:0'],
+            $prefix.'buffering.count' => ['required', 'integer', 'min:0'],
+            $prefix.'buffering.total_ms' => ['required', 'integer', 'min:0', 'max:86400000'],
+            $prefix.'buffering.longest_ms' => ['required', 'integer', 'min:0', 'max:86400000'],
+            $prefix.'quality' => ['required', 'array'],
+            $prefix.'quality.initial' => ['nullable', 'string', 'max:32'],
+            $prefix.'quality.final' => ['nullable', 'string', 'max:32'],
+            $prefix.'quality.change_count' => ['required', 'integer', 'min:0'],
+            $prefix.'quality.average_bitrate_kbps' => ['nullable', 'integer', 'min:0'],
+            $prefix.'quality.dropped_frames' => ['nullable', 'integer', 'min:0'],
+            $prefix.'quality.rendered_frames' => ['nullable', 'integer', 'min:0'],
+            $prefix.'quality.video_codec' => ['nullable', 'string', 'max:64'],
+            $prefix.'quality.audio_codec' => ['nullable', 'string', 'max:64'],
+            $prefix.'quality.stream_format' => ['nullable', 'string', 'max:32'],
+            $prefix.'tracks' => ['required', 'array'],
+            $prefix.'tracks.audio_language' => ['nullable', 'string', 'max:64'],
+            $prefix.'tracks.subtitle_enabled' => ['required', 'boolean'],
+            $prefix.'tracks.subtitle_language' => ['nullable', 'string', 'max:64'],
+            $prefix.'tracks.playback_speed' => ['required', 'numeric', 'between:0.25,4'],
+            $prefix.'result' => ['required', 'array'],
+            $prefix.'result.error_count' => ['required', 'integer', 'min:0'],
+            $prefix.'result.completion_percent' => ['required', 'numeric', 'between:0,100'],
+            $prefix.'result.completed' => ['required', 'boolean'],
+            $prefix.'result.milestones' => ['required', 'array'],
+            $prefix.'result.milestones.*' => ['integer', 'distinct', Rule::in([25, 50, 75, 90])],
             $prefix.'context' => ['required', 'array'],
-            $prefix.'context.platform' => ['nullable', 'string'],
+            $prefix.'context.platform' => ['required', Rule::in(self::PLATFORMS)],
+            $prefix.'context.network_type' => ['required', Rule::in(['wifi', 'cellular', 'ethernet', 'offline', 'unknown'])],
             $prefix.'context.app_version' => ['required', 'string', 'max:64'],
+            $prefix.'context.build_number' => ['required', 'string', 'max:64'],
+            $prefix.'context.os_version' => ['required', 'string', 'max:128'],
+            $prefix.'context.device_model' => ['required', 'string', 'max:128'],
+            $prefix.'context.device_category' => ['required', 'string', 'max:32'],
+            $prefix.'context.locale' => ['required', 'string', 'max:32'],
+            $prefix.'context.timezone' => ['required', 'string', 'max:64'],
         ];
     }
 
@@ -335,6 +404,68 @@ class AnalyticsIngestionController extends Controller
         }
 
         return null;
+    }
+
+    private function analyticsEnabled(): bool
+    {
+        try {
+            $url = (string) config('firebase.database_url', '');
+            if ($url === '') {
+                return false;
+            }
+
+            $database = (new Factory)
+                ->withServiceAccount((string) config('firebase.credentials'))
+                ->withDatabaseUri($url)
+                ->createDatabase();
+
+            return $database->getReference('config/analytics/enabled')->getValue() === true;
+        } catch (\Throwable $error) {
+            report($error);
+
+            return false;
+        }
+    }
+
+    private function rejectUnknownPlaybackKeys(array $payload, string $path = ''): void
+    {
+        $allowed = [
+            '' => ['schema_version', 'revision', 'state', 'started_at', 'ended_at', 'end_reason', 'content', 'timing', 'interaction', 'buffering', 'quality', 'tracks', 'result', 'context'],
+            'content' => ['id', 'type', 'series_id', 'season_id', 'episode_id', 'is_downloaded', 'autoplay'],
+            'timing' => ['duration_ms', 'watch_position_ms', 'max_position_ms', 'watched_ms', 'unique_watched_ms', 'replayed_ms', 'foreground_watch_ms', 'background_play_ms', 'startup_ms'],
+            'interaction' => ['play_count', 'pause_count', 'resume_count', 'seek_count', 'seek_forward_ms', 'seek_backward_ms', 'fullscreen_count', 'pip_count', 'cast_count'],
+            'buffering' => ['count', 'total_ms', 'longest_ms'],
+            'quality' => ['initial', 'final', 'change_count', 'average_bitrate_kbps', 'dropped_frames', 'rendered_frames', 'video_codec', 'audio_codec', 'stream_format'],
+            'tracks' => ['audio_language', 'subtitle_enabled', 'subtitle_language', 'playback_speed'],
+            'result' => ['completed', 'completion_percent', 'milestones', 'error_count'],
+            'context' => ['platform', 'network_type', 'app_version', 'build_number', 'os_version', 'device_model', 'device_category', 'locale', 'timezone'],
+        ];
+        foreach ($allowed as $object => $keys) {
+            $value = $object === '' ? $payload : Arr::get($payload, $object);
+            if (! is_array($value)) {
+                continue;
+            }
+            $unknown = array_diff(array_keys($value), $keys);
+            if ($unknown !== []) {
+                $field = ($path !== '' ? $path.'.' : '').($object !== '' ? $object.'.' : '').array_values($unknown)[0];
+                throw ValidationException::withMessages([
+                    $field => ['The field is not supported by analytics schema v1.'],
+                ]);
+            }
+        }
+    }
+
+    private function collectionDisabledError(): ?JsonResponse
+    {
+        if ($this->analyticsEnabled()) {
+            return null;
+        }
+
+        return V4Response::error(
+            'ANALYTICS_COLLECTION_DISABLED',
+            'Analytics collection is disabled.',
+            403
+        );
     }
 
     private function payloadSizeError(Request $request, int $limit): ?JsonResponse
