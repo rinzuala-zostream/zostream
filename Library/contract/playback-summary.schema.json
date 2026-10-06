@@ -1,0 +1,209 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://zostream.in/schemas/analytics/playback-summary-v1.json",
+  "title": "Zo Stream playback analytics summary v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "revision",
+    "state",
+    "started_at",
+    "content",
+    "timing",
+    "interaction",
+    "buffering",
+    "quality",
+    "tracks",
+    "result",
+    "context"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "revision": { "type": "integer", "minimum": 1 },
+    "state": { "enum": ["checkpoint", "final"] },
+    "started_at": { "type": "string", "format": "date-time" },
+    "ended_at": { "type": ["string", "null"], "format": "date-time" },
+    "end_reason": {
+      "type": ["string", "null"],
+      "enum": [
+        "completed",
+        "user_closed",
+        "back_pressed",
+        "content_changed",
+        "next_episode",
+        "app_backgrounded",
+        "app_terminated",
+        "playback_error",
+        "network_lost",
+        "subscription_expired",
+        "player_destroyed",
+        "unknown",
+        null
+      ]
+    },
+    "content": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "is_downloaded", "autoplay"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 225 },
+        "type": { "enum": ["movie", "episode", "live"] },
+        "series_id": { "type": ["string", "null"], "maxLength": 225 },
+        "season_id": { "type": ["string", "null"], "maxLength": 225 },
+        "episode_id": { "type": ["string", "null"], "maxLength": 225 },
+        "is_downloaded": { "type": "boolean" },
+        "autoplay": { "type": "boolean" }
+      }
+    },
+    "timing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "duration_ms",
+        "watch_position_ms",
+        "max_position_ms",
+        "watched_ms",
+        "unique_watched_ms",
+        "replayed_ms",
+        "foreground_watch_ms",
+        "background_play_ms"
+      ],
+      "properties": {
+        "duration_ms": { "$ref": "#/$defs/nonNegativeMs" },
+        "watch_position_ms": { "$ref": "#/$defs/nonNegativeMs" },
+        "max_position_ms": { "$ref": "#/$defs/nonNegativeMs" },
+        "watched_ms": { "$ref": "#/$defs/nonNegativeMs" },
+        "unique_watched_ms": { "$ref": "#/$defs/nonNegativeMs" },
+        "replayed_ms": { "$ref": "#/$defs/nonNegativeMs" },
+        "foreground_watch_ms": { "$ref": "#/$defs/nonNegativeMs" },
+        "background_play_ms": { "$ref": "#/$defs/nonNegativeMs" },
+        "startup_ms": {
+          "anyOf": [
+            { "$ref": "#/$defs/nonNegativeMs" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "interaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "play_count",
+        "pause_count",
+        "resume_count",
+        "seek_count",
+        "seek_forward_ms",
+        "seek_backward_ms",
+        "fullscreen_count",
+        "pip_count",
+        "cast_count"
+      ],
+      "properties": {
+        "play_count": { "$ref": "#/$defs/nonNegativeCount" },
+        "pause_count": { "$ref": "#/$defs/nonNegativeCount" },
+        "resume_count": { "$ref": "#/$defs/nonNegativeCount" },
+        "seek_count": { "$ref": "#/$defs/nonNegativeCount" },
+        "seek_forward_ms": { "$ref": "#/$defs/nonNegativeMs" },
+        "seek_backward_ms": { "$ref": "#/$defs/nonNegativeMs" },
+        "fullscreen_count": { "$ref": "#/$defs/nonNegativeCount" },
+        "pip_count": { "$ref": "#/$defs/nonNegativeCount" },
+        "cast_count": { "$ref": "#/$defs/nonNegativeCount" }
+      }
+    },
+    "buffering": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["count", "total_ms", "longest_ms"],
+      "properties": {
+        "count": { "$ref": "#/$defs/nonNegativeCount" },
+        "total_ms": { "$ref": "#/$defs/nonNegativeMs" },
+        "longest_ms": { "$ref": "#/$defs/nonNegativeMs" }
+      }
+    },
+    "quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["change_count"],
+      "properties": {
+        "initial": { "type": ["string", "null"], "maxLength": 32 },
+        "final": { "type": ["string", "null"], "maxLength": 32 },
+        "change_count": { "$ref": "#/$defs/nonNegativeCount" },
+        "average_bitrate_kbps": { "$ref": "#/$defs/nullableCount" },
+        "dropped_frames": { "$ref": "#/$defs/nullableCount" },
+        "rendered_frames": { "$ref": "#/$defs/nullableCount" },
+        "video_codec": { "type": ["string", "null"], "maxLength": 64 },
+        "audio_codec": { "type": ["string", "null"], "maxLength": 64 },
+        "stream_format": { "type": ["string", "null"], "maxLength": 32 }
+      }
+    },
+    "tracks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["subtitle_enabled", "playback_speed"],
+      "properties": {
+        "audio_language": { "type": ["string", "null"], "maxLength": 64 },
+        "subtitle_enabled": { "type": "boolean" },
+        "subtitle_language": { "type": ["string", "null"], "maxLength": 64 },
+        "playback_speed": { "type": "number", "minimum": 0.25, "maximum": 4 }
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["completed", "completion_percent", "milestones", "error_count"],
+      "properties": {
+        "completed": { "type": "boolean" },
+        "completion_percent": { "type": "number", "minimum": 0, "maximum": 100 },
+        "milestones": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "enum": [25, 50, 75, 90] }
+        },
+        "error_count": { "$ref": "#/$defs/nonNegativeCount" }
+      }
+    },
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "platform",
+        "network_type",
+        "app_version",
+        "build_number",
+        "os_version",
+        "device_model",
+        "device_category",
+        "locale",
+        "timezone"
+      ],
+      "properties": {
+        "platform": { "enum": ["ios", "tvos", "android", "tv"] },
+        "network_type": { "enum": ["wifi", "cellular", "ethernet", "offline", "unknown"] },
+        "app_version": { "type": "string", "maxLength": 64 },
+        "build_number": { "type": "string", "maxLength": 64 },
+        "os_version": { "type": "string", "maxLength": 128 },
+        "device_model": { "type": "string", "maxLength": 128 },
+        "device_category": { "type": "string", "maxLength": 32 },
+        "locale": { "type": "string", "maxLength": 32 },
+        "timezone": { "type": "string", "maxLength": 64 }
+      }
+    }
+  },
+  "$defs": {
+    "nonNegativeMs": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 86400000
+    },
+    "nonNegativeCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "nullableCount": {
+      "type": ["integer", "null"],
+      "minimum": 0
+    }
+  }
+}

@@ -112,6 +112,30 @@ return [
             // 'trust_server_certificate' => env('DB_TRUST_SERVER_CERTIFICATE', 'false'),
         ],
 
+        'analytics' => [
+            'driver' => env('ANALYTICS_DB_CONNECTION', env('DB_CONNECTION', 'mysql')),
+            'url' => env('ANALYTICS_DB_URL'),
+            'host' => env('ANALYTICS_DB_HOST', env('DB_HOST', '127.0.0.1')),
+            'port' => env('ANALYTICS_DB_PORT', env('DB_PORT', '3306')),
+            'database' => env('ANALYTICS_DB_DATABASE', env('DB_DATABASE', database_path('analytics.sqlite'))),
+            'username' => env('ANALYTICS_DB_USERNAME', env('DB_USERNAME', 'root')),
+            'password' => env('ANALYTICS_DB_PASSWORD', env('DB_PASSWORD', '')),
+            'unix_socket' => env('ANALYTICS_DB_SOCKET', env('DB_SOCKET', '')),
+            'charset' => 'utf8mb4',
+            'collation' => 'utf8mb4_unicode_ci',
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'strict' => true,
+            'engine' => null,
+            'foreign_key_constraints' => true,
+            'busy_timeout' => 5000,
+            'journal_mode' => 'WAL',
+            'synchronous' => 'NORMAL',
+            'options' => extension_loaded('pdo_mysql') ? array_filter([
+                PDO::MYSQL_ATTR_SSL_CA => env('ANALYTICS_MYSQL_ATTR_SSL_CA', env('MYSQL_ATTR_SSL_CA')),
+            ]) : [],
+        ],
+
     ],
 
     /*

@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "revision": 1,
+  "state": "final",
+  "started_at": "2026-10-06T12:30:00Z",
+  "ended_at": "2026-10-06T13:02:10Z",
+  "end_reason": "player_destroyed",
+  "content": {
+    "id": "movie-123",
+    "type": "movie",
+    "series_id": null,
+    "season_id": null,
+    "episode_id": null,
+    "is_downloaded": false,
+    "autoplay": false
+  },
+  "timing": {
+    "duration_ms": 2100000,
+    "watch_position_ms": 1840000,
+    "max_position_ms": 1905000,
+    "watched_ms": 1765000,
+    "unique_watched_ms": 1690000,
+    "replayed_ms": 75000,
+    "foreground_watch_ms": 1765000,
+    "background_play_ms": 0,
+    "startup_ms": 1240
+  },
+  "interaction": {
+    "play_count": 2,
+    "pause_count": 3,
+    "resume_count": 2,
+    "seek_count": 4,
+    "seek_forward_ms": 180000,
+    "seek_backward_ms": 45000,
+    "fullscreen_count": 1,
+    "pip_count": 0,
+    "cast_count": 0
+  },
+  "buffering": {
+    "count": 3,
+    "total_ms": 8400,
+    "longest_ms": 4100
+  },
+  "quality": {
+    "initial": "720p",
+    "final": "1080p",
+    "change_count": 1,
+    "average_bitrate_kbps": 3200,
+    "dropped_frames": 4,
+    "rendered_frames": 52800,
+    "video_codec": "h264",
+    "audio_codec": "aac",
+    "stream_format": "hls"
+  },
+  "tracks": {
+    "audio_language": "mizo",
+    "subtitle_enabled": true,
+    "subtitle_language": "english",
+    "playback_speed": 1.0
+  },
+  "result": {
+    "completed": false,
+    "completion_percent": 80.5,
+    "milestones": [25, 50, 75],
+    "error_count": 0
+  },
+  "context": {
+    "platform": "ios",
+    "network_type": "wifi",
+    "app_version": "2.4.0",
+    "build_number": "104",
+    "os_version": "26.0",
+    "device_model": "iPhone",
+    "device_category": "phone",
+    "locale": "en-IN",
+    "timezone": "Asia/Kolkata"
+  }
+}
+

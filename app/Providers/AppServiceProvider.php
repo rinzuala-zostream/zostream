@@ -79,6 +79,25 @@ class AppServiceProvider extends ServiceProvider
                 (int) config('playback.rate_limits.stop_per_minute', 120)
             );
         });
+
+        foreach ([
+            'analytics-config' => 30,
+            'analytics-playback' => 30,
+            'analytics-batch' => 10,
+            'analytics-errors' => 20,
+            'analytics-events' => 20,
+        ] as $name => $attempts) {
+            RateLimiter::for($name, function (Request $request) use ($name, $attempts) {
+                return $this->playbackDeviceLimit($request, $name, $attempts);
+            });
+        }
+
+        RateLimiter::for('analytics-reports', function (Request $request) {
+            $userId = trim((string) $request->input('auth_user_id', '')) ?: $request->ip();
+
+            return Limit::perMinute(60)
+                ->by('analytics-reports:'.hash('sha256', $userId));
+        });
     }
 
     private function otpRecipientLimit(Request $request, string $scope, int $maxAttempts): Limit

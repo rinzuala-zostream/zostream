@@ -11,6 +11,8 @@ use App\Http\Controllers\Api\V4\AdPricingController;
 use App\Http\Controllers\Api\V4\AdServingController;
 use App\Http\Controllers\Api\V4\AdSubmissionController;
 use App\Http\Controllers\Api\V4\AdTrackingController;
+use App\Http\Controllers\Api\V4\AnalyticsIngestionController;
+use App\Http\Controllers\Api\V4\AnalyticsReportController;
 use App\Http\Controllers\Api\V4\AuthController;
 use App\Http\Controllers\Api\V4\BillingController;
 use App\Http\Controllers\Api\V4\CatalogController;
@@ -220,6 +222,28 @@ Route::prefix('v4')
                 Route::post('/heartbeat', [PlaybackController::class, 'heartbeat']);
                 Route::post('/stop', [PlaybackController::class, 'stop'])
                     ->middleware('throttle:playback-stop');
+            });
+
+            Route::prefix('analytic')->group(function () {
+                Route::get('/config', [AnalyticsIngestionController::class, 'config'])
+                    ->middleware('throttle:analytics-config');
+                Route::put('/playback/{sessionId}', [AnalyticsIngestionController::class, 'upsertPlayback'])
+                    ->middleware('throttle:analytics-playback');
+                Route::post('/playback/batch', [AnalyticsIngestionController::class, 'batchPlayback'])
+                    ->middleware('throttle:analytics-batch');
+                Route::post('/playback/{sessionId}/errors', [AnalyticsIngestionController::class, 'storePlaybackError'])
+                    ->middleware('throttle:analytics-errors');
+                Route::post('/events/batch', [AnalyticsIngestionController::class, 'batchEvents'])
+                    ->middleware('throttle:analytics-events');
+
+                Route::prefix('reports')->middleware(['admin.token', 'throttle:analytics-reports'])->group(function () {
+                    Route::get('/overview', [AnalyticsReportController::class, 'overview']);
+                    Route::get('/content', [AnalyticsReportController::class, 'content']);
+                    Route::get('/content/{type}/{id}', [AnalyticsReportController::class, 'contentShow']);
+                    Route::get('/quality', [AnalyticsReportController::class, 'quality']);
+                    Route::get('/errors', [AnalyticsReportController::class, 'errors']);
+                    Route::get('/users/{userId}/sessions', [AnalyticsReportController::class, 'userSessions']);
+                });
             });
 
             Route::prefix('billing')->middleware('owner.device')->group(function () {

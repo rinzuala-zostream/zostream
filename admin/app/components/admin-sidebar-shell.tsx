@@ -83,6 +83,12 @@ const topNavItems = [
     icon: LayoutGrid,
     expandable: false,
   },
+  {
+    title: "Analytics",
+    href: "/analytics",
+    icon: ChartArea,
+    expandable: false,
+  },
 ] as const;
 
 const sidebarGroups: readonly SidebarGroupConfig[] = [
@@ -682,7 +688,7 @@ export function AdminSidebarShell({
                 </span>
               </label>
 
-              {filteredTopNavItems.slice(0, 1).map((item) => {
+              {filteredTopNavItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = pathname === item.href;
 
@@ -743,34 +749,6 @@ export function AdminSidebarShell({
                 </div>
               ) : null}
 
-              {topNavItems.slice(1).map((item) => {
-                const Icon = item.icon;
-
-                return (
-                  <Link
-                    key={item.title}
-                    href={item.href}
-                    title={item.title}
-                    onClick={closeMobileSidebar}
-                    className={cn(
-                      "flex h-11 items-center gap-3 rounded-xl text-sm font-medium text-slate-500 transition duration-200 ease-out hover:bg-white/60 hover:text-slate-900 dark:text-white/72 dark:hover:bg-white/8 dark:hover:text-white",
-                      isSidebarContentExpanded
-                        ? "px-3"
-                        : "justify-center px-0 md:mx-auto md:size-10 md:gap-0 md:rounded-md",
-                    )}
-                  >
-                    <Icon className="size-4 shrink-0" />
-                    <span
-                      className={sidebarTextClass(isSidebarContentExpanded)}
-                    >
-                      {item.title}
-                    </span>
-                    {isSidebarContentExpanded && item.expandable ? (
-                      <ChevronDown className="ml-auto size-4 text-slate-400" />
-                    ) : null}
-                  </Link>
-                );
-              })}
             </nav>
           </div>
 

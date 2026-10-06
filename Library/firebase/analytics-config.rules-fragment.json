@@ -1,0 +1,16 @@
+{
+  "rules": {
+    "config": {
+      "analytics": {
+        ".read": true,
+        ".write": false,
+        "enabled": {
+          ".validate": "newData.isBoolean()"
+        },
+        "updated_at": {
+          ".validate": "newData.isString()"
+        }
+      }
+    }
+  }
+}
