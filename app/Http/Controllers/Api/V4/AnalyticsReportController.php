@@ -53,7 +53,7 @@ class AnalyticsReportController extends Controller
                  COALESCE(SUM(watched_ms), 0) AS watch_ms",
                 [$filters['timezone']]
             )
-            ->groupByRaw("DATE(CONVERT_TZ(started_at, '+00:00', ?))", [$filters['timezone']])
+            ->groupBy('date')
             ->orderBy('date')
             ->get()
             ->map(fn ($row) => [
@@ -72,7 +72,7 @@ class AnalyticsReportController extends Controller
                  COUNT(*) AS sessions",
                 [$filters['timezone']]
             )
-            ->groupByRaw("DATE(CONVERT_TZ(started_at, '+00:00', ?))", [$filters['timezone']])
+            ->groupBy('date')
             ->orderBy('date')
             ->get()
             ->map(function ($row) {
