@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\V4\AccountController;
 use App\Http\Controllers\Api\V4\AdminAdBillingController;
 use App\Http\Controllers\Api\V4\AdminAdSubmissionController;
 use App\Http\Controllers\Api\V4\AdminHomeSectionController;
+use App\Http\Controllers\Api\V4\AdminAnalyticsController;
 use App\Http\Controllers\Api\V4\AdminRealtimeConfigController;
 use App\Http\Controllers\Api\V4\AdminWhatsAppInboxController;
 use App\Http\Controllers\Api\V4\AdPaymentController;
@@ -283,6 +284,9 @@ Route::prefix('v4')
                 ->prefix('admin')
                 ->group(function () {
                     Route::get('/dashboard', [DashboardController::class, 'index']);
+
+                    Route::get('/analytics/config', [AdminAnalyticsController::class, 'showConfig']);
+                    Route::put('/analytics/config', [AdminAnalyticsController::class, 'updateConfig']);
 
                     Route::get('/home-sections', [AdminHomeSectionController::class, 'index']);
                     Route::put('/home-sections', [AdminHomeSectionController::class, 'update']);
