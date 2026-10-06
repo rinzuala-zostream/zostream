@@ -17,9 +17,31 @@ struct PendingProductEvent: Codable, Sendable, Equatable {
     var nextAttemptAt: Date
 }
 
+struct PendingPlaybackError: Codable, Sendable, Equatable {
+    var ownerKey: String
+    var sessionId: String
+    var event: PlaybackErrorEvent
+    var platform: AnalyticsPlatform
+    var queuedAt: Date
+    var attemptCount: Int
+    var nextAttemptAt: Date
+}
+
 private struct QueueDocument: Codable, Sendable {
     var playback: [PendingPlayback] = []
     var events: [PendingProductEvent] = []
+    var errors: [PendingPlaybackError] = []
+
+    enum CodingKeys: String, CodingKey { case playback, events, errors }
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        playback = try container.decodeIfPresent([PendingPlayback].self, forKey: .playback) ?? []
+        events = try container.decodeIfPresent([PendingProductEvent].self, forKey: .events) ?? []
+        errors = try container.decodeIfPresent([PendingPlaybackError].self, forKey: .errors) ?? []
+    }
 }
 
 actor AnalyticsQueue {
@@ -82,6 +104,17 @@ actor AnalyticsQueue {
         try persist()
     }
 
+    func enqueueError(_ event: PlaybackErrorEvent, sessionId: String, platform: AnalyticsPlatform, ownerKey: String, now: Date = Date()) throws {
+        prune(now: now)
+        guard !document.errors.contains(where: { $0.event.eventId == event.eventId }) else { return }
+        document.errors.append(PendingPlaybackError(ownerKey: ownerKey, sessionId: sessionId, event: event, platform: platform, queuedAt: now, attemptCount: 0, nextAttemptAt: now))
+        if document.errors.count > maxPendingSessions {
+            document.errors.sort { $0.queuedAt < $1.queuedAt }
+            document.errors.removeFirst(document.errors.count - maxPendingSessions)
+        }
+        try persist()
+    }
+
     func duePlayback(ownerKey: String, limit: Int, now: Date = Date()) -> [PendingPlayback] {
         document.playback
             .filter { $0.ownerKey == ownerKey && $0.nextAttemptAt <= now }
@@ -98,6 +131,11 @@ actor AnalyticsQueue {
             .map { $0 }
     }
 
+    func dueErrors(ownerKey: String, limit: Int, now: Date = Date()) -> [PendingPlaybackError] {
+        document.errors.filter { $0.ownerKey == ownerKey && $0.nextAttemptAt <= now }
+            .sorted { $0.queuedAt < $1.queuedAt }.prefix(limit).map { $0 }
+    }
+
     func removePlayback(sessionIds: Set<String>, ownerKey: String) throws {
         document.playback.removeAll {
             $0.ownerKey == ownerKey && sessionIds.contains($0.summary.sessionId)
@@ -109,6 +147,11 @@ actor AnalyticsQueue {
         document.events.removeAll {
             $0.ownerKey == ownerKey && eventIds.contains($0.event.eventId)
         }
+        try persist()
+    }
+
+    func removeErrors(eventIds: Set<String>, ownerKey: String) throws {
+        document.errors.removeAll { $0.ownerKey == ownerKey && eventIds.contains($0.event.eventId) }
         try persist()
     }
 
@@ -138,9 +181,18 @@ actor AnalyticsQueue {
         try persist()
     }
 
+    func deferErrors(eventIds: Set<String>, ownerKey: String, now: Date = Date()) throws {
+        for index in document.errors.indices where document.errors[index].ownerKey == ownerKey && eventIds.contains(document.errors[index].event.eventId) {
+            document.errors[index].attemptCount += 1
+            document.errors[index].nextAttemptAt = nextAttempt(count: document.errors[index].attemptCount, now: now)
+        }
+        try persist()
+    }
+
     func clear(ownerKey: String) throws {
         document.playback.removeAll { $0.ownerKey == ownerKey }
         document.events.removeAll { $0.ownerKey == ownerKey }
+        document.errors.removeAll { $0.ownerKey == ownerKey }
         try persist()
     }
 
@@ -162,6 +214,7 @@ actor AnalyticsQueue {
         let cutoff = now.addingTimeInterval(-retention)
         document.playback.removeAll { $0.queuedAt < cutoff }
         document.events.removeAll { $0.queuedAt < cutoff }
+        document.errors.removeAll { $0.queuedAt < cutoff }
     }
 
     private func persist() throws {

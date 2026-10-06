@@ -10,6 +10,23 @@ import org.robolectric.RuntimeEnvironment
 @RunWith(RobolectricTestRunner::class)
 class AnalyticsQueueTest {
     @Test
+    fun errorQueueSurvivesRestartAndKeepsAccountsSeparate() {
+        val context = RuntimeEnvironment.getApplication()
+        context.filesDir.resolve("zoanalytics").deleteRecursively()
+        val queue = AnalyticsQueue(context, maxPendingSessions = 5, retentionDays = 7)
+        val event = PlaybackErrorEvent(100, "player", "media3", "ERROR_CODE_IO", true, false)
+
+        queue.enqueueError(event, "session-a", AnalyticsPlatform.ANDROID, "owner-a", now = 1_000)
+        queue.enqueueError(event, "session-a", AnalyticsPlatform.ANDROID, "owner-a", now = 1_000)
+
+        val restored = AnalyticsQueue(context, maxPendingSessions = 5, retentionDays = 7)
+        assertEquals(1, restored.dueErrors("owner-a", 10, now = 1_000).size)
+        assertEquals(0, restored.dueErrors("owner-b", 10, now = 1_000).size)
+        restored.removeErrors("owner-a", setOf(event.eventId))
+        assertEquals(0, restored.dueErrors("owner-a", 10, now = 1_000).size)
+    }
+
+    @Test
     fun keepsNewestRevisionForOneSession() {
         val context = RuntimeEnvironment.getApplication()
         context.filesDir.resolve("zoanalytics").deleteRecursively()

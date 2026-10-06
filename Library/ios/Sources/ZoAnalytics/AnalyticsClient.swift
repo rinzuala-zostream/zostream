@@ -128,17 +128,13 @@ public actor ZoAnalyticsClient {
         credentials: AnalyticsCredentials
     ) async throws {
         guard collectionEnabled else { return }
-        try await send(
-            method: "POST",
-            path: "api/v4/analytic/playback/\(sessionId)/errors",
-            body: error,
-            credentials: credentials,
-            platform: platform.rawValue
-        )
+        try await queue.enqueueError(error, sessionId: sessionId, platform: platform, ownerKey: credentials.ownerKey)
+        try await flushErrors(credentials: credentials)
     }
 
     public func flush(credentials: AnalyticsCredentials) async throws {
         guard collectionEnabled else { return }
+        try await flushErrors(credentials: credentials)
         let pending = await queue.duePlayback(ownerKey: credentials.ownerKey, limit: 20)
         guard !pending.isEmpty else {
             try await flushEvents(credentials: credentials)
@@ -154,12 +150,38 @@ public actor ZoAnalyticsClient {
             }
             try await queue.removePlayback(sessionIds: sessionIds, ownerKey: credentials.ownerKey)
         } catch let error as ZoAnalyticsError {
-            if case .http(let status, let retryable) = error, !retryable, status != 401 {
-                try await queue.removePlayback(sessionIds: sessionIds, ownerKey: credentials.ownerKey)
+            if case .http(let status, _) = error, [413, 422].contains(status), pending.count > 1 {
+                // A rejected batch contains no accepted items. Retry individually
+                // so one malformed summary cannot delete its valid neighbours.
+                for item in pending {
+                    let id = Set([item.summary.sessionId])
+                    do {
+                        try await sendPlayback(item.summary, credentials: credentials)
+                        try await queue.removePlayback(sessionIds: id, ownerKey: credentials.ownerKey)
+                    } catch let singleError as ZoAnalyticsError {
+                        if case .http(let singleStatus, _) = singleError, [413, 422].contains(singleStatus) {
+                            try await queue.removePlayback(sessionIds: id, ownerKey: credentials.ownerKey)
+                        } else {
+                            if case .http(let singleStatus, let retryable) = singleError, !retryable, singleStatus != 401 {
+                                try await queue.removePlayback(sessionIds: id, ownerKey: credentials.ownerKey)
+                            } else {
+                                try await queue.deferPlayback(sessionIds: id, ownerKey: credentials.ownerKey)
+                            }
+                            throw singleError
+                        }
+                    } catch {
+                        try await queue.deferPlayback(sessionIds: id, ownerKey: credentials.ownerKey)
+                        throw error
+                    }
+                }
             } else {
-                try await queue.deferPlayback(sessionIds: sessionIds, ownerKey: credentials.ownerKey)
+                if case .http(let status, let retryable) = error, !retryable, status != 401 {
+                    try await queue.removePlayback(sessionIds: sessionIds, ownerKey: credentials.ownerKey)
+                } else {
+                    try await queue.deferPlayback(sessionIds: sessionIds, ownerKey: credentials.ownerKey)
+                }
+                throw error
             }
-            throw error
         } catch {
             try await queue.deferPlayback(sessionIds: sessionIds, ownerKey: credentials.ownerKey)
             throw error
@@ -216,10 +238,10 @@ public actor ZoAnalyticsClient {
     private func flushEvents(credentials: AnalyticsCredentials) async throws {
         let pending = await queue.dueEvents(ownerKey: credentials.ownerKey, limit: 50)
         guard !pending.isEmpty else { return }
-        let ids = Set(pending.map { $0.event.eventId })
-        do {
-            let groups = Dictionary(grouping: pending, by: \.context)
-            for (context, items) in groups {
+        let groups = Dictionary(grouping: pending, by: \.context)
+        for (context, items) in groups {
+            let ids = Set(items.map { $0.event.eventId })
+            do {
                 let body = EventBatchBody(events: items.map(\.event), context: context)
                 try await send(
                     method: "POST",
@@ -228,18 +250,64 @@ public actor ZoAnalyticsClient {
                     credentials: credentials,
                     platform: context.platform.rawValue
                 )
-            }
-            try await queue.removeEvents(eventIds: ids, ownerKey: credentials.ownerKey)
-        } catch let error as ZoAnalyticsError {
-            if case .http(let status, let retryable) = error, !retryable, status != 401 {
                 try await queue.removeEvents(eventIds: ids, ownerKey: credentials.ownerKey)
-            } else {
+            } catch let error as ZoAnalyticsError {
+                if case .http(let status, _) = error, [413, 422].contains(status), items.count > 1 {
+                    for item in items {
+                        let id = Set([item.event.eventId])
+                        do {
+                            let body = EventBatchBody(events: [item.event], context: context)
+                            try await send(method: "POST", path: "api/v4/analytic/events/batch", body: body, credentials: credentials, platform: context.platform.rawValue)
+                            try await queue.removeEvents(eventIds: id, ownerKey: credentials.ownerKey)
+                        } catch let singleError as ZoAnalyticsError {
+                            if case .http(let singleStatus, _) = singleError, [413, 422].contains(singleStatus) {
+                                try await queue.removeEvents(eventIds: id, ownerKey: credentials.ownerKey)
+                            } else {
+                                if case .http(let singleStatus, let retryable) = singleError, !retryable, singleStatus != 401 {
+                                    try await queue.removeEvents(eventIds: id, ownerKey: credentials.ownerKey)
+                                } else {
+                                    try await queue.deferEvents(eventIds: id, ownerKey: credentials.ownerKey)
+                                }
+                                throw singleError
+                            }
+                        } catch {
+                            try await queue.deferEvents(eventIds: id, ownerKey: credentials.ownerKey)
+                            throw error
+                        }
+                    }
+                } else {
+                    if case .http(let status, let retryable) = error, !retryable, status != 401 {
+                        try await queue.removeEvents(eventIds: ids, ownerKey: credentials.ownerKey)
+                    } else {
+                        try await queue.deferEvents(eventIds: ids, ownerKey: credentials.ownerKey)
+                    }
+                    throw error
+                }
+            } catch {
                 try await queue.deferEvents(eventIds: ids, ownerKey: credentials.ownerKey)
+                throw error
             }
-            throw error
-        } catch {
-            try await queue.deferEvents(eventIds: ids, ownerKey: credentials.ownerKey)
-            throw error
+        }
+    }
+
+    private func flushErrors(credentials: AnalyticsCredentials) async throws {
+        let pending = await queue.dueErrors(ownerKey: credentials.ownerKey, limit: 20)
+        for item in pending {
+            let id = Set([item.event.eventId])
+            do {
+                try await send(method: "POST", path: "api/v4/analytic/playback/\(item.sessionId)/errors", body: item.event, credentials: credentials, platform: item.platform.rawValue)
+                try await queue.removeErrors(eventIds: id, ownerKey: credentials.ownerKey)
+            } catch let error as ZoAnalyticsError {
+                if case .http(let status, let retryable) = error, !retryable, status != 401 {
+                    try await queue.removeErrors(eventIds: id, ownerKey: credentials.ownerKey)
+                } else {
+                    try await queue.deferErrors(eventIds: id, ownerKey: credentials.ownerKey)
+                }
+                throw error
+            } catch {
+                try await queue.deferErrors(eventIds: id, ownerKey: credentials.ownerKey)
+                throw error
+            }
         }
     }
 
@@ -293,7 +361,7 @@ public actor ZoAnalyticsClient {
         request.setValue(platform, forHTTPHeaderField: "X-Platform")
         request.httpBody = try AnalyticsCoding.encoder().encode(body)
         let payloadLimit = path.hasSuffix("/batch") ? 262_144 : 65_536
-        if (request.httpBody?.count ?? 0) > payloadLimit { throw ZoAnalyticsError.payloadTooLarge }
+        if (request.httpBody?.count ?? 0) > payloadLimit { throw ZoAnalyticsError.http(status: 413, retryable: false) }
 
         let (data, response) = try await transport.data(for: request)
         guard (200...299).contains(response.statusCode) else {

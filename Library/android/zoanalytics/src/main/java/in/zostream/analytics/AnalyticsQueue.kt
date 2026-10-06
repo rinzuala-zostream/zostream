@@ -71,12 +71,36 @@ internal class AnalyticsQueue(
     }
 
     @Synchronized
+    fun enqueueError(error: PlaybackErrorEvent, sessionId: String, platform: AnalyticsPlatform, ownerKey: String, now: Long = System.currentTimeMillis()) {
+        prune(now)
+        val values = errorArray()
+        for (index in 0 until values.length()) {
+            if (values.getJSONObject(index).optString("event_id") == error.eventId) return
+        }
+        values.put(JSONObject()
+            .put("owner_key", ownerKey)
+            .put("session_id", sessionId)
+            .put("event_id", error.eventId)
+            .put("platform", platform.wireValue)
+            .put("event", error.toJson())
+            .put("queued_at", now)
+            .put("attempt_count", 0)
+            .put("next_attempt_at", now))
+        trimOldest(values, maxPendingSessions)
+        persist()
+    }
+
+    @Synchronized
     fun duePlayback(ownerKey: String, limit: Int, now: Long = System.currentTimeMillis()): List<JSONObject> =
         due(playbackArray(), ownerKey, limit, now)
 
     @Synchronized
     fun dueEvents(ownerKey: String, limit: Int, now: Long = System.currentTimeMillis()): List<JSONObject> =
         due(eventArray(), ownerKey, limit, now)
+
+    @Synchronized
+    fun dueErrors(ownerKey: String, limit: Int, now: Long = System.currentTimeMillis()): List<JSONObject> =
+        due(errorArray(), ownerKey, limit, now)
 
     @Synchronized
     fun removePlayback(ownerKey: String, sessionIds: Set<String>) {
@@ -95,6 +119,14 @@ internal class AnalyticsQueue(
     }
 
     @Synchronized
+    fun removeErrors(ownerKey: String, eventIds: Set<String>) {
+        root.put("errors", filtered(errorArray()) {
+            !(it.optString("owner_key") == ownerKey && eventIds.contains(it.optString("event_id")))
+        })
+        persist()
+    }
+
+    @Synchronized
     fun deferPlayback(ownerKey: String, sessionIds: Set<String>, now: Long = System.currentTimeMillis()) {
         defer(playbackArray(), ownerKey, "session_id", sessionIds, now)
         persist()
@@ -107,9 +139,16 @@ internal class AnalyticsQueue(
     }
 
     @Synchronized
+    fun deferErrors(ownerKey: String, eventIds: Set<String>, now: Long = System.currentTimeMillis()) {
+        defer(errorArray(), ownerKey, "event_id", eventIds, now)
+        persist()
+    }
+
+    @Synchronized
     fun clear(ownerKey: String) {
         root.put("playback", filtered(playbackArray()) { it.optString("owner_key") != ownerKey })
         root.put("events", filtered(eventArray()) { it.optString("owner_key") != ownerKey })
+        root.put("errors", filtered(errorArray()) { it.optString("owner_key") != ownerKey })
         persist()
     }
 
@@ -122,6 +161,9 @@ internal class AnalyticsQueue(
 
     private fun eventArray(): JSONArray = root.optJSONArray("events")
         ?: JSONArray().also { root.put("events", it) }
+
+    private fun errorArray(): JSONArray = root.optJSONArray("errors")
+        ?: JSONArray().also { root.put("errors", it) }
 
     private fun due(values: JSONArray, ownerKey: String, limit: Int, now: Long): List<JSONObject> {
         val result = mutableListOf<JSONObject>()
@@ -162,6 +204,7 @@ internal class AnalyticsQueue(
         val cutoff = now - retentionMs
         root.put("playback", filtered(playbackArray()) { it.optLong("queued_at") >= cutoff })
         root.put("events", filtered(eventArray()) { it.optLong("queued_at") >= cutoff })
+        root.put("errors", filtered(errorArray()) { it.optLong("queued_at") >= cutoff })
     }
 
     private fun trimOldest(values: JSONArray, maximum: Int) {
@@ -198,4 +241,3 @@ internal class AnalyticsQueue(
         if (file.exists()) JSONObject(file.readText()) else JSONObject()
     }.getOrDefault(JSONObject())
 }
-

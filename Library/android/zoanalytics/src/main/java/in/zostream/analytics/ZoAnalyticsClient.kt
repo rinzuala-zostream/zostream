@@ -106,13 +106,8 @@ class ZoAnalyticsClient @JvmOverloads constructor(
         executor.execute {
             val result = runCatching {
                 if (!collectionEnabled) return@runCatching
-                send(
-                    "POST",
-                    "api/v4/analytic/playback/$sessionId/errors",
-                    error.toJson(),
-                    credentials,
-                    platform.wireValue,
-                )
+                queue.enqueueError(error, sessionId, platform, credentials.ownerKey)
+                flushErrorsBlocking(credentials)
             }
             callback?.let { mainHandler.post { it.onComplete(result.exceptionOrNull()) } }
         }
@@ -169,6 +164,7 @@ class ZoAnalyticsClient @JvmOverloads constructor(
 
     internal fun flushBlocking(credentials: AnalyticsCredentials) {
         if (!collectionEnabled) return
+        flushErrorsBlocking(credentials)
         val pending = queue.duePlayback(credentials.ownerKey, 20)
         if (pending.isNotEmpty()) {
             val ids = pending.map { it.getString("session_id") }.toSet()
@@ -177,6 +173,28 @@ class ZoAnalyticsClient @JvmOverloads constructor(
                 else sendPlaybackBatch(pending, credentials)
                 queue.removePlayback(credentials.ownerKey, ids)
             } catch (error: AnalyticsHttpException) {
+                if ((error.statusCode == 422 || error.statusCode == 413) && pending.size > 1) {
+                    // Batch validation and size limits are all-or-nothing. Isolate
+                    // items so valid sessions are not discarded with one bad item.
+                    for (item in pending) {
+                        val id = item.getString("session_id")
+                        try {
+                            sendSinglePlayback(item, credentials)
+                            queue.removePlayback(credentials.ownerKey, setOf(id))
+                        } catch (singleError: AnalyticsHttpException) {
+                            if (singleError.statusCode == 422 || singleError.statusCode == 413) queue.removePlayback(credentials.ownerKey, setOf(id))
+                            else {
+                                if (singleError.retryable || singleError.statusCode == 401) queue.deferPlayback(credentials.ownerKey, setOf(id))
+                                else queue.removePlayback(credentials.ownerKey, setOf(id))
+                                throw singleError
+                            }
+                        } catch (singleError: Throwable) {
+                            queue.deferPlayback(credentials.ownerKey, setOf(id))
+                            throw singleError
+                        }
+                    }
+                    return flushEventsBlocking(credentials)
+                }
                 if (!error.retryable && error.statusCode != 401) queue.removePlayback(credentials.ownerKey, ids)
                 else queue.deferPlayback(credentials.ownerKey, ids)
                 throw error
@@ -188,12 +206,31 @@ class ZoAnalyticsClient @JvmOverloads constructor(
         flushEventsBlocking(credentials)
     }
 
+    private fun flushErrorsBlocking(credentials: AnalyticsCredentials) {
+        val pending = queue.dueErrors(credentials.ownerKey, 20)
+        for (item in pending) {
+            val id = setOf(item.getString("event_id"))
+            try {
+                send("POST", "api/v4/analytic/playback/${item.getString("session_id")}/errors",
+                    item.getJSONObject("event"), credentials, item.optString("platform", "android"))
+                queue.removeErrors(credentials.ownerKey, id)
+            } catch (error: AnalyticsHttpException) {
+                if (!error.retryable && error.statusCode != 401) queue.removeErrors(credentials.ownerKey, id)
+                else queue.deferErrors(credentials.ownerKey, id)
+                throw error
+            } catch (error: Throwable) {
+                queue.deferErrors(credentials.ownerKey, id)
+                throw error
+            }
+        }
+    }
+
     private fun flushEventsBlocking(credentials: AnalyticsCredentials) {
         val pending = queue.dueEvents(credentials.ownerKey, 50)
         if (pending.isEmpty()) return
-        val ids = pending.map { it.getString("event_id") }.toSet()
-        try {
-            pending.groupBy { it.getJSONObject("context").toString() }.forEach { (_, group) ->
+        pending.groupBy { it.getJSONObject("context").toString() }.forEach { (_, group) ->
+            val ids = group.map { it.getString("event_id") }.toSet()
+            try {
                 val events = JSONArray()
                 group.forEach { events.put(it.getJSONObject("event")) }
                 val context = group.first().getJSONObject("context")
@@ -202,15 +239,38 @@ class ZoAnalyticsClient @JvmOverloads constructor(
                     .put("events", events)
                     .put("context", context)
                 send("POST", "api/v4/analytic/events/batch", body, credentials, context.optString("platform"))
+                queue.removeEvents(credentials.ownerKey, ids)
+            } catch (error: AnalyticsHttpException) {
+                if ((error.statusCode == 422 || error.statusCode == 413) && group.size > 1) {
+                    for (item in group) {
+                        val id = item.getString("event_id")
+                        val body = JSONObject().put("schema_version", 1)
+                            .put("events", JSONArray().put(item.getJSONObject("event")))
+                            .put("context", item.getJSONObject("context"))
+                        try {
+                            send("POST", "api/v4/analytic/events/batch", body, credentials, item.getJSONObject("context").optString("platform"))
+                            queue.removeEvents(credentials.ownerKey, setOf(id))
+                        } catch (singleError: AnalyticsHttpException) {
+                            if (singleError.statusCode == 422 || singleError.statusCode == 413) queue.removeEvents(credentials.ownerKey, setOf(id))
+                            else {
+                                if (singleError.retryable || singleError.statusCode == 401) queue.deferEvents(credentials.ownerKey, setOf(id))
+                                else queue.removeEvents(credentials.ownerKey, setOf(id))
+                                throw singleError
+                            }
+                        } catch (singleError: Throwable) {
+                            queue.deferEvents(credentials.ownerKey, setOf(id))
+                            throw singleError
+                        }
+                    }
+                } else {
+                    if (!error.retryable && error.statusCode != 401) queue.removeEvents(credentials.ownerKey, ids)
+                    else queue.deferEvents(credentials.ownerKey, ids)
+                    throw error
+                }
+            } catch (error: Throwable) {
+                queue.deferEvents(credentials.ownerKey, ids)
+                throw error
             }
-            queue.removeEvents(credentials.ownerKey, ids)
-        } catch (error: AnalyticsHttpException) {
-            if (!error.retryable && error.statusCode != 401) queue.removeEvents(credentials.ownerKey, ids)
-            else queue.deferEvents(credentials.ownerKey, ids)
-            throw error
-        } catch (error: Throwable) {
-            queue.deferEvents(credentials.ownerKey, ids)
-            throw error
         }
     }
 
@@ -243,7 +303,7 @@ class ZoAnalyticsClient @JvmOverloads constructor(
     ) {
         val bytes = body.toString().toByteArray(Charsets.UTF_8)
         val payloadLimit = if (path.endsWith("/batch")) 262_144 else 65_536
-        if (bytes.size > payloadLimit) throw IOException("Analytics payload exceeds the route limit")
+        if (bytes.size > payloadLimit) throw AnalyticsHttpException(413, false)
         val connection = URL(configuration.endpoint(path)).openConnection() as HttpURLConnection
         try {
             connection.requestMethod = method

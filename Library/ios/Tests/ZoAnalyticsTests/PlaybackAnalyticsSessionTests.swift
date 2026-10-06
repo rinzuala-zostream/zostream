@@ -13,6 +13,24 @@ final class ManualClock: @unchecked Sendable {
 }
 
 final class PlaybackAnalyticsSessionTests: XCTestCase {
+    func testErrorQueueReadsOldFileAndPersistsErrors() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let file = directory.appendingPathComponent("queue.json")
+        try Data(#"{"playback":[],"events":[]}"#.utf8).write(to: file)
+        let queue = AnalyticsQueue(fileURL: file, maxPendingSessions: 5, retentionDays: 7)
+        let event = PlaybackErrorEvent(positionMs: 100, category: "player", stage: "playback", code: "FAILED", isFatal: true, isRetryable: false)
+
+        try await queue.enqueueError(event, sessionId: "session-a", platform: .ios, ownerKey: "owner-a")
+        let restored = AnalyticsQueue(fileURL: file, maxPendingSessions: 5, retentionDays: 7)
+        let ownErrors = await restored.dueErrors(ownerKey: "owner-a", limit: 10)
+        let otherErrors = await restored.dueErrors(ownerKey: "owner-b", limit: 10)
+        XCTAssertEqual(ownErrors.map(\.event.eventId), [event.eventId])
+        XCTAssertTrue(otherErrors.isEmpty)
+    }
+
     func testDisabledClientDoesNotPersistPlayback() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
