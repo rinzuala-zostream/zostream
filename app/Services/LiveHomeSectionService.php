@@ -391,7 +391,7 @@ class LiveHomeSectionService
             ->where('movie.status', 'Published')->where('movie.isEnable', 1)
             ->when($mode === 'kids', fn ($q) => $q->where('movie.isChildMode', 1))
             ->when($mode === 'kids' || ! $includeAgeRestricted, fn ($q) => $q->where('movie.isAgeRestricted', 0))
-            ->select('episodes.id', 'episodes.title', 'episodes.thumbnail', 'episodes.episode_number', 'seasons.season_number', 'movie.id as parent_id', 'movie.title as series_title', 'movie.isPremium as parent_premium', 'movie.isPayPerView as parent_ppv')
+            ->select('episodes.id', 'episodes.title', 'episodes.thumbnail', 'episodes.episode_number', 'seasons.season_number', 'movie.id as parent_id', 'movie.num as parent_num', 'movie.title as series_title', 'movie.isPremium as parent_premium', 'movie.isPayPerView as parent_ppv')
             ->get()->keyBy('id');
         $cards = [];
         foreach ($watch as $row) {
@@ -457,7 +457,7 @@ class LiveHomeSectionService
                     });
                 }
             })
-            ->select('episodes.id', 'episodes.title', 'episodes.thumbnail', 'episodes.episode_number', 'seasons.movie_id as series_id', 'seasons.season_number', 'movie.id as parent_id', 'movie.title as series_title', 'movie.isPremium as parent_premium', 'movie.isPayPerView as parent_ppv')
+            ->select('episodes.id', 'episodes.title', 'episodes.thumbnail', 'episodes.episode_number', 'seasons.movie_id as series_id', 'seasons.movie_id as parent_num', 'seasons.season_number', 'movie.id as parent_id', 'movie.title as series_title', 'movie.isPremium as parent_premium', 'movie.isPayPerView as parent_ppv')
             ->orderBy('seasons.movie_id')->orderBy('seasons.season_number')->orderBy('episodes.episode_number')
             ->get()->unique('series_id')->keyBy('series_id');
 
@@ -495,7 +495,7 @@ class LiveHomeSectionService
             ->groupBy(
                 'seasons.id', 'seasons.movie_id', 'seasons.season_number', 'seasons.title',
                 'seasons.isPayPerView', 'movie.id', 'movie.title', 'movie.poster',
-                'movie.cover_img', 'movie.isPremium'
+                'movie.cover_img', 'movie.isPremium', 'movie.num'
             )
             ->havingRaw('MAX(CASE WHEN seasons.isPayPerView = 1 OR episodes.isPayPerView = 1 THEN 1 ELSE 0 END) = 1')
             ->orderBy('movie.title')
@@ -505,14 +505,17 @@ class LiveHomeSectionService
                 'seasons.id as season_id', 'seasons.movie_id', 'seasons.season_number',
                 'seasons.title as season_title', 'seasons.isPayPerView as season_ppv',
                 'movie.id as parent_id', 'movie.title as series_title', 'movie.poster',
-                'movie.cover_img', 'movie.isPremium as premium',
+                'movie.cover_img', 'movie.isPremium as premium', 'movie.num as parent_num',
                 DB::raw('SUM(CASE WHEN episodes.isPayPerView = 1 THEN 1 ELSE 0 END) as ppv_episode_count'),
             ])
             ->map(fn ($season): array => [
                 'id' => (string) $season->season_id,
                 'type' => 'season',
+                'movie_id' => (string) $season->parent_id,
                 'parent_id' => (string) $season->parent_id,
+                'parent_num' => (int) $season->parent_num,
                 'series_title' => (string) $season->series_title,
+                'status' => 'Published',
                 'title' => (string) ($season->season_title ?: 'Season '.$season->season_number),
                 'season_number' => (int) $season->season_number,
                 'poster' => (string) ($season->poster ?? ''),
@@ -538,6 +541,6 @@ class LiveHomeSectionService
 
     private function episodeCard($episode): array
     {
-        return ['id' => (string) $episode->id, 'parent_id' => (string) $episode->parent_id, 'series_title' => (string) $episode->series_title, 'title' => (string) $episode->title, 'status' => 'Published', 'season_number' => (int) $episode->season_number, 'episode_number' => (int) $episode->episode_number, 'thumbnail' => (string) ($episode->thumbnail ?? ''), 'premium' => (bool) $episode->parent_premium, 'ppv' => (bool) $episode->parent_ppv];
+        return ['id' => (string) $episode->id, 'movie_id' => (string) $episode->parent_id, 'parent_id' => (string) $episode->parent_id, 'parent_num' => (int) $episode->parent_num, 'series_title' => (string) $episode->series_title, 'title' => (string) $episode->title, 'status' => 'Published', 'season_number' => (int) $episode->season_number, 'episode_number' => (int) $episode->episode_number, 'thumbnail' => (string) ($episode->thumbnail ?? ''), 'premium' => (bool) $episode->parent_premium, 'ppv' => (bool) $episode->parent_ppv];
     }
 }
