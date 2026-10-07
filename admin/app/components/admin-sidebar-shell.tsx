@@ -89,6 +89,12 @@ const topNavItems = [
     icon: ChartArea,
     expandable: false,
   },
+  {
+    title: "Content · PPV",
+    href: "/movies/ppv",
+    icon: Clapperboard,
+    expandable: false,
+  },
 ] as const;
 
 const sidebarGroups: readonly SidebarGroupConfig[] = [
@@ -119,11 +125,6 @@ const sidebarGroups: readonly SidebarGroupConfig[] = [
         title: "Edit Movie",
         href: "/movies/update",
         icon: PencilLine,
-      },
-      {
-        title: "PPV",
-        href: "/movies/ppv",
-        icon: Crown,
       },
     ],
     maxHeightClass: "max-h-[14rem]",
