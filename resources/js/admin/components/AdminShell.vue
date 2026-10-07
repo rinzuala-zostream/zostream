@@ -17,7 +17,7 @@ const item = (key) => ({ label: resources[key].label, to: `/manage/${key}`, icon
 const groups = [
     { label: 'Overview', items: [{ label: 'Dashboard', to: '/dashboard', icon: 'grid' }, { label: 'Analytics', to: '/analytics', icon: 'chart' }, { label: 'Arrange home sections', to: '/home/sections', icon: 'layers' }] },
     { label: 'Advertising', items: [{ label: 'Ad submissions', to: '/ads/submissions', icon: 'image' }, { label: 'Billing & campaigns', to: '/ads/billing', icon: 'credit-card' }, { label: 'Rates & placements', to: '/ads/billing-rates', icon: 'settings' }] },
-    { label: 'Content', items: [item('movies'), { label: 'Trailers', to: '/trailers', icon: 'play' }, ...['seasons', 'episodes', 'banners'].map(item)] },
+    { label: 'Content', items: [item('movies'), { label: 'PPV', to: '/ppv', icon: 'credit-card' }, { label: 'Trailers', to: '/trailers', icon: 'play' }, ...['seasons', 'episodes', 'banners'].map(item)] },
     { label: 'Audience', items: ['users', 'subscriptions', 'plans', 'devices'].map(item) },
     { label: 'Engagement', items: ['polls', 'legal'].map(item).concat([
         { label: 'Poll voters', to: '/polls/voters', icon: 'users' },

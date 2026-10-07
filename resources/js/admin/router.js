@@ -18,6 +18,7 @@ import AdBillingDashboardPage from './pages/AdBillingDashboardPage.vue';
 import HomeSectionsPage from './pages/HomeSectionsPage.vue';
 import AnalyticsPage from './pages/AnalyticsPage.vue';
 import TrailersPage from './pages/TrailersPage.vue';
+import PpvPage from './pages/PpvPage.vue';
 
 const aliases = [
     ['/movies/add', '/manage/movies/new'], ['/movies/update', '/manage/movies'], ['/movies/update/:id', '/manage/movies/:id'],
@@ -44,6 +45,7 @@ const router = createRouter({
                 { path: 'analytics', component: AnalyticsPage },
                 { path: 'home/sections', component: HomeSectionsPage },
                 { path: 'trailers', component: TrailersPage },
+                { path: 'ppv', component: PpvPage },
                 { path: 'manage/:resource', component: ResourceListPage },
                 { path: 'manage/:resource/new', component: ResourceEditorPage },
                 { path: 'manage/:resource/:id', component: ResourceEditorPage },
