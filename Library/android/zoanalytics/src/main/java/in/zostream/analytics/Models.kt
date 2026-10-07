@@ -4,6 +4,8 @@ import android.app.UiModeManager
 import android.content.Context
 import android.content.pm.PackageManager
 import android.content.res.Configuration
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Build
 import org.json.JSONArray
 import org.json.JSONObject
@@ -137,7 +139,7 @@ data class AnalyticsContext @JvmOverloads constructor(
             context: Context,
             appVersion: String,
             buildNumber: String,
-            networkType: NetworkType = NetworkType.UNKNOWN,
+            networkType: NetworkType? = null,
         ): AnalyticsContext {
             val appContext = context.applicationContext
             val modeManager = appContext.getSystemService(Context.UI_MODE_SERVICE) as? UiModeManager
@@ -153,9 +155,43 @@ data class AnalyticsContext @JvmOverloads constructor(
                 appVersion = appVersion,
                 buildNumber = buildNumber,
                 platform = platform,
-                networkType = networkType,
+                networkType = networkType ?: detectNetworkType(appContext),
                 deviceCategory = category,
             )
+        }
+
+        /** Detects the active transport. Requires ACCESS_NETWORK_STATE in the host app. */
+        @Suppress("DEPRECATION")
+        @JvmStatic
+        fun detectNetworkType(context: Context): NetworkType {
+            val connectivity = context.applicationContext
+                .getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+                ?: return NetworkType.UNKNOWN
+
+            return try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    val network = connectivity.activeNetwork ?: return NetworkType.OFFLINE
+                    val capabilities = connectivity.getNetworkCapabilities(network)
+                        ?: return NetworkType.UNKNOWN
+                    when {
+                        capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> NetworkType.WIFI
+                        capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> NetworkType.CELLULAR
+                        capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> NetworkType.ETHERNET
+                        else -> NetworkType.UNKNOWN
+                    }
+                } else {
+                    val info = connectivity.activeNetworkInfo ?: return NetworkType.OFFLINE
+                    if (!info.isConnected) return NetworkType.OFFLINE
+                    when (info.type) {
+                        ConnectivityManager.TYPE_WIFI -> NetworkType.WIFI
+                        ConnectivityManager.TYPE_MOBILE -> NetworkType.CELLULAR
+                        ConnectivityManager.TYPE_ETHERNET -> NetworkType.ETHERNET
+                        else -> NetworkType.UNKNOWN
+                    }
+                }
+            } catch (_: SecurityException) {
+                NetworkType.UNKNOWN
+            }
         }
 
         internal fun deviceIdentity(

@@ -39,6 +39,11 @@ public enum NetworkType: String, Codable, Sendable, Hashable {
     case ethernet
     case offline
     case unknown
+
+    /// Most recently detected network type. Start analytics first so path monitoring is active.
+    public static var detected: NetworkType {
+        NetworkTypeMonitor.shared.current
+    }
 }
 
 public struct AnalyticsCredentials: Sendable, Equatable {
@@ -305,6 +310,13 @@ public struct AnalyticsContext: Codable, Sendable, Equatable, Hashable {
         self.deviceCategory = deviceCategory
         self.locale = locale
         self.timezone = timezone
+    }
+
+    func fillingDetectedNetworkType() -> AnalyticsContext {
+        guard networkType == .unknown, NetworkType.detected != .unknown else { return self }
+        var copy = self
+        copy.networkType = .detected
+        return copy
     }
 
     enum CodingKeys: String, CodingKey {

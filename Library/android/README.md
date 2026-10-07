@@ -9,7 +9,6 @@ val context = AnalyticsContext.fromAndroidContext(
     context = applicationContext,
     appVersion = BuildConfig.VERSION_NAME,
     buildNumber = BuildConfig.VERSION_CODE.toString(),
-    networkType = NetworkType.WIFI,
 )
 
 val session = PlaybackAnalyticsSession(
@@ -24,6 +23,10 @@ adapter.close()
 val summary = session.finish(PlaybackEndReason.PLAYER_DESTROYED)
 analyticsClient.submit(summary, credentials)
 ```
+
+`fromAndroidContext` detects Wi-Fi, cellular, Ethernet, and offline automatically. The SDK
+declares `ACCESS_NETWORK_STATE`; if the host app removes that permission, detection safely
+falls back to `unknown`. Pass `networkType` explicitly only when you need to override detection.
 
 TV/Leanback devices report `platform = tv` and `device_category = tv`;
 phones and tablets report `platform = android` with their matching category.

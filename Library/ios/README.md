@@ -8,7 +8,6 @@ import ZoAnalytics
 
 let context = AnalyticsContext(
     platform: .ios,
-    networkType: .wifi,
     appVersion: "2.4.0",
     buildNumber: "104"
 )
@@ -34,6 +33,10 @@ try await analyticsClient.saveLocally(
     ownerKey: credentials.ownerKey
 )
 ```
+
+Start `ZoAnalytics` once at app launch. The SDK monitors the active network path and fills an
+unknown context network type with the detected Wi-Fi, cellular, Ethernet, or offline value.
+The first reading can remain `unknown` briefly while iOS reports the initial path.
 
 Keep the adapter alive for the lifetime of the player. Call `recordSeek` from
 the app's seek control for exact seek direction and distance. The adapter also

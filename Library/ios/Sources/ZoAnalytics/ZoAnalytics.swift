@@ -31,6 +31,7 @@ public final class ZoAnalytics {
         context: @escaping () -> AnalyticsContext
     ) {
         stop(recordSessionEnd: false)
+        NetworkTypeMonitor.shared.start()
         self.configuration = configuration
         let initiallyEnabled = collectionEnabled()
         client = ZoAnalyticsClient(
@@ -88,7 +89,7 @@ public final class ZoAnalytics {
     ) {
         guard ProductEvent.supportedNames.contains(name) else { return }
         guard isCollectionEnabled else { return }
-        guard let client, let credentials = credentialsProvider?(), let context = contextProvider?() else { return }
+        guard let client, let credentials = credentialsProvider?(), let context = contextProvider?().fillingDetectedNetworkType() else { return }
         let event = ProductEvent(
             name: name,
             appSessionId: appSessionId,
@@ -177,7 +178,7 @@ public final class ZoAnalytics {
         properties: [String: JSONValue] = [:]
     ) {
         guard isCollectionEnabled else { return }
-        guard let client, let credentials = credentialsProvider?(), let context = contextProvider?() else { return }
+        guard let client, let credentials = credentialsProvider?(), let context = contextProvider?().fillingDetectedNetworkType() else { return }
         let event = ProductEvent(
             name: name,
             appSessionId: appSessionId,
@@ -201,7 +202,7 @@ public final class ZoAnalytics {
                       self.isCollectionEnabled,
                       let client = self.client,
                       let credentials = self.credentialsProvider?(),
-                      let context = self.contextProvider?() else { return }
+                      let context = self.contextProvider?().fillingDetectedNetworkType() else { return }
                 await client.updatePresence(.foreground, context: context, credentials: credentials)
                 let jitter = Double.random(in: -10...10)
                 let sleepNanoseconds = UInt64(max(30, baseInterval + jitter) * 1_000_000_000)
@@ -215,7 +216,7 @@ public final class ZoAnalytics {
         presenceTask = nil
         guard sendOffline, isCollectionEnabled,
               let client, let credentials = credentialsProvider?(),
-              let context = contextProvider?() else { return }
+              let context = contextProvider?().fillingDetectedNetworkType() else { return }
         Task { await client.updatePresence(.background, context: context, credentials: credentials) }
     }
 

@@ -66,7 +66,7 @@ public final class PlaybackAnalyticsSession: @unchecked Sendable {
     ) {
         self.sessionId = sessionId
         self.content = content
-        self.context = context
+        self.context = context.fillingDetectedNetworkType()
         self.now = now
         self.uptime = uptime
         let initialUptime = uptime()
