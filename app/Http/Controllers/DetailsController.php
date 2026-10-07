@@ -168,7 +168,7 @@ class DetailsController extends Controller
 
             // PPV logic
             $ppvKey = $movie['isPayPerView'] ?? $movie['isPPV'] ?? null;
-            if ($ppvKey || $this->hasPpvFirstEpisode((int) $movie['num'])) {
+            if ($ppvKey || $this->hasPpvSeriesContent((int) $movie['num'])) {
                 $movie['views'] = 0;
             }
             if ($ppvKey) {
@@ -218,18 +218,22 @@ class DetailsController extends Controller
         }
     }
 
-    private function hasPpvFirstEpisode(int $movieNum): bool
+    private function hasPpvSeriesContent(int $movieNum): bool
     {
         if ($movieNum <= 0) {
             return false;
         }
 
-        return DB::table('episodes')
-            ->join('seasons', 'seasons.id', '=', 'episodes.season_id')
-            ->where('seasons.movie_id', $movieNum)
-            ->where('seasons.season_number', 1)
-            ->where('episodes.episode_number', 1)
-            ->where('episodes.isPayPerView', true)
+        return DB::table('seasons')
+            ->where('movie_id', $movieNum)
+            ->where(function ($query): void {
+                $query->where('isPayPerView', true)
+                    ->orWhereExists(function ($episodes): void {
+                        $episodes->selectRaw('1')->from('episodes')
+                            ->whereColumn('episodes.season_id', 'seasons.id')
+                            ->where('episodes.isPayPerView', true);
+                    });
+            })
             ->exists();
     }
 

@@ -35,9 +35,14 @@ class EpisodeController extends Controller
                 ], 404);
             }
 
-            $episodes = Episode::where('season_id', $seasonId)
+            $episodes = Episode::with('season')->where('season_id', $seasonId)
                 ->orderBy('episode_number')
                 ->get();
+            $episodes->each(function (Episode $episode): void {
+                if ($episode->isPayPerView || $episode->season?->isPayPerView) {
+                    $episode->setAttribute('views', 0);
+                }
+            });
 
             return response()->json([
                 'status' => 'success',
@@ -164,6 +169,10 @@ class EpisodeController extends Controller
                     'status' => 'error',
                     'message' => 'Episode not found'
                 ], 404);
+            }
+
+            if ($episode->isPayPerView || $episode->season?->isPayPerView) {
+                $episode->setAttribute('views', 0);
             }
 
             return response()->json([

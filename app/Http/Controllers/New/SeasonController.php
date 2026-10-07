@@ -97,6 +97,17 @@ class SeasonController extends Controller
                 ->orderBy('season_number')
                 ->get();
 
+            $seasons->each(function (Season $season): void {
+                if ($season->isPayPerView) {
+                    $season->setAttribute('views', 0);
+                }
+                $season->episodes->each(function ($episode) use ($season): void {
+                    if ($season->isPayPerView || $episode->isPayPerView) {
+                        $episode->setAttribute('views', 0);
+                    }
+                });
+            });
+
             return response()->json([
                 'status' => 'success',
                 'data' => $seasons
@@ -181,6 +192,15 @@ class SeasonController extends Controller
                     'message' => 'Season not found'
                 ], 404);
             }
+
+            if ($season->isPayPerView) {
+                $season->setAttribute('views', 0);
+            }
+            $season->episodes->each(function ($episode) use ($season): void {
+                if ($season->isPayPerView || $episode->isPayPerView) {
+                    $episode->setAttribute('views', 0);
+                }
+            });
 
             return response()->json([
                 'status' => 'success',
