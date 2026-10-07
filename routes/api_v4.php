@@ -298,6 +298,8 @@ Route::prefix('v4')
                 ->group(function () {
                     Route::get('/dashboard', [DashboardController::class, 'index']);
                     Route::get('/catalog/ppv', [\App\Http\Controllers\Api\V4\AdminPpvController::class, 'index']);
+                    Route::get('/catalog/ppv/purchases', [\App\Http\Controllers\Api\V4\AdminPpvController::class, 'purchases']);
+                    Route::get('/catalog/ppv/{type}/{id}', [\App\Http\Controllers\Api\V4\AdminPpvController::class, 'show']);
 
                     Route::get('/analytics/config', [AdminAnalyticsController::class, 'showConfig']);
                     Route::put('/analytics/config', [AdminAnalyticsController::class, 'updateConfig']);
