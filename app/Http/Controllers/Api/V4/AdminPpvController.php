@@ -81,6 +81,11 @@ class AdminPpvController extends Controller
             $new->whereIn('movie_id', $contentIds);
             $legacy->whereIn('movie_id', $contentIds);
         }
+        $userId = trim((string) $request->query('user_id', ''));
+        if ($userId !== '') {
+            $new->where('user_id', 'like', '%'.$userId.'%');
+            $legacy->where('user_id', 'like', '%'.$userId.'%');
+        }
         $summary = [
             'purchase_count' => (clone $new)->count() + (clone $legacy)->count(),
             'total_amount' => round((float) (clone $new)->sum('amount') + (float) (clone $legacy)->sum('amount_paid'), 2),
