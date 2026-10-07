@@ -7,11 +7,15 @@ import { api, queryString } from '../lib/api';
 const loading = ref(true);
 const error = ref('');
 const data = ref({});
+const defaultComparisonMonth = new Date();
+defaultComparisonMonth.setDate(1);
+defaultComparisonMonth.setMonth(defaultComparisonMonth.getMonth() - 1);
 const filters = reactive({
   period: 'monthly',
   device_type: '',
   date_field: 'created_at',
   chart_month: new Date().toISOString().slice(0, 7),
+  comparison_month: defaultComparisonMonth.toISOString().slice(0, 7),
   chart_device_type: '',
 });
 
@@ -29,8 +33,9 @@ const cards = computed(() => [
 
 const chartColors = ['#14b8a6', '#f97316', '#8b5cf6', '#0ea5e9', '#e11d48', '#84cc16', '#d946ef', '#eab308'];
 const chartDays = computed(() => Math.max(trend.value.days || 31, trend.value.previous_days || 31));
-const chartWidth = computed(() => 170 + chartDays.value * 44);
-const chartHeight = computed(() => 40 + (trend.value.plans?.length || 1) * 58 + 62);
+const chartWidth = computed(() => 100 + chartDays.value * 44);
+const chartHeight = 330;
+const chartMax = computed(() => Math.max(1, ...(trend.value.plans || []).flatMap((plan) => [...(plan.current || []), ...(plan.previous || [])])));
 const number = (value) => new Intl.NumberFormat('en-IN').format(Number(value || 0));
 const money = (value) => new Intl.NumberFormat('en-IN', {
   style: 'currency',
@@ -38,29 +43,18 @@ const money = (value) => new Intl.NumberFormat('en-IN', {
   maximumFractionDigits: 0,
 }).format(Number(value || 0));
 
-function planMax(plan) {
-  return Math.max(1, ...(plan.current || []), ...(plan.previous || []));
-}
-
 function xForDay(index) {
-  return 158 + index * 44;
+  return 90 + index * 44;
 }
 
-function yForValue(plan, planIndex, value) {
-  const rowTop = 20 + planIndex * 58;
-  const rowHeight = 42;
-  return rowTop + rowHeight - 4 - (Number(value || 0) / planMax(plan)) * (rowHeight - 12);
+function yForValue(value) {
+  return 270 - (Number(value || 0) / chartMax.value) * 230;
 }
 
-function linePoints(plan, planIndex, values) {
+function linePoints(values) {
   return (values || [])
-    .map((value, index) => `${xForDay(index)},${yForValue(plan, planIndex, value)}`)
+    .map((value, index) => `${xForDay(index)},${yForValue(value)}`)
     .join(' ');
-}
-
-function displayPlanName(plan) {
-  const name = plan.plan_name || 'Plan';
-  return `${name.length > 18 ? `${name.slice(0, 17)}…` : name} · ${plan.device_type || 'unknown'}`;
 }
 
 async function load() {
@@ -109,7 +103,8 @@ onMounted(load);
             <h2>Daily subscriptions by plan</h2>
             <small>Solid lines: selected month · Dashed lines: previous month</small>
           </div>
-          <label>Compare month<input v-model="filters.chart_month" type="month" @change="load"></label>
+          <label>Month<input v-model="filters.chart_month" type="month" @change="load"></label>
+          <label>Compare with<input v-model="filters.comparison_month" type="month" @change="load"></label>
           <label>Device type<select v-model="filters.chart_device_type" @change="load"><option value="">All devices</option><option value="mobile">Mobile</option><option value="browser">Browser</option><option value="tv">TV</option></select></label>
         </header>
 
@@ -120,19 +115,20 @@ onMounted(load);
             role="img"
             :aria-label="`Daily subscriptions by plan for ${trend.month} compared with ${trend.previous_month}`"
           >
-            <text x="4" y="14" class="trend-axis-title">PLAN</text>
+            <g v-for="tick in 5" :key="tick">
+              <line x1="90" :x2="chartWidth - 10" :y1="270 - ((tick - 1) / 4) * 230" :y2="270 - ((tick - 1) / 4) * 230" />
+              <text x="80" :y="274 - ((tick - 1) / 4) * 230" text-anchor="end">{{ Math.round(chartMax * (tick - 1) / 4) }}</text>
+            </g>
             <g v-for="(plan, index) in trend.plans" :key="plan.plan_id">
-              <line x1="150" :x2="chartWidth - 10" :y1="62 + index * 58" :y2="62 + index * 58" />
-              <text x="4" :y="50 + index * 58">{{ displayPlanName(plan) }}</text>
               <polyline
                 v-if="plan.previous?.length > 1"
-                :points="linePoints(plan, index, plan.previous)"
+                :points="linePoints(plan.previous)"
                 :stroke="chartColors[index % chartColors.length]"
                 class="trend-previous"
               />
               <polyline
                 v-if="plan.current?.length > 1"
-                :points="linePoints(plan, index, plan.current)"
+                :points="linePoints(plan.current)"
                 :stroke="chartColors[index % chartColors.length]"
                 class="trend-current"
               />
@@ -140,7 +136,7 @@ onMounted(load);
                 v-for="(value, dayIndex) in plan.previous"
                 :key="`previous-${dayIndex}`"
                 :cx="xForDay(dayIndex)"
-                :cy="yForValue(plan, index, value)"
+                :cy="yForValue(value)"
                 :r="chartDays > 20 ? 2.5 : 4"
                 :fill="chartColors[index % chartColors.length]"
                 class="trend-point trend-point-previous"
@@ -149,28 +145,29 @@ onMounted(load);
                 v-for="(value, dayIndex) in plan.current"
                 :key="`current-${dayIndex}`"
                 :cx="xForDay(dayIndex)"
-                :cy="yForValue(plan, index, value)"
+                :cy="yForValue(value)"
                 :r="chartDays > 20 ? 2.5 : 4"
                 :fill="chartColors[index % chartColors.length]"
                 class="trend-point"
               />
             </g>
-            <line x1="150" :x2="chartWidth - 10" :y1="chartHeight - 42" :y2="chartHeight - 42" class="trend-axis" />
+            <line x1="90" :x2="chartWidth - 10" y1="270" y2="270" class="trend-axis" />
             <text
               v-for="day in chartDays"
               :key="day"
               :x="xForDay(day - 1)"
-              :y="chartHeight - 24"
+              y="291"
               text-anchor="middle"
             >{{ day }}</text>
-            <text :x="(chartWidth + 150) / 2" :y="chartHeight - 4" text-anchor="middle" class="trend-axis-title">DAY</text>
+            <text :x="(chartWidth + 90) / 2" y="315" text-anchor="middle" class="trend-axis-title">DAY</text>
           </svg>
         </div>
         <div v-else class="trend-empty">No subscription records found for the selected month or previous month.</div>
 
-        <p v-if="trend.plans?.length" class="trend-month-legend">
-          <span>{{ trend.month }} — solid</span><span>{{ trend.previous_month }} — dashed</span>
-        </p>
+        <div v-if="trend.plans?.length" class="trend-plan-legend">
+          <span v-for="(plan, index) in trend.plans" :key="plan.plan_id"><i :style="{ backgroundColor: chartColors[index % chartColors.length] }"></i>{{ plan.plan_name || 'Plan' }} · {{ plan.device_type || 'unknown' }}</span>
+        </div>
+        <p v-if="trend.plans?.length" class="trend-month-legend"><span>{{ trend.month }} — solid</span><span>{{ trend.previous_month }} — dashed</span></p>
       </section>
 
       <section class="admin-dashboard-grid">

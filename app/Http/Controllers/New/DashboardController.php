@@ -27,6 +27,7 @@ class DashboardController extends Controller
                 'date' => 'nullable|date_format:Y-m-d',
                 'month' => 'nullable|date_format:Y-m',
                 'chart_month' => 'nullable|date_format:Y-m',
+                'comparison_month' => 'nullable|date_format:Y-m',
                 'chart_device_type' => ['nullable', 'string', Rule::in(['mobile', 'browser', 'tv'])],
                 'year' => 'nullable|integer|min:2000|max:2100',
                 'start_date' => 'nullable|date_format:Y-m-d',
@@ -42,13 +43,20 @@ class DashboardController extends Controller
             $chartMonth = isset($validated['chart_month'])
                 ? Carbon::createFromFormat('Y-m', $validated['chart_month'])
                 : now();
+            $comparisonMonth = isset($validated['comparison_month'])
+                ? Carbon::createFromFormat('Y-m', $validated['comparison_month'])
+                : $chartMonth->copy()->subMonth();
             $chartStart = $chartMonth->copy()->startOfMonth();
-            $previousChartStart = $chartStart->copy()->subMonth();
+            $comparisonStart = $comparisonMonth->copy()->startOfMonth();
+            $queryStart = $chartStart->lessThan($comparisonStart) ? $chartStart : $comparisonStart;
+            $queryEnd = $chartStart->greaterThan($comparisonStart)
+                ? $chartStart->copy()->endOfMonth()->endOfDay()
+                : $comparisonStart->copy()->endOfMonth()->endOfDay();
             $chartPlanRows = DB::table('n_subscriptions as subscriptions')
                 ->join('n_plans as plans', 'plans.id', '=', 'subscriptions.plan_id')
                 ->whereBetween("subscriptions.{$dateField}", [
-                    $previousChartStart->copy()->startOfDay(),
-                    $chartStart->copy()->endOfMonth()->endOfDay(),
+                    $queryStart->copy()->startOfDay(),
+                    $queryEnd,
                 ])
                 ->when($chartDeviceType, function ($query) use ($chartDeviceType) {
                     $query->where('plans.device_type', $chartDeviceType);
@@ -62,10 +70,10 @@ class DashboardController extends Controller
 
             $subscriptionTrend = [
                 'month' => $chartStart->format('Y-m'),
-                'previous_month' => $previousChartStart->format('Y-m'),
+                'previous_month' => $comparisonStart->format('Y-m'),
                 'days' => $chartStart->daysInMonth,
-                'previous_days' => $previousChartStart->daysInMonth,
-                'plans' => $chartPlanRows->groupBy('plan_id')->map(function ($rows) use ($chartStart, $previousChartStart) {
+                'previous_days' => $comparisonStart->daysInMonth,
+                'plans' => $chartPlanRows->groupBy('plan_id')->map(function ($rows) use ($chartStart, $comparisonStart) {
                     $first = $rows->first();
                     $counts = $rows->mapWithKeys(fn ($row) => [$row->subscription_date => (int) $row->total_subscriptions]);
                     $current = [];
@@ -73,8 +81,8 @@ class DashboardController extends Controller
                     for ($day = 1; $day <= $chartStart->daysInMonth; $day++) {
                         $current[] = $counts->get($chartStart->copy()->day($day)->toDateString(), 0);
                     }
-                    for ($day = 1; $day <= $previousChartStart->daysInMonth; $day++) {
-                        $previous[] = $counts->get($previousChartStart->copy()->day($day)->toDateString(), 0);
+                    for ($day = 1; $day <= $comparisonStart->daysInMonth; $day++) {
+                        $previous[] = $counts->get($comparisonStart->copy()->day($day)->toDateString(), 0);
                     }
                     return [
                         'plan_id' => (int) $first->plan_id,
