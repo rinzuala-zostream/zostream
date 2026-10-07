@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V4;
 
 use App\Http\Controllers\Controller;
 use App\Models\WebLoginGrant;
+use App\Support\Api\V4Response;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -24,10 +25,8 @@ class WebSessionController extends Controller
         $base = rtrim((string) config('app.url'), '/');
         $url = $base.'/account/stats/bridge?ticket='.rawurlencode($ticket);
 
-        return response()->json([
-            'success' => true,
-            'data' => ['url' => $url, 'expires_in' => 90],
-        ]);
+        return V4Response::success(['url' => $url, 'expires_in' => 90])
+            ->header('Cache-Control', 'private, no-store');
     }
 
 }

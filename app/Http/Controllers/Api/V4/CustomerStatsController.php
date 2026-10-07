@@ -8,6 +8,7 @@ use App\Models\WatchSession;
 use App\Models\WatchHistoryModel;
 use App\Models\MovieModel;
 use App\Models\New\Episode;
+use App\Support\Api\V4Response;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -17,7 +18,7 @@ class CustomerStatsController extends Controller
     public function show(Request $request)
     {
         $userId = (string) $request->input('auth_user_id');
-        return response()->json(['success' => true, 'data' => $this->dataForUser($userId)])
+        return V4Response::success($this->dataForUser($userId))
             ->header('Cache-Control', 'private, no-store');
     }
 
