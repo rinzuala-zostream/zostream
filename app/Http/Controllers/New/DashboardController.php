@@ -45,13 +45,17 @@ class DashboardController extends Controller
                 : now();
             $comparisonMonth = isset($validated['comparison_month'])
                 ? Carbon::createFromFormat('Y-m', $validated['comparison_month'])
-                : $chartMonth->copy()->subMonth();
+                : null;
             $chartStart = $chartMonth->copy()->startOfMonth();
-            $comparisonStart = $comparisonMonth->copy()->startOfMonth();
-            $queryStart = $chartStart->lessThan($comparisonStart) ? $chartStart : $comparisonStart;
-            $queryEnd = $chartStart->greaterThan($comparisonStart)
-                ? $chartStart->copy()->endOfMonth()->endOfDay()
-                : $comparisonStart->copy()->endOfMonth()->endOfDay();
+            $comparisonStart = $comparisonMonth?->copy()->startOfMonth();
+            $queryStart = $comparisonStart && $chartStart->greaterThan($comparisonStart)
+                ? $comparisonStart
+                : $chartStart;
+            $chartEnd = $chartStart->copy()->endOfMonth()->endOfDay();
+            $comparisonEnd = $comparisonStart?->copy()->endOfMonth()->endOfDay();
+            $queryEnd = $comparisonEnd && $comparisonEnd->greaterThan($chartEnd)
+                ? $comparisonEnd
+                : $chartEnd;
             $chartPlanRows = DB::table('n_subscriptions as subscriptions')
                 ->join('n_plans as plans', 'plans.id', '=', 'subscriptions.plan_id')
                 ->whereBetween("subscriptions.{$dateField}", [
@@ -70,9 +74,9 @@ class DashboardController extends Controller
 
             $subscriptionTrend = [
                 'month' => $chartStart->format('Y-m'),
-                'previous_month' => $comparisonStart->format('Y-m'),
+                'previous_month' => $comparisonStart?->format('Y-m'),
                 'days' => $chartStart->daysInMonth,
-                'previous_days' => $comparisonStart->daysInMonth,
+                'previous_days' => $comparisonStart?->daysInMonth ?? 0,
                 'plans' => $chartPlanRows->groupBy('plan_id')->map(function ($rows) use ($chartStart, $comparisonStart) {
                     $first = $rows->first();
                     $counts = $rows->mapWithKeys(fn ($row) => [$row->subscription_date => (int) $row->total_subscriptions]);
@@ -81,7 +85,7 @@ class DashboardController extends Controller
                     for ($day = 1; $day <= $chartStart->daysInMonth; $day++) {
                         $current[] = $counts->get($chartStart->copy()->day($day)->toDateString(), 0);
                     }
-                    for ($day = 1; $day <= $comparisonStart->daysInMonth; $day++) {
+                    for ($day = 1; $comparisonStart && $day <= $comparisonStart->daysInMonth; $day++) {
                         $previous[] = $counts->get($comparisonStart->copy()->day($day)->toDateString(), 0);
                     }
                     return [

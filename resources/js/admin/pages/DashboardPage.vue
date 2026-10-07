@@ -7,15 +7,12 @@ import { api, queryString } from '../lib/api';
 const loading = ref(true);
 const error = ref('');
 const data = ref({});
-const defaultComparisonMonth = new Date();
-defaultComparisonMonth.setDate(1);
-defaultComparisonMonth.setMonth(defaultComparisonMonth.getMonth() - 1);
 const filters = reactive({
   period: 'monthly',
   device_type: '',
   date_field: 'created_at',
   chart_month: new Date().toISOString().slice(0, 7),
-  comparison_month: defaultComparisonMonth.toISOString().slice(0, 7),
+  comparison_month: '',
   chart_device_type: '',
 });
 
@@ -32,6 +29,7 @@ const cards = computed(() => [
 ]);
 
 const chartColors = ['#14b8a6', '#f97316', '#8b5cf6', '#0ea5e9', '#e11d48', '#84cc16', '#d946ef', '#eab308'];
+const comparisonColors = ['#fb7185', '#38bdf8', '#facc15', '#a3e635', '#c084fc', '#2dd4bf', '#fb923c', '#818cf8'];
 const chartDays = computed(() => Math.max(trend.value.days || 31, trend.value.previous_days || 31));
 const chartWidth = computed(() => 100 + chartDays.value * 44);
 const chartHeight = 330;
@@ -64,6 +62,9 @@ async function load() {
     const response = await api(`/admin/dashboard${queryString(filters)}`);
     const legacy = response?.data || response;
     data.value = legacy?.data || legacy || {};
+    const resolvedTrend = data.value.subscription_trend;
+    if (resolvedTrend?.month) filters.chart_month = resolvedTrend.month;
+    filters.comparison_month = resolvedTrend?.previous_month || '';
   } catch (reason) {
     error.value = reason.message;
   } finally {
@@ -101,7 +102,7 @@ onMounted(load);
           <div>
             <p>SUBSCRIPTION ACTIVITY</p>
             <h2>Daily subscriptions by plan</h2>
-            <small>Solid lines: selected month · Dashed lines: previous month</small>
+            <small>Solid lines: selected month · Dashed lines: comparison month</small>
           </div>
           <label>Month<input v-model="filters.chart_month" type="month" @change="load"></label>
           <label>Compare with<input v-model="filters.comparison_month" type="month" @change="load"></label>
@@ -119,7 +120,7 @@ onMounted(load);
               <polyline
                 v-if="plan.previous?.length > 1"
                 :points="linePoints(plan.previous)"
-                :stroke="chartColors[index % chartColors.length]"
+                :stroke="comparisonColors[index % comparisonColors.length]"
                 class="trend-previous"
               />
               <polyline
@@ -134,7 +135,7 @@ onMounted(load);
                 :cx="xForDay(dayIndex)"
                 :cy="yForValue(value)"
                 :r="chartDays > 20 ? 2.5 : 4"
-                :fill="chartColors[index % chartColors.length]"
+                :fill="comparisonColors[index % comparisonColors.length]"
                 class="trend-point trend-point-previous"
               ><title>{{ trend.previous_month }} · day {{ dayIndex + 1 }} · {{ plan.plan_name || 'Plan' }} · {{ plan.device_type || 'unknown device' }} · {{ number(value) }} subscriptions</title></circle>
               <circle
@@ -160,10 +161,17 @@ onMounted(load);
         </div>
         <div v-else class="trend-empty">No subscription records found for the selected month or previous month.</div>
 
-        <div v-if="trend.plans?.length" class="trend-plan-legend">
-          <span v-for="(plan, index) in trend.plans" :key="plan.plan_id"><i :style="{ backgroundColor: chartColors[index % chartColors.length] }"></i>{{ plan.plan_name || 'Plan' }} · {{ plan.device_type || 'unknown' }}</span>
+        <div v-if="trend.plans?.length" class="trend-month-legend">
+          <span><i :style="{ backgroundColor: chartColors[0] }"></i>{{ trend.month }} · solid</span>
+          <span v-if="trend.previous_month"><i :style="{ backgroundColor: comparisonColors[0] }"></i>{{ trend.previous_month }} · dashed</span>
         </div>
-        <p v-if="trend.plans?.length" class="trend-month-legend"><span>{{ trend.month }} — solid</span><span>{{ trend.previous_month }} — dashed</span></p>
+        <div v-if="trend.plans?.length" class="trend-plan-legend">
+          <span v-for="(plan, index) in trend.plans" :key="plan.plan_id">
+            <i :style="{ backgroundColor: chartColors[index % chartColors.length] }"></i>
+            <i v-if="trend.previous_month" :style="{ backgroundColor: comparisonColors[index % comparisonColors.length] }"></i>
+            {{ plan.plan_name || 'Plan' }} · {{ plan.device_type || 'unknown' }}
+          </span>
+        </div>
       </section>
 
       <section class="admin-dashboard-grid">
