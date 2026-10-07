@@ -39,7 +39,7 @@ class EpisodeController extends Controller
                 ->orderBy('episode_number')
                 ->get();
             $episodes->each(function (Episode $episode): void {
-                if ($episode->isPayPerView || $episode->season?->isPayPerView) {
+                if ($episode->isPayPerView) {
                     $episode->setAttribute('views', 0);
                 }
             });
@@ -171,7 +171,7 @@ class EpisodeController extends Controller
                 ], 404);
             }
 
-            if ($episode->isPayPerView || $episode->season?->isPayPerView) {
+            if ($episode->isPayPerView) {
                 $episode->setAttribute('views', 0);
             }
 

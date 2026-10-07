@@ -101,8 +101,8 @@ class SeasonController extends Controller
                 if ($season->isPayPerView) {
                     $season->setAttribute('views', 0);
                 }
-                $season->episodes->each(function ($episode) use ($season): void {
-                    if ($season->isPayPerView || $episode->isPayPerView) {
+                $season->episodes->each(function ($episode): void {
+                    if ($episode->isPayPerView) {
                         $episode->setAttribute('views', 0);
                     }
                 });
@@ -196,8 +196,8 @@ class SeasonController extends Controller
             if ($season->isPayPerView) {
                 $season->setAttribute('views', 0);
             }
-            $season->episodes->each(function ($episode) use ($season): void {
-                if ($season->isPayPerView || $episode->isPayPerView) {
+            $season->episodes->each(function ($episode): void {
+                if ($episode->isPayPerView) {
                     $episode->setAttribute('views', 0);
                 }
             });

@@ -149,7 +149,7 @@ class DetailsController extends Controller
             $movie['desc'] = $movie['desc'] ?? $movie['description'] ?? null;
 
             $isPpvEpisode = $type === 'episode'
-                && (!empty($movie['isPayPerView']) || !empty($movie['isPPV']) || !empty(data_get($movie, 'season.isPayPerView')));
+                && (!empty($movie['isPayPerView']) || !empty($movie['isPPV']));
             if ($isPpvEpisode || !empty($movie['isPayPerView']) || !empty($movie['isPPV']) || ($type === 'movie' && $this->hasPpvSeriesContent($movie['num']))) {
                 $movie['views'] = 0;
             }
@@ -217,16 +217,12 @@ class DetailsController extends Controller
             return false;
         }
 
-        return DB::table('seasons')
-            ->where('movie_id', $movieNum)
-            ->where(function ($query): void {
-                $query->where('isPayPerView', true)
-                    ->orWhereExists(function ($episodes): void {
-                        $episodes->selectRaw('1')->from('episodes')
-                            ->whereColumn('episodes.season_id', 'seasons.id')
-                            ->where('episodes.isPayPerView', true);
-                    });
-            })
+        return DB::table('episodes')
+            ->join('seasons', 'seasons.id', '=', 'episodes.season_id')
+            ->where('seasons.movie_id', $movieNum)
+            ->where('seasons.season_number', 1)
+            ->where('episodes.episode_number', 1)
+            ->where('episodes.isPayPerView', true)
             ->exists();
     }
 
