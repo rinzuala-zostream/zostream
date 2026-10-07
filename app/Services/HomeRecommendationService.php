@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Symfony\Component\Process\Process;
@@ -106,7 +107,7 @@ class HomeRecommendationService
         );
 
         if (! $needsAi) {
-            return $this->liveOnlyPayload($live);
+            return $this->withPpvSeasonMetadata($this->liveOnlyPayload($live));
         }
 
         if (! is_file($script) || ! is_readable($script) || ! is_file($model) || ! is_readable($model)) {
@@ -115,7 +116,7 @@ class HomeRecommendationService
                 'model_readable' => is_file($model) && is_readable($model),
             ]);
 
-            return $this->liveOnlyPayload($live);
+            return $this->withPpvSeasonMetadata($this->liveOnlyPayload($live));
         }
 
         $modelVersion = (string) filemtime($model);
@@ -150,14 +151,92 @@ class HomeRecommendationService
                 $payload[$section] = $items;
             }
 
-            return $payload;
+            return $this->withPpvSeasonMetadata($payload);
         } catch (Throwable $exception) {
             Log::warning('Recommendation model execution failed; serving live sections only.', [
                 'exception' => $exception,
             ]);
 
-            return $this->liveOnlyPayload($live);
+            return $this->withPpvSeasonMetadata($this->liveOnlyPayload($live));
         }
+    }
+
+    /** Add season and PPV episode summaries to movie cards in the home payload. */
+    private function withPpvSeasonMetadata(array $payload): array
+    {
+        $movieIds = [];
+        $collect = function (mixed $value) use (&$collect, &$movieIds): void {
+            if (! is_array($value)) {
+                return;
+            }
+            if (isset($value['id']) && ! isset($value['episode_number']) && ! isset($value['season_number'])) {
+                $movieIds[] = (string) $value['id'];
+            }
+            foreach ($value as $child) {
+                if (is_array($child)) {
+                    $collect($child);
+                }
+            }
+        };
+        $collect($payload);
+        $movieIds = array_values(array_unique($movieIds));
+        if ($movieIds === []) {
+            return $payload;
+        }
+
+        $movies = DB::table('movie')->whereIn('id', $movieIds)->pluck('num', 'id');
+        if ($movies->isEmpty()) {
+            return $payload;
+        }
+
+        $seasonRows = DB::table('seasons')
+            ->leftJoin('episodes', 'episodes.season_id', '=', 'seasons.id')
+            ->whereIn('seasons.movie_id', $movies->values()->all())
+            ->groupBy('seasons.id', 'seasons.movie_id', 'seasons.season_number', 'seasons.title', 'seasons.isPayPerView')
+            ->select(
+                'seasons.id',
+                'seasons.movie_id',
+                'seasons.season_number',
+                'seasons.title',
+                'seasons.isPayPerView',
+                DB::raw('SUM(CASE WHEN episodes.isPayPerView = 1 THEN 1 ELSE 0 END) as ppv_episode_count')
+            )
+            ->havingRaw('MAX(CASE WHEN seasons.isPayPerView = 1 OR episodes.isPayPerView = 1 THEN 1 ELSE 0 END) = 1')
+            ->orderBy('seasons.movie_id')
+            ->orderBy('seasons.season_number')
+            ->get();
+
+        $seasonsByMovie = [];
+        foreach ($seasonRows as $season) {
+            $seasonsByMovie[(string) $season->movie_id][] = [
+                'season_id' => (string) $season->id,
+                'season_number' => (int) $season->season_number,
+                'title' => (string) ($season->title ?? ''),
+                'isPayPerView' => (bool) $season->isPayPerView,
+                'ppv_episode_count' => (int) $season->ppv_episode_count,
+            ];
+        }
+
+        $enrich = function (mixed &$value) use (&$enrich, $movies, $seasonsByMovie): void {
+            if (! is_array($value)) {
+                return;
+            }
+            if (isset($value['id']) && ! isset($value['episode_number']) && ! isset($value['season_number'])) {
+                $movieNumber = $movies->get((string) $value['id']);
+                if ($movieNumber !== null) {
+                    $value['ppv_seasons'] = $seasonsByMovie[(string) $movieNumber] ?? [];
+                }
+            }
+            foreach ($value as &$child) {
+                if (is_array($child)) {
+                    $enrich($child);
+                }
+            }
+            unset($child);
+        };
+        $enrich($payload);
+
+        return $payload;
     }
 
     private function run(

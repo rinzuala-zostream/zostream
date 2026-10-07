@@ -92,6 +92,13 @@ class HomeRecommendationController extends Controller
             );
         }
 
+        // Hide the optional PPV shelf completely when there are no matching items.
+        $sectionLayout = array_values(array_filter(
+            $sectionLayout,
+            fn (array $definition): bool => $definition['source_key'] !== 'ppv_seasons'
+                || ! empty($homepage['ppv_seasons'])
+        ));
+
         $sections = [];
 
         foreach ($sectionLayout as $definition) {

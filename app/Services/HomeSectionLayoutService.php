@@ -19,6 +19,7 @@ class HomeSectionLayoutService
         'new_releases' => 'New Releases',
         'your_wishlist' => 'Your Wishlist',
         'next_episode' => 'Next Episode',
+        'ppv_seasons' => 'PPV Seasons',
     ];
 
     public static function keys(): array
@@ -39,6 +40,7 @@ class HomeSectionLayoutService
             ['key' => 'new_releases', 'title' => 'New Releases', 'description' => 'Newest enabled and published releases.'],
             ['key' => 'your_wishlist', 'title' => 'Your Wishlist', 'description' => 'The signed-in user’s wishlist.'],
             ['key' => 'next_episode', 'title' => 'Next Episode', 'description' => 'The next published episode for recently watched series.'],
+            ['key' => 'ppv_seasons', 'title' => 'PPV Seasons', 'description' => 'Seasons available through PPV, including the number of PPV episodes.'],
         ];
     }
 

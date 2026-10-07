@@ -19,6 +19,7 @@ class LiveHomeSectionService
         'new_releases',
         'your_wishlist',
         'next_episode',
+        'ppv_seasons',
     ];
 
     private const MOVIE_CARD_COLUMNS = [
@@ -128,6 +129,9 @@ class LiveHomeSectionService
         }
         if (in_array('next_episode', $requested, true)) {
             $sections['next_episode'] = $this->nextEpisodes($watch, $fetchLimit, $mode, $includeAgeRestricted);
+        }
+        if (in_array('ppv_seasons', $requested, true)) {
+            $sections['ppv_seasons'] = $this->ppvSeasons($fetchLimit, $mode, $includeAgeRestricted);
         }
 
         $signals = ['watch_position' => $watch, 'wishlist' => $wishlist];
@@ -468,6 +472,48 @@ class LiveHomeSectionService
         }
 
         return $cards;
+    }
+
+    private function ppvSeasons(int $limit, string $mode, bool $includeAgeRestricted): array
+    {
+        return DB::table('seasons')
+            ->join('movie', 'movie.num', '=', 'seasons.movie_id')
+            ->leftJoin('episodes', 'episodes.season_id', '=', 'seasons.id')
+            ->where('movie.status', 'Published')
+            ->where('movie.isEnable', 1)
+            ->where('seasons.status', 'Published')
+            ->when($mode === 'kids', fn ($query) => $query->where('movie.isChildMode', 1))
+            ->when($mode === 'kids' || ! $includeAgeRestricted, fn ($query) => $query->where('movie.isAgeRestricted', 0))
+            ->groupBy(
+                'seasons.id', 'seasons.movie_id', 'seasons.season_number', 'seasons.title',
+                'seasons.isPayPerView', 'movie.id', 'movie.title', 'movie.poster',
+                'movie.cover_img', 'movie.isPremium', 'movie.isPayPerView'
+            )
+            ->havingRaw('MAX(CASE WHEN seasons.isPayPerView = 1 OR episodes.isPayPerView = 1 THEN 1 ELSE 0 END) = 1')
+            ->orderBy('movie.title')
+            ->orderBy('seasons.season_number')
+            ->limit($limit)
+            ->get([
+                'seasons.id as season_id', 'seasons.movie_id', 'seasons.season_number',
+                'seasons.title as season_title', 'seasons.isPayPerView as season_ppv',
+                'movie.id as parent_id', 'movie.title as series_title', 'movie.poster',
+                'movie.cover_img', 'movie.isPremium as premium', 'movie.isPayPerView as parent_ppv',
+                DB::raw('SUM(CASE WHEN episodes.isPayPerView = 1 THEN 1 ELSE 0 END) as ppv_episode_count'),
+            ])
+            ->map(fn ($season): array => [
+                'id' => (string) $season->season_id,
+                'type' => 'season',
+                'parent_id' => (string) $season->parent_id,
+                'series_title' => (string) $season->series_title,
+                'title' => (string) ($season->season_title ?: 'Season '.$season->season_number),
+                'season_number' => (int) $season->season_number,
+                'poster' => (string) ($season->poster ?? ''),
+                'cover_img' => (string) ($season->cover_img ?: $season->poster ?: ''),
+                'premium' => (bool) $season->premium,
+                'ppv' => (bool) $season->season_ppv,
+                'isPayPerView' => (bool) $season->season_ppv,
+                'ppv_episode_count' => (int) $season->ppv_episode_count,
+            ])->values()->all();
     }
 
     private function movies($movies): array

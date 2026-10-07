@@ -24,6 +24,7 @@ const allowedKeys = new Set([
   "new_releases",
   "your_wishlist",
   "next_episode",
+  "ppv_seasons",
 ]);
 
 export async function saveHomeSectionsAction(
