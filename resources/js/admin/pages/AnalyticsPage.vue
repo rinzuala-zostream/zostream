@@ -92,6 +92,15 @@ const dimensionValue = (value) => {
 const percent = (value) => `${number(value, 1)}%`;
 const duration = (value) => `${number((Number(value) || 0) / 60000, 1)} min`;
 const humanize = (value) => String(value || '—').replaceAll('_', ' ');
+const contentTitle = (row) => row?.display_title
+    || (row?.parent_title && row?.title ? `${row.parent_title} — ${row.title}` : row?.title)
+    || row?.content_id
+    || 'Unknown content';
+const contentMeta = (row) => {
+    const parts = [humanize(row?.content_type)];
+    if (row?.content_id && contentTitle(row) !== String(row.content_id)) parts.push(row.content_id);
+    return parts.join(' · ');
+};
 const detailQuery = computed(() => ({ ...filters.value, ...detailFilters.value, page: page.value, per_page: 25 }));
 
 async function loadConfig() {
@@ -271,7 +280,7 @@ onMounted(() => { void loadConfig(); void loadAll(); });
 
             <section class="analytics-columns">
                 <article class="admin-panel analytics-panel"><header><div><span class="analytics-eyebrow">TOP CONTENT</span><h2>Most watched</h2></div><button class="admin-secondary" type="button" @click="selectTab('content')">All content</button></header>
-                    <div v-if="!report.top_content?.length" class="admin-empty">No content analytics yet.</div><div v-else class="analytics-list"><div v-for="item in report.top_content" :key="`${item.content_type}:${item.content_id}`"><span><b>{{ item.title || item.content_id }}</b><small>{{ humanize(item.content_type) }} · {{ item.content_id }}</small></span><strong>{{ number(item.views) }} views · {{ number(item.watch_hours, 1) }} hr</strong></div></div>
+                    <div v-if="!report.top_content?.length" class="admin-empty">No content analytics yet.</div><div v-else class="analytics-list"><div v-for="item in report.top_content" :key="`${item.content_type}:${item.content_id}`"><span><b>{{ contentTitle(item) }}</b><small>{{ contentMeta(item) }}</small></span><strong>{{ number(item.views) }} views · {{ number(item.watch_hours, 1) }} hr</strong></div></div>
                 </article>
                 <article class="admin-panel analytics-panel"><header><div><span class="analytics-eyebrow">PRODUCT BEHAVIOUR</span><h2>App events</h2></div><button class="admin-secondary" type="button" @click="selectTab('events')">All events</button></header>
                     <div v-if="!report.product_events?.length" class="admin-empty">No product events yet.</div><div v-else class="analytics-list"><div v-for="item in report.product_events" :key="item.name"><span><b>{{ humanize(item.name) }}</b><small>{{ number(item.unique_users) }} unique users</small></span><strong>{{ number(item.count) }}</strong></div></div>
@@ -293,7 +302,7 @@ onMounted(() => { void loadConfig(); void loadAll(); });
                 <div v-if="!insights.groups?.data?.length" class="admin-empty">No playback sessions match these filters. Try a wider date range or another filter.</div>
                 <div v-else class="analytics-insight-groups">
                     <div v-for="row in insights.groups.data" :key="String(row.dimension_value)" class="analytics-insight-row">
-                        <div><strong>{{ dimensionValue(row.dimension_value) }}</strong><b>{{ insightValue(row[selectedMetric], selectedMetricConfig[2]) }}</b></div>
+                        <div><strong>{{ dimensionValue(row.dimension_label ?? row.dimension_value) }}</strong><b>{{ insightValue(row[selectedMetric], selectedMetricConfig[2]) }}</b></div>
                         <span class="analytics-insight-track"><i :style="{ width: largestInsight > 0 ? `${Math.max(0, Math.min(100, (Number(row[selectedMetric]) || 0) / largestInsight * 100))}%` : '0%' }" /></span>
                         <small>{{ number(row.sessions) }} sessions</small>
                     </div>
@@ -309,13 +318,13 @@ onMounted(() => { void loadConfig(); void loadAll(); });
 
         <section v-else-if="!error && activeTab === 'content'" class="admin-panel analytics-panel">
             <header><div><span class="analytics-eyebrow">CONTENT PERFORMANCE</span><h2>Every title and episode</h2><p>{{ number(contentPage.total) }} content items in the selected range.</p></div></header>
-            <div class="analytics-table-wrap"><table><thead><tr><th>Content ID</th><th>Type</th><th>Starts</th><th>Valid views</th><th>Viewers</th><th>Watch hours</th><th>Completion</th></tr></thead><tbody><tr v-for="row in contentPage.data" :key="`${row.content_type}:${row.content_id}`"><td>{{ row.content_id }}</td><td>{{ row.content_type }}</td><td>{{ number(row.playback_starts) }}</td><td>{{ number(row.valid_views) }}</td><td>{{ number(row.unique_viewers) }}</td><td>{{ number(row.watch_hours, 1) }}</td><td>{{ percent(row.completion_rate) }}</td></tr></tbody></table><div v-if="!contentPage.data?.length" class="admin-empty">No content rows for these filters.</div></div>
+            <div class="analytics-table-wrap"><table><thead><tr><th>Content</th><th>Type</th><th>Starts</th><th>Valid views</th><th>Viewers</th><th>Watch hours</th><th>Completion</th></tr></thead><tbody><tr v-for="row in contentPage.data" :key="`${row.content_type}:${row.content_id}`"><td><b>{{ contentTitle(row) }}</b><small>{{ row.content_id }}</small></td><td>{{ row.content_type }}</td><td>{{ number(row.playback_starts) }}</td><td>{{ number(row.valid_views) }}</td><td>{{ number(row.unique_viewers) }}</td><td>{{ number(row.watch_hours, 1) }}</td><td>{{ percent(row.completion_rate) }}</td></tr></tbody></table><div v-if="!contentPage.data?.length" class="admin-empty">No content rows for these filters.</div></div>
         </section>
 
         <section v-else-if="!error && activeTab === 'sessions'" class="admin-panel analytics-panel">
             <header><div><span class="analytics-eyebrow">PLAYBACK DATA</span><h2>Session explorer</h2><p>{{ number(sessionPage.total) }} sessions · open a row to inspect the complete SDK payload.</p></div><button v-if="sessionPage.data?.length" class="admin-secondary" type="button" @click="exportCurrentPage">Export page JSON</button></header>
             <form class="detail-filter-row" @submit.prevent="page = 1; loadDetails()"><label>Find session/content/user<input v-model="detailFilters.q" placeholder="ID or user"></label><label>Content ID<input v-model="detailFilters.content_id" placeholder="Any content"></label><label>End reason<input v-model="detailFilters.end_reason" placeholder="Any reason"></label><button class="admin-secondary" type="submit">Search</button></form>
-            <div class="analytics-table-wrap"><table><thead><tr><th>Started</th><th>Content</th><th>User</th><th>Platform / app</th><th>Watch</th><th>Completion</th><th>Result</th><th>Full SDK data</th></tr></thead><tbody><tr v-for="row in sessionPage.data" :key="row.session_id"><td>{{ row.started_at }}</td><td>{{ row.content_type }}<small>{{ row.content_id }}</small></td><td>{{ row.user_id }}</td><td>{{ row.platform }}<small>{{ row.app_version }} · SDK {{ row.sdk_version || 'unknown' }}</small></td><td>{{ duration(row.watched_ms) }}<small>{{ duration(row.unique_watched_ms) }} unique</small></td><td>{{ percent(row.completion_percent) }}</td><td>{{ row.completed ? 'Completed' : humanize(row.end_reason) }}<small>{{ number(row.error_count) }} errors · {{ number(row.buffer_count) }} buffers</small></td><td><details><summary>Inspect</summary><pre>{{ JSON.stringify(row, null, 2) }}</pre></details></td></tr></tbody></table><div v-if="!sessionPage.data?.length" class="admin-empty">No playback sessions for these filters.</div></div>
+            <div class="analytics-table-wrap"><table><thead><tr><th>Started</th><th>Content</th><th>User</th><th>Platform / app</th><th>Watch</th><th>Completion</th><th>Result</th><th>Full SDK data</th></tr></thead><tbody><tr v-for="row in sessionPage.data" :key="row.session_id"><td>{{ row.started_at }}</td><td><b>{{ contentTitle(row) }}</b><small>{{ contentMeta(row) }}</small></td><td>{{ row.user_id }}</td><td>{{ row.platform }}<small>{{ row.app_version }} · SDK {{ row.sdk_version || 'unknown' }}</small></td><td>{{ duration(row.watched_ms) }}<small>{{ duration(row.unique_watched_ms) }} unique</small></td><td>{{ percent(row.completion_percent) }}</td><td>{{ row.completed ? 'Completed' : humanize(row.end_reason) }}<small>{{ number(row.error_count) }} errors · {{ number(row.buffer_count) }} buffers</small></td><td><details><summary>Inspect</summary><pre>{{ JSON.stringify(row, null, 2) }}</pre></details></td></tr></tbody></table><div v-if="!sessionPage.data?.length" class="admin-empty">No playback sessions for these filters.</div></div>
         </section>
 
         <section v-else-if="!error && activeTab === 'events'" class="admin-panel analytics-panel">
