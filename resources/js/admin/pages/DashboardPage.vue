@@ -31,7 +31,7 @@ const cards = computed(() => [
 const chartColors = ['#14b8a6', '#f97316', '#8b5cf6', '#0ea5e9', '#e11d48', '#84cc16', '#d946ef', '#eab308'];
 const comparisonColors = ['#fb7185', '#38bdf8', '#facc15', '#a3e635', '#c084fc', '#2dd4bf', '#fb923c', '#818cf8'];
 const chartDays = computed(() => Math.max(trend.value.days || 31, trend.value.previous_days || 31));
-const chartWidth = computed(() => 100 + chartDays.value * 44);
+const chartWidth = computed(() => 30 + chartDays.value * 44);
 const chartHeight = 330;
 const chartMax = computed(() => Math.max(1, ...(trend.value.plans || []).flatMap((plan) => [...(plan.current || []), ...(plan.previous || [])])));
 const number = (value) => new Intl.NumberFormat('en-IN').format(Number(value || 0));
@@ -42,7 +42,7 @@ const money = (value) => new Intl.NumberFormat('en-IN', {
 }).format(Number(value || 0));
 
 function xForDay(index) {
-  return 90 + index * 44;
+  return 30 + index * 44;
 }
 
 function yForValue(value) {
@@ -199,7 +199,7 @@ onMounted(load);
                 class="trend-point"
               ><title>{{ trend.month }} · day {{ dayIndex + 1 }} · {{ plan.plan_name || 'Plan' }} · {{ plan.device_type || 'unknown device' }} · {{ number(value) }} subscriptions · {{ money(plan.current_amounts?.[dayIndex]) }}</title></circle>
             </g>
-            <line x1="90" :x2="chartWidth - 10" y1="270" y2="270" class="trend-axis" />
+            <line x1="30" :x2="chartWidth - 10" y1="270" y2="270" class="trend-axis" />
             <text
               v-for="day in chartDays"
               :key="day"
@@ -208,7 +208,7 @@ onMounted(load);
               text-anchor="middle"
               class="trend-date-label"
             >{{ formatAxisDate(day) }}</text>
-            <text :x="(chartWidth + 90) / 2" y="315" text-anchor="middle" class="trend-axis-title">DAY</text>
+            <text :x="(chartWidth + 30) / 2" y="315" text-anchor="middle" class="trend-axis-title">DAY</text>
           </svg>
         </div>
         <div v-else class="trend-empty">No subscription records found for the selected month or previous month.</div>
