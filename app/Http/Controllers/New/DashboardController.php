@@ -48,11 +48,16 @@ class DashboardController extends Controller
                 : null;
             $chartStart = $chartMonth->copy()->startOfMonth();
             $comparisonStart = $comparisonMonth?->copy()->startOfMonth();
+            $today = now();
+            $chartDays = $chartStart->isSameMonth($today) ? $today->day : $chartStart->daysInMonth;
+            $comparisonDays = $comparisonStart
+                ? ($comparisonStart->isSameMonth($today) ? $today->day : $comparisonStart->daysInMonth)
+                : 0;
             $queryStart = $comparisonStart && $chartStart->greaterThan($comparisonStart)
                 ? $comparisonStart
                 : $chartStart;
-            $chartEnd = $chartStart->copy()->endOfMonth()->endOfDay();
-            $comparisonEnd = $comparisonStart?->copy()->endOfMonth()->endOfDay();
+            $chartEnd = $chartStart->copy()->day($chartDays)->endOfDay();
+            $comparisonEnd = $comparisonStart?->copy()->day($comparisonDays)->endOfDay();
             $queryEnd = $comparisonEnd && $comparisonEnd->greaterThan($chartEnd)
                 ? $comparisonEnd
                 : $chartEnd;
@@ -68,34 +73,62 @@ class DashboardController extends Controller
                 ->selectRaw("DATE(subscriptions.{$dateField}) as subscription_date")
                 ->addSelect('subscriptions.plan_id', 'plans.name as plan_name', 'plans.device_type')
                 ->selectRaw('COUNT(*) as total_subscriptions')
+                ->selectRaw('SUM(plans.price) as total_amount')
                 ->groupBy('subscription_date', 'subscriptions.plan_id', 'plans.name', 'plans.device_type')
                 ->orderBy('subscription_date')
                 ->get();
 
+            $currentAmount = 0.0;
+            $comparisonAmount = 0.0;
+            $trendPlans = $chartPlanRows->groupBy('plan_id')->map(function ($rows) use ($chartStart, $comparisonStart, $chartDays, $comparisonDays, &$currentAmount, &$comparisonAmount) {
+                $first = $rows->first();
+                $counts = $rows->mapWithKeys(fn ($row) => [$row->subscription_date => (int) $row->total_subscriptions]);
+                $amounts = $rows->mapWithKeys(fn ($row) => [$row->subscription_date => (float) $row->total_amount]);
+                $current = [];
+                $previous = [];
+                $currentAmounts = [];
+                $previousAmounts = [];
+                for ($day = 1; $day <= $chartDays; $day++) {
+                    $date = $chartStart->copy()->day($day)->toDateString();
+                    $current[] = $counts->get($date, 0);
+                    $dayAmount = $amounts->get($date, 0.0);
+                    $currentAmounts[] = $dayAmount;
+                    $currentAmount += $dayAmount;
+                }
+                for ($day = 1; $comparisonStart && $day <= $comparisonDays; $day++) {
+                    $date = $comparisonStart->copy()->day($day)->toDateString();
+                    $previous[] = $counts->get($date, 0);
+                    $dayAmount = $amounts->get($date, 0.0);
+                    $previousAmounts[] = $dayAmount;
+                    $comparisonAmount += $dayAmount;
+                }
+                return [
+                    'plan_id' => (int) $first->plan_id,
+                    'plan_name' => $first->plan_name,
+                    'device_type' => $first->device_type,
+                    'current' => $current,
+                    'previous' => $previous,
+                    'current_amounts' => $currentAmounts,
+                    'previous_amounts' => $previousAmounts,
+                ];
+            })->values();
+            $differenceAmount = $currentAmount - $comparisonAmount;
+            $differencePercent = $comparisonStart
+                ? ($comparisonAmount > 0 ? round(($differenceAmount / $comparisonAmount) * 100, 1) : ($currentAmount > 0 ? null : 0.0))
+                : null;
+
             $subscriptionTrend = [
                 'month' => $chartStart->format('Y-m'),
                 'previous_month' => $comparisonStart?->format('Y-m'),
-                'days' => $chartStart->daysInMonth,
-                'previous_days' => $comparisonStart?->daysInMonth ?? 0,
-                'plans' => $chartPlanRows->groupBy('plan_id')->map(function ($rows) use ($chartStart, $comparisonStart) {
-                    $first = $rows->first();
-                    $counts = $rows->mapWithKeys(fn ($row) => [$row->subscription_date => (int) $row->total_subscriptions]);
-                    $current = [];
-                    $previous = [];
-                    for ($day = 1; $day <= $chartStart->daysInMonth; $day++) {
-                        $current[] = $counts->get($chartStart->copy()->day($day)->toDateString(), 0);
-                    }
-                    for ($day = 1; $comparisonStart && $day <= $comparisonStart->daysInMonth; $day++) {
-                        $previous[] = $counts->get($comparisonStart->copy()->day($day)->toDateString(), 0);
-                    }
-                    return [
-                        'plan_id' => (int) $first->plan_id,
-                        'plan_name' => $first->plan_name,
-                        'device_type' => $first->device_type,
-                        'current' => $current,
-                        'previous' => $previous,
-                    ];
-                })->values(),
+                'days' => $chartDays,
+                'previous_days' => $comparisonDays,
+                'totals' => [
+                    'month_amount' => round($currentAmount, 2),
+                    'comparison_amount' => $comparisonStart ? round($comparisonAmount, 2) : null,
+                    'difference_amount' => $comparisonStart ? round($differenceAmount, 2) : null,
+                    'difference_percent' => $differencePercent,
+                ],
+                'plans' => $trendPlans,
             ];
 
             $activeSubscriptionsQuery = Subscription::query()

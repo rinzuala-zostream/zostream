@@ -55,6 +55,17 @@ function linePoints(values) {
     .join(' ');
 }
 
+function signedMoney(value) {
+  const amount = Number(value || 0);
+  return `${amount > 0 ? '+' : amount < 0 ? '−' : ''}${money(Math.abs(amount))}`;
+}
+
+function formatPercent(value) {
+  if (value == null) return '—';
+  const amount = Number(value);
+  return `${amount > 0 ? '+' : ''}${amount.toFixed(1)}%`;
+}
+
 async function load() {
   loading.value = true;
   error.value = '';
@@ -137,7 +148,7 @@ onMounted(load);
                 :r="chartDays > 20 ? 2.5 : 4"
                 :fill="comparisonColors[index % comparisonColors.length]"
                 class="trend-point trend-point-previous"
-              ><title>{{ trend.previous_month }} · day {{ dayIndex + 1 }} · {{ plan.plan_name || 'Plan' }} · {{ plan.device_type || 'unknown device' }} · {{ number(value) }} subscriptions</title></circle>
+              ><title>{{ trend.previous_month }} · day {{ dayIndex + 1 }} · {{ plan.plan_name || 'Plan' }} · {{ plan.device_type || 'unknown device' }} · {{ number(value) }} subscriptions · {{ money(plan.previous_amounts?.[dayIndex]) }}</title></circle>
               <circle
                 v-for="(value, dayIndex) in plan.current"
                 :key="`current-${dayIndex}`"
@@ -146,7 +157,7 @@ onMounted(load);
                 :r="chartDays > 20 ? 2.5 : 4"
                 :fill="chartColors[index % chartColors.length]"
                 class="trend-point"
-              ><title>{{ trend.month }} · day {{ dayIndex + 1 }} · {{ plan.plan_name || 'Plan' }} · {{ plan.device_type || 'unknown device' }} · {{ number(value) }} subscriptions</title></circle>
+              ><title>{{ trend.month }} · day {{ dayIndex + 1 }} · {{ plan.plan_name || 'Plan' }} · {{ plan.device_type || 'unknown device' }} · {{ number(value) }} subscriptions · {{ money(plan.current_amounts?.[dayIndex]) }}</title></circle>
             </g>
             <line x1="90" :x2="chartWidth - 10" y1="270" y2="270" class="trend-axis" />
             <text
@@ -161,16 +172,20 @@ onMounted(load);
         </div>
         <div v-else class="trend-empty">No subscription records found for the selected month or previous month.</div>
 
-        <div v-if="trend.plans?.length" class="trend-month-legend">
-          <span><i :style="{ backgroundColor: chartColors[0] }"></i>{{ trend.month }} · solid</span>
-          <span v-if="trend.previous_month"><i :style="{ backgroundColor: comparisonColors[0] }"></i>{{ trend.previous_month }} · dashed</span>
+        <div v-if="trend.totals" class="trend-amount-summary">
+          <article><small>{{ trend.month }} total</small><strong>{{ money(trend.totals.month_amount) }}</strong></article>
+          <template v-if="trend.previous_month">
+            <article><small>{{ trend.previous_month }} total</small><strong>{{ money(trend.totals.comparison_amount) }}</strong></article>
+            <article :class="trend.totals.difference_amount >= 0 ? 'trend-positive' : 'trend-negative'">
+              <small>Difference</small>
+              <strong>{{ signedMoney(trend.totals.difference_amount) }} <span>({{ formatPercent(trend.totals.difference_percent) }})</span></strong>
+            </article>
+          </template>
         </div>
-        <div v-if="trend.plans?.length" class="trend-plan-legend">
-          <span v-for="(plan, index) in trend.plans" :key="plan.plan_id">
-            <i :style="{ backgroundColor: chartColors[index % chartColors.length] }"></i>
-            <i v-if="trend.previous_month" :style="{ backgroundColor: comparisonColors[index % comparisonColors.length] }"></i>
-            {{ plan.plan_name || 'Plan' }} · {{ plan.device_type || 'unknown' }}
-          </span>
+
+        <div v-if="trend.plans?.length" class="trend-month-legend">
+          <div><strong>{{ trend.month }} · solid</strong><span v-for="(plan, index) in trend.plans" :key="`current-${plan.plan_id}`"><i :style="{ backgroundColor: chartColors[index % chartColors.length] }"></i>{{ plan.plan_name || 'Plan' }} · {{ plan.device_type || 'unknown' }}</span></div>
+          <div v-if="trend.previous_month"><strong>{{ trend.previous_month }} · dashed</strong><span v-for="(plan, index) in trend.plans" :key="`compare-${plan.plan_id}`"><i :style="{ backgroundColor: comparisonColors[index % comparisonColors.length] }"></i>{{ plan.plan_name || 'Plan' }} · {{ plan.device_type || 'unknown' }}</span></div>
         </div>
       </section>
 
