@@ -11,6 +11,7 @@ use Illuminate\Http\JsonResponse;
 use Str;
 use Symfony\Component\HttpFoundation\Response as BaseResponse;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
 class DetailsController extends Controller
@@ -167,6 +168,9 @@ class DetailsController extends Controller
 
             // PPV logic
             $ppvKey = $movie['isPayPerView'] ?? $movie['isPPV'] ?? null;
+            if ($ppvKey || $this->hasPpvFirstEpisode((int) $movie['num'])) {
+                $movie['views'] = 0;
+            }
             if ($ppvKey) {
                 $movie['ppv_details'] = $this->fetchPPVDetails($userId, $movieId, $apiKey, $deviceType);
             }
@@ -212,6 +216,21 @@ class DetailsController extends Controller
                 'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+    private function hasPpvFirstEpisode(int $movieNum): bool
+    {
+        if ($movieNum <= 0) {
+            return false;
+        }
+
+        return DB::table('episodes')
+            ->join('seasons', 'seasons.id', '=', 'episodes.season_id')
+            ->where('seasons.movie_id', $movieNum)
+            ->where('seasons.season_number', 1)
+            ->where('episodes.episode_number', 1)
+            ->where('episodes.isPayPerView', true)
+            ->exists();
     }
 
     private function fetchPPVDetails($userId, $movieId, $apiKey, $deviceType)

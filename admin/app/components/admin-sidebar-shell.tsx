@@ -120,6 +120,11 @@ const sidebarGroups: readonly SidebarGroupConfig[] = [
         href: "/movies/update",
         icon: PencilLine,
       },
+      {
+        title: "PPV",
+        href: "/movies/ppv",
+        icon: Crown,
+      },
     ],
     maxHeightClass: "max-h-[14rem]",
   },

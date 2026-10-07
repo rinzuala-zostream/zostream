@@ -297,6 +297,7 @@ Route::prefix('v4')
                 ->prefix('admin')
                 ->group(function () {
                     Route::get('/dashboard', [DashboardController::class, 'index']);
+                    Route::get('/catalog/ppv', [\App\Http\Controllers\Api\V4\AdminPpvController::class, 'index']);
 
                     Route::get('/analytics/config', [AdminAnalyticsController::class, 'showConfig']);
                     Route::put('/analytics/config', [AdminAnalyticsController::class, 'updateConfig']);
