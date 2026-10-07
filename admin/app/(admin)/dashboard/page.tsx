@@ -8,6 +8,7 @@ import {
   type DashboardDeviceType,
   type DashboardPeriod,
   type DashboardPlanStat,
+  type DashboardSubscriptionTrend,
 } from "@/app/features/dashboard/services/dashboard-service";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +18,7 @@ type DashboardPageProps = {
     period?: string;
     date?: string;
     month?: string;
+    chart_month?: string;
     year?: string;
     start_date?: string;
     end_date?: string;
@@ -177,6 +179,50 @@ function StatCard({
   );
 }
 
+function SubscriptionTrendChart({ trend }: { trend: DashboardSubscriptionTrend }) {
+  const plans = trend.plans ?? [];
+  const colors = ["#14b8a6", "#f97316", "#8b5cf6", "#0ea5e9", "#e11d48", "#84cc16", "#d946ef", "#eab308"];
+  const days = Math.max(trend.days ?? 31, trend.previous_days ?? 31);
+  const maximum = Math.max(1, ...plans.flatMap((plan) => [...(plan.current ?? []), ...(plan.previous ?? [])]));
+  const linePoints = (values: number[]) => values.map((value, index) => {
+    const x = 42 + (index / Math.max(days - 1, 1)) * 760;
+    const y = 270 - (value / maximum) * 230;
+    return `${x},${y}`;
+  }).join(" ");
+  const currentLabel = trend.month ?? "Selected month";
+  const previousLabel = trend.previous_month ?? "Previous month";
+
+  return (
+    <div className="mt-5">
+      {plans.length ? (
+        <>
+          <div className="overflow-x-auto">
+            <svg viewBox="0 0 820 310" className="min-w-[680px] w-full" role="img" aria-label={`Daily subscriptions by plan: ${currentLabel} compared with ${previousLabel}`}>
+              {[0, 1, 2, 3, 4].map((line) => {
+                const y = 40 + line * 57.5;
+                return <g key={line}><line x1="42" x2="802" y1={y} y2={y} stroke="currentColor" className="text-slate-200 dark:text-white/10" /><text x="5" y={y + 4} fontSize="11" className="fill-slate-500 dark:fill-slate-400">{Math.round(maximum * (4 - line) / 4)}</text></g>;
+              })}
+              {[1, 5, 10, 15, 20, 25, 30].filter((day) => day <= days).map((day) => <text key={day} x={42 + ((day - 1) / Math.max(days - 1, 1)) * 760} y="299" textAnchor="middle" fontSize="11" className="fill-slate-500 dark:fill-slate-400">{day}</text>)}
+              {plans.map((plan, index) => {
+                const color = colors[index % colors.length];
+                return <g key={plan.plan_id ?? index}>
+                  {(plan.previous?.length ?? 0) > 1 && <polyline points={linePoints(plan.previous ?? [])} fill="none" stroke={color} strokeWidth="2" strokeDasharray="5 5" opacity="0.48" />}
+                  {(plan.current?.length ?? 0) > 1 && <polyline points={linePoints(plan.current ?? [])} fill="none" stroke={color} strokeWidth="2.7" strokeLinejoin="round" strokeLinecap="round" />}
+                </g>;
+              })}
+            </svg>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs font-semibold text-slate-600 dark:text-slate-300">
+            <span className="inline-flex items-center gap-2"><i className="h-0.5 w-5 bg-slate-600 dark:bg-slate-300" />{currentLabel}</span>
+            <span className="inline-flex items-center gap-2"><i className="h-0.5 w-5 border-t-2 border-dashed border-slate-500 opacity-60" />{previousLabel}</span>
+            {plans.map((plan, index) => <span key={plan.plan_id ?? index} className="inline-flex items-center gap-2"><i className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: colors[index % colors.length] }} />{plan.plan_name || "Plan"}</span>)}
+          </div>
+        </>
+      ) : <div className="rounded-2xl border border-dashed border-slate-300 p-6 text-sm text-slate-500 dark:border-white/15 dark:text-slate-400">No subscription records found for this month or the previous month.</div>}
+    </div>
+  );
+}
+
 function PlanCard({ plan, maxAmount }: { plan: DashboardPlanStat; maxAmount: number }) {
   const width = maxAmount > 0 ? Math.max(((plan.total_amount ?? 0) / maxAmount) * 100, 6) : 6;
 
@@ -268,6 +314,7 @@ export default async function DashboardPage({
   const date = resolvedSearchParams?.date?.trim() || "";
   const month =
     resolvedSearchParams?.month?.trim() || new Date().toISOString().slice(0, 7);
+  const chartMonth = resolvedSearchParams?.chart_month?.trim() || new Date().toISOString().slice(0, 7);
   const currentYear = new Date().getFullYear();
   const year = Number(resolvedSearchParams?.year || currentYear);
   const startDate = resolvedSearchParams?.start_date?.trim() || "";
@@ -285,6 +332,7 @@ export default async function DashboardPage({
       date_field: dateField,
       date: period === "daily" ? date || undefined : undefined,
       month: period === "monthly" ? month || undefined : undefined,
+      chart_month: chartMonth,
       year: period === "yearly" && Number.isFinite(year) ? year : undefined,
       start_date: period === "custom" ? startDate || undefined : undefined,
       end_date: period === "custom" ? endDate || undefined : undefined,
@@ -302,6 +350,7 @@ export default async function DashboardPage({
   const planStats = dashboard?.data?.active_subscriptions_by_plan ?? [];
   const deviceStats = dashboard?.data?.active_subscriptions_by_device ?? [];
   const planSummary = dashboard?.data?.plan_amount_summary;
+  const subscriptionTrend = dashboard?.data?.subscription_trend ?? {};
   const content = dashboard?.data?.content;
   const movieCategoryEntries = Object.entries(content?.movies_by_category ?? {})
     .sort((a, b) => b[1] - a[1]);
@@ -530,6 +579,32 @@ export default async function DashboardPage({
               accent="from-emerald-500 via-teal-500 to-cyan-500"
               caption="Plan value generated by active subscriptions in the current range."
             />
+          </section>
+
+          <section className="rounded-[1.75rem] border border-white/60 bg-white/78 p-5 shadow-[0_18px_52px_rgba(15,23,42,0.08)] backdrop-blur-xl sm:p-6 dark:border-white/10 dark:bg-white/6 dark:shadow-[0_20px_60px_rgba(2,6,23,0.38)]">
+            <div className="flex flex-wrap items-end justify-between gap-4">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">Subscription activity</p>
+                <h2 className="mt-2 text-2xl font-bold tracking-tight text-slate-950 dark:text-white">Daily subscriptions by plan</h2>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Solid lines show the selected month; dashed lines show the previous month.</p>
+              </div>
+              <form action="/dashboard" className="flex items-end gap-2">
+                <input type="hidden" name="period" value={period} />
+                <input type="hidden" name="month" value={month} />
+                <input type="hidden" name="date" value={date} />
+                <input type="hidden" name="year" value={Number.isFinite(year) ? String(year) : ""} />
+                <input type="hidden" name="start_date" value={startDate} />
+                <input type="hidden" name="end_date" value={endDate} />
+                <input type="hidden" name="date_field" value={dateField} />
+                {deviceType ? <input type="hidden" name="device_type" value={deviceType} /> : null}
+                <label className="block">
+                  <span className="mb-2 block text-xs font-bold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Compare month</span>
+                  <input name="chart_month" type="month" defaultValue={chartMonth} className="min-h-11 rounded-2xl border border-[rgba(15,23,42,0.12)] bg-white/85 px-3 text-sm font-semibold text-slate-950 outline-none focus:border-teal-300 dark:border-white/10 dark:bg-slate-950/70 dark:text-white" />
+                </label>
+                <button type="submit" className="min-h-11 rounded-2xl bg-slate-950 px-4 text-sm font-bold text-white transition hover:bg-teal-800 dark:bg-white/12 dark:hover:bg-white/20">Apply</button>
+              </form>
+            </div>
+            <SubscriptionTrendChart trend={subscriptionTrend} />
           </section>
 
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(300px,0.9fr)]">

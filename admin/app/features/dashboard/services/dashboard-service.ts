@@ -10,6 +10,7 @@ export type DashboardFilters = {
   period?: DashboardPeriod;
   date?: string;
   month?: string;
+  chart_month?: string;
   year?: number;
   start_date?: string;
   end_date?: string;
@@ -55,12 +56,29 @@ export type DashboardContent = {
   movies_by_category?: Record<string, number>;
 };
 
+export type DashboardTrendPlan = {
+  plan_id?: number;
+  plan_name?: string | null;
+  device_type?: string | null;
+  current?: number[];
+  previous?: number[];
+};
+
+export type DashboardSubscriptionTrend = {
+  month?: string;
+  previous_month?: string;
+  days?: number;
+  previous_days?: number;
+  plans?: DashboardTrendPlan[];
+};
+
 export type DashboardData = {
   overview?: DashboardOverview;
   active_subscriptions_by_plan?: DashboardPlanStat[];
   active_subscriptions_by_device?: DashboardDeviceStat[];
   plan_amount_summary?: DashboardPlanAmountSummary;
   content?: DashboardContent;
+  subscription_trend?: DashboardSubscriptionTrend;
 };
 
 export type DashboardResponse = {
@@ -84,6 +102,7 @@ function toQueryParams(filters?: DashboardFilters): QueryParams | undefined {
     period: filters.period,
     date: filters.date,
     month: filters.month,
+    chart_month: filters.chart_month,
     year: filters.year,
     start_date: filters.start_date,
     end_date: filters.end_date,

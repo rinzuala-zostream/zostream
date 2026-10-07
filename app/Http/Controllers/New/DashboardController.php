@@ -26,6 +26,7 @@ class DashboardController extends Controller
                 'period' => ['nullable', 'string', Rule::in(['daily', 'monthly', 'yearly', 'custom'])],
                 'date' => 'nullable|date_format:Y-m-d',
                 'month' => 'nullable|date_format:Y-m',
+                'chart_month' => 'nullable|date_format:Y-m',
                 'year' => 'nullable|integer|min:2000|max:2100',
                 'start_date' => 'nullable|date_format:Y-m-d',
                 'end_date' => 'nullable|date_format:Y-m-d|after_or_equal:start_date',
@@ -36,6 +37,52 @@ class DashboardController extends Controller
             [$rangeStart, $rangeEnd, $period] = $this->resolveRange($validated);
             $deviceType = $validated['device_type'] ?? null;
             $dateField = $validated['date_field'] ?? 'created_at';
+            $chartMonth = isset($validated['chart_month'])
+                ? Carbon::createFromFormat('Y-m', $validated['chart_month'])
+                : now();
+            $chartStart = $chartMonth->copy()->startOfMonth();
+            $previousChartStart = $chartStart->copy()->subMonth();
+            $chartPlanRows = DB::table('n_subscriptions as subscriptions')
+                ->join('n_plans as plans', 'plans.id', '=', 'subscriptions.plan_id')
+                ->whereBetween("subscriptions.{$dateField}", [
+                    $previousChartStart->copy()->startOfDay(),
+                    $chartStart->copy()->endOfMonth()->endOfDay(),
+                ])
+                ->when($deviceType, function ($query) use ($deviceType) {
+                    $query->where('plans.device_type', $deviceType);
+                })
+                ->selectRaw("DATE(subscriptions.{$dateField}) as subscription_date")
+                ->addSelect('subscriptions.plan_id', 'plans.name as plan_name', 'plans.device_type')
+                ->selectRaw('COUNT(*) as total_subscriptions')
+                ->groupBy('subscription_date', 'subscriptions.plan_id', 'plans.name', 'plans.device_type')
+                ->orderBy('subscription_date')
+                ->get();
+
+            $subscriptionTrend = [
+                'month' => $chartStart->format('Y-m'),
+                'previous_month' => $previousChartStart->format('Y-m'),
+                'days' => $chartStart->daysInMonth,
+                'previous_days' => $previousChartStart->daysInMonth,
+                'plans' => $chartPlanRows->groupBy('plan_id')->map(function ($rows) use ($chartStart, $previousChartStart) {
+                    $first = $rows->first();
+                    $counts = $rows->mapWithKeys(fn ($row) => [$row->subscription_date => (int) $row->total_subscriptions]);
+                    $current = [];
+                    $previous = [];
+                    for ($day = 1; $day <= $chartStart->daysInMonth; $day++) {
+                        $current[] = $counts->get($chartStart->copy()->day($day)->toDateString(), 0);
+                    }
+                    for ($day = 1; $day <= $previousChartStart->daysInMonth; $day++) {
+                        $previous[] = $counts->get($previousChartStart->copy()->day($day)->toDateString(), 0);
+                    }
+                    return [
+                        'plan_id' => (int) $first->plan_id,
+                        'plan_name' => $first->plan_name,
+                        'device_type' => $first->device_type,
+                        'current' => $current,
+                        'previous' => $previous,
+                    ];
+                })->values(),
+            ];
 
             $activeSubscriptionsQuery = Subscription::query()
                 ->currentlyActive();
@@ -170,6 +217,7 @@ class DashboardController extends Controller
                         'total_active_subscriptions_in_range' => (int) ($planAmountSummary?->total_active_subscriptions_in_range ?? 0),
                         'total_amount' => round((float) ($planAmountSummary?->total_amount ?? 0), 2),
                     ],
+                    'subscription_trend' => $subscriptionTrend,
                     'content' => [
                         'total_movies' => $totalMovies,
                         'movies_by_category' => $moviesByCategory,
