@@ -7,6 +7,8 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.analytics.AnalyticsListener
 import java.io.Closeable
 import kotlin.math.max
 
@@ -19,6 +21,23 @@ class Media3AnalyticsAdapter(
     private var closed = false
     private var sawFirstFrame = false
     private var buffering = false
+    private var totalBytesTransferred = 0L
+    private val bandwidthListener = object : AnalyticsListener {
+        override fun onBandwidthEstimate(
+            eventTime: AnalyticsListener.EventTime,
+            totalLoadTimeMs: Int,
+            totalBytesLoaded: Long,
+            bitrateEstimate: Long,
+        ) {
+            totalBytesTransferred += max(0, totalBytesLoaded)
+            analytics.recordQuality(
+                averageBitrateKbps = (bitrateEstimate / 1_000)
+                    .coerceIn(0, Int.MAX_VALUE.toLong())
+                    .toInt(),
+                bytesTransferred = totalBytesTransferred,
+            )
+        }
+    }
 
     private val sampler = object : Runnable {
         override fun run() {
@@ -30,6 +49,7 @@ class Media3AnalyticsAdapter(
 
     init {
         player.addListener(this)
+        (player as? ExoPlayer)?.addAnalyticsListener(bandwidthListener)
         handler.post(sampler)
         handlePlaybackState(player.playbackState)
         handlePlaying(player.isPlaying)
@@ -83,6 +103,7 @@ class Media3AnalyticsAdapter(
         closed = true
         handler.removeCallbacks(sampler)
         player.removeListener(this)
+        (player as? ExoPlayer)?.removeAnalyticsListener(bandwidthListener)
     }
 
     private fun handlePlaying(isPlaying: Boolean) {

@@ -158,16 +158,20 @@ public final class AVPlayerAnalyticsAdapter {
     }
 
     private func sampleAccessLog(_ log: AVPlayerItemAccessLog?) {
-        guard let event = log?.events.last else { return }
+        guard let events = log?.events, let event = events.last else { return }
         let bitrate = event.observedBitrate.isFinite && event.observedBitrate > 0
             ? Int((event.observedBitrate / 1_000).rounded())
             : nil
+        let bytesTransferred = events.reduce(Int64(0)) { total, event in
+            total + max(0, event.numberOfBytesTransferred)
+        }
         analytics.recordQuality(
             label: nil,
             averageBitrateKbps: bitrate,
             droppedFrames: event.numberOfDroppedVideoFrames,
             renderedFrames: nil,
-            streamFormat: "hls"
+            streamFormat: "hls",
+            bytesTransferred: bytesTransferred
         )
     }
 

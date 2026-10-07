@@ -131,6 +131,7 @@
         "final": { "type": ["string", "null"], "maxLength": 32 },
         "change_count": { "$ref": "#/$defs/nonNegativeCount" },
         "average_bitrate_kbps": { "$ref": "#/$defs/nullableCount" },
+        "bytes_transferred": { "type": ["integer", "null"], "minimum": 0 },
         "dropped_frames": { "$ref": "#/$defs/nullableCount" },
         "rendered_frames": { "$ref": "#/$defs/nullableCount" },
         "video_codec": { "type": ["string", "null"], "maxLength": 64 },

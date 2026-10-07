@@ -64,6 +64,7 @@ class AnalyticsReportController extends Controller
         'buffer_count' => 'buffering.count',
         'buffer_ms' => 'buffering.total_ms',
         'quality_changes' => 'quality.change_count',
+        'bytes_transferred' => 'quality.bytes_transferred',
         'dropped_frames' => 'quality.dropped_frames',
         'rendered_frames' => 'quality.rendered_frames',
     ];
@@ -208,6 +209,7 @@ class AnalyticsReportController extends Controller
              COALESCE(SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.interaction.cast_count')) AS UNSIGNED)), 0) AS cast_count,
              COALESCE(MAX(CAST(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.buffering.longest_ms')) AS UNSIGNED)), 0) AS longest_buffer_ms,
              AVG(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.quality.average_bitrate_kbps')), 'null') AS DECIMAL(12,2))) AS average_bitrate_kbps,
+             COALESCE(SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.quality.bytes_transferred')) AS UNSIGNED)), 0) AS bytes_transferred,
              COALESCE(SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.quality.dropped_frames')) AS UNSIGNED)), 0) AS dropped_frames,
              COALESCE(SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.quality.rendered_frames')) AS UNSIGNED)), 0) AS rendered_frames,
              AVG(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, '$.tracks.playback_speed')), 'null') AS DECIMAL(5,2))) AS average_playback_speed,
@@ -229,6 +231,7 @@ class AnalyticsReportController extends Controller
             'cast_count' => (int) $detailTotals->cast_count,
             'longest_buffer_seconds' => round((int) $detailTotals->longest_buffer_ms / 1000, 1),
             'average_bitrate_kbps' => round((float) ($detailTotals->average_bitrate_kbps ?? 0), 1),
+            'data_transferred_bytes' => (int) $detailTotals->bytes_transferred,
             'dropped_frames' => (int) $detailTotals->dropped_frames,
             'rendered_frames' => (int) $detailTotals->rendered_frames,
             'average_playback_speed' => round((float) ($detailTotals->average_playback_speed ?? 0), 2),
@@ -298,6 +301,7 @@ class AnalyticsReportController extends Controller
                 'content_id, content_type, COUNT(*) AS playback_starts,
                  SUM(CASE WHEN watched_ms >= 10000 THEN 1 ELSE 0 END) AS views,
                  COALESCE(SUM(watched_ms), 0) AS watch_ms,
+                 COALESCE(SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, \'$.quality.bytes_transferred\')) AS UNSIGNED)), 0) AS bytes_transferred,
                  SUM(CASE WHEN completed = 1 THEN 1 ELSE 0 END) AS completed_views'
             )
             ->groupBy('content_id', 'content_type')
@@ -313,6 +317,7 @@ class AnalyticsReportController extends Controller
                 'content_type' => $row->content_type,
                 'views' => (int) $row->views,
                 'watch_hours' => round(((int) $row->watch_ms) / 3_600_000, 2),
+                'data_transferred_bytes' => (int) $row->bytes_transferred,
                 'completion_rate' => $this->percentage(
                     (int) $row->completed_views,
                     (int) $row->playback_starts
@@ -339,6 +344,7 @@ class AnalyticsReportController extends Controller
              SUM(CASE WHEN watched_ms >= 10000 THEN 1 ELSE 0 END) AS valid_views,
              COUNT(DISTINCT user_id) AS unique_viewers,
              COALESCE(SUM(watched_ms), 0) AS watch_ms,
+             COALESCE(SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, \'$.quality.bytes_transferred\')) AS UNSIGNED)), 0) AS bytes_transferred,
              SUM(CASE WHEN completed = 1 THEN 1 ELSE 0 END) AS completed_views'
         )
             ->groupBy('content_id', 'content_type')
@@ -363,6 +369,7 @@ class AnalyticsReportController extends Controller
                  SUM(CASE WHEN watched_ms >= 10000 THEN 1 ELSE 0 END) AS valid_views,
                  COUNT(DISTINCT user_id) AS unique_viewers,
                  COALESCE(SUM(watched_ms), 0) AS watch_ms,
+                 COALESCE(SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, \'$.quality.bytes_transferred\')) AS UNSIGNED)), 0) AS bytes_transferred,
                  SUM(CASE WHEN completed = 1 THEN 1 ELSE 0 END) AS completed_views'
             )
             ->groupBy('content_id', 'content_type')
@@ -386,7 +393,8 @@ class AnalyticsReportController extends Controller
              AVG(startup_ms) AS average_startup_ms,
              COALESCE(SUM(buffer_ms), 0) AS buffer_ms,
              COALESCE(SUM(watched_ms), 0) AS watch_ms,
-             SUM(CASE WHEN error_count > 0 THEN 1 ELSE 0 END) AS failed_sessions'
+             SUM(CASE WHEN error_count > 0 THEN 1 ELSE 0 END) AS failed_sessions,
+             COALESCE(SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(metrics_json, \'$.quality.bytes_transferred\')) AS UNSIGNED)), 0) AS bytes_transferred'
         )
             ->groupBy('platform', 'app_version')
             ->orderByDesc('sessions')
@@ -407,6 +415,7 @@ class AnalyticsReportController extends Controller
                         (int) $row->failed_sessions,
                         (int) $row->sessions
                     ),
+                    'data_transferred_bytes' => (int) $row->bytes_transferred,
                 ];
             });
 
@@ -519,7 +528,10 @@ class AnalyticsReportController extends Controller
             'buffer_count', 'buffer_ms', 'error_count', 'completion_percent',
             'completed', 'end_reason', 'platform', 'app_version', 'sdk_version',
             'metrics_json',
-        ])->through(fn ($row) => [
+        ])->through(function ($row) {
+            $metrics = json_decode((string) $row->metrics_json, true) ?: [];
+
+            return [
             'session_id' => $row->session_id,
             'user_id' => $row->user_id,
             'device_id' => $row->device_id,
@@ -543,8 +555,10 @@ class AnalyticsReportController extends Controller
             'platform' => $row->platform,
             'app_version' => $row->app_version,
             'sdk_version' => $row->sdk_version,
-            'metrics' => json_decode((string) $row->metrics_json, true) ?: [],
-        ]);
+            'data_transferred_bytes' => (int) data_get($metrics, 'quality.bytes_transferred', 0),
+            'metrics' => $metrics,
+            ];
+        });
         $rows->setCollection(collect($this->withContentTitles($rows->items())));
 
         return V4Response::success($rows, meta: ['filters' => $this->publicFilters($filters)]);
@@ -939,6 +953,7 @@ class AnalyticsReportController extends Controller
             'valid_views' => (int) $row->valid_views,
             'unique_viewers' => (int) $row->unique_viewers,
             'watch_hours' => round(((int) $row->watch_ms) / 3_600_000, 2),
+            'data_transferred_bytes' => (int) ($row->bytes_transferred ?? 0),
             'completion_rate' => $this->percentage(
                 (int) $row->completed_views,
                 (int) $row->playback_starts

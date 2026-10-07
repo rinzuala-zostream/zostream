@@ -205,6 +205,7 @@ class AnalyticsApiTest extends TestCase
         $this->assertSame(1, $data['valid_views']);
         $this->assertSame(1, $data['unique_viewers']);
         $this->assertSame(1, $data['app_sessions']);
+        $this->assertSame(157_286_400, $data['engagement']['data_transferred_bytes']);
         $this->assertSame('app_opened', $data['product_events'][0]['name']);
     }
 

@@ -60,6 +60,7 @@ class PlaybackAnalyticsSession @JvmOverloads constructor(
     private var finalQuality: String? = null
     private var qualityChangeCount = 0
     private var averageBitrateKbps: Int? = null
+    private var bytesTransferred: Long? = null
     private var droppedFrames: Int? = null
     private var renderedFrames: Int? = null
     private var videoCodec: String? = null
@@ -192,6 +193,7 @@ class PlaybackAnalyticsSession @JvmOverloads constructor(
         videoCodec: String? = null,
         audioCodec: String? = null,
         streamFormat: String? = null,
+        bytesTransferred: Long? = null,
     ) {
         if (!label.isNullOrBlank()) {
             if (initialQuality == null) initialQuality = label
@@ -199,6 +201,9 @@ class PlaybackAnalyticsSession @JvmOverloads constructor(
             finalQuality = label
         }
         if (averageBitrateKbps != null) this.averageBitrateKbps = max(0, averageBitrateKbps)
+        if (bytesTransferred != null) {
+            this.bytesTransferred = max(this.bytesTransferred ?: 0, bytesTransferred)
+        }
         if (droppedFrames != null) this.droppedFrames = max(0, droppedFrames)
         if (renderedFrames != null) this.renderedFrames = max(0, renderedFrames)
         if (videoCodec != null) this.videoCodec = videoCodec
@@ -280,6 +285,7 @@ class PlaybackAnalyticsSession @JvmOverloads constructor(
                 .putNullable("final", finalQuality)
                 .put("change_count", qualityChangeCount)
                 .putNullable("average_bitrate_kbps", averageBitrateKbps)
+                .putNullable("bytes_transferred", bytesTransferred)
                 .putNullable("dropped_frames", droppedFrames)
                 .putNullable("rendered_frames", renderedFrames)
                 .putNullable("video_codec", videoCodec)

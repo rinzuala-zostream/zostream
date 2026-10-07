@@ -11,6 +11,9 @@ https://zostream.in/api/v4/analytic
 The SDK never sends a heartbeat. It accumulates playback measurements locally,
 persists a bounded retry queue, and submits a final session summary when the
 player stops. Analytics failures never block playback or watch-position saving.
+Playback quality metrics include the stream's observed bitrate and cumulative
+`bytes_transferred`, allowing admin reports to show per-session and aggregate
+data usage. Older SDK payloads without this optional field remain valid.
 
 ## Packages
 
@@ -25,7 +28,7 @@ The host app supplies fresh credentials when flushing:
 ```text
 Authorization: Bearer <access-token>
 Device-Token: <device-token>
-X-Analytics-SDK-Version: 1.2.0
+X-Analytics-SDK-Version: 1.3.0
 X-Platform: ios|tvos|android|tv
 ```
 

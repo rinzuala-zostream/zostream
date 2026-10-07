@@ -144,6 +144,32 @@ class AnalyticsDashboardReportTest extends TestCase
         $this->assertSame('Watched film', $rows['1000']['parent_title']);
     }
 
+    public function test_transferred_bytes_are_available_in_analytics_reports(): void
+    {
+        $this->seedPlayback('bandwidth-a', 'watched', 20000, [
+            'metrics_json' => json_encode(['quality' => ['bytes_transferred' => 10_000_000]]),
+        ]);
+        $this->seedPlayback('bandwidth-b', 'watched', 15000, [
+            'metrics_json' => json_encode(['quality' => ['bytes_transferred' => 5_000_000]]),
+        ]);
+
+        $overview = $this->report('overview');
+        $this->assertSame(15_000_000, $overview['engagement']['data_transferred_bytes']);
+        $this->assertSame(15_000_000, $overview['top_content'][0]['data_transferred_bytes']);
+
+        $content = $this->report('content')['data'][0];
+        $this->assertSame(15_000_000, $content['data_transferred_bytes']);
+
+        $session = $this->report('sessions')['data'][0];
+        $this->assertSame(5_000_000, $session['data_transferred_bytes']);
+
+        $quality = $this->report('quality')[0];
+        $this->assertSame(15_000_000, $quality['data_transferred_bytes']);
+
+        $insights = $this->report('insights', ['dimension' => 'platform']);
+        $this->assertSame(15_000_000, $insights['summary']['bytes_transferred']);
+    }
+
     public function test_empty_overview_does_not_invent_activity(): void
     {
         $data = $this->report('overview');

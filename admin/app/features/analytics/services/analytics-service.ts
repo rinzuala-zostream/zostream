@@ -19,6 +19,7 @@ export type AnalyticsOverview = {
   valid_views?: number;
   unique_viewers?: number;
   watch_hours?: number;
+  data_transferred_bytes?: number;
   average_watch_minutes?: number;
   completion_rate?: number;
   playback_error_rate?: number;

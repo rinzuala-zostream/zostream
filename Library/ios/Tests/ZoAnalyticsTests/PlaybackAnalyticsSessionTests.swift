@@ -118,12 +118,15 @@ final class PlaybackAnalyticsSessionTests: XCTestCase {
     func testPayloadUsesSnakeCaseContract() throws {
         let clock = ManualClock()
         let session = makeSession(id: "session-json", clock: clock)
+        session.recordQuality(label: "720p", averageBitrateKbps: 2_400, bytesTransferred: 12_345_678)
         let data = try AnalyticsCoding.encoder().encode(session.finish(reason: .userClosed).payload)
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
         XCTAssertNotNil(object["schema_version"])
         XCTAssertNotNil(object["started_at"])
         let timing = try XCTUnwrap(object["timing"] as? [String: Any])
         XCTAssertNotNil(timing["watch_position_ms"])
+        let quality = try XCTUnwrap(object["quality"] as? [String: Any])
+        XCTAssertEqual((quality["bytes_transferred"] as? NSNumber)?.int64Value, 12_345_678)
     }
 
     func testQueueKeepsNewestSessionRevision() async throws {

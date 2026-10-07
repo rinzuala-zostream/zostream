@@ -1,7 +1,7 @@
 import Foundation
 
 public struct ZoAnalyticsConfiguration: Sendable {
-    public static let sdkVersion = "1.2.0"
+    public static let sdkVersion = "1.3.0"
 
     public var baseURL: URL
     public var localSnapshotInterval: TimeInterval

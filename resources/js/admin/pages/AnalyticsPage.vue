@@ -34,7 +34,7 @@ const metricSections = [
     { label: 'Sessions and outcomes', items: [['sessions', 'Playback sessions'], ['unique_viewers', 'Unique viewers'], ['valid_views', 'Valid views'], ['completed_sessions', 'Completed'], ['pending_sessions', 'Pending checkpoints'], ['error_sessions', 'Sessions with errors'], ['playback_error_count', 'Playback errors'], ['average_completion_percent', 'Average completion', 'percent'], ['downloaded_sessions', 'Downloaded plays'], ['autoplay_sessions', 'Autoplay sessions'], ['subtitle_sessions', 'Subtitles enabled']] },
     { label: 'Time and coverage', items: [['watched_ms', 'Watch time', 'hours'], ['unique_watched_ms', 'Unique watch time', 'hours'], ['replayed_ms', 'Replay time', 'hours'], ['foreground_watch_ms', 'Foreground time', 'hours'], ['background_play_ms', 'Background time', 'hours'], ['average_duration_ms', 'Average content duration', 'ms'], ['average_watch_position_ms', 'Average final position', 'ms'], ['max_position_ms', 'Sum of farthest positions', 'hours'], ['average_startup_ms', 'Average startup', 'ms']] },
     { label: 'Playback controls', items: [['play_count', 'Play'], ['pause_count', 'Pause'], ['resume_count', 'Resume'], ['seek_count', 'Seeks'], ['seek_forward_ms', 'Time skipped forward', 'hours'], ['seek_backward_ms', 'Time skipped backward', 'hours'], ['fullscreen_count', 'Fullscreen'], ['pip_count', 'Picture in picture'], ['cast_count', 'Cast']] },
-    { label: 'Buffering and quality', items: [['buffer_count', 'Buffer events'], ['buffer_ms', 'Total buffering', 'hours'], ['longest_buffer_ms', 'Longest buffer', 'ms'], ['quality_changes', 'Quality changes'], ['average_bitrate_kbps', 'Average bitrate', 'kbps'], ['dropped_frames', 'Dropped frames'], ['rendered_frames', 'Rendered frames'], ['average_playback_speed', 'Average playback speed']] },
+    { label: 'Buffering and quality', items: [['buffer_count', 'Buffer events'], ['buffer_ms', 'Total buffering', 'hours'], ['longest_buffer_ms', 'Longest buffer', 'ms'], ['quality_changes', 'Quality changes'], ['average_bitrate_kbps', 'Average bitrate', 'kbps'], ['bytes_transferred', 'Data transferred', 'bytes'], ['dropped_frames', 'Dropped frames'], ['rendered_frames', 'Rendered frames'], ['average_playback_speed', 'Average playback speed']] },
     { label: 'Coverage milestones', items: [['milestone_25', 'Reached 25%'], ['milestone_50', 'Reached 50%'], ['milestone_75', 'Reached 75%'], ['milestone_90', 'Reached 90%']] },
 ];
 const metrics = metricSections.flatMap((section) => section.items);
@@ -80,6 +80,7 @@ const insightValue = (value, unit) => {
     if (value === null || value === undefined || value === '') return '—';
     const numeric = Number(value);
     if (!Number.isFinite(numeric)) return '—';
+    if (unit === 'bytes') return formatBytes(numeric);
     const formatted = number(unit === 'hours' ? numeric / 3600000 : numeric, unit === 'hours' || unit === 'percent' ? 2 : unit === 'kbps' ? 1 : 0);
     return `${formatted}${unit === 'hours' ? ' hr' : unit === 'ms' ? ' ms' : unit === 'percent' ? '%' : unit === 'kbps' ? ' kbps' : ''}`;
 };
@@ -92,6 +93,13 @@ const dimensionValue = (value) => {
 const percent = (value) => `${number(value, 1)}%`;
 const duration = (value) => `${number((Number(value) || 0) / 60000, 1)} min`;
 const humanize = (value) => String(value || '—').replaceAll('_', ' ');
+const formatBytes = (value) => {
+    const bytes = Math.max(0, Number(value) || 0);
+    if (bytes < 1024) return `${number(bytes)} B`;
+    const units = ['KB', 'MB', 'GB', 'TB'];
+    const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length);
+    return `${number(bytes / (1024 ** exponent), 2)} ${units[exponent - 1]}`;
+};
 const contentTitle = (row) => row?.display_title
     || (row?.parent_title && row?.title ? `${row.parent_title} — ${row.title}` : row?.title)
     || row?.content_id
@@ -252,6 +260,7 @@ onMounted(() => { void loadConfig(); void loadAll(); });
                 <article><span>Average startup</span><b>{{ number(overview.average_startup_ms) }}<small> ms</small></b></article>
                 <article><span>Rebuffer ratio</span><b>{{ percent((overview.rebuffer_ratio || 0) * 100) }}</b></article>
                 <article><span>App sessions</span><b>{{ number(overview.app_sessions) }}</b></article>
+                <article><span>Data transferred</span><b>{{ formatBytes(report.engagement?.data_transferred_bytes) }}</b></article>
             </section>
 
             <section class="analytics-columns">
@@ -280,7 +289,7 @@ onMounted(() => { void loadConfig(); void loadAll(); });
 
             <section class="analytics-columns">
                 <article class="admin-panel analytics-panel"><header><div><span class="analytics-eyebrow">TOP CONTENT</span><h2>Most watched</h2></div><button class="admin-secondary" type="button" @click="selectTab('content')">All content</button></header>
-                    <div v-if="!report.top_content?.length" class="admin-empty">No content analytics yet.</div><div v-else class="analytics-list"><div v-for="item in report.top_content" :key="`${item.content_type}:${item.content_id}`"><span><b>{{ contentTitle(item) }}</b><small>{{ contentMeta(item) }}</small></span><strong>{{ number(item.views) }} views · {{ number(item.watch_hours, 1) }} hr</strong></div></div>
+                    <div v-if="!report.top_content?.length" class="admin-empty">No content analytics yet.</div><div v-else class="analytics-list"><div v-for="item in report.top_content" :key="`${item.content_type}:${item.content_id}`"><span><b>{{ contentTitle(item) }}</b><small>{{ contentMeta(item) }}</small></span><strong>{{ number(item.views) }} views · {{ number(item.watch_hours, 1) }} hr · {{ formatBytes(item.data_transferred_bytes) }}</strong></div></div>
                 </article>
                 <article class="admin-panel analytics-panel"><header><div><span class="analytics-eyebrow">PRODUCT BEHAVIOUR</span><h2>App events</h2></div><button class="admin-secondary" type="button" @click="selectTab('events')">All events</button></header>
                     <div v-if="!report.product_events?.length" class="admin-empty">No product events yet.</div><div v-else class="analytics-list"><div v-for="item in report.product_events" :key="item.name"><span><b>{{ humanize(item.name) }}</b><small>{{ number(item.unique_users) }} unique users</small></span><strong>{{ number(item.count) }}</strong></div></div>
@@ -288,7 +297,7 @@ onMounted(() => { void loadConfig(); void loadAll(); });
             </section>
             <section class="analytics-columns">
                 <article class="admin-panel analytics-panel"><header><div><span class="analytics-eyebrow">PLATFORM</span><h2>Sessions and viewers</h2></div></header><div v-if="!report.platforms?.length" class="admin-empty">No platform data yet.</div><div v-else class="analytics-list"><div v-for="item in report.platforms" :key="item.platform"><span><b>{{ item.platform.toUpperCase() }}</b><small>{{ number(item.viewers) }} unique viewers</small></span><strong>{{ number(item.sessions) }} · {{ percent(item.percentage) }}</strong></div></div></article>
-                <article class="admin-panel analytics-panel"><header><div><span class="analytics-eyebrow">QUALITY BY APP</span><h2>App versions and devices</h2></div></header><div v-if="!quality.length" class="admin-empty">No app quality data yet.</div><div v-else class="analytics-table-wrap"><table><thead><tr><th>Platform</th><th>Version</th><th>Sessions</th><th>Startup</th><th>Rebuffer</th><th>Failure</th></tr></thead><tbody><tr v-for="row in quality" :key="`${row.platform}:${row.app_version}`"><td>{{ row.platform }}</td><td>{{ row.app_version }}</td><td>{{ number(row.sessions) }}</td><td>{{ number(row.average_startup_ms) }} ms</td><td>{{ number(row.rebuffer_ratio * 100, 2) }}%</td><td>{{ percent(row.failure_rate) }}</td></tr></tbody></table></div></article>
+                <article class="admin-panel analytics-panel"><header><div><span class="analytics-eyebrow">QUALITY BY APP</span><h2>App versions and devices</h2></div></header><div v-if="!quality.length" class="admin-empty">No app quality data yet.</div><div v-else class="analytics-table-wrap"><table><thead><tr><th>Platform</th><th>Version</th><th>Sessions</th><th>Data</th><th>Startup</th><th>Rebuffer</th><th>Failure</th></tr></thead><tbody><tr v-for="row in quality" :key="`${row.platform}:${row.app_version}`"><td>{{ row.platform }}</td><td>{{ row.app_version }}</td><td>{{ number(row.sessions) }}</td><td>{{ formatBytes(row.data_transferred_bytes) }}</td><td>{{ number(row.average_startup_ms) }} ms</td><td>{{ number(row.rebuffer_ratio * 100, 2) }}%</td><td>{{ percent(row.failure_rate) }}</td></tr></tbody></table></div></article>
             </section>
         </template>
 
@@ -318,13 +327,13 @@ onMounted(() => { void loadConfig(); void loadAll(); });
 
         <section v-else-if="!error && activeTab === 'content'" class="admin-panel analytics-panel">
             <header><div><span class="analytics-eyebrow">CONTENT PERFORMANCE</span><h2>Every title and episode</h2><p>{{ number(contentPage.total) }} content items in the selected range.</p></div></header>
-            <div class="analytics-table-wrap"><table><thead><tr><th>Content</th><th>Type</th><th>Starts</th><th>Valid views</th><th>Viewers</th><th>Watch hours</th><th>Completion</th></tr></thead><tbody><tr v-for="row in contentPage.data" :key="`${row.content_type}:${row.content_id}`"><td><b>{{ contentTitle(row) }}</b><small>{{ row.content_id }}</small></td><td>{{ row.content_type }}</td><td>{{ number(row.playback_starts) }}</td><td>{{ number(row.valid_views) }}</td><td>{{ number(row.unique_viewers) }}</td><td>{{ number(row.watch_hours, 1) }}</td><td>{{ percent(row.completion_rate) }}</td></tr></tbody></table><div v-if="!contentPage.data?.length" class="admin-empty">No content rows for these filters.</div></div>
+            <div class="analytics-table-wrap"><table><thead><tr><th>Content</th><th>Type</th><th>Starts</th><th>Valid views</th><th>Viewers</th><th>Watch hours</th><th>Data</th><th>Completion</th></tr></thead><tbody><tr v-for="row in contentPage.data" :key="`${row.content_type}:${row.content_id}`"><td><b>{{ contentTitle(row) }}</b><small>{{ row.content_id }}</small></td><td>{{ row.content_type }}</td><td>{{ number(row.playback_starts) }}</td><td>{{ number(row.valid_views) }}</td><td>{{ number(row.unique_viewers) }}</td><td>{{ number(row.watch_hours, 1) }}</td><td>{{ formatBytes(row.data_transferred_bytes) }}</td><td>{{ percent(row.completion_rate) }}</td></tr></tbody></table><div v-if="!contentPage.data?.length" class="admin-empty">No content rows for these filters.</div></div>
         </section>
 
         <section v-else-if="!error && activeTab === 'sessions'" class="admin-panel analytics-panel">
             <header><div><span class="analytics-eyebrow">PLAYBACK DATA</span><h2>Session explorer</h2><p>{{ number(sessionPage.total) }} sessions · open a row to inspect the complete SDK payload.</p></div><button v-if="sessionPage.data?.length" class="admin-secondary" type="button" @click="exportCurrentPage">Export page JSON</button></header>
             <form class="detail-filter-row" @submit.prevent="page = 1; loadDetails()"><label>Find session/content/user<input v-model="detailFilters.q" placeholder="ID or user"></label><label>Content ID<input v-model="detailFilters.content_id" placeholder="Any content"></label><label>End reason<input v-model="detailFilters.end_reason" placeholder="Any reason"></label><button class="admin-secondary" type="submit">Search</button></form>
-            <div class="analytics-table-wrap"><table><thead><tr><th>Started</th><th>Content</th><th>User</th><th>Platform / app</th><th>Watch</th><th>Completion</th><th>Result</th><th>Full SDK data</th></tr></thead><tbody><tr v-for="row in sessionPage.data" :key="row.session_id"><td>{{ row.started_at }}</td><td><b>{{ contentTitle(row) }}</b><small>{{ contentMeta(row) }}</small></td><td>{{ row.user_id }}</td><td>{{ row.platform }}<small>{{ row.app_version }} · SDK {{ row.sdk_version || 'unknown' }}</small></td><td>{{ duration(row.watched_ms) }}<small>{{ duration(row.unique_watched_ms) }} unique</small></td><td>{{ percent(row.completion_percent) }}</td><td>{{ row.completed ? 'Completed' : humanize(row.end_reason) }}<small>{{ number(row.error_count) }} errors · {{ number(row.buffer_count) }} buffers</small></td><td><details><summary>Inspect</summary><pre>{{ JSON.stringify(row, null, 2) }}</pre></details></td></tr></tbody></table><div v-if="!sessionPage.data?.length" class="admin-empty">No playback sessions for these filters.</div></div>
+            <div class="analytics-table-wrap"><table><thead><tr><th>Started</th><th>Content</th><th>User</th><th>Platform / app</th><th>Watch / data</th><th>Completion</th><th>Result</th><th>Full SDK data</th></tr></thead><tbody><tr v-for="row in sessionPage.data" :key="row.session_id"><td>{{ row.started_at }}</td><td><b>{{ contentTitle(row) }}</b><small>{{ contentMeta(row) }}</small></td><td>{{ row.user_id }}</td><td>{{ row.platform }}<small>{{ row.app_version }} · SDK {{ row.sdk_version || 'unknown' }}</small></td><td>{{ duration(row.watched_ms) }}<small>{{ duration(row.unique_watched_ms) }} unique · {{ formatBytes(row.data_transferred_bytes) }}</small></td><td>{{ percent(row.completion_percent) }}</td><td>{{ row.completed ? 'Completed' : humanize(row.end_reason) }}<small>{{ number(row.error_count) }} errors · {{ number(row.buffer_count) }} buffers</small></td><td><details><summary>Inspect</summary><pre>{{ JSON.stringify(row, null, 2) }}</pre></details></td></tr></tbody></table><div v-if="!sessionPage.data?.length" class="admin-empty">No playback sessions for these filters.</div></div>
         </section>
 
         <section v-else-if="!error && activeTab === 'events'" class="admin-panel analytics-panel">

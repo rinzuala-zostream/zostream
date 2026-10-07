@@ -1,6 +1,6 @@
 import type { ReportRow } from "../services/analytics-service";
 
-type Item = readonly [path: string, label: string, unit?: "ms" | "percent"];
+type Item = readonly [path: string, label: string, unit?: "ms" | "percent" | "bytes"];
 
 const sections: readonly (readonly [string, readonly Item[]])[] = [
   ["Content and session", [
@@ -38,6 +38,7 @@ const sections: readonly (readonly [string, readonly Item[]])[] = [
     ["quality.initial", "Initial quality"], ["quality.final", "Final quality"],
     ["quality.change_count", "Quality changes"],
     ["quality.average_bitrate_kbps", "Average bitrate (kbps)"],
+    ["quality.bytes_transferred", "Data transferred", "bytes"],
     ["quality.dropped_frames", "Dropped frames"],
     ["quality.rendered_frames", "Rendered frames"],
     ["quality.video_codec", "Video codec"], ["quality.audio_codec", "Audio codec"],
@@ -74,6 +75,11 @@ function display(value: unknown, unit?: Item[2]): string {
   if (value === undefined || value === null || value === "") return "—";
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (Array.isArray(value)) return value.length ? value.join("%, ") + "%" : "None";
+  if (typeof value === "number" && unit === "bytes") {
+    const exponent = value > 0 ? Math.min(Math.floor(Math.log(value) / Math.log(1024)), 4) : 0;
+    const units = ["B", "KB", "MB", "GB", "TB"];
+    return `${(value / (1024 ** exponent)).toLocaleString("en-IN", { maximumFractionDigits: 2 })} ${units[exponent]}`;
+  }
   if (typeof value === "number") return `${value.toLocaleString("en-IN", { maximumFractionDigits: 2 })}${unit === "ms" ? " ms" : unit === "percent" ? "%" : ""}`;
   return String(value);
 }

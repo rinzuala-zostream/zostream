@@ -46,6 +46,7 @@
     "final": "1080p",
     "change_count": 1,
     "average_bitrate_kbps": 3200,
+    "bytes_transferred": 157286400,
     "dropped_frames": 4,
     "rendered_frames": 52800,
     "video_codec": "h264",
@@ -76,4 +77,3 @@
     "timezone": "Asia/Kolkata"
   }
 }
-

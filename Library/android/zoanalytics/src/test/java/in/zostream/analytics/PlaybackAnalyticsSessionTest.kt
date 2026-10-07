@@ -94,4 +94,20 @@ class PlaybackAnalyticsSessionTest {
         assertTrue(payload.getJSONObject("result").getBoolean("completed"))
         assertEquals("completed", payload.getString("end_reason"))
     }
+
+    @Test
+    fun includesTransferredBytesInQualityMetrics() {
+        val session = PlaybackAnalyticsSession(
+            content = PlaybackContent("movie-1", PlaybackContentType.MOVIE),
+            context = context(),
+        )
+        session.recordQuality(
+            label = "1080p",
+            averageBitrateKbps = 3_200,
+            bytesTransferred = 12_345_678,
+        )
+
+        val quality = session.finish(PlaybackEndReason.USER_CLOSED).payload.getJSONObject("quality")
+        assertEquals(12_345_678, quality.getLong("bytes_transferred"))
+    }
 }

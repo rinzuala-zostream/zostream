@@ -28,7 +28,7 @@ const dimensions = [
   ]],
 ] as const;
 
-type Metric = readonly [key: string, label: string, unit?: "ms" | "hours" | "percent" | "kbps"];
+type Metric = readonly [key: string, label: string, unit?: "ms" | "hours" | "percent" | "kbps" | "bytes"];
 
 const metricSections: readonly (readonly [string, readonly Metric[]])[] = [
   ["Sessions and outcomes", [
@@ -59,6 +59,7 @@ const metricSections: readonly (readonly [string, readonly Metric[]])[] = [
     ["buffer_count", "Buffer events"], ["buffer_ms", "Total buffering", "hours"],
     ["longest_buffer_ms", "Longest buffer", "ms"],
     ["quality_changes", "Quality changes"], ["average_bitrate_kbps", "Average bitrate", "kbps"],
+    ["bytes_transferred", "Data transferred", "bytes"],
     ["dropped_frames", "Dropped frames"], ["rendered_frames", "Rendered frames"],
     ["average_playback_speed", "Average playback speed"],
   ]],
@@ -76,6 +77,11 @@ function valueFor(value: unknown, unit?: Metric[2]): string {
   if (value === null || value === undefined || value === "") return "—";
   const number = Number(value);
   if (!Number.isFinite(number)) return "—";
+  if (unit === "bytes") {
+    const exponent = number > 0 ? Math.min(Math.floor(Math.log(number) / Math.log(1024)), 4) : 0;
+    const units = ["B", "KB", "MB", "GB", "TB"];
+    return `${(number / (1024 ** exponent)).toLocaleString("en-IN", { maximumFractionDigits: 2 })} ${units[exponent]}`;
+  }
   const formatted = (unit === "hours" ? number / 3_600_000 : number)
     .toLocaleString("en-IN", { maximumFractionDigits: unit === "hours" || unit === "percent" ? 2 : unit === "kbps" ? 1 : 0 });
   return unit === "hours" ? `${formatted} h`

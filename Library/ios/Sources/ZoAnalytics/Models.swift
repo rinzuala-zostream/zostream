@@ -180,6 +180,7 @@ public struct PlaybackQuality: Codable, Sendable, Equatable {
     public var final: String?
     public var changeCount: Int
     public var averageBitrateKbps: Int?
+    public var bytesTransferred: Int64?
     public var droppedFrames: Int?
     public var renderedFrames: Int?
     public var videoCodec: String?
@@ -195,12 +196,14 @@ public struct PlaybackQuality: Codable, Sendable, Equatable {
         renderedFrames: Int? = nil,
         videoCodec: String? = nil,
         audioCodec: String? = nil,
-        streamFormat: String? = nil
+        streamFormat: String? = nil,
+        bytesTransferred: Int64? = nil
     ) {
         self.initial = initial
         self.final = final
         self.changeCount = changeCount
         self.averageBitrateKbps = averageBitrateKbps
+        self.bytesTransferred = bytesTransferred
         self.droppedFrames = droppedFrames
         self.renderedFrames = renderedFrames
         self.videoCodec = videoCodec
@@ -212,6 +215,7 @@ public struct PlaybackQuality: Codable, Sendable, Equatable {
         case initial, final
         case changeCount = "change_count"
         case averageBitrateKbps = "average_bitrate_kbps"
+        case bytesTransferred = "bytes_transferred"
         case droppedFrames = "dropped_frames"
         case renderedFrames = "rendered_frames"
         case videoCodec = "video_codec"

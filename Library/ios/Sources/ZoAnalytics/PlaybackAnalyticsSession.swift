@@ -207,7 +207,8 @@ public final class PlaybackAnalyticsSession: @unchecked Sendable {
         renderedFrames: Int? = nil,
         videoCodec: String? = nil,
         audioCodec: String? = nil,
-        streamFormat: String? = nil
+        streamFormat: String? = nil,
+        bytesTransferred: Int64? = nil
     ) {
         withLock {
             if let label, !label.isEmpty {
@@ -216,6 +217,9 @@ public final class PlaybackAnalyticsSession: @unchecked Sendable {
                 quality.final = label
             }
             if let averageBitrateKbps { quality.averageBitrateKbps = max(0, averageBitrateKbps) }
+            if let bytesTransferred {
+                quality.bytesTransferred = max(quality.bytesTransferred ?? 0, bytesTransferred)
+            }
             if let droppedFrames { quality.droppedFrames = max(0, droppedFrames) }
             if let renderedFrames { quality.renderedFrames = max(0, renderedFrames) }
             if let videoCodec { quality.videoCodec = videoCodec }
