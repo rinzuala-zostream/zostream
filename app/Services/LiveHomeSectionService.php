@@ -476,7 +476,15 @@ class LiveHomeSectionService
 
     private function ppvSeasons(int $limit, string $mode, bool $includeAgeRestricted): array
     {
-        return DB::table('seasons')
+        $movies = $this->allowedMovies($mode, $includeAgeRestricted)
+            ->where('isPayPerView', 1)
+            ->orderByDesc('release_on')
+            ->limit(max(1, (int) ceil($limit / 2)))
+            ->get(self::MOVIE_CARD_COLUMNS)
+            ->map(fn ($movie): array => $this->movieCard($movie) + ['type' => 'movie'])
+            ->all();
+
+        $seasons = DB::table('seasons')
             ->join('movie', 'movie.num', '=', 'seasons.movie_id')
             ->leftJoin('episodes', 'episodes.season_id', '=', 'seasons.id')
             ->where('movie.status', 'Published')
@@ -487,17 +495,17 @@ class LiveHomeSectionService
             ->groupBy(
                 'seasons.id', 'seasons.movie_id', 'seasons.season_number', 'seasons.title',
                 'seasons.isPayPerView', 'movie.id', 'movie.title', 'movie.poster',
-                'movie.cover_img', 'movie.isPremium', 'movie.isPayPerView'
+                'movie.cover_img', 'movie.isPremium'
             )
             ->havingRaw('MAX(CASE WHEN seasons.isPayPerView = 1 OR episodes.isPayPerView = 1 THEN 1 ELSE 0 END) = 1')
             ->orderBy('movie.title')
             ->orderBy('seasons.season_number')
-            ->limit($limit)
+            ->limit(max(0, $limit - count($movies)))
             ->get([
                 'seasons.id as season_id', 'seasons.movie_id', 'seasons.season_number',
                 'seasons.title as season_title', 'seasons.isPayPerView as season_ppv',
                 'movie.id as parent_id', 'movie.title as series_title', 'movie.poster',
-                'movie.cover_img', 'movie.isPremium as premium', 'movie.isPayPerView as parent_ppv',
+                'movie.cover_img', 'movie.isPremium as premium',
                 DB::raw('SUM(CASE WHEN episodes.isPayPerView = 1 THEN 1 ELSE 0 END) as ppv_episode_count'),
             ])
             ->map(fn ($season): array => [
@@ -514,6 +522,8 @@ class LiveHomeSectionService
                 'isPayPerView' => (bool) $season->season_ppv,
                 'ppv_episode_count' => (int) $season->ppv_episode_count,
             ])->values()->all();
+
+        return array_merge($movies, $seasons);
     }
 
     private function movies($movies): array
