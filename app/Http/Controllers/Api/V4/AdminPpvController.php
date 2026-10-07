@@ -9,6 +9,7 @@ use App\Models\New\PaymentHistory;
 use App\Models\New\Season;
 use App\Models\PPVPaymentModel;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -85,10 +86,14 @@ class AdminPpvController extends Controller
             'total_amount' => round((float) (clone $new)->sum('amount') + (float) (clone $legacy)->sum('amount_paid'), 2),
             'currency_totals' => $this->currencyTotals($new, $legacy),
         ];
-        $new->select(['id', 'user_id', 'movie_id', 'amount', 'currency', 'device_type', 'payment_gateway', 'transaction_id', 'payment_date', 'created_at', 'expiry_date'])
-            ->selectRaw("'current' as source");
+        $page = max((int) $request->query('page', 1), 1);
+        $perPage = min(max((int) $request->query('per_page', 20), 1), 100);
+        $offset = ($page - 1) * $perPage;
+        $take = $offset + $perPage;
+        $currentRows = (clone $new)->select(['id', 'user_id', 'movie_id', 'amount', 'currency', 'device_type', 'payment_gateway', 'transaction_id', 'payment_date', 'created_at', 'expiry_date'])
+            ->selectRaw("'current' as source")->orderByDesc('created_at')->limit($take)->get();
         $legacyCurrency = DB::getSchemaBuilder()->hasColumn('ppv_payment', 'currency') ? 'currency' : DB::raw("'INR' as currency");
-        $legacy->select(['id', 'user_id', 'movie_id'])
+        $legacyRows = (clone $legacy)->select(['id', 'user_id', 'movie_id'])
             ->selectRaw('amount_paid as amount')
             ->addSelect($legacyCurrency)
             ->selectRaw('platform as device_type')
@@ -97,10 +102,13 @@ class AdminPpvController extends Controller
             ->selectRaw('purchase_date as payment_date')
             ->selectRaw('created_at')
             ->selectRaw('NULL as expiry_date')
-            ->selectRaw("'legacy' as source");
-        $union = $new->unionAll($legacy);
-        $purchases = DB::query()->fromSub($union, 'ppv_purchases')->orderByDesc('created_at')
-            ->paginate(min(max((int) $request->query('per_page', 20), 1), 100));
+            ->selectRaw("'legacy' as source")
+            ->orderByDesc('created_at')->limit($take)->get();
+        $rows = $currentRows->concat($legacyRows)->sortByDesc('created_at')->values()->slice($offset, $perPage)->values();
+        $purchases = new LengthAwarePaginator($rows, $summary['purchase_count'], $perPage, $page, [
+            'path' => $request->url(),
+            'query' => $request->query(),
+        ]);
 
         return response()->json(['status' => 'success', 'data' => $purchases, 'summary' => $summary]);
     }

@@ -7,22 +7,14 @@ import { api } from '../lib/api';
 
 const router = useRouter();
 const report = ref({ summary: {}, available: { movies: [], series: [] } });
-const purchases = ref({ data: [], current_page: 1, last_page: 1, total: 0, per_page: 20 });
-const purchaseSummary = ref({ purchase_count: 0, total_amount: 0, currency_totals: [] });
-const loading = ref(true); const purchaseLoading = ref(false); const error = ref(''); const purchaseError = ref('');
+const loading = ref(true); const error = ref('');
 const currencies = () => report.value.summary?.currency_totals || [];
 const money = (value, currency = 'INR') => new Intl.NumberFormat('en-IN', { style: 'currency', currency: currency || 'INR', maximumFractionDigits: 2 }).format(Number(value) || 0);
 const itemPath = (type, item) => `/ppv/${type}/${encodeURIComponent(item.id ?? item.num)}`;
 
-async function loadPurchases(page = 1) {
-    purchaseLoading.value = true; purchaseError.value = '';
-    try { const response = await api(`/admin/catalog/ppv/purchases?page=${page}&per_page=20`, { cache: 'no-store' }); purchases.value = response.data; purchaseSummary.value = response.summary || purchaseSummary.value; }
-    catch (reason) { purchaseError.value = reason.message || 'Could not load purchases.'; }
-    finally { purchaseLoading.value = false; }
-}
 async function load() {
     loading.value = true; error.value = '';
-    try { report.value = (await api('/admin/catalog/ppv', { cache: 'no-store' })).data || report.value; await loadPurchases(1); }
+    try { report.value = (await api('/admin/catalog/ppv', { cache: 'no-store' })).data || report.value; }
     catch (reason) { error.value = reason.message || 'Could not load PPV report.'; }
     finally { loading.value = false; }
 }
@@ -31,7 +23,7 @@ onMounted(load);
 
 <template>
     <div class="admin-page">
-        <PageHeader eyebrow="Content" title="PPV" description="Overall PPV performance, available titles and completed purchases.">
+        <PageHeader eyebrow="Content" title="PPV" description="Overall PPV performance and available titles.">
             <button class="admin-secondary" type="button" @click="load">Refresh</button>
         </PageHeader>
         <StatusPanel tone="error" :message="error" />
@@ -70,16 +62,6 @@ onMounted(load);
                 </div>
             </section>
 
-            <section class="admin-table-card ppv-purchases">
-                <header><div><b>PPV purchases</b><small>{{ purchaseSummary.purchase_count || 0 }} completed · All-time sum: {{ purchaseSummary.currency_totals?.length > 1 ? purchaseSummary.currency_totals.map(row => `${row.currency}: ${money(row.total_amount, row.currency)}`).join(' · ') : money(purchaseSummary.total_amount, purchaseSummary.currency_totals?.[0]?.currency || 'INR') }} · 20 per page</small></div><span>Page {{ purchases.current_page || 1 }} / {{ purchases.last_page || 1 }}</span></header>
-                <StatusPanel tone="error" :message="purchaseError" />
-                <div v-if="purchaseLoading" class="admin-loading">Loading this page…</div>
-                <div v-else-if="!purchases.data?.length" class="admin-empty">No completed PPV purchases yet.</div>
-                <div v-else class="admin-table-scroll"><table><thead><tr><th>Date</th><th>User</th><th>Content ID</th><th>Device / gateway</th><th>Amount</th></tr></thead><tbody>
-                    <tr v-for="purchase in purchases.data" :key="`${purchase.source || 'payment'}-${purchase.id}`"><td>{{ purchase.payment_date || purchase.created_at || '—' }}</td><td>{{ purchase.user_id || '—' }}</td><td>{{ purchase.movie_id || '—' }}</td><td>{{ [purchase.device_type, purchase.payment_gateway].filter(Boolean).join(' · ') || '—' }}</td><td>{{ money(purchase.amount, purchase.currency || 'INR') }}</td></tr>
-                </tbody></table></div>
-                <footer class="ppv-pagination"><span>{{ purchases.total || 0 }} records</span><div><button class="admin-secondary" :disabled="purchaseLoading || purchases.current_page <= 1" @click="loadPurchases(purchases.current_page - 1)">Previous</button><button class="admin-secondary" :disabled="purchaseLoading || purchases.current_page >= purchases.last_page" @click="loadPurchases(purchases.current_page + 1)">Next</button></div></footer>
-            </section>
         </template>
     </div>
 </template>
