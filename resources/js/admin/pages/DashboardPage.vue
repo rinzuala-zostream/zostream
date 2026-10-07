@@ -127,6 +127,15 @@ onMounted(load);
             role="img"
             :aria-label="`Daily subscriptions by plan for ${trend.month} compared with ${trend.previous_month}`"
           >
+            <line
+              v-for="day in chartDays"
+              :key="`grid-${day}`"
+              :x1="xForDay(day - 1)"
+              :x2="xForDay(day - 1)"
+              y1="40"
+              y2="270"
+              class="trend-day-grid"
+            />
             <g v-for="(plan, index) in trend.plans" :key="plan.plan_id">
               <polyline
                 v-if="plan.previous?.length > 1"
