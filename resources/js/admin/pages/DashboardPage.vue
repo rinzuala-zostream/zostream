@@ -115,10 +115,6 @@ onMounted(load);
             role="img"
             :aria-label="`Daily subscriptions by plan for ${trend.month} compared with ${trend.previous_month}`"
           >
-            <g v-for="tick in 5" :key="tick">
-              <line x1="90" :x2="chartWidth - 10" :y1="270 - ((tick - 1) / 4) * 230" :y2="270 - ((tick - 1) / 4) * 230" />
-              <text x="80" :y="274 - ((tick - 1) / 4) * 230" text-anchor="end">{{ Math.round(chartMax * (tick - 1) / 4) }}</text>
-            </g>
             <g v-for="(plan, index) in trend.plans" :key="plan.plan_id">
               <polyline
                 v-if="plan.previous?.length > 1"
@@ -140,7 +136,7 @@ onMounted(load);
                 :r="chartDays > 20 ? 2.5 : 4"
                 :fill="chartColors[index % chartColors.length]"
                 class="trend-point trend-point-previous"
-              />
+              ><title>{{ trend.previous_month }} · day {{ dayIndex + 1 }} · {{ plan.plan_name || 'Plan' }} · {{ plan.device_type || 'unknown device' }} · {{ number(value) }} subscriptions</title></circle>
               <circle
                 v-for="(value, dayIndex) in plan.current"
                 :key="`current-${dayIndex}`"
@@ -149,7 +145,7 @@ onMounted(load);
                 :r="chartDays > 20 ? 2.5 : 4"
                 :fill="chartColors[index % chartColors.length]"
                 class="trend-point"
-              />
+              ><title>{{ trend.month }} · day {{ dayIndex + 1 }} · {{ plan.plan_name || 'Plan' }} · {{ plan.device_type || 'unknown device' }} · {{ number(value) }} subscriptions</title></circle>
             </g>
             <line x1="90" :x2="chartWidth - 10" y1="270" y2="270" class="trend-axis" />
             <text
