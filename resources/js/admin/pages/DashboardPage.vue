@@ -66,6 +66,21 @@ function formatPercent(value) {
   return `${amount > 0 ? '+' : ''}${amount.toFixed(1)}%`;
 }
 
+function formatAxisDate(day) {
+  const daysInMonth = (value) => {
+    if (!value) return 31;
+    const [year, month] = value.split('-').map(Number);
+    return new Date(year, month, 0).getDate();
+  };
+  const month = day <= daysInMonth(trend.value.month)
+    ? trend.value.month
+    : trend.value.previous_month || trend.value.month;
+  if (!month) return String(day);
+  const [year, monthNumber] = month.split('-').map(Number);
+  return new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short' })
+    .format(new Date(year, monthNumber - 1, day, 12));
+}
+
 async function load() {
   loading.value = true;
   error.value = '';
@@ -175,22 +190,23 @@ onMounted(load);
               :x="xForDay(day - 1)"
               y="291"
               text-anchor="middle"
-            >{{ day }}</text>
+              class="trend-date-label"
+            >{{ formatAxisDate(day) }}</text>
             <text :x="(chartWidth + 90) / 2" y="315" text-anchor="middle" class="trend-axis-title">DAY</text>
           </svg>
         </div>
         <div v-else class="trend-empty">No subscription records found for the selected month or previous month.</div>
 
         <div v-if="trend.totals" class="trend-amount-summary">
-          <article><small>{{ trend.month }} total</small><strong>{{ money(trend.totals.month_amount) }}</strong></article>
+          <p class="trend-summary-line"><span>{{ trend.month }} total</span><strong>{{ money(trend.totals.month_amount) }}</strong></p>
           <template v-if="trend.previous_month">
-            <article><small>{{ trend.previous_month }} total</small><strong>{{ money(trend.totals.comparison_amount) }}</strong></article>
-            <article :class="trend.totals.difference_amount >= 0 ? 'trend-positive' : 'trend-negative'">
-              <small>Difference</small>
-              <strong>{{ signedMoney(trend.totals.difference_amount) }} <span>({{ formatPercent(trend.totals.difference_percent) }})</span></strong>
-            </article>
+            <p class="trend-summary-line"><span>{{ trend.previous_month }} total</span><strong>{{ money(trend.totals.comparison_amount) }}</strong></p>
+            <p class="trend-summary-line" :class="trend.totals.difference_amount >= 0 ? 'trend-positive' : 'trend-negative'"><span>Difference</span><strong>{{ signedMoney(trend.totals.difference_amount) }} ({{ formatPercent(trend.totals.difference_percent) }})</strong></p>
           </template>
         </div>
+        <p v-if="trend.previous_month" class="trend-difference-note">
+          Difference = selected month total − comparison month total. Percentage change is measured against the comparison month total.
+        </p>
 
         <div v-if="trend.plans?.length" class="trend-month-legend">
           <div><strong>{{ trend.month }} · solid</strong><span v-for="(plan, index) in trend.plans" :key="`current-${plan.plan_id}`"><i :style="{ backgroundColor: chartColors[index % chartColors.length] }"></i>{{ plan.plan_name || 'Plan' }} · {{ plan.device_type || 'unknown' }}</span></div>
