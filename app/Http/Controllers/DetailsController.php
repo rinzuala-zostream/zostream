@@ -136,7 +136,7 @@ class DetailsController extends Controller
 
             // Get movie or episode
             $movie = $type === 'movie'
-                ? MovieModel::where('id', $mainMovieId)->first()
+                ? MovieModel::with('trailerRecord')->where('id', $mainMovieId)->first()
                 : EpisodeModel::where('id', $episodeId)->first();
 
             if (!$movie) {
@@ -148,6 +148,11 @@ class DetailsController extends Controller
                         'episodeId' => $ids[1] ?? null,
                     ],
                 ], 404);
+            }
+
+            if ($type === 'movie') {
+                $movie['trailer'] = $movie->trailerRecord?->url;
+                $movie->unsetRelation('trailerRecord');
             }
 
             // Normalize booleans

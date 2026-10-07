@@ -45,7 +45,6 @@ class AdminMovieApiTest extends TestCase
             $table->text('url')->nullable();
             $table->text('dash_url')->nullable();
             $table->text('hls_url')->nullable();
-            $table->text('trailer')->nullable();
             $table->text('subtitle')->nullable();
             $table->date('release_on')->nullable();
             $table->string('status')->nullable();
@@ -53,6 +52,13 @@ class AdminMovieApiTest extends TestCase
             $table->boolean('isMizo')->default(true);
             $table->boolean('isAgeRestricted')->default(false);
             $table->boolean('isSeason')->default(false);
+        });
+
+        Schema::create('trailers', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedInteger('movie_id')->unique();
+            $table->text('url');
+            $table->timestamps();
         });
 
         DB::table('session_tokens')->insert([
@@ -218,6 +224,53 @@ class AdminMovieApiTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.links.url', $url)
             ->assertJsonPath('data.links.dash_url', $url);
+    }
+
+    public function test_admin_can_add_a_trailer_without_changing_other_movie_fields(): void
+    {
+        DB::table('movie')->insert([
+            'id' => 'trailer-movie',
+            'title' => 'Trailer Movie',
+            'description' => 'Keep this description unchanged.',
+            'status' => 'Draft',
+            'isSeason' => false,
+        ]);
+
+        $trailer = 'https://cdn.zostream.in/trailers/trailer-movie.m3u8';
+
+        $this->withHeaders($this->adminHeaders())
+            ->putJson('/api/v4/admin/catalog/items/trailer-movie/trailer', [
+                'trailer' => $trailer,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.data.movie_id', 'trailer-movie')
+            ->assertJsonPath('data.data.trailer', $trailer);
+
+        $this->assertDatabaseHas('movie', [
+            'id' => 'trailer-movie',
+            'title' => 'Trailer Movie',
+            'description' => 'Keep this description unchanged.',
+            'status' => 'Draft',
+        ]);
+        $this->assertDatabaseHas('trailers', [
+            'movie_id' => 1,
+            'url' => $trailer,
+        ]);
+
+        $this->withHeaders($this->adminHeaders())
+            ->getJson('/api/v4/admin/catalog/items/trailer-movie?type=movie')
+            ->assertOk()
+            ->assertJsonPath('data.trailer', $trailer);
+    }
+
+    public function test_admin_trailer_endpoint_rejects_an_unknown_movie(): void
+    {
+        $this->withHeaders($this->adminHeaders())
+            ->putJson('/api/v4/admin/catalog/items/missing-movie/trailer', [
+                'trailer' => 'https://cdn.zostream.in/trailers/missing.m3u8',
+            ])
+            ->assertNotFound();
     }
 
     private function adminHeaders(): array

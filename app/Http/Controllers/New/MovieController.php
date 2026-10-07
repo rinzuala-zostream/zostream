@@ -14,6 +14,7 @@ use App\Support\MpdDurationExtractor;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use App\Models\MovieModel;
+use App\Models\Trailer;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -169,7 +170,6 @@ class MovieController extends Controller
             $movieData['create_date'] = !empty($movieData['create_date'])
                 ? Carbon::parse($movieData['create_date'])->toDateString()
                 : now()->toDateString();
-            $movieData['trailer'] = $movieData['trailer'] ?? '';
             if (($movieData['status'] ?? 'Draft') === 'Published') {
                 $movieData['updated_at'] = now();
             }
@@ -313,6 +313,40 @@ class MovieController extends Controller
 
             return $this->errorResponse('Failed to update movie', $e);
         }
+    }
+
+    /**
+     * Update only the trailer linked to a main movie record.
+     */
+    public function updateTrailer(Request $request, string $id)
+    {
+        $validated = $request->validate([
+            'trailer' => ['required', 'string', 'url:http,https', 'max:4096'],
+        ]);
+
+        $movie = MovieModel::where('id', $id)->first();
+
+        if (!$movie) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Movie not found',
+            ], 404);
+        }
+
+        $trailer = Trailer::updateOrCreate(
+            ['movie_id' => $movie->num],
+            ['url' => trim($validated['trailer'])],
+        );
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Trailer saved successfully',
+            'data' => [
+                'movie_id' => $movie->id,
+                'title' => $movie->title,
+                'trailer' => $trailer->url,
+            ],
+        ]);
     }
 
     /**
@@ -464,7 +498,6 @@ class MovieController extends Controller
             'url' => 'nullable|string',
             'dash_url' => 'nullable|string',
             'hls_url' => 'nullable|string',
-            'trailer' => 'nullable|string',
             'subtitle' => 'nullable|string',
             'token' => 'nullable|string',
             'views' => 'nullable|integer|min:0',
@@ -629,7 +662,7 @@ class MovieController extends Controller
                 unset($data['amount']);
 
             } else {
-                $movie = MovieModel::where('id', $id)->first();
+                $movie = MovieModel::with('trailerRecord')->where('id', $id)->first();
 
                 if (!$movie) {
                     return response()->json([
@@ -639,6 +672,8 @@ class MovieController extends Controller
                 }
 
                 $data = $movie->toArray();
+                $data['trailer'] = $movie->trailerRecord?->url;
+                unset($data['trailer_record']);
             }
 
             return response()->json($data);
@@ -710,7 +745,7 @@ class MovieController extends Controller
                 ]);
             }
 
-            $movie = MovieModel::select(['num', 'title', 'url', 'dash_url', 'hls_url', 'trailer'])
+            $movie = MovieModel::select(['num', 'title', 'url', 'dash_url', 'hls_url'])
                 ->where('id', $id)
                 ->first();
 
@@ -1156,13 +1191,12 @@ class MovieController extends Controller
                 ]);
             }
 
-            $movie = MovieModel::select([
+            $movie = MovieModel::with('trailerRecord')->select([
                 'num',
                 'title',
                 'url',
                 'dash_url',
                 'hls_url',
-                'trailer',
                 'subtitle',
             ])
                 ->where('id', $id)
@@ -1179,7 +1213,7 @@ class MovieController extends Controller
                 'url' => $movie->url,
                 'dash_url' => $movie->dash_url,
                 'hls_url' => $movie->hls_url,
-                'trailer' => $movie->trailer,
+                'trailer' => $movie->trailerRecord?->url,
                 'subtitle' => $movie->subtitle,
             ])
                 ->filter(fn($value) => $value !== null && $value !== '')
@@ -1367,8 +1401,8 @@ class MovieController extends Controller
         // ✅ Single Movie by ID
         if ($id) {
             $query = $isEnableRequest
-                ? MovieModel::where('status', 'Published')->where('isEnable', 1)
-                : MovieModel::query();
+                ? MovieModel::with('trailerRecord')->where('status', 'Published')->where('isEnable', 1)
+                : MovieModel::with('trailerRecord');
 
             $query = $applyKidsFilter($query);
             if ($onlyMizoUser) {
@@ -1412,7 +1446,7 @@ class MovieController extends Controller
                 return response()->json(['status' => 'error', 'message' => 'Invalid category']);
             }
 
-            $query = MovieModel::query()
+            $query = MovieModel::with('trailerRecord')
                 ->where('isEnable', 1)
                 ->where('status', 'Published');
 
@@ -1432,8 +1466,8 @@ class MovieController extends Controller
                 $query->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', $ageRestriction));
                 $this->orderByMovieUpdate($query);
             } elseif ($column === 'trailer') {
-                $query->whereNotNull('trailer')
-                    ->whereRaw("TRIM(trailer) <> ''")
+                $query->whereHas('trailerRecord', fn ($trailerQuery) => $trailerQuery
+                    ->whereRaw("TRIM(url) <> ''"))
                     ->when(!$ageRestriction, fn($q) => $q->where('isAgeRestricted', $ageRestriction));
                 $fallbackOrder = 'num DESC';
             } elseif ($column === 'free') {
@@ -1485,7 +1519,7 @@ class MovieController extends Controller
         else {
             $categories = [
                 "Latest Update" => ["where" => "1", "order" => "create_date DESC"],
-                "Trailer" => ["where" => "trailer IS NOT NULL AND TRIM(trailer) <> ''", "order" => "num DESC"],
+                "Trailer" => ["where" => null, "order" => "num DESC"],
                 "New Release" => ["where" => "release_on IS NOT NULL", "order" => "release_on DESC"],
                 // "Most Watched" => ["where" => "1", "order" => "views DESC"],
                 "Pay Per View" => ["where" => "isPayPerView = 1", "order" => "num DESC"],
@@ -1515,7 +1549,7 @@ class MovieController extends Controller
             $watchList = collect();
 
             if (!empty($userId)) {
-                $watchListBuilder = MovieModel::query()
+                $watchListBuilder = MovieModel::with('trailerRecord')
                     ->join('wist_list', 'wist_list.movie_id', '=', 'movie.id')
                     ->where('wist_list.uid', $userId)
                     ->where('movie.isEnable', 1)
@@ -1550,8 +1584,16 @@ class MovieController extends Controller
                 $where = $clause['where'];
                 $order = $clause['order'];
 
-                $builder = MovieModel::whereRaw("isEnable = 1 AND $where")
+                $builder = MovieModel::with('trailerRecord')
+                    ->where('isEnable', 1)
                     ->where('status', 'Published');
+
+                if ($name === 'Trailer') {
+                    $builder->whereHas('trailerRecord', fn ($trailerQuery) => $trailerQuery
+                        ->whereRaw("TRIM(url) <> ''"));
+                } else {
+                    $builder->whereRaw($where);
+                }
 
                 if ($isKidsMode) {
                     $builder->where('isChildMode', 1);
@@ -1561,7 +1603,7 @@ class MovieController extends Controller
                 }
 
                 $builder = $builder->when(
-                    !$ageRestriction && strpos($where, 'isAgeRestricted') === false,
+                    !$ageRestriction && strpos((string) $where, 'isAgeRestricted') === false,
                     fn($q) => $q->where('isAgeRestricted', $ageRestriction)
                 );
 
@@ -1968,6 +2010,10 @@ class MovieController extends Controller
 
     private function transformMovie($movie)
     {
+        $movie->loadMissing('trailerRecord');
+        $movie->setAttribute('trailer', $movie->trailerRecord?->url);
+        $movie->unsetRelation('trailerRecord');
+
         foreach ([
             'isProtected',
             'isBollywood',

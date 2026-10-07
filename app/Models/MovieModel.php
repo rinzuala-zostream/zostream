@@ -70,7 +70,6 @@ class MovieModel extends Model
         'url',
         'dash_url',
         'hls_url',
-        'trailer',
         'views',
         'token',
         'status',
@@ -91,6 +90,11 @@ class MovieModel extends Model
     public function seasons()
     {
         return $this->hasMany(Season::class, 'movie_id', 'num');
+    }
+
+    public function trailerRecord()
+    {
+        return $this->hasOne(Trailer::class, 'movie_id', 'num');
     }
 
 }

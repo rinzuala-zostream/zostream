@@ -44,11 +44,16 @@ class HomeSeriesOrderingTest extends TestCase
             $table->date('release_on')->nullable();
             $table->unsignedInteger('views')->default(0);
             $table->string('genre')->nullable();
-            $table->string('trailer')->nullable();
             $table->string('status')->default('Published');
             foreach (['isEnable', 'isMizo', 'isSeason', 'isPayPerView', 'isKorean', 'isHollywood', 'isBollywood', 'isDocumentary', 'isPremium', 'isAgeRestricted', 'isChildMode'] as $column) {
                 $table->boolean($column)->default(false);
             }
+        });
+        Schema::create('trailers', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedInteger('movie_id')->unique();
+            $table->text('url');
+            $table->timestamps();
         });
         Schema::create('seasons', function (Blueprint $table) {
             $table->increments('num');
@@ -156,8 +161,10 @@ class HomeSeriesOrderingTest extends TestCase
 
     public function test_home_includes_only_movies_with_a_non_empty_trailer_in_trailer_section(): void
     {
-        DB::table('movie')->where('id', 'newer-series')->update(['trailer' => 'https://example.com/trailer.m3u8']);
-        DB::table('movie')->where('id', 'older-series')->update(['trailer' => '   ']);
+        DB::table('trailers')->insert([
+            ['movie_id' => 2, 'url' => 'https://example.com/trailer.m3u8', 'created_at' => now(), 'updated_at' => now()],
+            ['movie_id' => 1, 'url' => '   ', 'created_at' => now(), 'updated_at' => now()],
+        ]);
 
         $data = $this->controller()->getMovies(new Request())->getData(true);
 
@@ -168,7 +175,12 @@ class HomeSeriesOrderingTest extends TestCase
 
     public function test_trailer_category_supports_view_all_requests(): void
     {
-        DB::table('movie')->where('id', 'older-series')->update(['trailer' => 'https://example.com/older-trailer.m3u8']);
+        DB::table('trailers')->insert([
+            'movie_id' => 1,
+            'url' => 'https://example.com/older-trailer.m3u8',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
 
         $request = Request::create('/movies/home', 'GET', ['category' => 'trailer']);
         $data = $this->controller()->getMovies($request)->getData(true);

@@ -315,6 +315,7 @@ Route::prefix('v4')
                     Route::get('/catalog/items/search', [\App\Http\Controllers\New\MovieController::class, 'searchForAdmin']);
                     Route::post('/catalog/optimize-image', [\App\Http\Controllers\New\MovieController::class, 'optimizeImageUrl']);
                     Route::post('/catalog/items/{id}/optimize-image', [\App\Http\Controllers\New\MovieController::class, 'optimizeImage']);
+                    Route::put('/catalog/items/{id}/trailer', [\App\Http\Controllers\New\MovieController::class, 'updateTrailer']);
                     Route::get('/catalog/items/{id}', [\App\Http\Controllers\New\MovieController::class, 'getById']);
                     Route::put('/catalog/items/{id}', [\App\Http\Controllers\New\MovieController::class, 'update']);
                     Route::delete('/catalog/items/{id}', [\App\Http\Controllers\New\MovieController::class, 'destroy']);

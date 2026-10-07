@@ -308,6 +308,10 @@ class MovieController extends Controller
 
     private function transformMovie($movie)
     {
+        $movie->loadMissing('trailerRecord');
+        $movie->setAttribute('trailer', $movie->trailerRecord?->url);
+        $movie->unsetRelation('trailerRecord');
+
         foreach (['isProtected', 'isBollywood', 'isCompleted', 'isDocumentary', 'isDubbed', 'isEnable', 'isHollywood', 'isKorean', 'isMizo', 'isPayPerView', 'isPremium', 'isAgeRestricted', 'isSeason', 'isSubtitle'] as $key) {
             $movie->$key = (bool) $movie->$key;
         }
@@ -370,7 +374,6 @@ class MovieController extends Controller
                 'url' => 'nullable|string',
                 'dash_url' => 'nullable|string',
                 'hls_url' => 'nullable|string',
-                'trailer' => 'nullable|string',
                 'subtitle' => 'nullable|string',
                 'token' => 'nullable|string',
                 'views' => 'nullable|int',
@@ -413,8 +416,6 @@ class MovieController extends Controller
                 }
             }
 
-            // ✅ Ensure trailer is stored as empty string if null
-            $validated['trailer'] = $validated['trailer'] ?? '';
             $validated['updated_at'] = now();
 
             // ✅ Always create the movie
@@ -475,7 +476,6 @@ class MovieController extends Controller
                 'url' => 'nullable|string',
                 'dash_url' => 'nullable|string',
                 'hls_url' => 'nullable|string',
-                'trailer' => 'nullable|string',
                 'subtitle' => 'nullable|string',
                 'token' => 'nullable|string',
                 'views' => 'nullable|int',
@@ -516,11 +516,6 @@ class MovieController extends Controller
                 if ($token) {
                     $validated['token'] = $token;
                 }
-            }
-
-            // ✅ Ensure trailer is stored as empty string if null
-            if (!isset($validated['trailer']) || $validated['trailer'] === null) {
-                $validated['trailer'] = '';
             }
 
             $validated['updated_at'] = now();
