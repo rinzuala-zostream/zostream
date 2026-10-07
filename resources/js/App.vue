@@ -33,7 +33,7 @@ const legalSlug = policyPage ? currentPath.slice(1) : dynamicLegalSlug;
 const isLegalPage = Boolean(policyPage || dynamicLegalSlug);
 const livePolicyPage = ref(policyPage || { eyebrow: 'Legal', title: 'Legal page', date: '', intro: '', sections: [] });
 const isAdStatusPage = currentPath.startsWith('/advertise/status/') || currentPath.startsWith('/advertise/payment/');
-const pageTitles = { '/about-us': 'About us', '/account-delete': 'Delete account', '/account/stats': 'My ZoStream', '/account/stats/bridge': 'Signing in', '/contact-us': 'Contact us', '/download': 'Download', '/faq': 'FAQ', '/advertise': 'Advertise' };
+const pageTitles = { '/about-us': 'About us', '/account-delete': 'Delete account', '/account/stats': 'My Zo Stream', '/account/stats/bridge': 'Signing in', '/contact-us': 'Contact us', '/download': 'Download', '/faq': 'FAQ', '/advertise': 'Advertise' };
 let sectionObserver;
 let revealObserver;
 

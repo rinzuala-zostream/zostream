@@ -60,7 +60,11 @@ class WebStatsController extends Controller
         $devicePayload = $account->devices($accountRequest)->getData(true);
 
         return response()->json([
-            'stats' => $stats->dataForUser($userId),
+            'stats' => $stats->dataForUser(
+                $userId,
+                max(1, (int) $request->query('page', 1)),
+                min(20, max(1, (int) $request->query('per_page', 10)))
+            ),
             'watch_history' => $historyPayload['watch_history'] ?? [],
             'subscriptions' => $subscriptionPayload,
             'devices' => $devicePayload,
