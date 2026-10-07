@@ -8,6 +8,7 @@ import { api } from '../lib/api';
 const router = useRouter();
 const report = ref({ summary: {}, available: { movies: [], series: [] } });
 const purchases = ref({ data: [], current_page: 1, last_page: 1, total: 0, per_page: 20 });
+const purchaseSummary = ref({ purchase_count: 0, total_amount: 0, currency_totals: [] });
 const loading = ref(true); const purchaseLoading = ref(false); const error = ref(''); const purchaseError = ref('');
 const currencies = () => report.value.summary?.currency_totals || [];
 const money = (value, currency = 'INR') => new Intl.NumberFormat('en-IN', { style: 'currency', currency: currency || 'INR', maximumFractionDigits: 2 }).format(Number(value) || 0);
@@ -15,7 +16,7 @@ const itemPath = (type, item) => `/ppv/${type}/${encodeURIComponent(item.id ?? i
 
 async function loadPurchases(page = 1) {
     purchaseLoading.value = true; purchaseError.value = '';
-    try { purchases.value = (await api(`/admin/catalog/ppv/purchases?page=${page}&per_page=20`, { cache: 'no-store' })).data; }
+    try { const response = await api(`/admin/catalog/ppv/purchases?page=${page}&per_page=20`, { cache: 'no-store' }); purchases.value = response.data; purchaseSummary.value = response.summary || purchaseSummary.value; }
     catch (reason) { purchaseError.value = reason.message || 'Could not load purchases.'; }
     finally { purchaseLoading.value = false; }
 }
@@ -60,27 +61,22 @@ onMounted(load);
                 <div v-else class="ppv-parent-list">
                     <article v-for="parent in report.available.series" :key="parent.movie_id" class="ppv-parent">
                         <div class="ppv-parent-heading"><b>{{ parent.title || `Movie #${parent.movie_id}` }}</b><small>Parent movie · #{{ parent.movie_id }}</small></div>
-                        <div v-if="parent.ppv_seasons?.length" class="ppv-child-list">
-                            <RouterLink v-for="season in parent.ppv_seasons" :key="season.id || season.num" :to="itemPath('season', season)" class="ppv-child">
-                                <span><b>Season {{ season.season_number }} · {{ season.title || `Season ${season.season_number}` }}</b><small>{{ season.isPayPerView ? 'Full season PPV' : 'Includes PPV episodes' }}</small></span><span>{{ season.isPayPerView ? money(season.amount) : `${season.ppv_episode_count || 0} PPV episodes` }}</span><i>Details →</i>
-                            </RouterLink>
-                        </div>
-                        <div v-if="parent.ppv_episodes?.length" class="ppv-child-list">
-                            <RouterLink v-for="episode in parent.ppv_episodes" :key="episode.id || episode.num" :to="itemPath('episode', episode)" class="ppv-child">
-                                <span><b>{{ episode.season?.title || `Season ${episode.season?.season_number || ''}` }} · Episode {{ episode.episode_number }}</b><small>{{ episode.title || `Episode ${episode.episode_number}` }}</small></span><span>{{ money(episode.amount) }}</span><i>Details →</i>
-                            </RouterLink>
-                        </div>
+                        <RouterLink :to="`/ppv/parent/${parent.movie_id}`" class="ppv-parent-summary">
+                            <span><b>{{ parent.ppv_season_count || 0 }}</b><small>PPV seasons</small></span>
+                            <span><b>{{ parent.ppv_episode_count || 0 }}</b><small>PPV episodes</small></span>
+                            <i>View details →</i>
+                        </RouterLink>
                     </article>
                 </div>
             </section>
 
             <section class="admin-table-card ppv-purchases">
-                <header><div><b>PPV purchases</b><small>{{ purchases.total || 0 }} completed purchases · 20 per page</small></div><span>Page {{ purchases.current_page || 1 }} / {{ purchases.last_page || 1 }}</span></header>
+                <header><div><b>PPV purchases</b><small>{{ purchaseSummary.purchase_count || 0 }} completed · All-time sum: {{ purchaseSummary.currency_totals?.length > 1 ? purchaseSummary.currency_totals.map(row => `${row.currency}: ${money(row.total_amount, row.currency)}`).join(' · ') : money(purchaseSummary.total_amount, purchaseSummary.currency_totals?.[0]?.currency || 'INR') }} · 20 per page</small></div><span>Page {{ purchases.current_page || 1 }} / {{ purchases.last_page || 1 }}</span></header>
                 <StatusPanel tone="error" :message="purchaseError" />
                 <div v-if="purchaseLoading" class="admin-loading">Loading this page…</div>
                 <div v-else-if="!purchases.data?.length" class="admin-empty">No completed PPV purchases yet.</div>
                 <div v-else class="admin-table-scroll"><table><thead><tr><th>Date</th><th>User</th><th>Content ID</th><th>Device / gateway</th><th>Amount</th></tr></thead><tbody>
-                    <tr v-for="purchase in purchases.data" :key="purchase.id"><td>{{ purchase.payment_date || purchase.created_at || '—' }}</td><td>{{ purchase.user_id || '—' }}</td><td>{{ purchase.movie_id || '—' }}</td><td>{{ [purchase.device_type, purchase.payment_gateway].filter(Boolean).join(' · ') || '—' }}</td><td>{{ money(purchase.amount, purchase.currency || 'INR') }}</td></tr>
+                    <tr v-for="purchase in purchases.data" :key="`${purchase.source || 'payment'}-${purchase.id}`"><td>{{ purchase.payment_date || purchase.created_at || '—' }}</td><td>{{ purchase.user_id || '—' }}</td><td>{{ purchase.movie_id || '—' }}</td><td>{{ [purchase.device_type, purchase.payment_gateway].filter(Boolean).join(' · ') || '—' }}</td><td>{{ money(purchase.amount, purchase.currency || 'INR') }}</td></tr>
                 </tbody></table></div>
                 <footer class="ppv-pagination"><span>{{ purchases.total || 0 }} records</span><div><button class="admin-secondary" :disabled="purchaseLoading || purchases.current_page <= 1" @click="loadPurchases(purchases.current_page - 1)">Previous</button><button class="admin-secondary" :disabled="purchaseLoading || purchases.current_page >= purchases.last_page" @click="loadPurchases(purchases.current_page + 1)">Next</button></div></footer>
             </section>
@@ -89,5 +85,5 @@ onMounted(load);
 </template>
 
 <style scoped>
-.ppv-summary{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:0 0 15px}.ppv-summary article{min-width:0;padding:17px;border:1px solid var(--a-line);border-radius:14px;background:var(--a-panel)}.ppv-summary span{display:block;color:var(--a-muted);font-size:10px}.ppv-summary b{display:block;margin-top:10px;color:var(--a-cyan);font:750 20px 'Manrope',sans-serif}.ppv-summary small,.ppv-library td small{display:block;margin-top:6px;color:var(--a-muted);font-size:10px}.ppv-library{margin-bottom:14px}.ppv-library>header,.ppv-purchases>header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--a-line)}.ppv-library>header>div,.ppv-purchases>header>div{display:grid;gap:5px}.ppv-library>header small,.ppv-library>header>span,.ppv-purchases>header small,.ppv-purchases>header>span{color:var(--a-muted);font-size:10px}.ppv-clickable{cursor:pointer}.ppv-clickable:hover,.ppv-child:hover{background:color-mix(in srgb,var(--a-cyan) 7%,transparent)}.ppv-open{text-align:right;color:var(--a-cyan);font-weight:700}.ppv-parent-list{padding:8px 14px}.ppv-parent{padding:12px 0;border-bottom:1px solid var(--a-line)}.ppv-parent:last-child{border-bottom:0}.ppv-parent-heading{display:flex;align-items:baseline;justify-content:space-between;padding:4px 5px 10px}.ppv-parent-heading small{color:var(--a-muted);font-size:10px}.ppv-child-list{margin:0 0 4px 12px;border-left:1px solid var(--a-line)}.ppv-child{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:16px;padding:10px 12px;border-radius:9px;color:inherit;text-decoration:none}.ppv-child>span:first-child b,.ppv-child small{display:block}.ppv-child small,.ppv-child i{color:var(--a-muted);font-size:10px;font-style:normal}.ppv-child>span:nth-child(2){font-size:11px}.ppv-pagination{display:flex;align-items:center;justify-content:space-between;padding:12px 15px;border-top:1px solid var(--a-line);color:var(--a-muted);font-size:11px}.ppv-pagination>div{display:flex;gap:8px}.ppv-pagination button:disabled{opacity:.45;cursor:not-allowed}@media(max-width:1000px){.ppv-summary{grid-template-columns:repeat(3,minmax(0,1fr))}}@media(max-width:620px){.ppv-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.ppv-summary article:last-child{grid-column:1/-1}.ppv-child{grid-template-columns:minmax(0,1fr) auto;gap:8px}.ppv-child i{display:none}.ppv-parent-heading{display:grid;gap:4px}}
+.ppv-summary{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:0 0 15px}.ppv-summary article{min-width:0;padding:17px;border:1px solid var(--a-line);border-radius:14px;background:var(--a-panel)}.ppv-summary span{display:block;color:var(--a-muted);font-size:10px}.ppv-summary b{display:block;margin-top:10px;color:var(--a-cyan);font:750 20px 'Manrope',sans-serif}.ppv-summary small,.ppv-library td small{display:block;margin-top:6px;color:var(--a-muted);font-size:10px}.ppv-library{margin-bottom:14px}.ppv-library>header,.ppv-purchases>header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--a-line)}.ppv-library>header>div,.ppv-purchases>header>div{display:grid;gap:5px}.ppv-library>header small,.ppv-library>header>span,.ppv-purchases>header small,.ppv-purchases>header>span{color:var(--a-muted);font-size:10px}.ppv-clickable{cursor:pointer}.ppv-clickable:hover{background:color-mix(in srgb,var(--a-cyan) 7%,transparent)}.ppv-open{text-align:right;color:var(--a-cyan);font-weight:700}.ppv-parent-list{padding:8px 14px}.ppv-parent{padding:12px 0;border-bottom:1px solid var(--a-line)}.ppv-parent:last-child{border-bottom:0}.ppv-parent-heading{display:flex;align-items:baseline;justify-content:space-between;padding:4px 5px 10px}.ppv-parent-heading small{color:var(--a-muted);font-size:10px}.ppv-parent-summary{display:flex;align-items:center;gap:24px;margin-left:12px;padding:10px 14px;border-left:1px solid var(--a-line);border-radius:8px;color:inherit;text-decoration:none}.ppv-parent-summary:hover{background:color-mix(in srgb,var(--a-cyan) 7%,transparent)}.ppv-parent-summary>span{min-width:78px}.ppv-parent-summary>span b,.ppv-parent-summary>span small{display:block;margin:0}.ppv-parent-summary>span b{color:var(--a-cyan);font-size:15px}.ppv-parent-summary>i{margin-left:auto;color:var(--a-muted);font-size:10px;font-style:normal}.ppv-pagination{display:flex;align-items:center;justify-content:space-between;padding:12px 15px;border-top:1px solid var(--a-line);color:var(--a-muted);font-size:11px}.ppv-pagination>div{display:flex;gap:8px}.ppv-pagination button:disabled{opacity:.45;cursor:not-allowed}@media(max-width:1000px){.ppv-summary{grid-template-columns:repeat(3,minmax(0,1fr))}}@media(max-width:620px){.ppv-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.ppv-summary article:last-child{grid-column:1/-1}.ppv-parent-heading{display:grid;gap:4px}.ppv-parent-summary{gap:12px;margin-left:4px;padding-inline:8px}}
 </style>
