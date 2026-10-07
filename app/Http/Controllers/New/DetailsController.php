@@ -60,7 +60,7 @@ class DetailsController extends Controller
             'movie_id' => 'required|string',
             'device_id' => 'nullable|string',
             'device_type' => 'required|string',
-            'type' => 'required|string'
+            'type' => 'required|string|in:movie,episode'
         ]);
 
         $userId = $request->query('user_id');
@@ -68,13 +68,6 @@ class DetailsController extends Controller
         $deviceId = $request->query('device_id');
         $deviceType = $request->query('device_type');
         $type = strtolower($request->query('type', 'movie'));
-
-        if ($type !== 'movie') {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Episode details are not supported. Start episode playback through the stream endpoint.'
-            ], 422);
-        }
 
         $hasPlus = Str::contains($movieId, '_');
 
@@ -155,7 +148,9 @@ class DetailsController extends Controller
             $movie['views'] = (int) ($movie['views'] ?? 0);
             $movie['desc'] = $movie['desc'] ?? $movie['description'] ?? null;
 
-            if (!empty($movie['isPayPerView']) || !empty($movie['isPPV']) || $this->hasPpvFirstEpisode($movie['num'])) {
+            $isPpvEpisode = $type === 'episode'
+                && (!empty($movie['isPayPerView']) || !empty($movie['isPPV']) || !empty(data_get($movie, 'season.isPayPerView')));
+            if ($isPpvEpisode || !empty($movie['isPayPerView']) || !empty($movie['isPPV']) || ($type === 'movie' && $this->hasPpvFirstEpisode($movie['num']))) {
                 $movie['views'] = 0;
             }
         

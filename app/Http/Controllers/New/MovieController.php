@@ -647,7 +647,12 @@ class MovieController extends Controller
 
             if ($type === 'episode') {
                 $movie = Episode::with('season')
-                    ->where('id', $id)
+                    ->where(function ($query) use ($id): void {
+                        $query->where('id', $id);
+                        if (is_numeric($id)) {
+                            $query->orWhere('num', (int) $id);
+                        }
+                    })
                     ->first();
 
                 if (!$movie) {
