@@ -9,13 +9,26 @@ return new class extends Migration
 {
     public function up(): void
     {
+        // MySQL commits CREATE TABLE before attempting the foreign-key ALTER.
+        // A failed first run can therefore leave an empty table behind even
+        // though Laravel did not record the migration. Recover only when that
+        // partial table is empty so existing data is never discarded.
+        if (Schema::hasTable('trailers')) {
+            if (DB::table('trailers')->exists()) {
+                throw new RuntimeException('The unrecorded trailers table contains data; refusing to replace it.');
+            }
+
+            Schema::drop('trailers');
+        }
+
         Schema::create('trailers', function (Blueprint $table) {
             $table->id();
-            $table->unsignedInteger('movie_id')->unique();
+            // The legacy movie.num column is signed on production. Keep the
+            // same scalar type for joins, while the unique index enforces the
+            // one-trailer-per-movie relationship.
+            $table->integer('movie_id')->unique();
             $table->text('url');
             $table->timestamps();
-
-            $table->foreign('movie_id')->references('num')->on('movie')->cascadeOnDelete();
         });
 
         if (Schema::hasColumn('movie', 'trailer')) {

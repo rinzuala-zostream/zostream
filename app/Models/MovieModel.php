@@ -77,6 +77,13 @@ class MovieModel extends Model
         'updated_at',
     ];
 
+    protected static function booted(): void
+    {
+        static::deleting(function (MovieModel $movie): void {
+            $movie->trailerRecord()->delete();
+        });
+    }
+
     /**
      * The legacy movie table does not allow a NULL subtitle value. Laravel's
      * ConvertEmptyStringsToNull middleware turns an empty admin form field into

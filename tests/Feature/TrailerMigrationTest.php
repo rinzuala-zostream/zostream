@@ -51,6 +51,15 @@ class TrailerMigrationTest extends TestCase
             ['id' => 'without-trailer', 'title' => 'Without Trailer', 'trailer' => null],
         ]);
 
+        // Simulate the empty table left by MySQL when CREATE TABLE succeeds
+        // but its following foreign-key ALTER fails.
+        Schema::create('trailers', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedInteger('movie_id')->unique();
+            $table->text('url');
+            $table->timestamps();
+        });
+
         $migration = require database_path('migrations/2026_10_07_000001_create_trailers_table.php');
         $migration->up();
 
