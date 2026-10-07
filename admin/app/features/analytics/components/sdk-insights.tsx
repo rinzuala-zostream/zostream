@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { analyticsService, type AnalyticsFilters, type InsightsReport } from "../services/analytics-service";
 import { analyticsHref, ReportError } from "./report-explorer";
-import { analyticsPlatformLabel } from "../services/analytics-platform";
 
 const dimensions = [
   ["Playback", [
@@ -92,9 +91,8 @@ function valueFor(value: unknown, unit?: Metric[2]): string {
     : formatted;
 }
 
-function dimensionLabel(value: unknown, dimension: string): string {
+function dimensionLabel(value: unknown): string {
   if (value === null || value === undefined || value === "" || value === "null") return "Unknown / not sent";
-  if (dimension === "platform") return analyticsPlatformLabel(value);
   if (value === true || value === "true" || value === "1" || value === 1) return "Yes";
   if (value === false || value === "false" || value === "0" || value === 0) return "No";
   return String(value);
@@ -149,7 +147,7 @@ export async function SdkInsights({ filters, dimension: requestedDimension, metr
       </form>
       <div className="mt-5 space-y-2">
         {groups.length ? groups.map((row, index) => {
-          const label = dimensionLabel(row.dimension_label ?? row.dimension_value, dimension);
+          const label = dimensionLabel(row.dimension_label ?? row.dimension_value);
           const amount = Number(row[metric]) || 0;
           const href = dimension === "content_id" && row.dimension_value
             ? analyticsHref(filters, { tab: "sessions", content_id: String(row.dimension_value) })

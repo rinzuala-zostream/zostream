@@ -33,16 +33,23 @@ import {
   type AnalyticsTrendPoint,
 } from "@/app/features/analytics/services/analytics-service";
 import { cn } from "@/lib/utils";
-import {
-  ANALYTICS_PLATFORM_OPTIONS,
-  analyticsPlatformLabel,
-} from "@/app/features/analytics/services/analytics-platform";
 
 export const dynamic = "force-dynamic";
 
 type AnalyticsPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
+
+const PLATFORM_OPTIONS: Array<{
+  label: string;
+  value: AnalyticsPlatform | "all";
+}> = [
+  { label: "All platforms", value: "all" },
+  { label: "iOS", value: "ios" },
+  { label: "Apple TV", value: "tvos" },
+  { label: "Android", value: "android" },
+  { label: "TV", value: "tv" },
+];
 
 const platformColors = ["#22d3ee", "#6366f1", "#a855f7", "#f59e0b", "#10b981"];
 
@@ -265,7 +272,7 @@ function PlatformDonut({ items }: { items: AnalyticsPlatformStat[] }) {
             <div key={item.platform} className="flex items-center justify-between gap-3 rounded-xl bg-slate-950/[0.04] px-3 py-2 dark:bg-white/6">
               <span className="inline-flex items-center gap-2 text-xs font-semibold capitalize text-slate-700 dark:text-slate-200">
                 <i className="size-2.5 rounded-full" style={{ backgroundColor: platformColors[index % platformColors.length] }} />
-                {analyticsPlatformLabel(item.platform)}
+                {item.platform}
               </span>
               <span className="text-xs font-bold text-slate-950 dark:text-white">{formatPercent(percentage)}</span>
             </div>
@@ -402,7 +409,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
               <form key={JSON.stringify(filters) + tab} action="/analytics" className="grid gap-2 rounded-[1.35rem] border border-white/10 bg-white/7 p-3 backdrop-blur-xl sm:grid-cols-3 xl:grid-cols-7">
                 <input type="hidden" name="tab" value={tab} />{tab === "insights" && params.dimension ? <input type="hidden" name="dimension" value={params.dimension} /> : null}{tab === "insights" && params.metric ? <input type="hidden" name="metric" value={params.metric} /> : null}{tab === "sessions" && params.content_id ? <input type="hidden" name="content_id" value={params.content_id} /> : null}{tab === "sessions" && params.session_id ? <input type="hidden" name="session_id" value={params.session_id} /> : null}{tab === "errors" && params.error_mode === "events" ? <input type="hidden" name="error_mode" value="events" /> : null}<label><span className="mb-1.5 block text-[0.62rem] font-bold uppercase tracking-[0.16em] text-slate-400">From</span><input type="date" name="from" defaultValue={from} required max={to} className="h-10 w-full rounded-xl border border-white/10 bg-slate-950/60 px-3 text-xs font-semibold text-white outline-none focus:border-cyan-300/60" /></label>
                 <label><span className="mb-1.5 block text-[0.62rem] font-bold uppercase tracking-[0.16em] text-slate-400">To</span><input type="date" name="to" defaultValue={to} required min={from} className="h-10 w-full rounded-xl border border-white/10 bg-slate-950/60 px-3 text-xs font-semibold text-white outline-none focus:border-cyan-300/60" /></label>
-                <label><span className="mb-1.5 block text-[0.62rem] font-bold uppercase tracking-[0.16em] text-slate-400">Platform</span><select name="platform" defaultValue={platform ?? ""} className="h-10 w-full rounded-xl border border-white/10 bg-slate-950/60 px-3 text-xs font-semibold text-white outline-none focus:border-cyan-300/60">{ANALYTICS_PLATFORM_OPTIONS.map((option) => <option key={option.value} value={option.value === "all" ? "" : option.value}>{option.label}</option>)}</select></label>
+                <label><span className="mb-1.5 block text-[0.62rem] font-bold uppercase tracking-[0.16em] text-slate-400">Platform</span><select name="platform" defaultValue={platform ?? ""} className="h-10 w-full rounded-xl border border-white/10 bg-slate-950/60 px-3 text-xs font-semibold text-white outline-none focus:border-cyan-300/60">{PLATFORM_OPTIONS.map((option) => <option key={option.value} value={option.value === "all" ? "" : option.value}>{option.label}</option>)}</select></label>
                 <label className="text-xs text-slate-300">Content type<select name="content_type" defaultValue={filters.content_type ?? ""} className="mt-1.5 h-10 w-full rounded-xl border border-white/10 bg-slate-950 px-3 text-white"><option value="">All content</option><option value="movie">Movies</option><option value="episode">Episodes</option><option value="live">Live</option></select></label>
                 <label className="text-xs text-slate-300">App version<input name="app_version" maxLength={64} defaultValue={filters.app_version} placeholder="All versions" className="mt-1.5 h-10 w-full rounded-xl border border-white/10 bg-slate-950 px-3 text-white" /></label>
                 <label className="text-xs text-slate-300">User ID<input name="user_id" maxLength={128} defaultValue={filters.user_id} placeholder="All users" className="mt-1.5 h-10 w-full rounded-xl border border-white/10 bg-slate-950 px-3 text-white" /></label>
@@ -440,7 +447,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
 
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.7fr)]">
             <Panel eyebrow="Content performance" title="Most watched titles" caption="Top 10 by valid views (10+ seconds), then watch time."><TopContentTable items={topContent} filters={filters} /></Panel>
-            <Panel eyebrow="Device analytics" title="Sessions by platform" caption="iOS, Android, Apple TV, Samsung Tizen and LG webOS distribution."><PlatformDonut items={platforms} /></Panel>
+            <Panel eyebrow="Device analytics" title="Sessions by platform" caption="iOS, Android and TV distribution."><PlatformDonut items={platforms} /></Panel>
           </div>
 
           <div className="grid gap-4 xl:grid-cols-[minmax(320px,0.75fr)_minmax(0,1.4fr)]">
@@ -451,7 +458,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
                   { label: "App sessions", value: formatNumber(overview.app_sessions), icon: MonitorSmartphone, color: "text-cyan-600 dark:text-cyan-300" },
                   { label: "Rebuffer ratio", value: formatPercent((overview.rebuffer_ratio ?? 0) * 100), icon: Activity, color: "text-violet-600 dark:text-violet-300" },
                   { label: "Playback success", value: overview.playback_starts ? formatPercent(Math.max(0, 100 - (overview.playback_error_rate ?? 0))) : "—", icon: RadioTower, color: "text-emerald-600 dark:text-emerald-300" },
-                  { label: "Platform focus", value: platform ? analyticsPlatformLabel(platform) : "All", icon: Gauge, color: "text-amber-600 dark:text-amber-300" },
+                  { label: "Platform focus", value: platform ? platform.toUpperCase() : "ALL", icon: Gauge, color: "text-amber-600 dark:text-amber-300" },
                 ].map(({ label, value, icon: Icon, color }) => (
                   <article key={label} className="rounded-[1.2rem] border border-slate-200/80 bg-slate-950/[0.025] p-4 dark:border-white/10 dark:bg-white/[0.03]">
                     <Icon className={cn("size-5", color)} />
