@@ -204,7 +204,8 @@ public final class ZoAnalytics {
                       let context = self.contextProvider?() else { return }
                 await client.updatePresence(.foreground, context: context, credentials: credentials)
                 let jitter = Double.random(in: -10...10)
-                try? await Task.sleep(for: .seconds(max(30, baseInterval + jitter)))
+                let sleepNanoseconds = UInt64(max(30, baseInterval + jitter) * 1_000_000_000)
+                try? await Task.sleep(nanoseconds: sleepNanoseconds)
             }
         }
     }
