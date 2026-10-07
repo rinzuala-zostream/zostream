@@ -27,6 +27,7 @@ class DashboardController extends Controller
                 'date' => 'nullable|date_format:Y-m-d',
                 'month' => 'nullable|date_format:Y-m',
                 'chart_month' => 'nullable|date_format:Y-m',
+                'chart_device_type' => ['nullable', 'string', Rule::in(['mobile', 'browser', 'tv'])],
                 'year' => 'nullable|integer|min:2000|max:2100',
                 'start_date' => 'nullable|date_format:Y-m-d',
                 'end_date' => 'nullable|date_format:Y-m-d|after_or_equal:start_date',
@@ -37,6 +38,7 @@ class DashboardController extends Controller
             [$rangeStart, $rangeEnd, $period] = $this->resolveRange($validated);
             $deviceType = $validated['device_type'] ?? null;
             $dateField = $validated['date_field'] ?? 'created_at';
+            $chartDeviceType = $validated['chart_device_type'] ?? null;
             $chartMonth = isset($validated['chart_month'])
                 ? Carbon::createFromFormat('Y-m', $validated['chart_month'])
                 : now();
@@ -48,8 +50,8 @@ class DashboardController extends Controller
                     $previousChartStart->copy()->startOfDay(),
                     $chartStart->copy()->endOfMonth()->endOfDay(),
                 ])
-                ->when($deviceType, function ($query) use ($deviceType) {
-                    $query->where('plans.device_type', $deviceType);
+                ->when($chartDeviceType, function ($query) use ($chartDeviceType) {
+                    $query->where('plans.device_type', $chartDeviceType);
                 })
                 ->selectRaw("DATE(subscriptions.{$dateField}) as subscription_date")
                 ->addSelect('subscriptions.plan_id', 'plans.name as plan_name', 'plans.device_type')

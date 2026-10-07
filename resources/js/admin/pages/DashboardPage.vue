@@ -1,10 +1,197 @@
 <script setup>
-import { computed,onMounted,reactive,ref } from 'vue';import PageHeader from '../components/PageHeader.vue';import StatusPanel from '../components/StatusPanel.vue';import { api,queryString } from '../lib/api';
-const loading=ref(true),error=ref(''),data=ref({}),filters=reactive({period:'monthly',device_type:'',date_field:'created_at',chart_month:new Date().toISOString().slice(0,7)});const overview=computed(()=>data.value.overview||{}),content=computed(()=>data.value.content||{}),trend=computed(()=>data.value.subscription_trend||{});
-const cards=computed(()=>[['Active users',overview.value.total_active_users,'Live customer accounts'],['Subscribers',overview.value.total_users_with_active_subscription,'Users with active access'],['Subscriptions',overview.value.total_active_subscriptions,'Across every device type'],['Movies',overview.value.total_movies??content.value.total_movies,'Published catalog titles'],['Seasons',overview.value.total_seasons??content.value.total_seasons,'Series collections'],['Episodes',overview.value.total_episodes??content.value.total_episodes,'Available episodes']]);
-const number=(v)=>new Intl.NumberFormat('en-IN').format(Number(v||0)),money=(v)=>new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',maximumFractionDigits:0}).format(Number(v||0));
-const chartColors=['#14b8a6','#f97316','#8b5cf6','#0ea5e9','#e11d48','#84cc16','#d946ef','#eab308'];const chartDays=computed(()=>Math.max(trend.value.days||31,trend.value.previous_days||31)),chartMax=computed(()=>Math.max(1,...(trend.value.plans||[]).flatMap(p=>[...(p.current||[]),...(p.previous||[])])));
-function linePoints(values){return (values||[]).map((v,i)=>`${42+i/Math.max(chartDays.value-1,1)*760},${270-v/chartMax.value*230}`).join(' ')}
-async function load(){loading.value=true;error.value='';try{const r=await api(`/admin/dashboard${queryString(filters)}`);const legacy=r?.data||r;data.value=legacy?.data||legacy||{}}catch(e){error.value=e.message}finally{loading.value=false}}onMounted(load);
+import { computed, onMounted, reactive, ref } from 'vue';
+import PageHeader from '../components/PageHeader.vue';
+import StatusPanel from '../components/StatusPanel.vue';
+import { api, queryString } from '../lib/api';
+
+const loading = ref(true);
+const error = ref('');
+const data = ref({});
+const filters = reactive({
+  period: 'monthly',
+  device_type: '',
+  date_field: 'created_at',
+  chart_month: new Date().toISOString().slice(0, 7),
+  chart_device_type: '',
+});
+
+const overview = computed(() => data.value.overview || {});
+const content = computed(() => data.value.content || {});
+const trend = computed(() => data.value.subscription_trend || {});
+const cards = computed(() => [
+  ['Active users', overview.value.total_active_users, 'Live customer accounts'],
+  ['Subscribers', overview.value.total_users_with_active_subscription, 'Users with active access'],
+  ['Subscriptions', overview.value.total_active_subscriptions, 'Across every device type'],
+  ['Movies', overview.value.total_movies ?? content.value.total_movies, 'Published catalog titles'],
+  ['Seasons', overview.value.total_seasons ?? content.value.total_seasons, 'Series collections'],
+  ['Episodes', overview.value.total_episodes ?? content.value.total_episodes, 'Available episodes'],
+]);
+
+const chartColors = ['#14b8a6', '#f97316', '#8b5cf6', '#0ea5e9', '#e11d48', '#84cc16', '#d946ef', '#eab308'];
+const chartDays = computed(() => Math.max(trend.value.days || 31, trend.value.previous_days || 31));
+const chartWidth = computed(() => 170 + chartDays.value * 44);
+const chartHeight = computed(() => 40 + (trend.value.plans?.length || 1) * 58 + 62);
+const number = (value) => new Intl.NumberFormat('en-IN').format(Number(value || 0));
+const money = (value) => new Intl.NumberFormat('en-IN', {
+  style: 'currency',
+  currency: 'INR',
+  maximumFractionDigits: 0,
+}).format(Number(value || 0));
+
+function planMax(plan) {
+  return Math.max(1, ...(plan.current || []), ...(plan.previous || []));
+}
+
+function xForDay(index) {
+  return 158 + index * 44;
+}
+
+function yForValue(plan, planIndex, value) {
+  const rowTop = 20 + planIndex * 58;
+  const rowHeight = 42;
+  return rowTop + rowHeight - 4 - (Number(value || 0) / planMax(plan)) * (rowHeight - 12);
+}
+
+function linePoints(plan, planIndex, values) {
+  return (values || [])
+    .map((value, index) => `${xForDay(index)},${yForValue(plan, planIndex, value)}`)
+    .join(' ');
+}
+
+function displayPlanName(plan) {
+  const name = plan.plan_name || 'Plan';
+  return `${name.length > 18 ? `${name.slice(0, 17)}…` : name} · ${plan.device_type || 'unknown'}`;
+}
+
+async function load() {
+  loading.value = true;
+  error.value = '';
+  try {
+    const response = await api(`/admin/dashboard${queryString(filters)}`);
+    const legacy = response?.data || response;
+    data.value = legacy?.data || legacy || {};
+  } catch (reason) {
+    error.value = reason.message;
+  } finally {
+    loading.value = false;
+  }
+}
+
+onMounted(load);
 </script>
-<template><div class="admin-page"><PageHeader eyebrow="Control room" title="Dashboard" description="A live view of Zo Stream's audience, revenue and content library."><button class="admin-secondary" @click="load">Refresh</button></PageHeader><section class="admin-filter-bar"><label>Period<select v-model="filters.period" @change="load"><option>daily</option><option>monthly</option><option>yearly</option></select></label><label>Device<select v-model="filters.device_type" @change="load"><option value="">All devices</option><option>mobile</option><option>browser</option><option>tv</option></select></label><label>Date field<select v-model="filters.date_field" @change="load"><option value="created_at">Created</option><option value="start_at">Start</option><option value="end_at">End</option></select></label></section><StatusPanel tone="error" :message="error"/><div v-if="loading" class="admin-loading">Loading dashboard…</div><template v-else><section class="admin-stat-grid"><article v-for="(card,i) in cards" :key="card[0]" :style="`--card-index:${i}`"><p>{{card[0]}}</p><strong>{{number(card[1])}}</strong><span>{{card[2]}}</span></article></section><section class="admin-panel admin-subscription-trend"><header><div><p>SUBSCRIPTION ACTIVITY</p><h2>Daily subscriptions by plan</h2><small>Solid lines: selected month · Dashed lines: previous month</small></div><label>Compare month<input v-model="filters.chart_month" type="month" @change="load"></label></header><div v-if="trend.plans?.length" class="trend-chart-wrap"><svg viewBox="0 0 820 310" role="img" :aria-label="`Daily subscriptions for ${trend.month} compared with ${trend.previous_month}`"><g v-for="n in 5" :key="n"><line x1="42" x2="802" :y1="40+(n-1)*57.5" :y2="40+(n-1)*57.5"/><text x="5" :y="44+(n-1)*57.5">{{Math.round(chartMax*(5-n)/4)}}</text></g><text v-for="day in [1,5,10,15,20,25,30].filter(d=>d<=chartDays)" :key="day" :x="42+(day-1)/Math.max(chartDays-1,1)*760" y="299" text-anchor="middle">{{day}}</text><g v-for="(plan,i) in trend.plans" :key="plan.plan_id"><polyline v-if="plan.previous?.length>1" :points="linePoints(plan.previous)" :stroke="chartColors[i%chartColors.length]" class="trend-previous"/><polyline v-if="plan.current?.length>1" :points="linePoints(plan.current)" :stroke="chartColors[i%chartColors.length]" class="trend-current"/></g></svg></div><div v-else class="trend-empty">No subscription records found for the selected month or previous month.</div><div v-if="trend.plans?.length" class="trend-legend"><span v-for="(plan,i) in trend.plans" :key="plan.plan_id"><i :style="{background:chartColors[i%chartColors.length]}"></i>{{plan.plan_name||'Plan'}}</span></div><p v-if="trend.plans?.length" class="trend-month-legend"><span>{{trend.month}} — solid</span><span>{{trend.previous_month}} — dashed</span></p></section><section class="admin-dashboard-grid"><article class="admin-panel"><header><div><p>SUBSCRIPTION MIX</p><h2>Performance by plan</h2></div><strong>{{money(data.plan_amount_summary?.total_amount)}}</strong></header><div class="admin-plan-list"><div v-for="plan in data.active_subscriptions_by_plan||[]" :key="plan.plan_id"><span><b>{{plan.plan_name||'Unnamed plan'}}</b><small>{{plan.device_type}} · {{plan.duration_days}} days</small></span><i><b>{{number(plan.total_active_subscriptions)}}</b><small>{{money(plan.total_amount)}}</small></i></div></div></article><article class="admin-panel"><header><div><p>DEVICE REACH</p><h2>Active subscriptions</h2></div></header><div class="admin-device-list"><div v-for="d in data.active_subscriptions_by_device||[]" :key="d.device_type"><span>{{d.device_type}}</span><strong>{{number(d.total_active_subscriptions)}}</strong><small>{{money(d.total_amount)}}</small></div></div></article></section></template></div></template>
+
+<template>
+  <div class="admin-page">
+    <PageHeader eyebrow="Control room" title="Dashboard" description="A live view of Zo Stream's audience, revenue and content library.">
+      <button class="admin-secondary" @click="load">Refresh</button>
+    </PageHeader>
+
+    <section class="admin-filter-bar">
+      <label>Period<select v-model="filters.period" @change="load"><option>daily</option><option>monthly</option><option>yearly</option></select></label>
+      <label>Device<select v-model="filters.device_type" @change="load"><option value="">All devices</option><option>mobile</option><option>browser</option><option>tv</option></select></label>
+      <label>Date field<select v-model="filters.date_field" @change="load"><option value="created_at">Created</option><option value="start_at">Start</option><option value="end_at">End</option></select></label>
+    </section>
+
+    <StatusPanel tone="error" :message="error" />
+    <div v-if="loading" class="admin-loading">Loading dashboard…</div>
+
+    <template v-else>
+      <section class="admin-stat-grid">
+        <article v-for="(card, index) in cards" :key="card[0]" :style="`--card-index:${index}`">
+          <p>{{ card[0] }}</p><strong>{{ number(card[1]) }}</strong><span>{{ card[2] }}</span>
+        </article>
+      </section>
+
+      <section class="admin-panel admin-subscription-trend">
+        <header>
+          <div>
+            <p>SUBSCRIPTION ACTIVITY</p>
+            <h2>Daily subscriptions by plan</h2>
+            <small>Solid lines: selected month · Dashed lines: previous month</small>
+          </div>
+          <label>Compare month<input v-model="filters.chart_month" type="month" @change="load"></label>
+          <label>Device type<select v-model="filters.chart_device_type" @change="load"><option value="">All devices</option><option value="mobile">Mobile</option><option value="browser">Browser</option><option value="tv">TV</option></select></label>
+        </header>
+
+        <div v-if="trend.plans?.length" class="trend-chart-wrap">
+          <svg
+            :viewBox="`0 0 ${chartWidth} ${chartHeight}`"
+            :style="{ width: `${chartWidth}px`, height: `${chartHeight}px` }"
+            role="img"
+            :aria-label="`Daily subscriptions by plan for ${trend.month} compared with ${trend.previous_month}`"
+          >
+            <text x="4" y="14" class="trend-axis-title">PLAN</text>
+            <g v-for="(plan, index) in trend.plans" :key="plan.plan_id">
+              <line x1="150" :x2="chartWidth - 10" :y1="62 + index * 58" :y2="62 + index * 58" />
+              <text x="4" :y="50 + index * 58">{{ displayPlanName(plan) }}</text>
+              <polyline
+                v-if="plan.previous?.length > 1"
+                :points="linePoints(plan, index, plan.previous)"
+                :stroke="chartColors[index % chartColors.length]"
+                class="trend-previous"
+              />
+              <polyline
+                v-if="plan.current?.length > 1"
+                :points="linePoints(plan, index, plan.current)"
+                :stroke="chartColors[index % chartColors.length]"
+                class="trend-current"
+              />
+              <circle
+                v-for="(value, dayIndex) in plan.previous"
+                :key="`previous-${dayIndex}`"
+                :cx="xForDay(dayIndex)"
+                :cy="yForValue(plan, index, value)"
+                :r="chartDays > 20 ? 2.5 : 4"
+                :fill="chartColors[index % chartColors.length]"
+                class="trend-point trend-point-previous"
+              />
+              <circle
+                v-for="(value, dayIndex) in plan.current"
+                :key="`current-${dayIndex}`"
+                :cx="xForDay(dayIndex)"
+                :cy="yForValue(plan, index, value)"
+                :r="chartDays > 20 ? 2.5 : 4"
+                :fill="chartColors[index % chartColors.length]"
+                class="trend-point"
+              />
+            </g>
+            <line x1="150" :x2="chartWidth - 10" :y1="chartHeight - 42" :y2="chartHeight - 42" class="trend-axis" />
+            <text
+              v-for="day in chartDays"
+              :key="day"
+              :x="xForDay(day - 1)"
+              :y="chartHeight - 24"
+              text-anchor="middle"
+            >{{ day }}</text>
+            <text :x="(chartWidth + 150) / 2" :y="chartHeight - 4" text-anchor="middle" class="trend-axis-title">DAY</text>
+          </svg>
+        </div>
+        <div v-else class="trend-empty">No subscription records found for the selected month or previous month.</div>
+
+        <p v-if="trend.plans?.length" class="trend-month-legend">
+          <span>{{ trend.month }} — solid</span><span>{{ trend.previous_month }} — dashed</span>
+        </p>
+      </section>
+
+      <section class="admin-dashboard-grid">
+        <article class="admin-panel">
+          <header><div><p>SUBSCRIPTION MIX</p><h2>Performance by plan</h2></div><strong>{{ money(data.plan_amount_summary?.total_amount) }}</strong></header>
+          <div class="admin-plan-list">
+            <div v-for="plan in data.active_subscriptions_by_plan || []" :key="plan.plan_id">
+              <span><b>{{ plan.plan_name || 'Unnamed plan' }}</b><small>{{ plan.device_type }} · {{ plan.duration_days }} days</small></span>
+              <i><b>{{ number(plan.total_active_subscriptions) }}</b><small>{{ money(plan.total_amount) }}</small></i>
+            </div>
+          </div>
+        </article>
+        <article class="admin-panel">
+          <header><div><p>DEVICE REACH</p><h2>Active subscriptions</h2></div></header>
+          <div class="admin-device-list">
+            <div v-for="device in data.active_subscriptions_by_device || []" :key="device.device_type">
+              <span>{{ device.device_type }}</span><strong>{{ number(device.total_active_subscriptions) }}</strong><small>{{ money(device.total_amount) }}</small>
+            </div>
+          </div>
+        </article>
+      </section>
+    </template>
+  </div>
+</template>
