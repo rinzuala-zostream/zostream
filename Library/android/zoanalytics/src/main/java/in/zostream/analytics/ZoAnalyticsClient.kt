@@ -301,6 +301,7 @@ class ZoAnalyticsClient @JvmOverloads constructor(
         credentials: AnalyticsCredentials,
         platform: String,
     ) {
+        if (!collectionEnabled) throw AnalyticsCollectionDisabledException()
         val bytes = body.toString().toByteArray(Charsets.UTF_8)
         val payloadLimit = if (path.endsWith("/batch")) 262_144 else 65_536
         if (bytes.size > payloadLimit) throw AnalyticsHttpException(413, false)
@@ -336,6 +337,7 @@ class ZoAnalyticsClient @JvmOverloads constructor(
         credentials: AnalyticsCredentials,
         platform: String,
     ): JSONObject {
+        if (!collectionEnabled) throw AnalyticsCollectionDisabledException()
         val connection = URL(configuration.endpoint(path)).openConnection() as HttpURLConnection
         try {
             connection.requestMethod = "GET"

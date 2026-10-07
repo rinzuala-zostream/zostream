@@ -18,6 +18,7 @@ public final class ZoAnalytics {
     private var recordedOpen = false
     private var enteredBackground = false
     private var observers: [NSObjectProtocol] = []
+    private var collectionUpdateTask: Task<Void, Never>?
 
     private init() {}
 
@@ -54,10 +55,13 @@ public final class ZoAnalytics {
     public func collectionStateDidChange() {
         guard let client else { return }
         let enabled = isCollectionEnabled
-        Task {
+        let previousUpdate = collectionUpdateTask
+        collectionUpdateTask = Task {
+            await previousUpdate?.value
             await client.setCollectionEnabled(enabled)
             guard enabled else { return }
             await MainActor.run {
+                guard self.client === client, self.isCollectionEnabled else { return }
                 self.recordOpenIfPossible()
                 self.flush()
             }
@@ -105,6 +109,7 @@ public final class ZoAnalytics {
         observers.forEach(NotificationCenter.default.removeObserver)
         observers.removeAll()
         client = nil
+        collectionUpdateTask = nil
         credentialsProvider = nil
         contextProvider = nil
         collectionEnabledProvider = nil

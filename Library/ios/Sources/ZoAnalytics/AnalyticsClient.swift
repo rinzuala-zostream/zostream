@@ -350,6 +350,7 @@ public actor ZoAnalyticsClient {
         credentials: AnalyticsCredentials,
         platform: String
     ) async throws {
+        guard collectionEnabled else { throw ZoAnalyticsError.collectionDisabled }
         var request = URLRequest(url: configuration.endpoint(path))
         request.httpMethod = method
         request.timeoutInterval = configuration.requestTimeout

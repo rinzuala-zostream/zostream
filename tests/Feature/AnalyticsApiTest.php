@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Http\Controllers\Api\V4\AnalyticsIngestionController;
 use App\Http\Controllers\Api\V4\AnalyticsReportController;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
@@ -23,6 +24,15 @@ class AnalyticsApiTest extends TestCase
         ]]);
         DB::purge('analytics');
         (require database_path('migrations/2026_10_06_000001_create_analytics_tables.php'))->up();
+        app()->instance(AnalyticsIngestionController::class, new class extends AnalyticsIngestionController {
+            protected function analyticsEnabled(): bool { return true; }
+        });
+        $pdo = DB::connection('analytics')->getPdo();
+        $pdo->sqliteCreateFunction('JSON_UNQUOTE', fn ($value) => $value);
+        $pdo->sqliteCreateFunction('CONVERT_TZ', fn ($value, $from, $to) =>
+            CarbonImmutable::parse($value, $from)->setTimezone($to)->format('Y-m-d H:i:s'));
+        $pdo->sqliteCreateFunction('JSON_CONTAINS', fn ($value, $needle) =>
+            in_array((int) $needle, json_decode((string) $value, true) ?: [], true) ? 1 : 0);
     }
 
     protected function tearDown(): void
@@ -53,6 +63,22 @@ class AnalyticsApiTest extends TestCase
             2,
             DB::connection('analytics')->table('playback_sessions')->value('revision')
         );
+    }
+
+    public function test_playback_session_cannot_be_revised_by_another_device(): void
+    {
+        $controller = app(AnalyticsIngestionController::class);
+        $sessionId = '019b1234-7e58-7000-a123-456789abcdef';
+        $controller->upsertPlayback($this->analyticsRequest($this->playbackPayload(1)), $sessionId);
+
+        $request = $this->analyticsRequest($this->playbackPayload(2));
+        $request->merge(['auth_device_id' => 'device-2']);
+        $request->headers->set('Device-Token', 'device-2');
+        $response = $controller->upsertPlayback($request, $sessionId);
+
+        $this->assertFalse($response->getData(true)['data']['stored']);
+        $this->assertSame(1, DB::connection('analytics')->table('playback_sessions')->value('revision'));
+        $this->assertSame('device-1', DB::connection('analytics')->table('playback_sessions')->value('device_id'));
     }
 
     public function test_event_batch_is_idempotent(): void
@@ -187,7 +213,7 @@ class AnalyticsApiTest extends TestCase
         $routes = collect(Route::getRoutes()->getRoutes())
             ->filter(fn ($route) => str_starts_with($route->uri(), 'api/v4/analytic/'));
 
-        $this->assertCount(11, $routes);
+        $this->assertCount(15, $routes);
         foreach ($routes as $route) {
             $this->assertContains('auth.token', $route->gatherMiddleware(), $route->uri());
             if (str_contains($route->uri(), '/reports/')) {
@@ -220,28 +246,12 @@ class AnalyticsApiTest extends TestCase
 
     private function playbackPayload(int $revision = 1): array
     {
-        return [
-            'schema_version' => 1,
-            'revision' => $revision,
-            'state' => 'final',
-            'started_at' => now('UTC')->subMinutes(30)->toIso8601String(),
-            'ended_at' => now('UTC')->toIso8601String(),
-            'end_reason' => 'user_closed',
-            'content' => ['id' => 'movie-123', 'type' => 'movie'],
-            'timing' => [
-                'duration_ms' => 1_800_000,
-                'watch_position_ms' => 1_200_000,
-                'watched_ms' => 1_100_000,
-                'unique_watched_ms' => 1_000_000,
-                'startup_ms' => 900,
-            ],
-            'buffering' => ['count' => 2, 'total_ms' => 3_000],
-            'result' => [
-                'error_count' => 0,
-                'completion_percent' => 55.5,
-                'completed' => false,
-            ],
-            'context' => ['platform' => 'android', 'app_version' => '2.4.0'],
-        ];
+        $payload = json_decode(file_get_contents(base_path('Library/contract/playback-final.example.json')), true, 512, JSON_THROW_ON_ERROR);
+        $payload['revision'] = $revision;
+        $payload['started_at'] = now('UTC')->subMinutes(30)->toIso8601String();
+        $payload['ended_at'] = now('UTC')->toIso8601String();
+        $payload['end_reason'] = 'user_closed';
+        $payload['context']['platform'] = 'android';
+        return $payload;
     }
 }

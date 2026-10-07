@@ -585,6 +585,8 @@ class AnalyticsReportController extends Controller
                 $subquery->selectRaw('1')
                     ->from('playback_sessions')
                     ->whereColumn('playback_sessions.session_id', 'playback_errors.session_id')
+                    ->whereColumn('playback_sessions.user_id', 'playback_errors.user_id')
+                    ->whereColumn('playback_sessions.device_id', 'playback_errors.device_id')
                     ->where('playback_sessions.platform', $filters['platform']);
             });
         }
@@ -593,6 +595,8 @@ class AnalyticsReportController extends Controller
                 $subquery->selectRaw('1')
                     ->from('playback_sessions')
                     ->whereColumn('playback_sessions.session_id', 'playback_errors.session_id')
+                    ->whereColumn('playback_sessions.user_id', 'playback_errors.user_id')
+                    ->whereColumn('playback_sessions.device_id', 'playback_errors.device_id')
                     ->where('playback_sessions.app_version', $filters['app_version']);
             });
         }
@@ -601,6 +605,8 @@ class AnalyticsReportController extends Controller
                 $subquery->selectRaw('1')
                     ->from('playback_sessions')
                     ->whereColumn('playback_sessions.session_id', 'playback_errors.session_id')
+                    ->whereColumn('playback_sessions.user_id', 'playback_errors.user_id')
+                    ->whereColumn('playback_sessions.device_id', 'playback_errors.device_id')
                     ->where('playback_sessions.content_type', $filters['content_type']);
             });
         }

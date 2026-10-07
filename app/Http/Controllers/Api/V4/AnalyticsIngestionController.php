@@ -373,6 +373,8 @@ class AnalyticsIngestionController extends Controller
 
         $query = DB::connection('analytics')->table('playback_sessions');
         $updated = $query->where('session_id', $sessionId)
+            ->where('user_id', $row['user_id'])
+            ->where('device_id', $row['device_id'])
             ->where('revision', '<', $revision)
             ->update(Arr::except($row, ['session_id']));
 
@@ -407,7 +409,7 @@ class AnalyticsIngestionController extends Controller
         return null;
     }
 
-    private function analyticsEnabled(): bool
+    protected function analyticsEnabled(): bool
     {
         try {
             $url = (string) config('firebase.database_url', '');
@@ -431,7 +433,9 @@ class AnalyticsIngestionController extends Controller
     private function rejectUnknownPlaybackKeys(array $payload, string $path = ''): void
     {
         $allowed = [
-            '' => ['schema_version', 'revision', 'state', 'started_at', 'ended_at', 'end_reason', 'content', 'timing', 'interaction', 'buffering', 'quality', 'tracks', 'result', 'context'],
+            // AuthTokenMiddleware adds these identity fields with Request::merge,
+            // which also exposes them through the JSON input bag.
+            '' => ['schema_version', 'revision', 'state', 'started_at', 'ended_at', 'end_reason', 'content', 'timing', 'interaction', 'buffering', 'quality', 'tracks', 'result', 'context', 'auth_user_id', 'auth_device_id'],
             'content' => ['id', 'type', 'series_id', 'season_id', 'episode_id', 'is_downloaded', 'autoplay'],
             'timing' => ['duration_ms', 'watch_position_ms', 'max_position_ms', 'watched_ms', 'unique_watched_ms', 'replayed_ms', 'foreground_watch_ms', 'background_play_ms', 'startup_ms'],
             'interaction' => ['play_count', 'pause_count', 'resume_count', 'seek_count', 'seek_forward_ms', 'seek_backward_ms', 'fullscreen_count', 'pip_count', 'cast_count'],
