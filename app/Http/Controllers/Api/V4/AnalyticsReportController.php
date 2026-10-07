@@ -7,6 +7,7 @@ use App\Support\Api\V4Response;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -97,12 +98,19 @@ class AnalyticsReportController extends Controller
             ->orderBy('dimension_value')
             ->paginate($perPage);
 
+        $groups = $groups->through(fn ($row) => [
+            'dimension_value' => $row->dimension_value,
+        ] + $this->insightNumbers($row));
+        $groups->setCollection(collect($this->withInsightLabels(
+            $groups->items(),
+            $dimension,
+            $filters['content_type']
+        )));
+
         return V4Response::success([
             'dimension' => $dimension,
             'summary' => $this->insightNumbers($summary),
-            'groups' => $groups->through(fn ($row) => [
-                'dimension_value' => $row->dimension_value,
-            ] + $this->insightNumbers($row)),
+            'groups' => $groups,
         ], meta: ['filters' => $this->publicFilters($filters)]);
     }
 
@@ -537,6 +545,7 @@ class AnalyticsReportController extends Controller
             'sdk_version' => $row->sdk_version,
             'metrics' => json_decode((string) $row->metrics_json, true) ?: [],
         ]);
+        $rows->setCollection(collect($this->withContentTitles($rows->items())));
 
         return V4Response::success($rows, meta: ['filters' => $this->publicFilters($filters)]);
     }
@@ -699,28 +708,226 @@ class AnalyticsReportController extends Controller
     /** Resolve catalog names in batches across the separate catalog connection. */
     private function withContentTitles(array $rows): array
     {
-        $titles = [];
-        foreach (['movie' => 'movie', 'episode' => 'episodes'] as $type => $table) {
-            $ids = array_values(array_unique(array_column(
-                array_filter($rows, fn ($row) => $row['content_type'] === $type),
-                'content_id'
+        $labels = [];
+        foreach (['movie', 'episode', 'live'] as $type) {
+            $ids = array_values(array_unique(array_map(
+                'strval',
+                array_column(array_filter(
+                    $rows,
+                    fn ($row) => ($row['content_type'] ?? null) === $type
+                ), 'content_id')
             )));
-            if ($ids === []) {
-                continue;
-            }
-            try {
-                $titles[$type] = DB::table($table)->whereIn('id', $ids)->pluck('title', 'id')->all();
-            } catch (\Throwable $error) {
-                // Historical analytics must remain readable when catalog lookup is unavailable.
-                report($error);
-            }
+            $labels[$type] = $this->contentLabels($ids, $type);
         }
 
-        return array_map(function ($row) use ($titles) {
-            $row['title'] = $titles[$row['content_type']][$row['content_id']] ?? $row['content_id'];
+        return array_map(function ($row) use ($labels) {
+            $type = (string) ($row['content_type'] ?? '');
+            $id = (string) ($row['content_id'] ?? '');
+            $label = $labels[$type][$id] ?? null;
+            $row['title'] = $label['title'] ?? $id;
+            $row['parent_title'] = $label['parent_title'] ?? null;
+            $row['display_title'] = $label['display_title'] ?? $row['title'];
 
             return $row;
         }, $rows);
+    }
+
+    /** Add human-readable names to catalog-backed SDK insight dimensions. */
+    private function withInsightLabels(array $rows, string $dimension, ?string $contentType): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map(
+            fn ($row) => isset($row['dimension_value']) ? (string) $row['dimension_value'] : null,
+            $rows
+        ))));
+        if ($ids === []) {
+            return $rows;
+        }
+
+        $labels = match ($dimension) {
+            'content_id' => $this->contentLabels($ids, $contentType),
+            'episode_id' => $this->contentLabels($ids, 'episode'),
+            'series_id' => $this->contentLabels($ids, 'movie'),
+            'season_id' => $this->seasonLabels($ids),
+            default => [],
+        };
+
+        return array_map(function ($row) use ($labels) {
+            $id = isset($row['dimension_value']) ? (string) $row['dimension_value'] : '';
+            if (isset($labels[$id])) {
+                $row['dimension_label'] = $labels[$id]['display_title'];
+            }
+
+            return $row;
+        }, $rows);
+    }
+
+    /** @return array<string, array{title: string, parent_title: ?string, display_title: string}> */
+    private function contentLabels(array $ids, ?string $type = null): array
+    {
+        $ids = array_values(array_unique(array_map('strval', $ids)));
+        if ($ids === []) {
+            return [];
+        }
+
+        $labels = [];
+        $types = $type ? [$type] : ['movie', 'episode', 'live'];
+        foreach ($types as $candidate) {
+            $resolved = match ($candidate) {
+                'movie' => $this->movieLabels($ids),
+                'episode' => $this->episodeLabels($ids),
+                'live' => $this->simpleTableLabels('channel_contents', $ids),
+                default => [],
+            };
+            foreach ($resolved as $id => $label) {
+                $labels[$id] ??= $label;
+            }
+        }
+
+        return $labels;
+    }
+
+    private function movieLabels(array $ids): array
+    {
+        return $this->simpleTableLabels('movie', $ids);
+    }
+
+    private function episodeLabels(array $ids): array
+    {
+        $records = $this->catalogRecords('episodes', $ids);
+        $sources = array_fill_keys(array_keys($records), 'episodes');
+        $unresolved = array_values(array_diff($ids, array_keys($records)));
+        if ($unresolved !== []) {
+            $legacy = $this->catalogRecords('episode', $unresolved);
+            $records += $legacy;
+            $sources += array_fill_keys(array_keys($legacy), 'episode');
+        }
+
+        $seasonIds = [];
+        $movieIds = [];
+        foreach ($records as $id => $record) {
+            if ($sources[$id] === 'episodes' && isset($record->season_id)) {
+                $seasonIds[] = (string) $record->season_id;
+            } elseif (isset($record->movie_id)) {
+                $movieIds[] = (string) $record->movie_id;
+            }
+        }
+        $seasons = $this->catalogRecords('seasons', $seasonIds);
+        foreach ($seasons as $season) {
+            if (isset($season->movie_id)) {
+                $movieIds[] = (string) $season->movie_id;
+            }
+        }
+        $movies = $this->movieLabels($movieIds);
+
+        $labels = [];
+        foreach ($records as $id => $record) {
+            $title = trim((string) ($record->title ?? '')) ?: $id;
+            $movieId = null;
+            if ($sources[$id] === 'episodes' && isset($record->season_id)) {
+                $season = $seasons[(string) $record->season_id] ?? null;
+                $movieId = isset($season?->movie_id) ? (string) $season->movie_id : null;
+            } elseif (isset($record->movie_id)) {
+                $movieId = (string) $record->movie_id;
+            }
+            $parent = $movieId ? ($movies[$movieId]['title'] ?? null) : null;
+            $labels[$id] = [
+                'title' => $title,
+                'parent_title' => $parent,
+                'display_title' => $parent ? "{$parent} — {$title}" : $title,
+            ];
+        }
+
+        return $labels;
+    }
+
+    private function seasonLabels(array $ids): array
+    {
+        $seasons = $this->catalogRecords('seasons', $ids);
+        $movieIds = array_values(array_unique(array_filter(array_map(
+            fn ($season) => isset($season->movie_id) ? (string) $season->movie_id : null,
+            $seasons
+        ))));
+        $movies = $this->movieLabels($movieIds);
+        $labels = [];
+        foreach ($seasons as $id => $season) {
+            $title = trim((string) ($season->title ?? '')) ?: $id;
+            $movieId = isset($season->movie_id) ? (string) $season->movie_id : null;
+            $parent = $movieId ? ($movies[$movieId]['title'] ?? null) : null;
+            $labels[$id] = [
+                'title' => $title,
+                'parent_title' => $parent,
+                'display_title' => $parent ? "{$parent} — {$title}" : $title,
+            ];
+        }
+
+        return $labels;
+    }
+
+    private function simpleTableLabels(string $table, array $ids): array
+    {
+        $labels = [];
+        foreach ($this->catalogRecords($table, $ids) as $id => $record) {
+            $title = trim((string) ($record->title ?? '')) ?: (string) $id;
+            $labels[$id] = [
+                'title' => $title,
+                'parent_title' => null,
+                'display_title' => $title,
+            ];
+        }
+
+        return $labels;
+    }
+
+    /** Find catalog records by public id and, for older clients, numeric num/id. */
+    private function catalogRecords(string $table, array $ids): array
+    {
+        $ids = array_values(array_unique(array_map('strval', $ids)));
+        if ($ids === []) {
+            return [];
+        }
+
+        try {
+            $schema = DB::connection()->getSchemaBuilder();
+            if (! $schema->hasTable($table)) {
+                return [];
+            }
+            $columns = array_values(array_filter(
+                ['id', 'num'],
+                fn ($column) => $schema->hasColumn($table, $column)
+            ));
+            if ($columns === []) {
+                return [];
+            }
+            $records = collect();
+            foreach ($columns as $column) {
+                $records = $records->merge(DB::table($table)->whereIn($column, $ids)->get());
+            }
+
+            return $this->indexCatalogRecords($records, $ids);
+        } catch (\Throwable $error) {
+            // Historical analytics must remain readable when catalog lookup is unavailable.
+            report($error);
+
+            return [];
+        }
+    }
+
+    private function indexCatalogRecords(Collection $records, array $requestedIds): array
+    {
+        $requested = array_fill_keys($requestedIds, true);
+        $indexed = [];
+        foreach ($records as $record) {
+            foreach (['id', 'num'] as $column) {
+                if (isset($record->{$column})) {
+                    $key = (string) $record->{$column};
+                    if (isset($requested[$key])) {
+                        $indexed[$key] ??= $record;
+                    }
+                }
+            }
+        }
+
+        return $indexed;
     }
 
     private function contentRow(object $row): array

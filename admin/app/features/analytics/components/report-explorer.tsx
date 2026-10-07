@@ -23,7 +23,7 @@ export function ReportError({ error, href }: { error: unknown; href: string }) {
 
 const columns: Record<ReportTab | "errors/events", [string, string][]> = {
   content: [["title", "Content"], ["content_type", "Type"], ["playback_starts", "Sessions"], ["valid_views", "Valid views"], ["unique_viewers", "Viewers"], ["watch_hours", "Watch hours"], ["completion_rate", "Completion %"]],
-  sessions: [["content_id", "Content ID"], ["user_id", "User"], ["started_at", "Started (IST)"], ["platform", "Platform"], ["app_version", "App version"], ["watched_ms", "Watched (min)"], ["completion_percent", "Completion %"], ["error_count", "Errors"], ["end_reason", "End reason"]],
+  sessions: [["display_title", "Content"], ["user_id", "User"], ["started_at", "Started (IST)"], ["platform", "Platform"], ["app_version", "App version"], ["watched_ms", "Watched (min)"], ["completion_percent", "Completion %"], ["error_count", "Errors"], ["end_reason", "End reason"]],
   quality: [["platform", "Platform"], ["app_version", "App version"], ["sessions", "Sessions"], ["average_startup_ms", "Startup (ms)"], ["rebuffer_ratio", "Rebuffer %"], ["failure_rate", "Error rate %"]],
   errors: [["category", "Category"], ["stage", "Stage"], ["code", "Code"], ["occurrences", "Occurrences"], ["affected_sessions", "Sessions"], ["fatal_count", "Fatal"], ["last_seen_at", "Last seen (IST)"]],
   "errors/events": [["occurred_at", "Occurred (IST)"], ["session_id", "Session"], ["user_id", "User"], ["category", "Category"], ["code", "Code"], ["http_status", "HTTP status"], ["is_fatal", "Fatal"], ["retry_count", "Retries"], ["sanitized_message", "Message"]],
@@ -31,7 +31,9 @@ const columns: Record<ReportTab | "errors/events", [string, string][]> = {
 };
 
 function cell(row: ReportRow, key: string): string {
-  const value = key === "title" ? row.title || row.content_id : row[key];
+  const value = key === "title" ? row.title || row.content_id
+    : key === "display_title" ? row.display_title || row.title || row.content_id
+    : row[key];
   if (value === null || value === undefined || value === "") return "—";
   if (key.endsWith("_at")) {
     const timestamp = String(value).replace(" ", "T");
@@ -59,7 +61,7 @@ export async function ReportExplorer({ tab, filters, page, contentId, sessionId,
   const pagination = Array.isArray(result) ? null : result;
   return <section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-slate-900">
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-      <div><h2 className="text-xl font-bold capitalize">{tab === "sessions" && filters.user_id ? "User playback history" : tab}</h2><p className="mt-1 text-xs text-slate-500">{pagination ? `${pagination.total.toLocaleString()} records · 25 per page` : `${rows.length} groups${tab === "errors" ? " · up to 200 most frequent" : ""}`}{contentId && tab === "sessions" ? ` · Content: ${contentId}` : ""}{sessionId && tab === "sessions" ? ` · Session: ${sessionId}` : ""}</p></div>
+      <div><h2 className="text-xl font-bold capitalize">{tab === "sessions" && filters.user_id ? "User playback history" : tab}</h2><p className="mt-1 text-xs text-slate-500">{pagination ? `${pagination.total.toLocaleString()} records · 25 per page` : `${rows.length} groups${tab === "errors" ? " · up to 200 most frequent" : ""}`}{contentId && tab === "sessions" ? ` · Content: ${String(rows[0]?.display_title || rows[0]?.title || contentId)}` : ""}{sessionId && tab === "sessions" ? ` · Session: ${sessionId}` : ""}</p></div>
       {tab === "errors" ? <div className="flex gap-4 text-sm"><Link className="underline" href={analyticsHref(filters, { tab: "errors" })}>Grouped errors</Link><Link className="underline" href={analyticsHref(filters, { tab: "errors", error_mode: "events" })}>Individual errors</Link></div> : null}
     </div>
     {contentId && tab === "sessions" ? <Link className="mb-4 inline-block text-xs underline" href={analyticsHref(filters, { tab })}>Clear content selection</Link> : null}
@@ -75,7 +77,7 @@ export async function ReportExplorer({ tab, filters, page, contentId, sessionId,
           {rows.map((row, index) => <Fragment key={String(row.event_id ?? row.session_id ?? row.dimension_value ?? index)}>
             <tr className="align-top hover:bg-slate-50 dark:hover:bg-white/5">
               {columns[report].map(([key]) => <td key={key} className="max-w-xs break-words px-3 py-4">
-                {tab === "content" && key === "title" ? <Link className="font-semibold text-cyan-700 underline dark:text-cyan-300" href={analyticsHref({ ...filters, content_type: String(row.content_type) }, { tab: "sessions", content_id: String(row.content_id) })}>{cell(row, key)}</Link>
+                {tab === "content" && key === "title" ? <div><Link className="font-semibold text-cyan-700 underline dark:text-cyan-300" href={analyticsHref({ ...filters, content_type: String(row.content_type) }, { tab: "sessions", content_id: String(row.content_id) })}>{cell(row, key)}</Link>{row.parent_title ? <p className="mt-1 text-xs text-slate-500">Series: {String(row.parent_title)}</p> : null}</div>
                   : key === "user_id" ? <Link className="text-cyan-700 underline dark:text-cyan-300" href={analyticsHref({ ...filters, user_id: String(row.user_id) }, { tab: "sessions" })}>{cell(row, key)}</Link>
                   : report === "errors/events" && key === "session_id" ? <Link className="text-cyan-700 underline dark:text-cyan-300" href={analyticsHref(filters, { tab: "sessions", session_id: String(row.session_id) })}>{cell(row, key)}</Link>
                   : cell(row, key)}

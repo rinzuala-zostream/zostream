@@ -31,16 +31,32 @@ class AnalyticsDashboardReportTest extends TestCase
         $pdo->sqliteCreateFunction('JSON_CONTAINS', fn ($value, $needle) =>
             in_array((int) $needle, json_decode((string) $value, true) ?: [], true) ? 1 : 0);
         foreach (['movie', 'episodes'] as $table) {
-            Schema::create($table, function (Blueprint $blueprint) {
+            Schema::create($table, function (Blueprint $blueprint) use ($table) {
                 $blueprint->string('id')->primary();
+                $blueprint->unsignedBigInteger('num')->nullable()->unique();
                 $blueprint->string('title');
+                if ($table === 'episodes') {
+                    $blueprint->string('season_id')->nullable();
+                }
             });
         }
+        Schema::create('seasons', function (Blueprint $blueprint) {
+            $blueprint->string('id')->primary();
+            $blueprint->unsignedBigInteger('num')->nullable()->unique();
+            $blueprint->unsignedBigInteger('movie_id');
+            $blueprint->string('title');
+        });
         DB::table('movie')->insert([
-            ['id' => 'short', 'title' => 'Short starts'],
-            ['id' => 'watched', 'title' => 'Watched film'],
+            ['id' => 'short', 'num' => 10, 'title' => 'Short starts'],
+            ['id' => 'watched', 'num' => 20, 'title' => 'Watched film'],
         ]);
-        DB::table('episodes')->insert(['id' => 'episode-1', 'title' => 'First episode']);
+        DB::table('seasons')->insert([
+            'id' => 'season-1', 'num' => 100, 'movie_id' => 20, 'title' => 'Season 1',
+        ]);
+        DB::table('episodes')->insert([
+            'id' => 'episode-1', 'num' => 1000, 'title' => 'First episode',
+            'season_id' => 'season-1',
+        ]);
     }
 
     protected function tearDown(): void
@@ -73,6 +89,9 @@ class AnalyticsDashboardReportTest extends TestCase
         $this->seedPlayback('c', 'deleted', 10000);
         $rows = $this->report('content')['data'];
         $this->assertSame(['Watched film', 'First episode', 'deleted'], array_column($rows, 'title'));
+        $episode = collect($rows)->firstWhere('content_type', 'episode');
+        $this->assertSame('Watched film', $episode['parent_title']);
+        $this->assertSame('Watched film — First episode', $episode['display_title']);
     }
 
     public function test_sessions_preserve_filters_and_paginate_user_history(): void
@@ -90,6 +109,39 @@ class AnalyticsDashboardReportTest extends TestCase
         $this->assertCount(1, $data['data']);
         $this->assertSame('user-1', $data['data'][0]['user_id']);
         $this->assertSame('watched', $data['data'][0]['content_id']);
+        $this->assertSame('Watched film', $data['data'][0]['display_title']);
+    }
+
+    public function test_sessions_and_insights_show_episode_and_parent_movie_titles(): void
+    {
+        $this->seedPlayback('episode-session', 'episode-1', 20000, [
+            'content_type' => 'episode',
+            'metrics_json' => json_encode(['content' => ['episode_id' => 'episode-1']]),
+        ]);
+
+        $session = $this->report('sessions')['data'][0];
+        $this->assertSame('First episode', $session['title']);
+        $this->assertSame('Watched film', $session['parent_title']);
+        $this->assertSame('Watched film — First episode', $session['display_title']);
+
+        $insights = $this->report('insights', ['dimension' => 'episode_id']);
+        $this->assertSame(
+            'Watched film — First episode',
+            $insights['groups']['data'][0]['dimension_label']
+        );
+    }
+
+    public function test_numeric_catalog_ids_from_older_clients_are_resolved(): void
+    {
+        $this->seedPlayback('numeric-movie', '20', 20000);
+        $this->seedPlayback('numeric-episode', '1000', 20000, [
+            'content_type' => 'episode',
+        ]);
+
+        $rows = collect($this->report('content')['data'])->keyBy('content_id');
+        $this->assertSame('Watched film', $rows['20']['title']);
+        $this->assertSame('First episode', $rows['1000']['title']);
+        $this->assertSame('Watched film', $rows['1000']['parent_title']);
     }
 
     public function test_empty_overview_does_not_invent_activity(): void

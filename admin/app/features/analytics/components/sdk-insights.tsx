@@ -141,7 +141,7 @@ export async function SdkInsights({ filters, dimension: requestedDimension, metr
       </form>
       <div className="mt-5 space-y-2">
         {groups.length ? groups.map((row, index) => {
-          const label = dimensionLabel(row.dimension_value);
+          const label = dimensionLabel(row.dimension_label ?? row.dimension_value);
           const amount = Number(row[metric]) || 0;
           const href = dimension === "content_id" && row.dimension_value
             ? analyticsHref(filters, { tab: "sessions", content_id: String(row.dimension_value) })

@@ -51,6 +51,8 @@ export type AnalyticsPlatformStat = {
 export type AnalyticsContentStat = {
   content_id: string;
   title?: string;
+  parent_title?: string | null;
+  display_title?: string;
   content_type?: string;
   views?: number;
   watch_hours?: number;

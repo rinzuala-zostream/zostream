@@ -301,6 +301,7 @@ function TopContentTable({ items, filters }: { items: AnalyticsContentStat[]; fi
                   <span className="grid size-8 shrink-0 place-items-center rounded-xl bg-slate-950 text-xs font-black text-white dark:bg-white dark:text-slate-950">{index + 1}</span>
                   <div>
                     <p className="font-bold text-slate-950 dark:text-white"><Link className="hover:underline" href={analyticsHref({ ...filters, content_type: item.content_type }, { tab: "sessions", content_id: item.content_id })}>{item.title || item.content_id}</Link></p>
+                    {item.parent_title ? <p className="mt-0.5 text-xs text-slate-500">Series: {item.parent_title}</p> : null}
                     <p className="mt-0.5 text-xs capitalize text-slate-500">{item.content_type || "content"}</p>
                   </div>
                 </div>
