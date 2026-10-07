@@ -180,7 +180,7 @@
         "timezone"
       ],
       "properties": {
-        "platform": { "enum": ["ios", "tvos", "android", "tv"] },
+        "platform": { "enum": ["ios", "tvos", "android", "tv", "tizen", "webos", "web"] },
         "network_type": { "enum": ["wifi", "cellular", "ethernet", "offline", "unknown"] },
         "app_version": { "type": "string", "maxLength": 64 },
         "build_number": { "type": "string", "maxLength": 64 },

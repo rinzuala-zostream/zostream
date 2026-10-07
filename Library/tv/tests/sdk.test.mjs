@@ -6,10 +6,11 @@ import {
   PlaybackAnalyticsSession,
   ZoAnalyticsClient,
   createProductEvent,
+  createTVAnalyticsContext,
 } from '../dist/index.js'
 
 const context = {
-  platform: 'tv', network_type: 'wifi', app_version: '1.0.0', build_number: '1',
+  platform: 'tizen', network_type: 'wifi', app_version: '1.0.0', build_number: '1',
   os_version: 'Tizen 8', device_model: 'Samsung TV', device_category: 'tv',
   locale: 'en-IN', timezone: 'Asia/Kolkata',
 }
@@ -72,6 +73,7 @@ test('uploads with required headers without persisting credentials', async () =>
   assert.equal(calls.length, 1)
   assert.equal(calls[0].init.headers.Authorization, 'Bearer secret-access')
   assert.equal(calls[0].init.headers['Device-Token'], 'secret-device')
+  assert.equal(calls[0].init.headers['X-Platform'], 'tizen')
   const stored = storage.getItem('zoanalytics_queue_v1') ?? ''
   assert.equal(stored.includes('secret-access'), false)
   assert.equal(stored.includes('secret-device'), false)
@@ -87,4 +89,15 @@ test('kill switch blocks collection and requests', async () => {
   await client.track(createProductEvent('app_opened', 'app-session'), context, credentials, true)
   assert.equal(requests, 0)
   assert.deepEqual(client.pendingCounts('owner'), { playback: 0, events: 0, errors: 0 })
+})
+
+test('supports explicit Tizen, webOS and browser platform identities', () => {
+  for (const platform of ['tizen', 'webos', 'web']) {
+    const detected = createTVAnalyticsContext({
+      appVersion: '1.0.0',
+      buildNumber: '1',
+      platform,
+    })
+    assert.equal(detected.platform, platform)
+  }
 })

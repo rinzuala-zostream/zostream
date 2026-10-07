@@ -643,16 +643,16 @@ Common query parameters:
 from=2026-10-01
 to=2026-10-06
 timezone=Asia/Kolkata
-platform=ios|tvos|android|tv
+platform=ios|tvos|android|tv|tizen|webos|web
 app_version=2.4.0
 content_type=movie|episode|live
 page=1
 per_page=50
 ```
 
-`platform=tv` is the shared TV SDK platform used by Samsung Tizen and LG webOS.
-Use the `os_version` or `device_model` SDK Insights dimension to compare those
-TV operating systems without splitting the cross-platform playback contract.
+Platform values are stable: `android` is Android Mobile, `tv` is Android TV,
+`tizen` is Samsung Tizen OS, `webos` is LG webOS, and `web` is a web browser.
+Existing iOS and Apple TV values remain `ios` and `tvos`.
 
 The insights endpoint also accepts `dimension` (default `platform`). Allowed
 dimensions cover content IDs and type, playback state/end reason, downloaded and

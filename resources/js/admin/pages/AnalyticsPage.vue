@@ -80,8 +80,11 @@ const largestInsight = computed(() => Math.max(0, ...(insights.value.groups?.dat
 const platformLabel = (value) => ({
     ios: 'iOS',
     tvos: 'Apple TV',
-    android: 'Android',
-    tv: 'Samsung / LG TV',
+    android: 'Android Mobile',
+    tv: 'Android TV',
+    tizen: 'Tizen OS',
+    webos: 'LG webOS',
+    web: 'Web Browser',
 }[String(value || '').toLowerCase()] || String(value || 'Unknown'));
 const insightValue = (value, unit) => {
     if (value === null || value === undefined || value === '') return '—';
@@ -260,7 +263,7 @@ onUnmounted(() => { if (presenceTimer) window.clearInterval(presenceTimer); });
             <label>From<input v-model="filters.from" type="date" required></label>
             <label>To<input v-model="filters.to" type="date" required></label>
             <label>Timezone<select v-model="filters.timezone"><option value="Asia/Kolkata">India · Kolkata</option><option value="UTC">UTC</option><option value="America/Los_Angeles">Los Angeles</option><option value="America/New_York">New York</option><option value="Europe/London">London</option><option value="Asia/Tokyo">Tokyo</option></select></label>
-            <label>Platform<select v-model="filters.platform"><option value="">All platforms</option><option value="ios">iOS</option><option value="tvos">Apple TV</option><option value="android">Android</option><option value="tv">Samsung / LG TV</option></select></label>
+            <label>Platform<select v-model="filters.platform"><option value="">All platforms</option><option value="ios">iOS</option><option value="tvos">Apple TV</option><option value="android">Android Mobile</option><option value="tv">Android TV</option><option value="tizen">Tizen OS</option><option value="webos">LG webOS</option><option value="web">Web Browser</option></select></label>
             <label>App version<input v-model="filters.app_version" placeholder="All versions"></label>
             <label>Content type<select v-model="filters.content_type"><option value="">All content</option><option value="movie">Movie</option><option value="episode">Episode</option><option value="live">Live</option></select></label>
             <label>User ID<input v-model="filters.user_id" placeholder="All users"></label>

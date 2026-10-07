@@ -268,15 +268,15 @@ class AnalyticsApiTest extends TestCase
         $this->assertSame('app_opened', $data['product_events'][0]['name']);
     }
 
-    public function test_tv_sdk_data_is_available_to_admin_analytics_reports(): void
+    public function test_tizen_sdk_data_is_available_to_admin_analytics_reports(): void
     {
         $ingestion = app(AnalyticsIngestionController::class);
         $payload = $this->playbackPayload();
-        $payload['context']['platform'] = 'tv';
+        $payload['context']['platform'] = 'tizen';
         $payload['context']['os_version'] = 'Tizen 8.0';
         $payload['context']['device_model'] = 'Samsung Smart TV';
         $playbackRequest = $this->analyticsRequest($payload);
-        $playbackRequest->headers->set('X-Platform', 'tv');
+        $playbackRequest->headers->set('X-Platform', 'tizen');
 
         $response = $ingestion->upsertPlayback(
             $playbackRequest,
@@ -292,9 +292,9 @@ class AnalyticsApiTest extends TestCase
                 'app_session_id' => '019b1234-a000-7000-b123-456789abcdef',
                 'properties' => ['screen_name' => 'home'],
             ]],
-            'context' => ['platform' => 'tv', 'app_version' => '1.0.0'],
+            'context' => ['platform' => 'tizen', 'app_version' => '1.0.0'],
         ]);
-        $eventRequest->headers->set('X-Platform', 'tv');
+        $eventRequest->headers->set('X-Platform', 'tizen');
         $ingestion->batchEvents($eventRequest);
 
         $report = app(AnalyticsReportController::class)->overview(Request::create(
@@ -304,17 +304,37 @@ class AnalyticsApiTest extends TestCase
                 'from' => now('UTC')->toDateString(),
                 'to' => now('UTC')->toDateString(),
                 'timezone' => 'UTC',
-                'platform' => 'tv',
+                'platform' => 'tizen',
             ]
         ))->getData(true)['data'];
 
         $this->assertSame(200, $response->getStatusCode());
-        $this->assertSame('tv', DB::connection('analytics')->table('playback_sessions')->value('platform'));
+        $this->assertSame('tizen', DB::connection('analytics')->table('playback_sessions')->value('platform'));
         $this->assertSame('1.4.0', DB::connection('analytics')->table('playback_sessions')->value('sdk_version'));
-        $this->assertSame('tv', DB::connection('analytics')->table('analytics_events')->value('platform'));
+        $this->assertSame('tizen', DB::connection('analytics')->table('analytics_events')->value('platform'));
         $this->assertSame(1, $report['playback_starts']);
-        $this->assertSame('tv', $report['platforms'][0]['platform']);
+        $this->assertSame('tizen', $report['platforms'][0]['platform']);
         $this->assertSame('screen_viewed', $report['product_events'][0]['name']);
+    }
+
+    public function test_admin_reports_accept_every_mobile_tv_and_web_platform_filter(): void
+    {
+        $controller = app(AnalyticsReportController::class);
+
+        foreach (['ios', 'tvos', 'android', 'tv', 'tizen', 'webos', 'web'] as $platform) {
+            $response = $controller->overview(Request::create(
+                '/reports/overview',
+                'GET',
+                [
+                    'from' => now('UTC')->toDateString(),
+                    'to' => now('UTC')->toDateString(),
+                    'timezone' => 'UTC',
+                    'platform' => $platform,
+                ]
+            ));
+
+            $this->assertSame(200, $response->getStatusCode(), $platform);
+        }
     }
 
     public function test_analytics_routes_have_customer_and_admin_boundaries(): void

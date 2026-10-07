@@ -9,6 +9,8 @@ export type PlaybackEndReason =
   | 'player_destroyed' | 'unknown'
 export type NetworkType = 'wifi' | 'cellular' | 'ethernet' | 'offline' | 'unknown'
 export type PresenceState = 'foreground' | 'background'
+export type AnalyticsPlatform = 'ios' | 'tvos' | 'android' | 'tv' | 'tizen' | 'webos' | 'web'
+export type TVWebAnalyticsPlatform = 'tizen' | 'webos' | 'web'
 
 export interface AnalyticsCredentials {
   accessToken: string
@@ -27,7 +29,7 @@ export interface PlaybackContent {
 }
 
 export interface AnalyticsContext {
-  platform: 'tv'
+  platform: AnalyticsPlatform
   network_type: NetworkType
   app_version: string
   build_number: string

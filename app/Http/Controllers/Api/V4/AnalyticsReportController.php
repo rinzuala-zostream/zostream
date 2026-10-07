@@ -81,7 +81,7 @@ class AnalyticsReportController extends Controller
     public function presence(Request $request): JsonResponse
     {
         $filters = $request->validate([
-            'platform' => ['nullable', Rule::in(['ios', 'tvos', 'android', 'tv'])],
+            'platform' => ['nullable', Rule::in(['ios', 'tvos', 'android', 'tv', 'tizen', 'webos', 'web'])],
             'app_version' => ['nullable', 'string', 'max:64'],
             'user_id' => ['nullable', 'string', 'max:128'],
         ]);
@@ -672,7 +672,7 @@ class AnalyticsReportController extends Controller
             'from' => ['nullable', 'date_format:Y-m-d'],
             'to' => ['nullable', 'date_format:Y-m-d'],
             'timezone' => ['nullable', 'timezone'],
-            'platform' => ['nullable', Rule::in(['ios', 'tvos', 'android', 'tv'])],
+            'platform' => ['nullable', Rule::in(['ios', 'tvos', 'android', 'tv', 'tizen', 'webos', 'web'])],
             'app_version' => ['nullable', 'string', 'max:64'],
             'content_type' => ['nullable', Rule::in(['movie', 'episode', 'live'])],
             'user_id' => ['nullable', 'string', 'max:128'],

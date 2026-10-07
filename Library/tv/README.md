@@ -1,6 +1,6 @@
 # ZoAnalytics for Samsung Tizen and LG webOS
 
-`@zostream/analytics-tv` is the TV/browser implementation of Zo Stream's
+`@zostream/analytics-tv` is the Tizen, webOS and web-browser implementation of Zo Stream's
 analytics SDK. It has no Firebase, React, or Shaka dependency. It emits the
 same playback summary v1 contract as the iOS and Android packages and uploads
 to the same `/api/v4/analytic` endpoints.
@@ -18,6 +18,9 @@ to the same `/api/v4/analytic` endpoints.
   Boolean. Firebase is intentionally not an SDK dependency.
 - No persisted bearer token or device token. Analytics failures never block
   playback.
+
+The SDK auto-detects `tizen`, `webos`, or `web`. Existing native SDK mappings
+remain unchanged: `android` is Android Mobile and `tv` is Android TV.
 
 ## Install/build
 
@@ -150,7 +153,7 @@ Every request contains:
 Authorization: Bearer <access-token>
 Device-Token: <device-token>
 X-Analytics-SDK-Version: 1.4.0
-X-Platform: tv
+X-Platform: tizen|webos|web
 ```
 
 The shared schema is in `../contract/playback-summary.schema.json`.

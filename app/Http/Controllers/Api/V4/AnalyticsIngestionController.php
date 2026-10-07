@@ -16,7 +16,7 @@ use Kreait\Firebase\Factory;
 
 class AnalyticsIngestionController extends Controller
 {
-    private const PLATFORMS = ['ios', 'tvos', 'android', 'tv'];
+    private const PLATFORMS = ['ios', 'tvos', 'android', 'tv', 'tizen', 'webos', 'web'];
 
     private const EVENT_NAMES = [
         'app_opened',

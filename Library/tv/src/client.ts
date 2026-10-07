@@ -2,7 +2,7 @@ import { AnalyticsQueue, browserAnalyticsStorage } from './queue.js'
 import type { AnalyticsStorage, PendingPlayback, PendingProductEvent } from './queue.js'
 import { ANALYTICS_SDK_VERSION } from './models.js'
 import type {
-  AnalyticsContext, AnalyticsCredentials, PlaybackErrorEvent,
+  AnalyticsContext, AnalyticsCredentials, AnalyticsPlatform, PlaybackErrorEvent,
   PlaybackSummary, PresenceState, ProductEvent, RemoteAnalyticsConfiguration,
 } from './models.js'
 
@@ -55,9 +55,9 @@ export class ZoAnalyticsClient {
     this.queue.enqueueEvent(event, context, credentials.ownerKey)
     return flushImmediately ? this.enqueue(() => this.flushEvents(credentials)) : Promise.resolve()
   }
-  submitPlaybackError(event: PlaybackErrorEvent, sessionId: string, credentials: AnalyticsCredentials): Promise<void> {
+  submitPlaybackError(event: PlaybackErrorEvent, sessionId: string, platform: AnalyticsPlatform, credentials: AnalyticsCredentials): Promise<void> {
     if (!this.collectionEnabled) return Promise.resolve()
-    this.queue.enqueueError(event, sessionId, credentials.ownerKey)
+    this.queue.enqueueError(event, sessionId, platform, credentials.ownerKey)
     return this.enqueue(() => this.flushErrors(credentials))
   }
   flush(credentials: AnalyticsCredentials): Promise<void> {
@@ -68,12 +68,12 @@ export class ZoAnalyticsClient {
 
   async updatePresence(state: PresenceState, context: AnalyticsContext, credentials: AnalyticsCredentials): Promise<void> {
     if (!this.collectionEnabled) return
-    try { await this.request('POST', 'api/v4/analytic/presence', { state, context }, credentials) } catch { /* Best effort. */ }
+    try { await this.request('POST', 'api/v4/analytic/presence', { state, context }, credentials, context.platform) } catch { /* Best effort. */ }
   }
 
-  async fetchRemoteConfiguration(credentials: AnalyticsCredentials): Promise<RemoteAnalyticsConfiguration | null> {
+  async fetchRemoteConfiguration(credentials: AnalyticsCredentials, platform: AnalyticsPlatform): Promise<RemoteAnalyticsConfiguration | null> {
     if (!this.collectionEnabled) return null
-    const response = await this.request('GET', 'api/v4/analytic/config', null, credentials) as { data?: RemoteAnalyticsConfiguration }
+    const response = await this.request('GET', 'api/v4/analytic/config', null, credentials, platform) as { data?: RemoteAnalyticsConfiguration }
     return response.data ?? null
   }
 
@@ -109,7 +109,7 @@ export class ZoAnalyticsClient {
     for (const item of this.queue.dueErrors(credentials.ownerKey, 20)) {
       const id = new Set([item.event_id])
       try {
-        await this.request('POST', `api/v4/analytic/playback/${encodeURIComponent(item.session_id)}/errors`, item.event, credentials)
+        await this.request('POST', `api/v4/analytic/playback/${encodeURIComponent(item.session_id)}/errors`, item.event, credentials, item.platform)
         this.queue.removeErrors(credentials.ownerKey, id)
       } catch (error) {
         this.shouldRetry(error) ? this.queue.deferErrors(credentials.ownerKey, id) : this.queue.removeErrors(credentials.ownerKey, id)
@@ -139,17 +139,17 @@ export class ZoAnalyticsClient {
     }
   }
   private sendSinglePlayback(item: PendingPlayback, credentials: AnalyticsCredentials): Promise<unknown> {
-    return this.request('PUT', `api/v4/analytic/playback/${encodeURIComponent(item.session_id)}`, item.payload, credentials)
+    return this.request('PUT', `api/v4/analytic/playback/${encodeURIComponent(item.session_id)}`, item.payload, credentials, item.payload.context.platform)
   }
   private sendPlaybackBatch(items: PendingPlayback[], credentials: AnalyticsCredentials): Promise<unknown> {
     return this.request('POST', 'api/v4/analytic/playback/batch', {
       schema_version: 1, sessions: items.map((i) => ({ session_id: i.session_id, summary: i.payload })),
-    }, credentials)
+    }, credentials, items[0]!.payload.context.platform)
   }
   private sendEventGroup(items: PendingProductEvent[], credentials: AnalyticsCredentials): Promise<unknown> {
     return this.request('POST', 'api/v4/analytic/events/batch', {
       schema_version: 1, events: items.map((i) => i.event), context: items[0]!.context,
-    }, credentials)
+    }, credentials, items[0]!.context.platform)
   }
   private shouldRetry(error: unknown): boolean {
     return !(error instanceof AnalyticsHttpError) || error.retryable || error.status === 401
@@ -159,7 +159,7 @@ export class ZoAnalyticsClient {
     const next = base.endsWith('/api/v4') ? path.replace(/^\/?api\/v4\//, '') : path.replace(/^\/+/, '')
     return `${base}/${next}`
   }
-  private async request(method: 'GET' | 'POST' | 'PUT', path: string, body: unknown, credentials: AnalyticsCredentials): Promise<unknown> {
+  private async request(method: 'GET' | 'POST' | 'PUT', path: string, body: unknown, credentials: AnalyticsCredentials, platform: AnalyticsPlatform): Promise<unknown> {
     if (!this.collectionEnabled) return null
     const json = body === null ? '' : JSON.stringify(body)
     if (new Blob([json]).size > (path.endsWith('/batch') ? 262_144 : 65_536)) throw new AnalyticsHttpError(413, false)
@@ -170,7 +170,7 @@ export class ZoAnalyticsClient {
         method, headers: {
           Accept: 'application/json', ...(body === null ? {} : { 'Content-Type': 'application/json' }),
           Authorization: `Bearer ${credentials.accessToken}`, 'Device-Token': credentials.deviceToken,
-          'X-Analytics-SDK-Version': ANALYTICS_SDK_VERSION, 'X-Platform': 'tv',
+          'X-Analytics-SDK-Version': ANALYTICS_SDK_VERSION, 'X-Platform': platform,
         }, ...(body === null ? {} : { body: json }), signal: controller?.signal,
       })
       const text = await response.text(); const payload = text ? this.json(text) : null

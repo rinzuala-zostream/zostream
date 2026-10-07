@@ -14,8 +14,8 @@ export {
   createUuid, supportedProductEventNames,
 } from './models.js'
 export type {
-  AnalyticsContext, AnalyticsCredentials, AnalyticsProperty, NetworkType,
+  AnalyticsContext, AnalyticsCredentials, AnalyticsPlatform, AnalyticsProperty, NetworkType,
   PlaybackContent, PlaybackContentType, PlaybackEndReason, PlaybackErrorEvent,
   PlaybackSummary, PlaybackSummaryPayload, PlaybackUploadState, PresenceState,
-  ProductEvent, ProductEventName, RemoteAnalyticsConfiguration,
+  ProductEvent, ProductEventName, RemoteAnalyticsConfiguration, TVWebAnalyticsPlatform,
 } from './models.js'

@@ -1,4 +1,4 @@
-import type { AnalyticsContext, PlaybackErrorEvent, PlaybackSummary, ProductEvent } from './models.js'
+import type { AnalyticsContext, AnalyticsPlatform, PlaybackErrorEvent, PlaybackSummary, ProductEvent } from './models.js'
 
 export interface AnalyticsStorage {
   getItem(key: string): string | null
@@ -14,7 +14,7 @@ export type PendingProductEvent = PendingBase & {
   event_id: string; event: ProductEvent; context: AnalyticsContext
 }
 export type PendingPlaybackError = PendingBase & {
-  event_id: string; session_id: string; platform: 'tv'; event: PlaybackErrorEvent
+  event_id: string; session_id: string; platform: AnalyticsPlatform; event: PlaybackErrorEvent
 }
 type QueueDocument = { playback: PendingPlayback[]; events: PendingProductEvent[]; errors: PendingPlaybackError[] }
 
@@ -65,10 +65,10 @@ export class AnalyticsQueue {
     doc.events = doc.events.slice(-(this.maxPendingSessions * 10)); this.save(doc)
   }
 
-  enqueueError(event: PlaybackErrorEvent, sessionId: string, ownerKey: string, now = Date.now()): void {
+  enqueueError(event: PlaybackErrorEvent, sessionId: string, platform: AnalyticsPlatform, ownerKey: string, now = Date.now()): void {
     const doc = this.pruned(now)
     if (doc.errors.some((item) => item.event_id === event.event_id)) return
-    doc.errors.push({ owner_key: ownerKey, session_id: sessionId, event_id: event.event_id, platform: 'tv', event, queued_at: now, attempt_count: 0, next_attempt_at: now })
+    doc.errors.push({ owner_key: ownerKey, session_id: sessionId, event_id: event.event_id, platform, event, queued_at: now, attempt_count: 0, next_attempt_at: now })
     doc.errors = doc.errors.slice(-this.maxPendingSessions); this.save(doc)
   }
 
