@@ -268,6 +268,55 @@ class AnalyticsApiTest extends TestCase
         $this->assertSame('app_opened', $data['product_events'][0]['name']);
     }
 
+    public function test_tv_sdk_data_is_available_to_admin_analytics_reports(): void
+    {
+        $ingestion = app(AnalyticsIngestionController::class);
+        $payload = $this->playbackPayload();
+        $payload['context']['platform'] = 'tv';
+        $payload['context']['os_version'] = 'Tizen 8.0';
+        $payload['context']['device_model'] = 'Samsung Smart TV';
+        $playbackRequest = $this->analyticsRequest($payload);
+        $playbackRequest->headers->set('X-Platform', 'tv');
+
+        $response = $ingestion->upsertPlayback(
+            $playbackRequest,
+            '019b1234-7e58-7000-b123-456789abcdef'
+        );
+
+        $eventRequest = $this->analyticsRequest([
+            'schema_version' => 1,
+            'events' => [[
+                'event_id' => '019b1234-a222-7000-b123-456789abcdef',
+                'name' => 'screen_viewed',
+                'occurred_at' => now('UTC')->toIso8601String(),
+                'app_session_id' => '019b1234-a000-7000-b123-456789abcdef',
+                'properties' => ['screen_name' => 'home'],
+            ]],
+            'context' => ['platform' => 'tv', 'app_version' => '1.0.0'],
+        ]);
+        $eventRequest->headers->set('X-Platform', 'tv');
+        $ingestion->batchEvents($eventRequest);
+
+        $report = app(AnalyticsReportController::class)->overview(Request::create(
+            '/reports/overview',
+            'GET',
+            [
+                'from' => now('UTC')->toDateString(),
+                'to' => now('UTC')->toDateString(),
+                'timezone' => 'UTC',
+                'platform' => 'tv',
+            ]
+        ))->getData(true)['data'];
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertSame('tv', DB::connection('analytics')->table('playback_sessions')->value('platform'));
+        $this->assertSame('1.4.0', DB::connection('analytics')->table('playback_sessions')->value('sdk_version'));
+        $this->assertSame('tv', DB::connection('analytics')->table('analytics_events')->value('platform'));
+        $this->assertSame(1, $report['playback_starts']);
+        $this->assertSame('tv', $report['platforms'][0]['platform']);
+        $this->assertSame('screen_viewed', $report['product_events'][0]['name']);
+    }
+
     public function test_analytics_routes_have_customer_and_admin_boundaries(): void
     {
         $routes = collect(Route::getRoutes()->getRoutes())

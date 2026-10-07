@@ -3,6 +3,7 @@ import { Fragment } from "react";
 import { SessionMetrics } from "./session-metrics";
 import { ApiError } from "@/app/lib/api-client";
 import { analyticsService, type AnalyticsFilters, type ReportRow, type ReportTab } from "../services/analytics-service";
+import { analyticsPlatformLabel } from "../services/analytics-platform";
 
 export function analyticsHref(filters: AnalyticsFilters, extra: Record<string, string> = {}) {
   const query = new URLSearchParams();
@@ -43,6 +44,7 @@ function cell(row: ReportRow, key: string): string {
   if (key === "is_fatal") return value === true || value === 1 || value === "1" ? "Yes" : "No";
   if (key === "watched_ms") return (Number(value) / 60_000).toFixed(1);
   if (key === "rebuffer_ratio") return (Number(value) * 100).toFixed(2);
+  if (key === "platform") return analyticsPlatformLabel(value);
   return typeof value === "object" ? JSON.stringify(value) : String(value);
 }
 

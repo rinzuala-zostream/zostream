@@ -650,6 +650,10 @@ page=1
 per_page=50
 ```
 
+`platform=tv` is the shared TV SDK platform used by Samsung Tizen and LG webOS.
+Use the `os_version` or `device_model` SDK Insights dimension to compare those
+TV operating systems without splitting the cross-platform playback contract.
+
 The insights endpoint also accepts `dimension` (default `platform`). Allowed
 dimensions cover content IDs and type, playback state/end reason, downloaded and
 autoplay status, initial/final quality, codecs and stream format, audio and

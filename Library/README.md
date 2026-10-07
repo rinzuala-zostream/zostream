@@ -21,6 +21,8 @@ data usage. Older SDK payloads without this optional field remain valid.
 
 - `ios/`: Swift Package named `ZoAnalytics` (iOS 15+).
 - `android/`: Android library module named `zoanalytics` (minSdk 21).
+- `tv/`: TypeScript package named `@zostream/analytics-tv` for Samsung Tizen,
+  LG webOS and Shaka/HTML5 video players.
 - `contract/`: shared schema notes and a canonical payload fixture.
 
 ## Required headers
