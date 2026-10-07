@@ -64,6 +64,9 @@ public struct AnalyticsRemoteConfiguration: Codable, Sendable, Equatable {
     public let maxBatchSize: Int
     public let maxPayloadBytes: Int
     public let sampleRate: Double
+    public let presenceHeartbeatEnabled: Bool?
+    public let presenceHeartbeatIntervalSeconds: Int?
+    public let presenceTtlSeconds: Int?
 
     enum CodingKeys: String, CodingKey {
         case enabled
@@ -76,7 +79,15 @@ public struct AnalyticsRemoteConfiguration: Codable, Sendable, Equatable {
         case maxBatchSize = "max_batch_size"
         case maxPayloadBytes = "max_payload_bytes"
         case sampleRate = "sample_rate"
+        case presenceHeartbeatEnabled = "presence_heartbeat_enabled"
+        case presenceHeartbeatIntervalSeconds = "presence_heartbeat_interval_seconds"
+        case presenceTtlSeconds = "presence_ttl_seconds"
     }
+}
+
+public enum AnalyticsPresenceState: String, Codable, Sendable {
+    case foreground
+    case background
 }
 
 public struct PlaybackContent: Codable, Sendable, Equatable {

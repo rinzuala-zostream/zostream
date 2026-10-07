@@ -5,10 +5,10 @@ compileSdk 36, minSdk 21, Kotlin 2.0 and Media3 1.8.0 to match the Zo Stream
 Android application.
 
 ```kotlin
-val context = AnalyticsContext(
+val context = AnalyticsContext.fromAndroidContext(
+    context = applicationContext,
     appVersion = BuildConfig.VERSION_NAME,
     buildNumber = BuildConfig.VERSION_CODE.toString(),
-    platform = AnalyticsPlatform.ANDROID,
     networkType = NetworkType.WIFI,
 )
 
@@ -25,6 +25,9 @@ val summary = session.finish(PlaybackEndReason.PLAYER_DESTROYED)
 analyticsClient.submit(summary, credentials)
 ```
 
+TV/Leanback devices report `platform = tv` and `device_category = tv`;
+phones and tablets report `platform = android` with their matching category.
+
 Save a device-only checkpoint periodically or when the activity backgrounds:
 
 ```kotlin
@@ -40,7 +43,8 @@ val analytics = ZoAnalytics.start(
     collectionEnabled = { analyticsEnabled.get() },
     credentials = { session.analyticsCredentialsOrNull() },
     context = {
-        AnalyticsContext(
+        AnalyticsContext.fromAndroidContext(
+            context = this,
             appVersion = BuildConfig.VERSION_NAME,
             buildNumber = BuildConfig.VERSION_CODE.toString(),
         )

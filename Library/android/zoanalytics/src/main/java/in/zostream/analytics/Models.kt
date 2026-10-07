@@ -1,5 +1,9 @@
 package `in`.zostream.analytics
 
+import android.app.UiModeManager
+import android.content.Context
+import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.os.Build
 import org.json.JSONArray
 import org.json.JSONObject
@@ -40,6 +44,10 @@ enum class NetworkType(val wireValue: String) {
     WIFI("wifi"), CELLULAR("cellular"), ETHERNET("ethernet"), OFFLINE("offline"), UNKNOWN("unknown")
 }
 
+enum class AnalyticsPresenceState(val wireValue: String) {
+    FOREGROUND("foreground"), BACKGROUND("background")
+}
+
 data class AnalyticsCredentials(
     val accessToken: String,
     val deviceToken: String,
@@ -57,6 +65,9 @@ data class AnalyticsRemoteConfiguration(
     val maxBatchSize: Int,
     val maxPayloadBytes: Int,
     val sampleRate: Double,
+    val presenceHeartbeatEnabled: Boolean,
+    val presenceHeartbeatIntervalSeconds: Int,
+    val presenceTtlSeconds: Int,
 ) {
     companion object {
         fun fromJson(json: JSONObject) = AnalyticsRemoteConfiguration(
@@ -70,6 +81,9 @@ data class AnalyticsRemoteConfiguration(
             maxBatchSize = json.optInt("max_batch_size", 20),
             maxPayloadBytes = json.optInt("max_payload_bytes", 65_536),
             sampleRate = json.optDouble("sample_rate", 1.0),
+            presenceHeartbeatEnabled = json.optBoolean("presence_heartbeat_enabled", false),
+            presenceHeartbeatIntervalSeconds = json.optInt("presence_heartbeat_interval_seconds", 60),
+            presenceTtlSeconds = json.optInt("presence_ttl_seconds", 150),
         )
     }
 }
@@ -116,6 +130,43 @@ data class AnalyticsContext @JvmOverloads constructor(
         .put("timezone", timezone)
 
     companion object {
+        /** Builds a context that reports Android TV separately from mobile Android. */
+        @JvmStatic
+        @JvmOverloads
+        fun fromAndroidContext(
+            context: Context,
+            appVersion: String,
+            buildNumber: String,
+            networkType: NetworkType = NetworkType.UNKNOWN,
+        ): AnalyticsContext {
+            val appContext = context.applicationContext
+            val modeManager = appContext.getSystemService(Context.UI_MODE_SERVICE) as? UiModeManager
+            val packageManager = appContext.packageManager
+            val isTelevision = modeManager?.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION ||
+                packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
+            val (platform, category) = deviceIdentity(
+                isTelevision,
+                appContext.resources.configuration.smallestScreenWidthDp,
+            )
+
+            return AnalyticsContext(
+                appVersion = appVersion,
+                buildNumber = buildNumber,
+                platform = platform,
+                networkType = networkType,
+                deviceCategory = category,
+            )
+        }
+
+        internal fun deviceIdentity(
+            isTelevision: Boolean,
+            smallestScreenWidthDp: Int,
+        ): Pair<AnalyticsPlatform, String> = when {
+            isTelevision -> AnalyticsPlatform.TV to "tv"
+            smallestScreenWidthDp >= 600 -> AnalyticsPlatform.ANDROID to "tablet"
+            else -> AnalyticsPlatform.ANDROID to "phone"
+        }
+
         fun fromJson(json: JSONObject) = AnalyticsContext(
             platform = AnalyticsPlatform.entries.firstOrNull { it.wireValue == json.optString("platform") }
                 ?: AnalyticsPlatform.ANDROID,

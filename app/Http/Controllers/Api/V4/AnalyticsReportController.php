@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V4;
 
 use App\Http\Controllers\Controller;
+use App\Support\Analytics\AnalyticsPresenceStore;
 use App\Support\Api\V4Response;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
@@ -76,6 +77,33 @@ class AnalyticsReportController extends Controller
         'average_bitrate_kbps' => 'quality.average_bitrate_kbps',
         'average_playback_speed' => 'tracks.playback_speed',
     ];
+
+    public function presence(Request $request): JsonResponse
+    {
+        $filters = $request->validate([
+            'platform' => ['nullable', Rule::in(['ios', 'tvos', 'android', 'tv'])],
+            'app_version' => ['nullable', 'string', 'max:64'],
+            'user_id' => ['nullable', 'string', 'max:128'],
+        ]);
+
+        try {
+            return V4Response::success(app(AnalyticsPresenceStore::class)->snapshot($filters));
+        } catch (\Throwable $error) {
+            report($error);
+
+            return V4Response::success([
+                'available' => false,
+                'online_users' => 0,
+                'online_devices' => 0,
+                'heartbeat_interval_seconds' => 60,
+                'presence_ttl_seconds' => AnalyticsPresenceStore::TTL_SECONDS,
+                'as_of' => now('UTC')->toIso8601String(),
+                'platforms' => [],
+                'devices' => [],
+                'devices_truncated' => false,
+            ]);
+        }
+    }
 
     /** Aggregate every SDK v1 measurement for the selected sessions and dimension. */
     public function insights(Request $request): JsonResponse
@@ -532,31 +560,31 @@ class AnalyticsReportController extends Controller
             $metrics = json_decode((string) $row->metrics_json, true) ?: [];
 
             return [
-            'session_id' => $row->session_id,
-            'user_id' => $row->user_id,
-            'device_id' => $row->device_id,
-            'content_id' => $row->content_id,
-            'content_type' => $row->content_type,
-            'revision' => (int) $row->revision,
-            'state' => $row->state,
-            'started_at' => $row->started_at,
-            'ended_at' => $row->ended_at,
-            'watch_position_ms' => (int) $row->watch_position_ms,
-            'duration_ms' => (int) $row->duration_ms,
-            'watched_ms' => (int) $row->watched_ms,
-            'unique_watched_ms' => (int) $row->unique_watched_ms,
-            'startup_ms' => $row->startup_ms === null ? null : (int) $row->startup_ms,
-            'buffer_count' => (int) $row->buffer_count,
-            'buffer_ms' => (int) $row->buffer_ms,
-            'error_count' => (int) $row->error_count,
-            'completion_percent' => (float) $row->completion_percent,
-            'completed' => (bool) $row->completed,
-            'end_reason' => $row->end_reason,
-            'platform' => $row->platform,
-            'app_version' => $row->app_version,
-            'sdk_version' => $row->sdk_version,
-            'data_transferred_bytes' => (int) data_get($metrics, 'quality.bytes_transferred', 0),
-            'metrics' => $metrics,
+                'session_id' => $row->session_id,
+                'user_id' => $row->user_id,
+                'device_id' => $row->device_id,
+                'content_id' => $row->content_id,
+                'content_type' => $row->content_type,
+                'revision' => (int) $row->revision,
+                'state' => $row->state,
+                'started_at' => $row->started_at,
+                'ended_at' => $row->ended_at,
+                'watch_position_ms' => (int) $row->watch_position_ms,
+                'duration_ms' => (int) $row->duration_ms,
+                'watched_ms' => (int) $row->watched_ms,
+                'unique_watched_ms' => (int) $row->unique_watched_ms,
+                'startup_ms' => $row->startup_ms === null ? null : (int) $row->startup_ms,
+                'buffer_count' => (int) $row->buffer_count,
+                'buffer_ms' => (int) $row->buffer_ms,
+                'error_count' => (int) $row->error_count,
+                'completion_percent' => (float) $row->completion_percent,
+                'completed' => (bool) $row->completed,
+                'end_reason' => $row->end_reason,
+                'platform' => $row->platform,
+                'app_version' => $row->app_version,
+                'sdk_version' => $row->sdk_version,
+                'data_transferred_bytes' => (int) data_get($metrics, 'quality.bytes_transferred', 0),
+                'metrics' => $metrics,
             ];
         });
         $rows->setCollection(collect($this->withContentTitles($rows->items())));

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import PageHeader from '../components/PageHeader.vue';
 import StatusPanel from '../components/StatusPanel.vue';
 import { api, queryString } from '../lib/api';
@@ -45,6 +45,7 @@ const activeTab = ref('overview');
 const config = ref({ enabled: false, updated_at: null });
 const report = ref({ overview: {}, engagement: {}, watch_trend: [], streaming_health: [], platforms: [], top_content: [], product_events: [] });
 const quality = ref([]);
+const presence = ref({ available: true, online_users: 0, online_devices: 0, platforms: [], devices: [], as_of: null });
 const contentPage = ref({ data: [], current_page: 1, last_page: 1, total: 0 });
 const sessionPage = ref({ data: [], current_page: 1, last_page: 1, total: 0 });
 const eventPage = ref({ data: [], current_page: 1, last_page: 1, total: 0 });
@@ -121,12 +122,22 @@ async function loadConfig() {
 
 async function loadOverview() {
     const query = queryString({ ...filters.value });
-    const [summary, qualityRows] = await Promise.all([
+    const presenceQuery = queryString({ platform: filters.value.platform, app_version: filters.value.app_version, user_id: filters.value.user_id });
+    const [summary, qualityRows, online] = await Promise.all([
         api(`/analytic/reports/overview${query}`, { cache: 'no-store' }),
         api(`/analytic/reports/quality${query}`, { cache: 'no-store' }),
+        api(`/analytic/reports/presence${presenceQuery}`, { cache: 'no-store' }),
     ]);
     report.value = summary;
     quality.value = qualityRows;
+    presence.value = online;
+}
+
+async function loadPresence() {
+    if (activeTab.value !== 'overview' || document.hidden) return;
+    const query = queryString({ platform: filters.value.platform, app_version: filters.value.app_version, user_id: filters.value.user_id });
+    try { presence.value = await api(`/analytic/reports/presence${query}`, { cache: 'no-store' }); }
+    catch { presence.value = { ...presence.value, available: false }; }
 }
 
 async function loadDetails() {
@@ -207,7 +218,13 @@ function exportCurrentPage() {
 
 function scale(value, max) { return `${max > 0 ? Math.max(2, Math.min(100, (Number(value || 0) / max) * 100)) : 2}%`; }
 
-onMounted(() => { void loadConfig(); void loadAll(); });
+let presenceTimer;
+onMounted(() => {
+    void loadConfig();
+    void loadAll();
+    presenceTimer = window.setInterval(() => { void loadPresence(); }, 30_000);
+});
+onUnmounted(() => { if (presenceTimer) window.clearInterval(presenceTimer); });
 </script>
 
 <template>
@@ -249,7 +266,13 @@ onMounted(() => { void loadConfig(); void loadAll(); });
 
         <div v-if="loading" class="admin-loading">Loading analytics…</div>
         <template v-else-if="!error && activeTab === 'overview'">
+            <section class="admin-panel analytics-panel presence-panel" :class="{ 'is-unavailable': presence.available === false }">
+                <header><div><span class="analytics-eyebrow">LIVE PRESENCE</span><h2><i class="presence-dot" /> {{ presence.available === false ? 'Presence unavailable' : `${number(presence.online_users)} users online now` }}</h2><p>Foreground devices seen within {{ number(presence.presence_ttl_seconds || 150) }} seconds. Refreshes every 30 seconds.</p></div><strong>{{ number(presence.online_devices) }} devices</strong></header>
+                <div v-if="presence.platforms?.length" class="presence-platforms"><span v-for="item in presence.platforms" :key="item.platform"><b>{{ item.platform.toUpperCase() }}</b> {{ number(item.users) }} users · {{ number(item.devices) }} devices</span></div>
+                <div v-if="presence.devices?.length" class="analytics-table-wrap presence-devices"><table><thead><tr><th>User</th><th>Platform</th><th>App</th><th>Device</th><th>Network</th><th>Last seen</th></tr></thead><tbody><tr v-for="device in presence.devices" :key="`${device.user_id}:${device.device_id}`"><td>{{ device.user_id }}</td><td>{{ device.platform }}</td><td>{{ device.app_version || '—' }}<small>{{ device.build_number || '' }}</small></td><td>{{ device.device_model || device.device_id }}</td><td>{{ device.network_type || '—' }}</td><td>{{ device.last_seen_at }}</td></tr></tbody></table></div>
+            </section>
             <section class="analytics-metrics">
+                <article><span>Online now</span><b>{{ presence.available === false ? '—' : number(presence.online_users) }}</b><small>{{ number(presence.online_devices) }} devices</small></article>
                 <article><span>Playback starts</span><b>{{ number(overview.playback_starts) }}</b></article>
                 <article><span>Qualified views</span><b>{{ number(overview.valid_views) }}</b></article>
                 <article><span>Unique viewers</span><b>{{ number(overview.unique_viewers) }}</b></article>
@@ -359,4 +382,5 @@ onMounted(() => { void loadConfig(); void loadAll(); });
 .analytics-filters,.detail-filter-row{display:flex;align-items:end;flex-wrap:wrap;gap:9px;margin:12px 0;padding:13px;border:1px solid var(--a-line);border-radius:14px;background:var(--a-panel)}.analytics-filters label,.detail-filter-row label{display:grid;gap:5px;color:var(--a-muted);font-size:10px;font-weight:700}.analytics-filters input,.analytics-filters select,.detail-filter-row input{height:36px;min-width:125px;padding:0 10px;border:1px solid var(--a-line);border-radius:9px;background:var(--a-bg);color:var(--a-text);font:inherit}.analytics-filters label:nth-child(3) select{min-width:155px}.analytics-filters .admin-primary,.detail-filter-row .admin-secondary{height:36px;padding-inline:14px}.analytics-tabs{display:flex;gap:5px;overflow-x:auto;margin:12px 0;padding:4px;border:1px solid var(--a-line);border-radius:12px;background:var(--a-panel)}.analytics-tabs button{flex:none;padding:9px 13px;border:0;border-radius:8px;background:transparent;color:var(--a-muted);font-size:11px;font-weight:750;cursor:pointer}.analytics-tabs button.active{background:var(--a-cyan);color:#06202a}.analytics-metrics{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:9px;margin:12px 0}.analytics-metrics article{min-width:0;padding:13px;border:1px solid var(--a-line);border-radius:13px;background:var(--a-panel)}.analytics-metrics span{display:block;color:var(--a-muted);font-size:9px}.analytics-metrics b{display:block;margin-top:7px;color:var(--a-cyan);font:750 19px 'Manrope',sans-serif;overflow-wrap:anywhere}.analytics-metrics small{font-size:10px}.analytics-detail-metrics{grid-template-columns:repeat(5,minmax(0,1fr))}.analytics-detail-metrics b{font-size:15px}.analytics-columns{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0}.analytics-panel{min-width:0;padding:15px}.analytics-panel header{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}.analytics-list>div{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid var(--a-line)}.analytics-list span{min-width:0}.analytics-list b,.analytics-list small{display:block}.analytics-list b{overflow:hidden;text-overflow:ellipsis;text-transform:capitalize}.analytics-list small,.analytics-trend small,.analytics-table-wrap td small{display:block;margin-top:3px;color:var(--a-muted);font-size:9px}.analytics-list strong{flex:none;font-size:10px}.analytics-trend>div{display:grid;grid-template-columns:76px minmax(55px,1fr) auto;align-items:center;gap:9px;padding:8px 0;border-top:1px solid var(--a-line);font-size:10px}.analytics-trend>div>span{color:var(--a-muted)}.analytics-trend i{height:7px;border-radius:9px;background:var(--a-soft);overflow:hidden}.analytics-trend i b{display:block;height:100%;border-radius:9px;background:linear-gradient(90deg,#22d3ee,#6366f1)}.analytics-trend strong{font-size:10px}.analytics-trend small{grid-column:2/4;margin:0}.analytics-table-wrap{max-width:100%;overflow:auto}.analytics-table-wrap table{width:100%;border-collapse:collapse;white-space:nowrap;font-size:10px}.analytics-table-wrap th,.analytics-table-wrap td{padding:9px 10px;border-bottom:1px solid var(--a-line);text-align:left;vertical-align:top}.analytics-table-wrap th{color:var(--a-muted);font-size:9px;text-transform:uppercase;letter-spacing:.08em}.analytics-table-wrap details{max-width:240px}.analytics-table-wrap summary{color:var(--a-cyan);cursor:pointer}.analytics-table-wrap pre{max-height:300px;max-width:420px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:9px}.analytics-error-layout{grid-template-columns:1fr}.analytics-pagination{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 2px;color:var(--a-muted);font-size:11px}.analytics-pagination>div{display:flex;gap:7px}.admin-empty{padding:16px;color:var(--a-muted);font-size:11px}@media(max-width:1000px){.analytics-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}.analytics-detail-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}}@media(max-width:700px){.analytics-columns{grid-template-columns:1fr}.analytics-metrics,.analytics-detail-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.analytics-control{align-items:flex-start;flex-direction:column}.analytics-filters>*{flex:1 1 140px}.analytics-pagination{align-items:flex-start;flex-direction:column}}
 .detail-filter-row select{height:36px;min-width:160px;padding:0 10px;border:1px solid var(--a-line);border-radius:9px;background:var(--a-bg);color:var(--a-text);font:inherit}
 .analytics-insights{display:grid;gap:12px}.analytics-insight-controls{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:15px}.analytics-insight-controls label{display:grid;gap:6px;min-width:200px;color:var(--a-muted);font-size:11px;font-weight:700}.analytics-insight-controls select{height:38px;max-width:100%;padding:0 10px;border:1px solid var(--a-line);border-radius:9px;background:var(--a-bg);color:var(--a-text);font:inherit}.analytics-insight-groups{display:grid;gap:12px}.analytics-insight-row>div{display:flex;justify-content:space-between;gap:12px;font-size:11px}.analytics-insight-row strong{overflow-wrap:anywhere}.analytics-insight-row b{flex:none}.analytics-insight-row small{display:block;margin-top:4px;color:var(--a-muted)}.analytics-insight-track{display:block;height:8px;margin-top:6px;border-radius:9px;background:var(--a-soft);overflow:hidden}.analytics-insight-track i{display:block;height:100%;border-radius:9px;background:linear-gradient(90deg,#22d3ee,#6366f1)}.analytics-insight-summary{display:grid;gap:9px}.analytics-insight-summary summary{cursor:pointer;font-size:13px;font-weight:800}.analytics-insight-summary summary small{float:right;font-size:10px;font-weight:500}.analytics-insight-cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin-top:14px}.analytics-insight-cards article{min-width:0;padding:12px;border-radius:10px;background:var(--a-soft)}.analytics-insight-cards span{display:block;color:var(--a-muted);font-size:10px}.analytics-insight-cards b{display:block;margin-top:5px;overflow-wrap:anywhere;font-size:16px}@media(max-width:1000px){.analytics-insight-cards{grid-template-columns:repeat(3,minmax(0,1fr))}}@media(max-width:700px){.analytics-insight-cards{grid-template-columns:repeat(2,minmax(0,1fr))}.analytics-insight-controls label{flex:1 1 200px;min-width:0}}
+.presence-panel{margin:12px 0;border-color:rgba(16,185,129,.35);background:linear-gradient(135deg,rgba(16,185,129,.08),var(--a-panel))}.presence-panel.is-unavailable{border-color:var(--a-line)}.presence-panel header{margin-bottom:0}.presence-panel h2{display:flex;align-items:center;gap:8px}.presence-panel header>strong{color:#10b981;font-size:18px}.presence-dot{width:9px;height:9px;border-radius:50%;background:#10b981;box-shadow:0 0 0 5px rgba(16,185,129,.14)}.is-unavailable .presence-dot{background:#94a3b8;box-shadow:none}.presence-platforms{display:flex;flex-wrap:wrap;gap:8px;margin-top:13px}.presence-platforms span{padding:6px 9px;border-radius:8px;background:var(--a-soft);font-size:10px}.presence-devices{max-height:260px;margin-top:12px}
 </style>

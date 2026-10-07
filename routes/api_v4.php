@@ -3,8 +3,8 @@
 use App\Http\Controllers\Api\V4\AccountController;
 use App\Http\Controllers\Api\V4\AdminAdBillingController;
 use App\Http\Controllers\Api\V4\AdminAdSubmissionController;
-use App\Http\Controllers\Api\V4\AdminHomeSectionController;
 use App\Http\Controllers\Api\V4\AdminAnalyticsController;
+use App\Http\Controllers\Api\V4\AdminHomeSectionController;
 use App\Http\Controllers\Api\V4\AdminRealtimeConfigController;
 use App\Http\Controllers\Api\V4\AdminWhatsAppInboxController;
 use App\Http\Controllers\Api\V4\AdPaymentController;
@@ -228,6 +228,8 @@ Route::prefix('v4')
             Route::prefix('analytic')->middleware('auth.token')->group(function () {
                 Route::get('/config', [AnalyticsIngestionController::class, 'config'])
                     ->middleware('throttle:analytics-config');
+                Route::post('/presence', [AnalyticsIngestionController::class, 'presence'])
+                    ->middleware('throttle:analytics-presence');
                 Route::put('/playback/{sessionId}', [AnalyticsIngestionController::class, 'upsertPlayback'])
                     ->middleware('throttle:analytics-playback');
                 Route::post('/playback/batch', [AnalyticsIngestionController::class, 'batchPlayback'])
@@ -239,6 +241,7 @@ Route::prefix('v4')
 
                 Route::prefix('reports')->middleware(['admin.token', 'throttle:analytics-reports'])->group(function () {
                     Route::get('/overview', [AnalyticsReportController::class, 'overview']);
+                    Route::get('/presence', [AnalyticsReportController::class, 'presence']);
                     Route::get('/insights', [AnalyticsReportController::class, 'insights']);
                     Route::get('/content', [AnalyticsReportController::class, 'content']);
                     Route::get('/content/{type}/{id}', [AnalyticsReportController::class, 'contentShow']);

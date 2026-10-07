@@ -8,9 +8,11 @@ produce the same v1 JSON contract and upload to:
 https://zostream.in/api/v4/analytic
 ```
 
-The SDK never sends a heartbeat. It accumulates playback measurements locally,
-persists a bounded retry queue, and submits a final session summary when the
-player stops. Analytics failures never block playback or watch-position saving.
+The SDK accumulates playback measurements locally, persists a bounded retry
+queue, and submits a final session summary when the player stops. While the app
+is in the foreground it also sends a lightweight presence heartbeat every
+50–70 seconds. Presence is best-effort, never queued, and analytics failures
+never block playback or watch-position saving.
 Playback quality metrics include the stream's observed bitrate and cumulative
 `bytes_transferred`, allowing admin reports to show per-session and aggregate
 data usage. Older SDK payloads without this optional field remain valid.
@@ -28,7 +30,7 @@ The host app supplies fresh credentials when flushing:
 ```text
 Authorization: Bearer <access-token>
 Device-Token: <device-token>
-X-Analytics-SDK-Version: 1.3.0
+X-Analytics-SDK-Version: 1.4.0
 X-Platform: ios|tvos|android|tv
 ```
 
@@ -50,8 +52,10 @@ app start -> lifecycle observation -> local queue -> background batch upload
 business action --------------------^
 ```
 
-There is no heartbeat or continuously running background service. When the OS
-suspends the app, pending records stay on disk and upload on a later foreground.
+There is no continuously running background service. Foreground presence uses a
+60-second interval with jitter; backgrounding sends a best-effort offline signal
+and stops the timer. Redis expires stale presence after 150 seconds, so force
+quit and lost-network devices disappear without a database write or cleanup job.
 
 ## Firebase Realtime Database kill switch
 

@@ -20,7 +20,7 @@ Android / iOS player
         |      Existing playback start response supplies an analytics session ID
         |
         |-- Local analytics collector
-        |      No heartbeat request; metrics are accumulated on the device
+        |      Playback metrics stay local; foreground presence uses Redis
         |
         |-- POST /api/v4/playback/sessions/stop
         |      Existing watch-position and stream-stop behavior
@@ -64,7 +64,7 @@ Authorization: Bearer <access-token>
 Device-Token: <device-token>
 Content-Type: application/json
 Accept: application/json
-X-Analytics-SDK-Version: 1.2.0
+X-Analytics-SDK-Version: 1.4.0
 X-Platform: ios
 ```
 
@@ -117,7 +117,7 @@ The SDK uses `analytics.session_id` as the playback summary ID. It matches the
 `stream_token` UUID for this playback attempt. Collection remains controlled by
 the Firebase Realtime Database flag at `/config/analytics/enabled`; the app
 must initialize collection disabled and enable it only after observing `true`.
-The SDK does not call an analytics heartbeat endpoint.
+SDK 1.4.0 and newer calls the presence endpoint while the app is foregrounded.
 
 ### 2. Collect locally
 
@@ -161,6 +161,7 @@ launch, the SDK finalizes an unfinished local session with
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/api/v4/analytic/config` | Cached SDK controls and supported schema |
+| `POST` | `/api/v4/analytic/presence` | Refresh or clear ephemeral foreground presence |
 | `PUT` | `/api/v4/analytic/playback/{session_id}` | Upsert one playback summary |
 | `POST` | `/api/v4/analytic/playback/batch` | Retry several pending summaries |
 | `POST` | `/api/v4/analytic/playback/{session_id}/errors` | Store a fatal or diagnostic playback error |
@@ -185,6 +186,9 @@ when there is no cached setting.
     "minimum_sdk_version": "1.2.0",
     "checkpoint_upload_enabled": false,
     "local_snapshot_interval_seconds": 30,
+    "presence_heartbeat_enabled": true,
+    "presence_heartbeat_interval_seconds": 60,
+    "presence_ttl_seconds": 150,
     "max_pending_sessions": 500,
     "pending_retention_days": 7,
     "max_batch_size": 20,
@@ -196,6 +200,22 @@ when there is no cached setting.
 
 `sample_rate` ranges from `0.0` to `1.0`. Playback failures may always be
 collected even when successful sessions are sampled.
+
+## POST `/api/v4/analytic/presence`
+
+Foreground apps send `state: foreground` every 60 seconds with a random
+10-second jitter. Backgrounding sends `state: background` once. The server
+stores only the latest user/device presence in Redis; it does not insert a
+database row. Entries expire after 150 seconds, covering force quit, lost
+network, and devices that cannot deliver the background request.
+
+The heartbeat path does not read Firebase on every request. The app's realtime
+collection listener stops the timer when analytics is disabled, and existing
+Redis presence expires automatically.
+
+Admin clients read current presence from
+`GET /api/v4/analytic/reports/presence`. The report may be filtered by
+`platform`, `app_version`, or `user_id`.
 
 ## PUT `/api/v4/analytic/playback/{session_id}`
 
@@ -213,7 +233,7 @@ PUT /api/v4/analytic/playback/019b1234-7e58-7000-a123-456789abcdef
 Authorization: Bearer <access-token>
 Device-Token: <device-token>
 Content-Type: application/json
-X-Analytics-SDK-Version: 1.2.0
+X-Analytics-SDK-Version: 1.4.0
 X-Platform: ios
 ```
 

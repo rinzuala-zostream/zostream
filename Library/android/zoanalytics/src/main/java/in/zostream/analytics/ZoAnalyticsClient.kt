@@ -69,6 +69,24 @@ class ZoAnalyticsClient @JvmOverloads constructor(
         }
     }
 
+    /** Presence is best-effort and never enters the durable playback queue. */
+    fun updatePresence(
+        state: AnalyticsPresenceState,
+        context: AnalyticsContext,
+        credentials: AnalyticsCredentials,
+    ) {
+        if (!collectionEnabled) return
+        executor.execute {
+            runCatching {
+                if (!collectionEnabled) return@runCatching
+                val body = JSONObject()
+                    .put("state", state.wireValue)
+                    .put("context", context.toJson())
+                send("POST", "api/v4/analytic/presence", body, credentials, context.platform.wireValue)
+            }
+        }
+    }
+
     @JvmOverloads
     fun track(
         event: ProductEvent,

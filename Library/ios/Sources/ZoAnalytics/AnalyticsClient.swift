@@ -61,6 +61,11 @@ private struct EventBatchBody: Encodable {
     }
 }
 
+private struct PresenceBody: Encodable {
+    let state: AnalyticsPresenceState
+    let context: AnalyticsContext
+}
+
 private struct APIDataEnvelope<Value: Decodable>: Decodable {
     let data: Value
 }
@@ -104,6 +109,23 @@ public actor ZoAnalyticsClient {
     public func saveLocally(_ summary: PlaybackSummary, ownerKey: String) async throws {
         guard collectionEnabled else { return }
         try await queue.upsert(summary, ownerKey: ownerKey)
+    }
+
+    /// Presence is intentionally fire-and-forget and is never added to the
+    /// durable playback queue. A network or presence-service failure is ignored.
+    public func updatePresence(
+        _ state: AnalyticsPresenceState,
+        context: AnalyticsContext,
+        credentials: AnalyticsCredentials
+    ) async {
+        guard collectionEnabled else { return }
+        try? await send(
+            method: "POST",
+            path: "api/v4/analytic/presence",
+            body: PresenceBody(state: state, context: context),
+            credentials: credentials,
+            platform: context.platform.rawValue
+        )
     }
 
     public func track(

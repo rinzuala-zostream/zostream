@@ -86,6 +86,7 @@ class AppServiceProvider extends ServiceProvider
             'analytics-batch' => 10,
             'analytics-errors' => 20,
             'analytics-events' => 20,
+            'analytics-presence' => 8,
         ] as $name => $attempts) {
             RateLimiter::for($name, function (Request $request) use ($name, $attempts) {
                 return $this->playbackDeviceLimit($request, $name, $attempts);

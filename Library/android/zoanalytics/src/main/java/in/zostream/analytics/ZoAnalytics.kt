@@ -4,6 +4,8 @@ import android.app.Activity
 import android.app.Application
 import android.os.Bundle
 import java.util.UUID
+import kotlin.math.min
+import kotlin.random.Random
 
 /** Application-scoped facade. Call [start] once from Application.onCreate. */
 class ZoAnalytics private constructor(
@@ -23,6 +25,20 @@ class ZoAnalytics private constructor(
     private var enteredBackground = false
     private var recordedOpen = false
     private var lastScreenName: String? = null
+    private val presenceHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val presenceRunnable = object : Runnable {
+        override fun run() {
+            refreshCollectionState()
+            if (!isCollectionEnabled || startedActivities <= 0) return
+            val credentials = credentialsProvider()
+            if (credentials != null) {
+                client.updatePresence(AnalyticsPresenceState.FOREGROUND, contextProvider(), credentials)
+            }
+            val jitter = min(10_000L, configuration.presenceHeartbeatIntervalMs / 6)
+            val delay = configuration.presenceHeartbeatIntervalMs + Random.nextLong(-jitter, jitter + 1)
+            presenceHandler.postDelayed(this, delay.coerceAtLeast(30_000L))
+        }
+    }
 
     init {
         if (configuration.automaticLifecycleTracking) {
@@ -40,6 +56,7 @@ class ZoAnalytics private constructor(
         if (!isCollectionEnabled) return
         recordOpenIfPossible()
         flush()
+        if (startedActivities > 0) startPresenceHeartbeat()
     }
 
     /** Call whenever the host's remote collection flag changes. */
@@ -48,6 +65,9 @@ class ZoAnalytics private constructor(
         if (isCollectionEnabled) {
             recordOpenIfPossible()
             flush()
+            if (startedActivities > 0) startPresenceHeartbeat()
+        } else {
+            stopPresenceHeartbeat(sendOffline = false)
         }
     }
 
@@ -88,6 +108,7 @@ class ZoAnalytics private constructor(
             )
             flush()
         }
+        stopPresenceHeartbeat(sendOffline = true)
         application.unregisterActivityLifecycleCallbacks(this)
         synchronized(Companion) {
             if (instance === this) instance = null
@@ -106,6 +127,7 @@ class ZoAnalytics private constructor(
                 track("app_foregrounded")
                 flush()
             }
+            startPresenceHeartbeat()
         }
     }
 
@@ -127,6 +149,7 @@ class ZoAnalytics private constructor(
         if (!isCollectionEnabled) return
         if (startedActivities == 0 && changingConfigurations == 0) {
             enteredBackground = true
+            stopPresenceHeartbeat(sendOffline = true)
             lastScreenName = null
             track(
                 "app_backgrounded",
@@ -154,6 +177,19 @@ class ZoAnalytics private constructor(
 
     private fun refreshCollectionState() {
         client.setCollectionEnabled(isCollectionEnabled)
+    }
+
+    private fun startPresenceHeartbeat() {
+        if (!isCollectionEnabled || startedActivities <= 0) return
+        presenceHandler.removeCallbacks(presenceRunnable)
+        presenceHandler.post(presenceRunnable)
+    }
+
+    private fun stopPresenceHeartbeat(sendOffline: Boolean) {
+        presenceHandler.removeCallbacks(presenceRunnable)
+        if (!sendOffline || !isCollectionEnabled) return
+        val credentials = credentialsProvider() ?: return
+        client.updatePresence(AnalyticsPresenceState.BACKGROUND, contextProvider(), credentials)
     }
 
     companion object {

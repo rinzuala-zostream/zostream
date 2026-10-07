@@ -3,15 +3,16 @@
 namespace App\Http\Controllers\Api\V4;
 
 use App\Http\Controllers\Controller;
+use App\Support\Analytics\AnalyticsPresenceStore;
 use App\Support\Api\V4Response;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
-use Kreait\Firebase\Factory;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use Kreait\Firebase\Factory;
 
 class AnalyticsIngestionController extends Controller
 {
@@ -55,12 +56,70 @@ class AnalyticsIngestionController extends Controller
             'minimum_sdk_version' => '1.2.0',
             'checkpoint_upload_enabled' => false,
             'local_snapshot_interval_seconds' => 30,
+            'presence_heartbeat_enabled' => true,
+            'presence_heartbeat_interval_seconds' => 60,
+            'presence_ttl_seconds' => AnalyticsPresenceStore::TTL_SECONDS,
             'max_pending_sessions' => 500,
             'pending_retention_days' => 7,
             'max_batch_size' => 20,
             'max_payload_bytes' => 65_536,
             'sample_rate' => 1.0,
         ]);
+    }
+
+    public function presence(Request $request): JsonResponse
+    {
+        if ($error = $this->identityError($request)) {
+            return $error;
+        }
+
+        $payload = $request->validate([
+            'state' => ['required', Rule::in(['foreground', 'background'])],
+            'context' => ['required', 'array'],
+            'context.platform' => ['required', Rule::in(self::PLATFORMS)],
+            'context.app_version' => ['nullable', 'string', 'max:64'],
+            'context.build_number' => ['nullable', 'string', 'max:64'],
+            'context.device_model' => ['nullable', 'string', 'max:128'],
+            'context.network_type' => ['nullable', 'string', 'max:32'],
+        ]);
+
+        $userId = (string) $request->input('auth_user_id');
+        $deviceId = (string) $request->input('auth_device_id');
+        $platform = $this->platform($request, Arr::get($payload, 'context.platform'));
+
+        try {
+            $store = app(AnalyticsPresenceStore::class);
+            if ($payload['state'] === 'background') {
+                $store->offline($userId, $deviceId, $platform);
+
+                return V4Response::success(['accepted' => true, 'online' => false]);
+            }
+
+            $presence = $store->heartbeat([
+                'user_id' => $userId,
+                'device_id' => $deviceId,
+                'platform' => $platform,
+                'app_version' => Arr::get($payload, 'context.app_version'),
+                'build_number' => Arr::get($payload, 'context.build_number'),
+                'device_model' => Arr::get($payload, 'context.device_model'),
+                'network_type' => Arr::get($payload, 'context.network_type'),
+            ]);
+
+            return V4Response::success([
+                'accepted' => true,
+                'online' => true,
+                'expires_in_seconds' => AnalyticsPresenceStore::TTL_SECONDS,
+                'last_seen_at' => $presence['last_seen_at'],
+            ]);
+        } catch (\Throwable $error) {
+            // Presence is optional telemetry. A Redis outage must never make the
+            // host application wait, retry, or treat playback as failed.
+            return V4Response::success([
+                'accepted' => false,
+                'online' => false,
+                'reason' => 'presence_unavailable',
+            ], status: 202);
+        }
     }
 
     public function upsertPlayback(Request $request, string $sessionId): JsonResponse

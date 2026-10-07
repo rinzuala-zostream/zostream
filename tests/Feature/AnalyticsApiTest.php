@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Http\Controllers\Api\V4\AnalyticsIngestionController;
 use App\Http\Controllers\Api\V4\AnalyticsReportController;
+use App\Support\Analytics\AnalyticsPresenceStore;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -24,15 +25,17 @@ class AnalyticsApiTest extends TestCase
         ]]);
         DB::purge('analytics');
         (require database_path('migrations/2026_10_06_000001_create_analytics_tables.php'))->up();
-        app()->instance(AnalyticsIngestionController::class, new class extends AnalyticsIngestionController {
-            protected function analyticsEnabled(): bool { return true; }
+        app()->instance(AnalyticsIngestionController::class, new class extends AnalyticsIngestionController
+        {
+            protected function analyticsEnabled(): bool
+            {
+                return true;
+            }
         });
         $pdo = DB::connection('analytics')->getPdo();
         $pdo->sqliteCreateFunction('JSON_UNQUOTE', fn ($value) => $value);
-        $pdo->sqliteCreateFunction('CONVERT_TZ', fn ($value, $from, $to) =>
-            CarbonImmutable::parse($value, $from)->setTimezone($to)->format('Y-m-d H:i:s'));
-        $pdo->sqliteCreateFunction('JSON_CONTAINS', fn ($value, $needle) =>
-            in_array((int) $needle, json_decode((string) $value, true) ?: [], true) ? 1 : 0);
+        $pdo->sqliteCreateFunction('CONVERT_TZ', fn ($value, $from, $to) => CarbonImmutable::parse($value, $from)->setTimezone($to)->format('Y-m-d H:i:s'));
+        $pdo->sqliteCreateFunction('JSON_CONTAINS', fn ($value, $needle) => in_array((int) $needle, json_decode((string) $value, true) ?: [], true) ? 1 : 0);
     }
 
     protected function tearDown(): void
@@ -157,6 +160,62 @@ class AnalyticsApiTest extends TestCase
         $this->assertSame(1, $response->getData(true)['data']['schema_version']);
         $this->assertSame(20, $response->getData(true)['data']['max_batch_size']);
         $this->assertFalse($response->getData(true)['data']['checkpoint_upload_enabled']);
+        $this->assertTrue($response->getData(true)['data']['presence_heartbeat_enabled']);
+        $this->assertSame(60, $response->getData(true)['data']['presence_heartbeat_interval_seconds']);
+        $this->assertSame(150, $response->getData(true)['data']['presence_ttl_seconds']);
+    }
+
+    public function test_presence_heartbeat_uses_ephemeral_store_and_reports_online_users(): void
+    {
+        $store = new class extends AnalyticsPresenceStore
+        {
+            public array $lastHeartbeat = [];
+
+            public function heartbeat(array $presence): array
+            {
+                $this->lastHeartbeat = $presence;
+
+                return $presence + ['last_seen_at' => '2026-10-07T12:00:00+00:00'];
+            }
+
+            public function snapshot(array $filters = []): array
+            {
+                return [
+                    'available' => true,
+                    'online_users' => 1,
+                    'online_devices' => 1,
+                    'heartbeat_interval_seconds' => 60,
+                    'presence_ttl_seconds' => 150,
+                    'as_of' => '2026-10-07T12:00:00+00:00',
+                    'platforms' => [['platform' => 'android', 'users' => 1, 'devices' => 1]],
+                    'devices' => [$this->lastHeartbeat],
+                    'devices_truncated' => false,
+                ];
+            }
+        };
+        app()->instance(AnalyticsPresenceStore::class, $store);
+
+        $heartbeat = app(AnalyticsIngestionController::class)->presence($this->analyticsRequest([
+            'state' => 'foreground',
+            'context' => [
+                'platform' => 'android',
+                'app_version' => '3.0.0',
+                'build_number' => '300',
+                'device_model' => 'Pixel',
+                'network_type' => 'wifi',
+            ],
+        ]));
+        $report = app(AnalyticsReportController::class)->presence(Request::create(
+            '/reports/presence',
+            'GET',
+            ['platform' => 'android']
+        ));
+
+        $this->assertTrue($heartbeat->getData(true)['data']['accepted']);
+        $this->assertSame('user-1', $store->lastHeartbeat['user_id']);
+        $this->assertSame('device-1', $store->lastHeartbeat['device_id']);
+        $this->assertSame('3.0.0', $store->lastHeartbeat['app_version']);
+        $this->assertSame(1, $report->getData(true)['data']['online_users']);
     }
 
     public function test_device_header_must_match_the_authenticated_device(): void
@@ -214,7 +273,7 @@ class AnalyticsApiTest extends TestCase
         $routes = collect(Route::getRoutes()->getRoutes())
             ->filter(fn ($route) => str_starts_with($route->uri(), 'api/v4/analytic/'));
 
-        $this->assertCount(15, $routes);
+        $this->assertCount(17, $routes);
         foreach ($routes as $route) {
             $this->assertContains('auth.token', $route->gatherMiddleware(), $route->uri());
             if (str_contains($route->uri(), '/reports/')) {
@@ -236,7 +295,7 @@ class AnalyticsApiTest extends TestCase
         );
         $request->headers->set('Device-Token', 'device-1');
         $request->headers->set('X-Platform', 'android');
-        $request->headers->set('X-Analytics-SDK-Version', '1.2.0');
+        $request->headers->set('X-Analytics-SDK-Version', '1.4.0');
         $request->merge([
             'auth_user_id' => 'user-1',
             'auth_device_id' => 'device-1',
@@ -253,6 +312,7 @@ class AnalyticsApiTest extends TestCase
         $payload['ended_at'] = now('UTC')->toIso8601String();
         $payload['end_reason'] = 'user_closed';
         $payload['context']['platform'] = 'android';
+
         return $payload;
     }
 }

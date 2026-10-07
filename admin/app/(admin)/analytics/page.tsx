@@ -15,6 +15,7 @@ import {
   MonitorSmartphone,
   RadioTower,
   Users,
+  Wifi,
 } from "lucide-react";
 import { AdminPageHeader } from "@/app/components/admin-page-header";
 import { AnalyticsCollectionSwitch } from "@/app/features/analytics/components/analytics-collection-switch";
@@ -28,6 +29,7 @@ import {
   type AnalyticsHealthPoint,
   type AnalyticsPlatform,
   type AnalyticsPlatformStat,
+  type AnalyticsPresence,
   type AnalyticsTrendPoint,
 } from "@/app/features/analytics/services/analytics-service";
 import { cn } from "@/lib/utils";
@@ -358,10 +360,14 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
   const filters: AnalyticsFilters = { from, to, platform, timezone: "Asia/Kolkata", app_version: params.app_version?.slice(0, 64) || undefined, user_id: params.user_id?.slice(0, 128) || undefined, content_type: ["movie", "episode", "live"].includes(params.content_type ?? "") ? params.content_type : undefined };
   const page = /^\d+$/.test(params.page ?? "") && Number(params.page) > 0 ? params.page! : "1";
   let data: AnalyticsDashboardData = {};
+  let presence: AnalyticsPresence | undefined;
   let reportError: unknown;
   if (tab === "overview" && from <= to) {
     try {
-      data = await analyticsService.getDashboard(filters);
+      [data, presence] = await Promise.all([
+        analyticsService.getDashboard(filters),
+        analyticsService.getPresence(filters),
+      ]);
     } catch (error) {
       reportError = error;
     }
@@ -421,6 +427,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
           {from > to ? <p role="alert" className="rounded-xl bg-amber-100 p-4 text-amber-950">From date must be on or before To date. Update the filters above.</p> : tab === "insights" ? <Suspense key={JSON.stringify(filters) + tab + page + params.dimension + params.metric} fallback={<p className="p-8 text-center" role="status">Loading SDK insights…</p>}><SdkInsights filters={filters} dimension={params.dimension} metric={params.metric} page={Number(page)} /></Suspense> : tab !== "overview" ? <Suspense key={JSON.stringify(filters) + tab + page + params.content_id + params.session_id + params.error_mode} fallback={<p className="p-8 text-center" role="status">Loading report…</p>}><ReportExplorer tab={tab} filters={filters} page={page} contentId={params.content_id} sessionId={params.session_id} errorMode={params.error_mode} /></Suspense> : reportError ? <ReportError error={reportError} href={analyticsHref(filters)} /> : <>
 
           <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <MetricCard label="Online now" value={presence?.available === false ? "—" : formatNumber(presence?.online_users)} detail={`${formatNumber(presence?.online_devices)} foreground devices`} icon={Wifi} tone="from-emerald-500 to-teal-400" />
             <MetricCard label="Playback starts" value={formatNumber(overview.playback_starts)} detail={rangeLabel} icon={CirclePlay} tone="from-blue-500 to-cyan-400" />
             <MetricCard label="Valid views" value={formatNumber(overview.valid_views)} detail="At least 10 seconds watched" icon={Eye} tone="from-cyan-500 to-teal-400" />
             <MetricCard label="Unique viewers" value={formatNumber(overview.unique_viewers)} detail="Distinct viewers in range" icon={Users} tone="from-emerald-500 to-green-400" />

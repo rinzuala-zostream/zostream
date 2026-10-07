@@ -78,6 +78,18 @@ export type AnalyticsDashboardData = AnalyticsOverview & {
   product_events?: AnalyticsEventStat[];
 };
 
+export type AnalyticsPresence = {
+  available: boolean;
+  online_users: number;
+  online_devices: number;
+  heartbeat_interval_seconds: number;
+  presence_ttl_seconds: number;
+  as_of: string;
+  platforms: Array<{ platform: string; users: number; devices: number }>;
+  devices: Array<Record<string, string>>;
+  devices_truncated: boolean;
+};
+
 function toQuery(filters: AnalyticsFilters): QueryParams {
   return {
     from: filters.from,
@@ -117,6 +129,19 @@ export const analyticsService = {
     return apiClient.get<AnalyticsDashboardData>(
       "/api/v4/analytic/reports/overview",
       { query: toQuery(filters), cache: "no-store" },
+    );
+  },
+  async getPresence(filters: AnalyticsFilters) {
+    return apiClient.get<AnalyticsPresence>(
+      "/api/v4/analytic/reports/presence",
+      {
+        query: {
+          platform: filters.platform,
+          app_version: filters.app_version,
+          user_id: filters.user_id,
+        },
+        cache: "no-store",
+      },
     );
   },
 };
