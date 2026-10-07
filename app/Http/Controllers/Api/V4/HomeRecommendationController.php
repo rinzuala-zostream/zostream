@@ -135,6 +135,10 @@ class HomeRecommendationController extends Controller
 
     private function displayTitle(array $section): string
     {
+        if (($section['source_key'] ?? null) === 'ppv_seasons') {
+            return 'PPV';
+        }
+
         $title = (string) $section['title'];
         if (($section['source_key'] ?? null) !== 'last_month_top_10') {
             return $title;

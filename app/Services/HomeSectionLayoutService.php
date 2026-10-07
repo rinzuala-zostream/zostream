@@ -58,7 +58,7 @@ class HomeSectionLayoutService
             $rows[] = [
                 'key' => $key,
                 'source_key' => $hasSourceKey ? ($row?->source_key ?: $key) : $key,
-                'title' => $row?->title ?: $defaultTitle,
+                'title' => $key === 'ppv_seasons' ? 'PPV' : ($row?->title ?: $defaultTitle),
                 'position' => $row?->position ?? array_search($key, self::keys(), true),
                 'is_enabled' => $row?->is_enabled ?? false,
                 'is_custom' => false,
