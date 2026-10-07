@@ -18,6 +18,7 @@ import FaqPage from './components/pages/FaqPage.vue';
 import AdvertisePage from './components/pages/AdvertisePage.vue';
 import AdSubmissionStatusPage from './components/pages/AdSubmissionStatusPage.vue';
 import PolicyPage from './components/pages/PolicyPage.vue';
+import MyStatsPage from './components/pages/MyStatsPage.vue';
 import { policyPages } from './data/pages';
 
 const activeSection = ref('home');
@@ -32,7 +33,7 @@ const legalSlug = policyPage ? currentPath.slice(1) : dynamicLegalSlug;
 const isLegalPage = Boolean(policyPage || dynamicLegalSlug);
 const livePolicyPage = ref(policyPage || { eyebrow: 'Legal', title: 'Legal page', date: '', intro: '', sections: [] });
 const isAdStatusPage = currentPath.startsWith('/advertise/status/') || currentPath.startsWith('/advertise/payment/');
-const pageTitles = { '/about-us': 'About us', '/account-delete': 'Delete account', '/contact-us': 'Contact us', '/download': 'Download', '/faq': 'FAQ', '/advertise': 'Advertise' };
+const pageTitles = { '/about-us': 'About us', '/account-delete': 'Delete account', '/account/stats': 'My ZoStream', '/account/stats/bridge': 'Signing in', '/contact-us': 'Contact us', '/download': 'Download', '/faq': 'FAQ', '/advertise': 'Advertise' };
 let sectionObserver;
 let revealObserver;
 
@@ -91,6 +92,7 @@ onBeforeUnmount(() => {
     <div class="site-shell">
         <AppHeader :active-section="activeSection" :current-path="currentPath" :scrolled="scrolled" @navigate="navigate" />
         <main v-if="isHome"><HeroSection @navigate="navigate" /><AdBannerSlot placement="home_top" /><PlatformStats /><ServicesSection /><FeaturesSection /><AdBannerSlot placement="home_middle" /><FeaturedSection /><PricingSection /><DownloadSection /></main>
+        <MyStatsPage v-else-if="currentPath === '/account/stats'" />
         <AboutPage v-else-if="currentPath === '/about-us'" />
         <AccountDeletePage v-else-if="currentPath === '/account-delete'" />
         <ContactPage v-else-if="currentPath === '/contact-us'" />

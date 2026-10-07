@@ -17,6 +17,7 @@ use App\Http\Controllers\Api\V4\AnalyticsReportController;
 use App\Http\Controllers\Api\V4\AuthController;
 use App\Http\Controllers\Api\V4\BillingController;
 use App\Http\Controllers\Api\V4\CatalogController;
+use App\Http\Controllers\Api\V4\CustomerStatsController;
 use App\Http\Controllers\Api\V4\ChannelSubscriptionController;
 use App\Http\Controllers\Api\V4\HomeRecommendationController;
 use App\Http\Controllers\Api\V4\LegalPageController;
@@ -26,6 +27,7 @@ use App\Http\Controllers\Api\V4\PlaybackController;
 use App\Http\Controllers\Api\V4\PollController as V4PollController;
 use App\Http\Controllers\Api\V4\QrSessionController as V4QrSessionController;
 use App\Http\Controllers\Api\V4\SupportController;
+use App\Http\Controllers\Api\V4\WebSessionController;
 use App\Http\Controllers\Api\V4\WhatsAppWebhookController;
 use App\Http\Controllers\Channel\ChannelController;
 use App\Http\Controllers\FCMNotificationController;
@@ -175,6 +177,10 @@ Route::prefix('v4')
                 ->name('v4.recommendations.home');
 
             Route::prefix('account')->group(function () {
+            Route::post('/web-session', [WebSessionController::class, 'create'])
+                ->middleware('throttle:10,1');
+                Route::get('/stats', [CustomerStatsController::class, 'show'])
+                    ->middleware('throttle:60,1');
                 Route::get('/', [AccountController::class, 'show']);
                 Route::patch('/', [AccountController::class, 'update'])
                     ->middleware('owner.device');
