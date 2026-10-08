@@ -37,6 +37,7 @@ class LiveHomeSectionServiceTest extends TestCase
             $table->boolean('isPayPerView')->default(false);
             $table->boolean('isAgeRestricted')->default(false);
             $table->boolean('isChildMode')->default(false);
+            $table->boolean('isMizo')->default(false);
             $table->boolean('isEnable')->default(true);
             $table->string('status')->default('Published');
             $table->date('release_on')->nullable();
@@ -172,5 +173,48 @@ class LiveHomeSectionServiceTest extends TestCase
         );
 
         $this->assertSame([], $snapshot['sections']['last_month_top_10']);
+    }
+
+    public function test_special_user_home_payload_only_keeps_mizo_movies_and_series(): void
+    {
+        DB::table('movie')->insert([
+            ['num' => 1, 'id' => 'mizo-movie', 'title' => 'Mizo Movie', 'isMizo' => true],
+            ['num' => 2, 'id' => 'other-movie', 'title' => 'Other Movie', 'isMizo' => false],
+        ]);
+
+        $payload = [
+            'history_size' => 2,
+            'top_picks_for_you' => [
+                'anchor' => ['id' => 'other-movie'],
+                'items' => [
+                    ['id' => 'mizo-movie'],
+                    ['id' => 'other-movie'],
+                ],
+            ],
+            'continue_watching' => [
+                ['id' => 'episode-1', 'parent_id' => 'mizo-movie'],
+                ['id' => 'episode-2', 'parent_id' => 'other-movie'],
+            ],
+        ];
+
+        $filtered = app(LiveHomeSectionService::class)->filterForUser(
+            $payload,
+            'AW7ovVnTdgWuvE1Uke7QTQ5OEQt1'
+        );
+
+        $this->assertNull($filtered['top_picks_for_you']['anchor']);
+        $this->assertSame(['mizo-movie'], array_column($filtered['top_picks_for_you']['items'], 'id'));
+        $this->assertSame(['episode-1'], array_column($filtered['continue_watching'], 'id'));
+        $this->assertSame(2, $filtered['history_size']);
+    }
+
+    public function test_other_users_keep_the_original_home_payload(): void
+    {
+        $payload = ['trending_now' => [['id' => 'any-movie']]];
+
+        $this->assertSame(
+            $payload,
+            app(LiveHomeSectionService::class)->filterForUser($payload, 'another-user')
+        );
     }
 }

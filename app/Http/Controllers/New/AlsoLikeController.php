@@ -4,13 +4,14 @@ namespace App\Http\Controllers\New;
 
 use App\Http\Controllers\Controller;
 use App\Models\MovieModel;
+use App\Support\MizoOnlyContent;
 use Illuminate\Http\Request;
 
 class AlsoLikeController extends Controller
 {
     public function alsoLike(Request $request)
     {
-    
+
         $movieTitle = $request->query('movie_title');
         $ageRestriction = $request->boolean('age_restriction', false);
         $modeHeader = strtolower((string) $request->header('X-Mode', ''));
@@ -18,18 +19,18 @@ class AlsoLikeController extends Controller
         $isKidsByQuery = ($request->query('isChildMode') ?? 'false') === 'true';
         $isKidsMode = $isKidsByHeader || $isKidsByQuery;
 
-        if (!$movieTitle) {
+        if (! $movieTitle) {
             return response()->json(['error' => 'Missing movie_title parameter'], 400);
         }
 
         // ✅ Read user ID
-        $userId = $request->header('X-User-Id') ?? $request->query('user_id', '');
+        $userId = MizoOnlyContent::userId($request);
 
         // ✅ Mizo-only logic (same as home/search for guest + special user)
-        //$onlyMizoUser = $userId === 'AW7ovVnTdgWuvE1Uke7QTQ5OEQt1';
+        // $onlyMizoUser = $userId === 'AW7ovVnTdgWuvE1Uke7QTQ5OEQt1';
         $onlyMizoUser = empty($userId)
             || $userId === 'guest'
-            || $userId === 'AW7ovVnTdgWuvE1Uke7QTQ5OEQt1';
+            || MizoOnlyContent::appliesTo($userId);
 
         // ✅ Fetch movies based on Mizo-only + restriction
         $movies = $this->fetchMovies($ageRestriction, $onlyMizoUser, $isKidsMode);
@@ -48,7 +49,7 @@ class AlsoLikeController extends Controller
         $query = MovieModel::where('isEnable', 1)
             ->where('status', 'Published');
 
-        if (!$ageRestriction) {
+        if (! $ageRestriction) {
             $query->where('isAgeRestricted', 0);
         }
 
@@ -132,7 +133,7 @@ class AlsoLikeController extends Controller
         foreach ($movies as $movie) {
             if ($movie['title'] !== $match['title'] && strpos($movie['genre'], $genre) !== false) {
                 foreach ($categories as $cat) {
-                    if (!empty($match[$cat]) && !empty($movie[$cat])) {
+                    if (! empty($match[$cat]) && ! empty($movie[$cat])) {
                         $filtered[$movie['id']] = $movie;
                         break;
                     }
@@ -147,8 +148,9 @@ class AlsoLikeController extends Controller
     {
         $match = $this->findBestMatch($title, $movies);
 
-        if (!$match) {
+        if (! $match) {
             shuffle($movies);
+
             return array_slice($movies, 0, 20);
         }
 
@@ -167,11 +169,12 @@ class AlsoLikeController extends Controller
         if (count($unique) < 20) {
             shuffle($movies);
             foreach ($movies as $movie) {
-                if ($movie['title'] !== $match['title'] && !isset($unique[$movie['id']])) {
+                if ($movie['title'] !== $match['title'] && ! isset($unique[$movie['id']])) {
                     $unique[$movie['id']] = $movie;
                 }
-                if (count($unique) >= 20)
+                if (count($unique) >= 20) {
                     break;
+                }
             }
         }
 

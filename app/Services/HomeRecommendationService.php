@@ -107,7 +107,7 @@ class HomeRecommendationService
         );
 
         if (! $needsAi) {
-            return $this->withPpvSeasonMetadata($this->liveOnlyPayload($live));
+            return $this->finalizePayload($this->liveOnlyPayload($live), $userId);
         }
 
         if (! is_file($script) || ! is_readable($script) || ! is_file($model) || ! is_readable($model)) {
@@ -116,7 +116,7 @@ class HomeRecommendationService
                 'model_readable' => is_file($model) && is_readable($model),
             ]);
 
-            return $this->withPpvSeasonMetadata($this->liveOnlyPayload($live));
+            return $this->finalizePayload($this->liveOnlyPayload($live), $userId);
         }
 
         $modelVersion = (string) filemtime($model);
@@ -151,14 +151,21 @@ class HomeRecommendationService
                 $payload[$section] = $items;
             }
 
-            return $this->withPpvSeasonMetadata($payload);
+            return $this->finalizePayload($payload, $userId);
         } catch (Throwable $exception) {
             Log::warning('Recommendation model execution failed; serving live sections only.', [
                 'exception' => $exception,
             ]);
 
-            return $this->withPpvSeasonMetadata($this->liveOnlyPayload($live));
+            return $this->finalizePayload($this->liveOnlyPayload($live), $userId);
         }
+    }
+
+    private function finalizePayload(array $payload, string $userId): array
+    {
+        return $this->withPpvSeasonMetadata(
+            $this->liveSections->filterForUser($payload, $userId)
+        );
     }
 
     /** Add season and PPV episode summaries to movie cards in the home payload. */

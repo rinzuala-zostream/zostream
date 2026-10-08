@@ -4,7 +4,9 @@ namespace Tests\Unit;
 
 use App\Services\HomeRecommendationService;
 use App\Services\LiveHomeSectionService;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Schema;
 use Mockery;
 use Tests\TestCase;
 
@@ -12,6 +14,15 @@ class HomeRecommendationServiceTest extends TestCase
 {
     public function test_live_only_request_skips_ai_and_unrequested_sections(): void
     {
+        $createdMovieTable = false;
+        if (! Schema::hasTable('movie')) {
+            Schema::create('movie', function (Blueprint $table): void {
+                $table->increments('num');
+                $table->string('id')->unique();
+            });
+            $createdMovieTable = true;
+        }
+
         Cache::flush();
         config()->set('recommender.response_cache_fresh_seconds', 30);
         config()->set('recommender.response_cache_stale_seconds', 300);
@@ -30,6 +41,10 @@ class HomeRecommendationServiceTest extends TestCase
                 'version' => 'unused-for-live-only',
             ]);
         $liveSections->shouldNotReceive('filterAiSections');
+        $liveSections->shouldReceive('filterForUser')
+            ->once()
+            ->with(Mockery::type('array'), 'trusted-user')
+            ->andReturnUsing(fn (array $payload): array => $payload);
 
         config()->set('recommender.script', '/definitely/missing/recommender.py');
         config()->set('recommender.model', '/definitely/missing/model.json.gz');
@@ -52,5 +67,9 @@ class HomeRecommendationServiceTest extends TestCase
         $this->assertSame('movie-1', $result['trending_now'][0]['id']);
         $this->assertSame([], $result['top_picks_for_you']);
         $this->assertSame($result, $cachedResult);
+
+        if ($createdMovieTable) {
+            Schema::drop('movie');
+        }
     }
 }

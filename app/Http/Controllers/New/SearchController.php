@@ -5,6 +5,7 @@ namespace App\Http\Controllers\New;
 use App\Http\Controllers\Controller;
 use App\Models\MovieModel;
 use App\Support\AdminAccess;
+use App\Support\MizoOnlyContent;
 use Illuminate\Http\Request;
 
 class SearchController extends Controller
@@ -50,11 +51,11 @@ class SearchController extends Controller
         $platform = '';
 
         // ✅ Read user ID
-        $userId = $request->header('X-User-Id') ?? $request->query('user_id', '');
+        $userId = MizoOnlyContent::userId($request);
 
         // ✅ Treat empty user ID same as Mizo-only user
         // $onlyMizoUser = $userId === 'AW7ovVnTdgWuvE1Uke7QTQ5OEQt1';
-        $onlyMizoUser = empty($userId) || $userId === 'AW7ovVnTdgWuvE1Uke7QTQ5OEQt1';
+        $onlyMizoUser = empty($userId) || MizoOnlyContent::appliesTo($userId);
 
         // ✅ Categories to hide (same default)
         $hiddenByPlatform = [

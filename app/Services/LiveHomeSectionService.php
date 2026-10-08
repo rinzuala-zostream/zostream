@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\MovieModel;
+use App\Support\MizoOnlyContent;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -75,7 +76,7 @@ class LiveHomeSectionService
             $sections['latest_update'] = $this->rememberLiveSection(
                 sprintf(
                     'latest-update:%s:%d:%s:%d',
-                    $userId === 'AW7ovVnTdgWuvE1Uke7QTQ5OEQt1' ? 'mizo-only' : 'all',
+                    MizoOnlyContent::appliesTo($userId) ? 'mizo-only' : 'all',
                     $fetchLimit,
                     $mode,
                     (int) $includeAgeRestricted
@@ -205,6 +206,70 @@ class LiveHomeSectionService
         }
 
         return $homepage;
+    }
+
+    /** Remove every card whose movie (or parent series) is outside this user's audience. */
+    public function filterForUser(array $homepage, string $userId): array
+    {
+        if (! MizoOnlyContent::appliesTo($userId)) {
+            return $homepage;
+        }
+
+        $movieIds = [];
+        foreach (HomeSectionLayoutService::keys() as $key) {
+            $section = $homepage[$key] ?? null;
+            if (! is_array($section)) {
+                continue;
+            }
+
+            if (isset($section['anchor']) && is_array($section['anchor'])) {
+                $movieIds[] = $this->cardMovieId($section['anchor']);
+            }
+
+            $items = array_key_exists('items', $section) ? $section['items'] : $section;
+            foreach (is_array($items) ? $items : [] as $item) {
+                if (is_array($item)) {
+                    $movieIds[] = $this->cardMovieId($item);
+                }
+            }
+        }
+
+        $allowed = MovieModel::query()
+            ->where('isMizo', 1)
+            ->whereIn('id', array_values(array_filter(array_unique($movieIds))))
+            ->pluck('id')
+            ->mapWithKeys(fn ($id): array => [(string) $id => true])
+            ->all();
+
+        $isAllowed = fn (array $item): bool => isset($allowed[$this->cardMovieId($item)]);
+        foreach (HomeSectionLayoutService::keys() as $key) {
+            if (! isset($homepage[$key]) || ! is_array($homepage[$key])) {
+                continue;
+            }
+
+            if (array_key_exists('items', $homepage[$key])) {
+                $homepage[$key]['items'] = array_values(array_filter(
+                    is_array($homepage[$key]['items']) ? $homepage[$key]['items'] : [],
+                    fn ($item): bool => is_array($item) && $isAllowed($item)
+                ));
+                if (isset($homepage[$key]['anchor'])
+                    && (! is_array($homepage[$key]['anchor']) || ! $isAllowed($homepage[$key]['anchor']))) {
+                    $homepage[$key]['anchor'] = null;
+                }
+            } else {
+                $homepage[$key] = array_values(array_filter(
+                    $homepage[$key],
+                    fn ($item): bool => is_array($item) && $isAllowed($item)
+                ));
+            }
+        }
+
+        return $homepage;
+    }
+
+    private function cardMovieId(array $card): string
+    {
+        return (string) ($card['parent_id'] ?? $card['movie_id'] ?? $card['id'] ?? '');
     }
 
     private function hydrateAiCards(array $items, $allowed): array
@@ -372,7 +437,7 @@ class LiveHomeSectionService
         $movies = $this->allowedMovies($mode, $includeAgeRestricted)
             // The legacy Home endpoint serves Mizo-only titles for this
             // legacy account, so preserve that established behaviour here.
-            ->when($userId === 'AW7ovVnTdgWuvE1Uke7QTQ5OEQt1', fn (Builder $query) => $query->where('isMizo', 1))
+            ->when(MizoOnlyContent::appliesTo($userId), fn (Builder $query) => $query->where('isMizo', 1))
             ->orderByRaw('COALESCE(movie.updated_at, movie.create_date) DESC, movie.num DESC')
             ->limit($limit)
             ->get(self::MOVIE_CARD_COLUMNS);

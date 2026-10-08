@@ -4,32 +4,34 @@ namespace App\Http\Controllers\New;
 
 use App\Http\Controllers\AdsController;
 use App\Http\Controllers\Controller;
-use App\Http\Controllers\DeviceManagementController;
 use App\Http\Controllers\LinkController;
-use App\Http\Controllers\PaymentStatusController;
 use App\Http\Controllers\WatchPositionController;
-use App\Models\AdsModel;
-use App\Models\EpisodeModel;
 use App\Models\MovieModel;
-use App\Models\New\PaymentHistory;
-use Illuminate\Http\Request;
+use App\Support\MizoOnlyContent;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Str;
 use Symfony\Component\HttpFoundation\Response as BaseResponse;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
 
 class DetailsController extends Controller
 {
     private $validApiKey;
+
     protected $paymentStatusController;
+
     protected $deviceManagementController;
+
     protected $subscriptionController;
+
     protected $adsController;
+
     protected $calculatePlan;
+
     protected $linkController;
+
     protected $watchPositionController;
+
     protected $movieController;
 
     public function __construct(
@@ -54,13 +56,12 @@ class DetailsController extends Controller
     {
         $apiKey = $request->header('X-Api-Key');
 
-
         $request->validate([
             'user_id' => 'required|string',
             'movie_id' => 'required|string',
             'device_id' => 'nullable|string',
             'device_type' => 'required|string',
-            'type' => 'required|string|in:movie,episode'
+            'type' => 'required|string|in:movie,episode',
         ]);
 
         $userId = $request->query('user_id');
@@ -80,6 +81,14 @@ class DetailsController extends Controller
             $episodeId = $movieId;
         }
 
+        if (MizoOnlyContent::appliesTo(MizoOnlyContent::userId($request))
+            && ! $this->isMizoContent($type, $mainMovieId, $episodeId)) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Content not found',
+            ], 404);
+        }
+
         try {
             // Call sub-controllers and decode JSON responses
             $paymentData = [
@@ -87,7 +96,7 @@ class DetailsController extends Controller
                 'message' => 'Payment status is checked separately',
             ];
 
-            if ($request->boolean('include_payment_status') && !empty($deviceId)) {
+            if ($request->boolean('include_payment_status') && ! empty($deviceId)) {
                 $paymentRequest = new Request(['user_id' => $userId, 'device_id' => $deviceId, 'device_type' => $deviceType]);
                 $paymentRequest->headers->set('X-Api-Key', $apiKey);
                 $paymentResponse = $this->paymentStatusController->processUserPayments($paymentRequest);
@@ -97,7 +106,7 @@ class DetailsController extends Controller
             $subscriptionRequest = new Request([
                 'id' => $userId,
                 'device_type' => $deviceType,
-                'ip' => $request->query('ip')
+                'ip' => $request->query('ip'),
             ]);
 
             $subscriptionRequest->headers->set('X-Api-Key', $apiKey);
@@ -105,7 +114,7 @@ class DetailsController extends Controller
             $response = $this->subscriptionController->getByUser($subscriptionRequest, $userId);
             $subscriptionData = json_decode(json_encode($response->getData()), true);
 
-            $adsRequest = new Request();
+            $adsRequest = new Request;
             $adsRequest->headers->set('X-Api-Key', $apiKey);
             $adsResponse = $this->adsController->getAds($adsRequest);
             $adsData = json_decode($adsResponse->getContent(), true);
@@ -126,7 +135,7 @@ class DetailsController extends Controller
             $movieResponse = $this->movieController->getById($movieRequest, $id);
             $movie = json_decode($movieResponse->getContent(), true);
 
-            if (!$movie) {
+            if (! $movie) {
                 return response()->json([
                     'status' => 'error',
                     'message' => 'No movie data found',
@@ -149,16 +158,16 @@ class DetailsController extends Controller
             $movie['desc'] = $movie['desc'] ?? $movie['description'] ?? null;
 
             $isPpvEpisode = $type === 'episode'
-                && (!empty($movie['isPayPerView']) || !empty($movie['isPPV']));
-            if ($isPpvEpisode || !empty($movie['isPayPerView']) || !empty($movie['isPPV']) || ($type === 'movie' && $this->hasPpvSeriesContent($movie['num']))) {
+                && (! empty($movie['isPayPerView']) || ! empty($movie['isPPV']));
+            if ($isPpvEpisode || ! empty($movie['isPayPerView']) || ! empty($movie['isPPV']) || ($type === 'movie' && $this->hasPpvSeriesContent($movie['num']))) {
                 $movie['views'] = 0;
             }
-        
+
             // Ad display time
             if ($type === 'episode') {
                 $url = ($movie['isProtected'] ?? false) ? ($movie['dash_url'] ?? null) : ($movie['url'] ?? null);
 
-                if (!empty($url)) {
+                if (! empty($url)) {
                     $duration = $this->getEpisodeDuration($url, $apiKey);
                     $ms = $this->convertToMilliseconds($duration);
 
@@ -166,13 +175,13 @@ class DetailsController extends Controller
                         $movie['adDisplayTimes'] = ['second' => $ms / 2 + rand(1, $ms / 2)];
                     }
                 }
-            } elseif (!$subscriptionData['isAdsFree'] && !empty($movie['duration'])) {
+            } elseif (! $subscriptionData['isAdsFree'] && ! empty($movie['duration'])) {
                 $ms = $this->convertToMilliseconds($movie['duration']);
                 $movie['adDisplayTimes'] = ['second' => $ms / 2 + rand(1, $ms / 2)];
             }
 
             // Determine age restriction as string ('true' or 'false')
-            $isAgeRestricted = !empty($movie['is_age_restricted']) && $movie['is_age_restricted'] ? 'true' : 'false';
+            $isAgeRestricted = ! empty($movie['is_age_restricted']) && $movie['is_age_restricted'] ? 'true' : 'false';
 
             // Get user's watch position
             $watchRequest = new Request([
@@ -206,7 +215,7 @@ class DetailsController extends Controller
             return response()->json([
                 'status' => 'error',
                 'message' => 'Internal server error',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -226,6 +235,28 @@ class DetailsController extends Controller
             ->exists();
     }
 
+    private function isMizoContent(string $type, string $movieId, string $episodeId): bool
+    {
+        if ($type === 'movie') {
+            return MovieModel::query()
+                ->where('id', $movieId)
+                ->where('isMizo', 1)
+                ->exists();
+        }
+
+        return DB::table('episodes')
+            ->join('seasons', 'seasons.id', '=', 'episodes.season_id')
+            ->join('movie', 'movie.num', '=', 'seasons.movie_id')
+            ->where(function ($query) use ($episodeId): void {
+                $query->where('episodes.id', $episodeId);
+                if (ctype_digit($episodeId)) {
+                    $query->orWhere('episodes.num', (int) $episodeId);
+                }
+            })
+            ->where('movie.isMizo', 1)
+            ->exists();
+    }
+
     private function convertToMilliseconds($duration)
     {
         $milliseconds = 0;
@@ -233,6 +264,7 @@ class DetailsController extends Controller
         foreach ($matches as $match) {
             $milliseconds += ($match[2] === 'h') ? $match[1] * 3600000 : $match[1] * 60000;
         }
+
         return $milliseconds;
     }
 
@@ -258,13 +290,13 @@ class DetailsController extends Controller
             $data = $response;
         } else {
             // Unexpected return type
-            return "0";
+            return '0';
         }
 
         // Be tolerant of code being string or int
         $code = $data['code'] ?? null;
-        if (!isset($data['message']) || !in_array((string) $code, ['103'], true)) {
-            return "0";
+        if (! isset($data['message']) || ! in_array((string) $code, ['103'], true)) {
+            return '0';
         }
 
         return $this->parseMPD($data['message'] ?? '');
@@ -273,11 +305,12 @@ class DetailsController extends Controller
     private function parseMPD($mpdUrl)
     {
         try {
-            $xml = simplexml_load_file(trim(str_replace(" ", "%20", $mpdUrl)));
+            $xml = simplexml_load_file(trim(str_replace(' ', '%20', $mpdUrl)));
             $duration = (string) $xml['mediaPresentationDuration'];
+
             return $this->formatDuration($this->parseISODuration($duration));
         } catch (\Exception $e) {
-            return "0";
+            return '0';
         }
     }
 
@@ -287,6 +320,7 @@ class DetailsController extends Controller
         $hours = isset($m[2]) ? (int) $m[2] : 0;
         $minutes = isset($m[4]) ? (int) $m[4] : 0;
         $seconds = isset($m[6]) ? round((float) $m[6]) : 0;
+
         return ($hours * 3600) + ($minutes * 60) + $seconds;
     }
 
@@ -294,6 +328,7 @@ class DetailsController extends Controller
     {
         $hours = floor($seconds / 3600);
         $minutes = floor(($seconds % 3600) / 60);
-        return $hours > 0 ? "{$hours}h " . ($minutes > 0 ? "{$minutes}m" : "") : "{$minutes}m";
+
+        return $hours > 0 ? "{$hours}h ".($minutes > 0 ? "{$minutes}m" : '') : "{$minutes}m";
     }
 }
