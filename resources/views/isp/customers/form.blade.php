@@ -27,11 +27,7 @@
                 <label>Network router<select name="router_id" required><option value="">Choose router</option>@foreach($routers as $router)<option value="{{ $router->id }}" @selected(old('router_id') == $router->id)>{{ $router->name }}</option>@endforeach</select></label>
             @endif
             <label>Package<select id="customerPackage" name="package_id" required><option value="">Choose package</option>@foreach($packages as $package)<option value="{{ $package->id }}" @selected(old('package_id', $customer->package_id) == $package->id)>{{ $package->name }} · ₹{{ number_format($package->price, 0) }}</option>@endforeach</select><small id="packageAvailability" class="form-help"></small></label>
-            @if($customer->exists)
-                <label>PPPoE username<input value="{{ $customer->username }}" disabled><input type="hidden" name="username" value="{{ $customer->username }}"><small class="form-help">The PPPoE identity is locked to prevent an orphan secret on MikroTik. Delete and recreate the customer to change it.</small></label>
-            @else
-                <label>PPPoE username<input name="username" value="{{ old('username', $customer->username) }}" required autocomplete="off" placeholder="customer001"></label>
-            @endif
+            <label>PPPoE username<input name="username" value="{{ old('username', $customer->username) }}" required autocomplete="off" placeholder="customer001">@if($customer->exists)<small class="form-help">Changing this updates the customer's RADIUS login when you save.</small>@endif</label>
             <label>PPPoE password<input type="password" name="password" {{ $customer->exists ? '' : 'required' }} autocomplete="new-password" placeholder="{{ $customer->exists ? 'Leave blank to keep current password' : 'PPPoE password' }}"></label>
             <label>Administrative status<select name="status"><option value="active" @selected($formStatus === 'active')>Active</option><option value="suspended" @selected($formStatus === 'suspended')>Suspended</option><option value="expired" @selected($formStatus === 'expired')>Expired</option></select><small class="form-help">Expired immediately ends access by setting the plan expiry date.</small></label>
             @if(auth()->user()->isAdmin())
