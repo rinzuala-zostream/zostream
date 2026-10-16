@@ -181,7 +181,9 @@ class OTPController extends Controller
                 'message' => 'OTP sent successfully',
                 'user_id' => $user->uid,
                 'WhatsApp_Status' => $whatsappStatus,
-                'otp' => app()->environment('local') ? $otp : null,
+                // Public endpoints never set this attribute. It is reserved for
+                // the audited, admin-token-protected support diagnostic route.
+                'otp' => app()->environment('local') || $request->attributes->get('allow_otp_reveal') === true ? $otp : null,
             ]);
 
         } catch (\Illuminate\Validation\ValidationException $e) {

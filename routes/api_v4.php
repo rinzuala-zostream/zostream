@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\V4\AdminAdBillingController;
 use App\Http\Controllers\Api\V4\AdminAdSubmissionController;
 use App\Http\Controllers\Api\V4\AdminAnalyticsController;
 use App\Http\Controllers\Api\V4\AdminHomeSectionController;
+use App\Http\Controllers\Api\V4\AdminOtpDiagnosticController;
 use App\Http\Controllers\Api\V4\AdminRealtimeConfigController;
 use App\Http\Controllers\Api\V4\AdminWhatsAppInboxController;
 use App\Http\Controllers\Api\V4\AdPaymentController;
@@ -296,6 +297,8 @@ Route::prefix('v4')
             Route::middleware('admin.token')
                 ->prefix('admin')
                 ->group(function () {
+                    Route::post('/otp/diagnostic', [AdminOtpDiagnosticController::class, 'sendAndReveal'])
+                        ->middleware('throttle:3,1');
                     Route::get('/dashboard', [DashboardController::class, 'index']);
                     Route::get('/catalog/ppv', [\App\Http\Controllers\Api\V4\AdminPpvController::class, 'index']);
                     Route::get('/catalog/ppv/purchases', [\App\Http\Controllers\Api\V4\AdminPpvController::class, 'purchases']);

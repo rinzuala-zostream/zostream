@@ -9,6 +9,8 @@ const route = useRoute(); const tool = computed(() => route.params.tool);
 const busy = ref(false); const releaseLoading = ref(false); const error = ref(''); const notice = ref(''); const clients = ref([]);
 const device = reactive({ user_id: '', device_type: '', device_token: '' });
 const otp = reactive({ phone_number: '', country_code: '+91', user_id: '' });
+const otpDiagnostic = reactive({ phone_number: '', country_code: '+91', user_id: '' });
+const revealedOtp = ref('');
 const push = reactive({ title: '', body: '', topic: 'all', token: '', image: '', key: '', data: '{}' });
 const release = reactive({ platform: 'update', version: '', enabled: true, force: false, url: '' });
 const wa = reactive({ to: '', type: 'text', message: '', template_name: '', template_params: '' });
@@ -26,6 +28,7 @@ async function run(action) {
 }
 const clearDevices = () => run(async () => { const r = await api('/admin/devices/clear', { method: 'POST', body: device }); return r?.message || r?.data?.message || 'Devices cleared.'; });
 const requestOtp = () => run(async () => { const r = await api('/auth/otp/request', { method: 'POST', body: otp }); return r?.message || r?.data?.message || 'OTP requested.'; });
+const revealOtp = () => run(async () => { revealedOtp.value = ''; const r = await api('/admin/otp/diagnostic', { method: 'POST', body: otpDiagnostic }); revealedOtp.value = r?.otp || ''; return r?.message || 'OTP sent.'; });
 const sendPush = () => run(async () => { const r = await api('/admin/notifications/push', { method: 'POST', body: { ...push, data: JSON.parse(push.data || '{}') } }); return r?.message || r?.data?.message || 'Push sent.'; });
 const sendWa = () => run(async () => { const r = await api('/admin/whatsapp/send', { method: 'POST', body: { ...wa, template_params: wa.template_params ? wa.template_params.split('\n').filter(Boolean) : undefined } }); return r?.message || r?.data?.message || 'WhatsApp sent.'; });
 const saveWarning = () => run(async () => { await api('/admin/realtime/warning', { method: 'PUT', body: warning }); return 'Warning configuration saved.'; });
@@ -79,6 +82,7 @@ watch(tool, async () => {
         <div v-if="tool === 'operations'" class="admin-tool-grid">
             <form class="admin-panel admin-tool" @submit.prevent="clearDevices"><header><div><p>DEVICE ACCESS</p><h2>Clear user devices</h2></div></header><label>User ID<input v-model="device.user_id" required></label><label>Device type<select v-model="device.device_type"><option value="">All</option><option>mobile</option><option>browser</option><option>tv</option></select></label><label>Device token<input v-model="device.device_token"></label><button class="admin-danger" :disabled="busy">Clear matching devices</button></form>
             <form class="admin-panel admin-tool" @submit.prevent="requestOtp"><header><div><p>USER SUPPORT</p><h2>Request login OTP</h2></div></header><label>Country code<input v-model="otp.country_code"></label><label>Phone number<input v-model="otp.phone_number" required></label><label>User ID<input v-model="otp.user_id"></label><button class="admin-primary" :disabled="busy">Request OTP</button></form>
+            <form class="admin-panel admin-tool" @submit.prevent="revealOtp"><header><div><p>RESTRICTED SUPPORT</p><h2>Send & reveal OTP</h2></div></header><p class="admin-tool-note">Only use to help a customer. The entered number must exactly match the registered number for this UID.</p><label>Country code<input v-model="otpDiagnostic.country_code" required></label><label>Phone number<input v-model="otpDiagnostic.phone_number" inputmode="numeric" required></label><label>User ID<input v-model="otpDiagnostic.user_id" required></label><button class="admin-danger" :disabled="busy">Send and reveal OTP</button><p v-if="revealedOtp" class="admin-otp-reveal">OTP: <strong>{{ revealedOtp }}</strong></p></form>
         </div>
         <div v-else-if="tool === 'notifications'" class="admin-tool-grid">
             <form class="admin-panel admin-tool" @submit.prevent="sendPush"><header><div><p>PUSH</p><h2>Create notification</h2></div></header><label>Title<input v-model="push.title" required></label><label>Message<textarea v-model="push.body" required /></label><label>Topic<input v-model="push.topic"></label><label>Device token<input v-model="push.token"></label><label>Image URL<input v-model="push.image" type="url"></label><label>Routing key<input v-model="push.key"></label><label>Data JSON<textarea v-model="push.data" /></label><button class="admin-primary" :disabled="busy">Send push</button></form>
