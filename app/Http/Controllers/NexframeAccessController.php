@@ -16,7 +16,7 @@ class NexframeAccessController extends Controller
             'authenticated' => $request->session()->get(self::SESSION_KEY) === true,
             'configured' => $this->configured(),
             'partnership_started_at' => config('services.nexframe_dashboard.partnership_started_at'),
-        ]);
+        ])->header('Cache-Control', 'private, no-store');
     }
 
     public function login(Request $request): JsonResponse

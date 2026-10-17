@@ -7,6 +7,9 @@
         <meta name="theme-color" content="#030816" />
         <meta name="referrer" content="no-referrer" />
         <meta name="csrf-token" content="{{ csrf_token() }}" />
+        @if (request()->is('analytics/nexframe'))
+            <meta name="nexframe-partnership-start" content="{{ config('services.nexframe_dashboard.partnership_started_at') }}" />
+        @endif
         <title>{{ request()->is('admin', 'admin/*') ? 'Zo Stream Admin' : 'Zo Stream — All in Mizo' }}</title>
         <link rel="icon" href="/images/zostream-logo.jpg" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />

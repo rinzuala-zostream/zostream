@@ -27,9 +27,9 @@ const loggingIn = ref(false);
 const credentials = reactive({ email: '', password: '' });
 const localDate = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 const today = new Date();
-const partnershipStart = ref('');
+const partnershipStart = ref(typeof document === 'undefined' ? '' : document.querySelector('meta[name="nexframe-partnership-start"]')?.content || '');
 const filters = reactive({
-    from: '',
+    from: partnershipStart.value,
     to: localDate(today),
 });
 let filterTimer;
@@ -223,8 +223,8 @@ async function request(url, options = {}) {
 async function checkSession() {
     try {
         const status = await request('/analytics/nexframe/session', { cache: 'no-store' });
-        partnershipStart.value = status.partnership_started_at || '';
-        filters.from = partnershipStart.value || localDate(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 13));
+        if (Object.hasOwn(status, 'partnership_started_at')) partnershipStart.value = status.partnership_started_at || '';
+        filters.from = partnershipStart.value || localDate(new Date());
         signedIn.value = status.authenticated === true;
         authConfigured.value = status.configured === true;
         if (signedIn.value) await load();
