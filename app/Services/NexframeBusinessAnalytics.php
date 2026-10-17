@@ -102,8 +102,14 @@ class NexframeBusinessAnalytics
 
         $cohort = DB::table($table)->whereBetween('created_date', [$from, $to])->whereNotNull('uid');
         $registrations = (clone $cohort)->distinct()->count('uid');
+        $cohortIds = (clone $cohort)->select('uid');
+        if ($cohort->getConnection()->getDriverName() === 'mysql') {
+            // Legacy user/payment tables may have different collations. Apply an
+            // explicit common collation without altering either table's schema.
+            $cohortIds->select(DB::raw('CONVERT(uid USING utf8mb4) COLLATE utf8mb4_unicode_ci'));
+        }
         $converted = $this->paymentsInRange($from, $to)
-            ->whereIn('payments.user_id', (clone $cohort)->select('uid'))
+            ->whereIn('payments.user_id', $cohortIds)
             ->distinct()->count('payments.user_id');
 
         return [

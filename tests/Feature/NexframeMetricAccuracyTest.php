@@ -86,6 +86,34 @@ class NexframeMetricAccuracyTest extends TestCase
         $this->assertSame(4.0, $streaming['watch_hours']);
     }
 
+    public function test_mysql_conversion_query_explicitly_aligns_legacy_uid_collation(): void
+    {
+        // Compile only: no MySQL server or production database is contacted.
+        config()->set('database.connections.collation_test', [
+            'driver' => 'mysql', 'host' => '127.0.0.1', 'database' => 'unused',
+            'username' => 'unused', 'password' => '', 'prefix' => '',
+            'charset' => 'utf8mb4', 'collation' => 'utf8mb4_unicode_ci',
+        ]);
+        DB::setDefaultConnection('collation_test');
+        Schema::partialMock()->shouldReceive('hasColumns')->twice()->andReturn(true);
+        // Pretend-mode SQL logging still quotes bindings through PDO.
+        DB::connection()->setPdo(new \PDO('sqlite::memory:'));
+
+        $queries = DB::connection()->pretend(function () {
+            app(NexframeBusinessAnalytics::class)->registrationConversion(
+                Carbon::parse('2026-10-14'), Carbon::parse('2026-10-16')->endOfDay(),
+            );
+        });
+
+        $this->assertCount(2, $queries);
+        $this->assertStringContainsString(
+            '`payments`.`user_id` in (select CONVERT(uid USING utf8mb4) COLLATE utf8mb4_unicode_ci from `user`',
+            $queries[1]['query'],
+        );
+        $this->assertStringContainsString('count(distinct `payments`.`user_id`)', $queries[1]['query']);
+        $this->assertContains('subscription', $queries[1]['bindings']);
+    }
+
     public function test_comparison_modes_calendar_days_and_daily_payment_counts(): void
     {
         $response = $this->withSession(['nexframe_dashboard_authenticated' => true])->getJson('/analytics/nexframe/data?from=2026-10-15&to=2026-10-16');
