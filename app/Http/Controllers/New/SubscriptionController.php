@@ -329,7 +329,7 @@ class SubscriptionController extends Controller
                 'devices',
             ])
                 ->where('user_id', $userId)
-                ->where('is_active', true)
+                ->currentlyActive()
                 ->orderBy('created_at', 'desc');
 
             // ✅ If device_type provided → return single object

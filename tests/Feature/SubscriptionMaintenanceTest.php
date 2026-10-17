@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Http\Controllers\WhatsAppController;
+use App\Models\New\Subscription;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -157,6 +158,20 @@ class SubscriptionMaintenanceTest extends TestCase
 
         $this->assertDatabaseHas('n_subscriptions', ['id' => $expiredId, 'is_active' => false]);
         $this->assertDatabaseHas('n_subscriptions', ['id' => $expiresTodayId, 'is_active' => true]);
+    }
+
+    public function test_currently_active_scope_keeps_expiry_day_and_excludes_older_rows(): void
+    {
+        $expiredId = $this->createSubscription('scope-expired-user', -1);
+        $expiresTodayId = $this->createSubscription('scope-today-user', 0);
+
+        $activeIds = Subscription::query()
+            ->currentlyActive()
+            ->pluck('id')
+            ->all();
+
+        $this->assertNotContains($expiredId, $activeIds);
+        $this->assertContains($expiresTodayId, $activeIds);
     }
 
     private function createSubscription(string $userId, int $daysLeft): int
