@@ -8,7 +8,7 @@ import SocialSummary from '../nexframe/SocialSummary.vue';
 import AnalyticsTrend from '../nexframe/AnalyticsTrend.vue';
 import GrowthComparison from '../nexframe/GrowthComparison.vue';
 import OverviewTrend from '../nexframe/OverviewTrend.vue';
-import { formatDate as displayDate, formatDateTime, formatDateRange } from '../nexframe/dates';
+import { formatDate as displayDate, formatDateTime, formatDateRange, normalizeReportRange } from '../nexframe/dates';
 
 const loading = ref(true);
 const error = ref('');
@@ -29,7 +29,7 @@ const localDate = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1)
 const today = new Date();
 const partnershipStart = ref('');
 const filters = reactive({
-    from: localDate(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 13)),
+    from: '',
     to: localDate(today),
 });
 let filterTimer;
@@ -138,6 +138,7 @@ function selectSection(section) {
 }
 
 async function load(forceRefresh = false) {
+    window.clearTimeout(filterTimer);
     if (!signedIn.value) {
         loading.value = false;
         return;
@@ -146,6 +147,9 @@ async function load(forceRefresh = false) {
     loading.value = true;
     error.value = '';
     try {
+        // Normalize synchronously: a date watcher may not have run before login,
+        // navigation or auto-refresh initiates this request.
+        Object.assign(filters, normalizeReportRange(filters, partnershipStart.value, localDate(new Date())));
         const query = new URLSearchParams({ ...filters, comparison: comparisonMode.value });
         if (forceRefresh) query.set('refresh', '1');
         const report = await request(`/analytics/nexframe/data?${query}`, { cache: 'no-store' });
@@ -220,7 +224,7 @@ async function checkSession() {
     try {
         const status = await request('/analytics/nexframe/session', { cache: 'no-store' });
         partnershipStart.value = status.partnership_started_at || '';
-        if (partnershipStart.value) filters.from = partnershipStart.value;
+        filters.from = partnershipStart.value || localDate(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 13));
         signedIn.value = status.authenticated === true;
         authConfigured.value = status.configured === true;
         if (signedIn.value) await load();
@@ -239,7 +243,9 @@ async function login() {
         await request('/analytics/nexframe/login', { method: 'POST', body: credentials });
         signedIn.value = true;
         credentials.password = '';
-        await load();
+        // Read the current server boundary again after login (including when
+        // deployment/config changed while the login screen was open).
+        await checkSession();
     } catch (reason) {
         authError.value = reason.message;
     } finally {

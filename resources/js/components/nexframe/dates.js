@@ -15,3 +15,14 @@ export function formatDate(value, { includeTime = false, short = false } = {}) {
 
 export const formatDateTime = (value) => formatDate(value, { includeTime: true });
 export const formatDateRange = (from, to) => from === to ? formatDate(from) : `${formatDate(from)} – ${formatDate(to)}`;
+
+export function normalizeReportRange(range, minimum, today) {
+    if (minimum && minimum > today) throw new Error(`The partnership starts on ${formatDate(minimum)}. Reports are not available yet.`);
+    let from = range.from || minimum || today;
+    let to = range.to || today;
+    if (minimum && from < minimum) from = minimum;
+    if (from > today) from = today;
+    if (to > today) to = today;
+    if (to < from) to = from;
+    return { from, to };
+}
