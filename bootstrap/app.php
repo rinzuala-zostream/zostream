@@ -4,6 +4,7 @@ use App\Http\Middleware\AdminTokenMiddleware;
 use App\Http\Middleware\ApiClientContext;
 use App\Http\Middleware\ApiKeyMiddleware;
 use App\Http\Middleware\AuthTokenMiddleware;
+use App\Http\Middleware\EnsureNexframeAccess;
 use App\Http\Middleware\OwnerDeviceMiddleware;
 use App\Http\Middleware\V4ResponseEnvelope;
 use App\Isp\Http\Middleware\EnsureActiveUser as EnsureActiveIspUser;
@@ -31,6 +32,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'auth.token' => AuthTokenMiddleware::class,
             'owner.device' => OwnerDeviceMiddleware::class,
             'admin.token' => AdminTokenMiddleware::class,
+            'nexframe.access' => EnsureNexframeAccess::class,
             'api.client' => ApiClientContext::class,
             'api.v4' => V4ResponseEnvelope::class,
             'isp.active' => EnsureActiveIspUser::class,

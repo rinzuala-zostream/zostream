@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\AdsController;
 use App\Http\Controllers\InvoiceController;
+use App\Http\Controllers\NexframeAccessController;
+use App\Http\Controllers\NexframeAnalyticsController;
 use App\Http\Controllers\WebStatsController;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Facades\Route;
@@ -45,6 +47,13 @@ Route::get('/advertise/payment/{token}/open', fn (string $token) => redirect('/a
     ->where('token', '[A-Za-z0-9]{48}');
 Route::view('/account-delete', 'welcome');
 Route::view('/account/stats', 'welcome');
+Route::view('/analytics/nexframe', 'welcome')->name('analytics.nexframe');
+Route::prefix('analytics/nexframe')->group(function () {
+    Route::get('/session', [NexframeAccessController::class, 'status']);
+    Route::post('/login', [NexframeAccessController::class, 'login'])->middleware('throttle:6,1');
+    Route::post('/logout', [NexframeAccessController::class, 'logout']);
+    Route::get('/data', [NexframeAnalyticsController::class, 'overview'])->middleware('nexframe.access');
+});
 Route::get('/account/stats/bridge', [WebStatsController::class, 'consumeAppTicket'])->middleware('throttle:20,1');
 Route::get('/account/stats/data', [WebStatsController::class, 'data'])->middleware('throttle:60,1');
 Route::post('/account/stats/logout', [WebStatsController::class, 'logout'])->middleware('throttle:20,1');

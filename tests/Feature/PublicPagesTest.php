@@ -22,6 +22,7 @@ class PublicPagesTest extends TestCase
             '/advertising-terms',
             '/faq',
             '/advertise',
+            '/analytics/nexframe',
             '/advertise/status/'.str_repeat('a', 48),
         ];
 

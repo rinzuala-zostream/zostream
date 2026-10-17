@@ -49,6 +49,24 @@ return [
         ))),
     ],
 
+    'nexframe_dashboard' => [
+        'email' => env('NEXFRAME_DASHBOARD_EMAIL'),
+        'password_hash' => env('NEXFRAME_DASHBOARD_PASSWORD_HASH'),
+        'partnership_started_at' => env('NEXFRAME_PARTNERSHIP_STARTED_AT'),
+        'business_cache_store' => env('NEXFRAME_BUSINESS_CACHE_STORE', 'file'),
+        'instagram' => [
+            'access_token' => env('NEXFRAME_INSTAGRAM_ACCESS_TOKEN'),
+            'account_id' => env('NEXFRAME_INSTAGRAM_ACCOUNT_ID', 'me'),
+            'base_url' => env('NEXFRAME_INSTAGRAM_GRAPH_URL', 'https://graph.instagram.com'),
+        ],
+        'facebook' => [
+            'access_token' => env('NEXFRAME_FACEBOOK_PAGE_ACCESS_TOKEN'),
+            'page_id' => env('NEXFRAME_FACEBOOK_PAGE_ID'),
+            'api_version' => env('NEXFRAME_META_API_VERSION'),
+            'base_url' => env('NEXFRAME_FACEBOOK_GRAPH_URL', 'https://graph.facebook.com'),
+        ],
+    ],
+
     'whatsapp' => [
         'verify_token' => env('WHATSAPP_VERIFY_TOKEN'),
         'app_secret' => env('WHATSAPP_APP_SECRET'),

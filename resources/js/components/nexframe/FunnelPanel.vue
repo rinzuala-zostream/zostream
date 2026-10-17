@@ -1,0 +1,13 @@
+<script setup>
+defineProps({ rows: { type: Array, default: () => [] } });
+const format = (value) => value == null ? '—' : new Intl.NumberFormat('en-IN', { notation: 'compact', maximumFractionDigits: 1 }).format(value);
+</script>
+<template>
+    <article class="panel growth-flow"><header><span>▽</span><div><h2>Marketing-to-Streaming</h2><p>Audience, customers & viewing activity</p></div></header>
+        <div class="stages"><div v-for="(row,index) in rows" :key="row.label" class="stage" :class="{ off: !row.available }" :style="{ '--stage-width': `${100-index*8}%`, '--stage-index': index }"><div class="stage-track"><div class="stage-shape"><span>{{ row.label }}</span></div></div><div class="stage-value"><b>{{ row.available ? format(row.value) : '—' }}</b><small>{{ row.available ? 'In selected dates' : 'Unavailable' }}</small></div></div></div>
+        <footer>Separate stage totals · directional view</footer>
+    </article>
+</template>
+<style scoped>
+.panel{min-width:0;padding:18px;border:1px solid #19416b;border-radius:11px;background:linear-gradient(130deg,#06182e,#031124);box-shadow:0 8px 30px #0002;overflow:hidden}header{display:flex;align-items:center;gap:10px}header>span{font-size:30px;color:#8f6bff}h2{margin:0;font-size:15px;line-height:1.4}header p{margin:5px 0 0;color:#8aa4be;font-size:11px}.stages{display:grid;gap:13px;margin:23px 0 17px}.stage{display:grid;grid-template-columns:minmax(0,1fr) 95px;align-items:center;gap:12px}.stage-track{display:flex;justify-content:center}.stage-shape{display:grid;place-items:center;width:var(--stage-width);min-height:45px;padding:7px 18px;clip-path:polygon(0 0,100% 0,91% 100%,9% 100%);background:linear-gradient(110deg,#16bfff,#1763ef);text-align:center;box-sizing:border-box}.stage-shape span{color:#fff;font-size:12px;font-weight:750;line-height:1.3}.stage:nth-child(2) .stage-shape{background:linear-gradient(110deg,#12d7e9,#069ed4)}.stage:nth-child(3) .stage-shape{background:linear-gradient(110deg,#8d7bff,#6035e8)}.stage:nth-child(4) .stage-shape{background:linear-gradient(110deg,#ed58c4,#d72a9c)}.stage:nth-child(5) .stage-shape{background:linear-gradient(110deg,#12baa9,#137c8f)}.stage-value{text-align:right}.stage-value b{font-size:17px;font-weight:750;color:#e3edff}.stage-value small{display:block;margin-top:5px;font-size:10px;color:#829bb6}.stage.off .stage-shape{background:linear-gradient(110deg,#1b3a58,#192b47)}.stage.off .stage-shape span{color:#95acc1}.stage.off .stage-value b{color:#8aa4be}footer{padding-top:12px;border-top:1px solid #143351;color:#8aa4be;font-size:11px}@media(max-width:400px){.stage{grid-template-columns:minmax(0,1fr) 76px;gap:8px}.stage-shape span{font-size:11px}.stage-value b{font-size:15px}}
+</style>

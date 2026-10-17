@@ -19,6 +19,7 @@ import AdvertisePage from './components/pages/AdvertisePage.vue';
 import AdSubmissionStatusPage from './components/pages/AdSubmissionStatusPage.vue';
 import PolicyPage from './components/pages/PolicyPage.vue';
 import MyStatsPage from './components/pages/MyStatsPage.vue';
+import NexframeAnalyticsPage from './components/pages/NexframeAnalyticsPage.vue';
 import { policyPages } from './data/pages';
 
 const activeSection = ref('home');
@@ -33,7 +34,8 @@ const legalSlug = policyPage ? currentPath.slice(1) : dynamicLegalSlug;
 const isLegalPage = Boolean(policyPage || dynamicLegalSlug);
 const livePolicyPage = ref(policyPage || { eyebrow: 'Legal', title: 'Legal page', date: '', intro: '', sections: [] });
 const isAdStatusPage = currentPath.startsWith('/advertise/status/') || currentPath.startsWith('/advertise/payment/');
-const pageTitles = { '/about-us': 'About us', '/account-delete': 'Delete account', '/account/stats': 'My Zo Stream', '/account/stats/bridge': 'Signing in', '/contact-us': 'Contact us', '/download': 'Download', '/faq': 'FAQ', '/advertise': 'Advertise' };
+const isNexframeAnalytics = currentPath === '/analytics/nexframe';
+const pageTitles = { '/about-us': 'About us', '/account-delete': 'Delete account', '/account/stats': 'My Zo Stream', '/account/stats/bridge': 'Signing in', '/analytics/nexframe': 'NextFrame Analytics', '/contact-us': 'Contact us', '/download': 'Download', '/faq': 'FAQ', '/advertise': 'Advertise' };
 let sectionObserver;
 let revealObserver;
 
@@ -46,6 +48,7 @@ const handleScroll = () => { scrolled.value = window.scrollY > 30; };
 
 onMounted(() => {
     document.title = `${policyPage?.title || pageTitles[currentPath] || (isAdStatusPage ? 'Ad submission status' : 'All in Mizo')} — Zo Stream`;
+    if (isNexframeAnalytics) return;
     if (legalSlug) {
         fetch(`/api/v4/legal-pages/${encodeURIComponent(legalSlug)}`, {
             headers: { 'X-Client-Platform': 'web', 'X-Client-Version': '1.0' },
@@ -89,7 +92,8 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-    <div class="site-shell">
+    <NexframeAnalyticsPage v-if="isNexframeAnalytics" />
+    <div v-else class="site-shell">
         <AppHeader :active-section="activeSection" :current-path="currentPath" :scrolled="scrolled" @navigate="navigate" />
         <main v-if="isHome"><HeroSection @navigate="navigate" /><AdBannerSlot placement="home_top" /><PlatformStats /><ServicesSection /><FeaturesSection /><AdBannerSlot placement="home_middle" /><FeaturedSection /><PricingSection /><DownloadSection /></main>
         <MyStatsPage v-else-if="currentPath === '/account/stats'" />
