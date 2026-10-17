@@ -1,4 +1,5 @@
 <script setup>
+import { formatDate } from './dates';
 defineProps({ rows: { type: Array, default: () => [] }, expanded: Boolean });
 defineEmits(['open']);
 const format = (value) => new Intl.NumberFormat('en-IN', { notation: 'compact', maximumFractionDigits: 1 }).format(Number(value || 0));
@@ -7,7 +8,7 @@ const format = (value) => new Intl.NumberFormat('en-IN', { notation: 'compact', 
     <article class="panel" :class="{ expanded }">
         <header><div><span>▣</span><p><b>{{ expanded ? 'Zo Stream Content Performance' : 'Latest Releases Catalog' }}</b><small>Catalog views alongside promotion on each platform</small></p></div><button v-if="!expanded" @click="$emit('open')">View performance →</button><em v-else>{{ rows.length }} titles</em></header>
         <div class="scroll"><table><thead><tr><th>Movie / Series</th><th v-if="expanded">Published</th><th v-if="expanded">Category</th><th>Zo Stream views</th><th class="instagram">◎ Instagram</th><th class="facebook">f Facebook</th></tr></thead><tbody>
-            <tr v-for="row in rows" :key="row.id"><td><img v-if="row.image" :src="row.image" alt=""><span v-else>▶</span><b>{{ row.title }}</b></td><td v-if="expanded">{{ row.published_at || '—' }}</td><td v-if="expanded">{{ row.category }}</td><td>{{ format(row.views) }}<small v-if="expanded">Lifetime catalog views</small></td>
+            <tr v-for="row in rows" :key="row.id"><td><img v-if="row.image" :src="row.image" alt=""><span v-else>▶</span><b>{{ row.title }}</b></td><td v-if="expanded">{{ formatDate(row.published_at) }}</td><td v-if="expanded">{{ row.category }}</td><td>{{ format(row.views) }}<small v-if="expanded">Lifetime catalog views</small></td>
                 <td v-for="platform in ['instagram', 'facebook']" :key="platform"><div class="promotion" :class="platform"><template v-if="row.platform_promotions?.[platform]?.available"><b>{{ format(row.platform_promotions[platform].posts) }} {{ expanded ? 'matching posts' : 'posts' }}</b><small>{{ format(row.platform_promotions[platform].engagement) }} interactions</small></template><template v-else><b>—</b><small>{{ expanded ? 'Awaiting platform data' : 'Unavailable' }}</small></template></div></td>
             </tr>
         </tbody></table><p v-if="!rows.length" class="empty">No matching catalog titles.</p></div>

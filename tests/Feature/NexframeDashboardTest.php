@@ -7,6 +7,17 @@ use Tests\TestCase;
 
 class NexframeDashboardTest extends TestCase
 {
+    public function test_session_exposes_partnership_date_and_earlier_ranges_are_rejected(): void
+    {
+        config()->set('services.nexframe_dashboard.partnership_started_at', '2026-10-14');
+        $this->getJson('/analytics/nexframe/session')->assertOk()
+            ->assertJsonPath('partnership_started_at', '2026-10-14');
+
+        $this->withSession(['nexframe_dashboard_authenticated' => true])
+            ->getJson('/analytics/nexframe/data?from=2026-10-13&to=2026-10-16')
+            ->assertUnprocessable()->assertJsonValidationErrors('from');
+    }
+
     public function test_dashboard_is_standalone_and_data_requires_its_own_session(): void
     {
         config()->set('services.nexframe_dashboard.email');

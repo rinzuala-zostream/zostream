@@ -1,11 +1,12 @@
 <script setup>
 import { computed, ref } from 'vue';
+import { formatDate } from './dates';
 
 const props = defineProps({ rows: { type: Array, default: () => [] }, platforms: { type: Array, default: () => [] } });
 const hover = ref(null);
 const showValues = ref(false);
 const format = (value) => value == null ? '—' : new Intl.NumberFormat('en-IN', { notation: 'compact', maximumFractionDigits: 1 }).format(value);
-const labelDate = (date) => new Intl.DateTimeFormat('en-IN', { month: 'short', day: 'numeric' }).format(new Date(`${date}T12:00:00`));
+const labelDate = (date) => formatDate(date, { short: true });
 const x = (index) => props.rows.length < 2 ? 380 : index / (props.rows.length - 1) * 760;
 const series = computed(() => [
     { key: 'social_engagement', label: 'Social interactions', color: '#20d2ff', axis: 'left' },
@@ -53,11 +54,11 @@ function move(event) {
                 <div class="scale right"><span v-for="tick in ticks" :key="tick">{{ format(series[1].max * tick) }}</span></div>
             </div>
             <div class="dates"><span v-for="tick in dateTicks" :key="tick.date">{{ labelDate(tick.date) }}</span></div>
-            <div v-if="selected" class="readout"><b>{{ labelDate(selected.date) }}</b><span v-for="item in series" :key="item.key" :style="{ color: item.color }">{{ item.label }} <strong>{{ format(selected[item.key]) }}</strong></span></div>
+            <div v-if="selected" class="readout"><b>{{ formatDate(selected.date) }}</b><span v-for="item in series" :key="item.key" :style="{ color: item.color }">{{ item.label }} <strong>{{ format(selected[item.key]) }}</strong></span></div>
         </template>
         <p v-else class="empty">Daily social and payment data are unavailable for this period.</p>
         <footer><span>Daily social data: {{ platforms.length ? platforms.join(' + ') : 'unavailable' }}</span><small>Separate axes · directional comparison</small></footer>
-        <div v-if="showValues" class="table"><table><thead><tr><th>Date</th><th>Social interactions</th><th>First-time paying users</th></tr></thead><tbody><tr v-for="row in rows" :key="row.date"><td>{{ row.date }}</td><td>{{ format(row.social_engagement) }}</td><td>{{ format(row.subscriptions) }}</td></tr></tbody></table></div>
+        <div v-if="showValues" class="table"><table><thead><tr><th>Date</th><th>Social interactions</th><th>First-time paying users</th></tr></thead><tbody><tr v-for="row in rows" :key="row.date"><td>{{ formatDate(row.date) }}</td><td>{{ format(row.social_engagement) }}</td><td>{{ format(row.subscriptions) }}</td></tr></tbody></table></div>
     </article>
 </template>
 

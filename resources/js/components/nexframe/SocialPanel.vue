@@ -1,4 +1,5 @@
 <script setup>
+import { formatDate, formatDateTime } from './dates';
 import { computed, ref, watch } from 'vue';
 import PostInsightsDialog from './PostInsightsDialog.vue';
 
@@ -36,7 +37,7 @@ watch(() => props.posts, (posts) => {
 watch(() => [platform.value, props.posts, sort.value], () => { visibleCount.value = 24; });
 const status = (data) => !data?.configured ? 'Not configured' : data.healthy ? 'Connected' : 'Needs attention';
 const format = (value) => value == null ? '—' : new Intl.NumberFormat('en-IN', { notation: 'compact', maximumFractionDigits: 1 }).format(value);
-const when = (value) => value ? new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }).format(new Date(value)) : '—';
+const when = formatDateTime;
 const percent = (value) => value == null ? '—' : `${Number(value).toFixed(2)}%`;
 const activeAccount = computed(() => props.social[platform.value] || {});
 const activeLabel = computed(() => platform.value === 'instagram' ? 'Instagram' : platform.value === 'facebook' ? 'Facebook' : 'Platform comparison');
@@ -93,7 +94,7 @@ const comparisonRows = computed(() => [
                 <table><thead><tr><th>Metric</th><th class="ig-column">◎ Instagram</th><th class="fb-column">f Facebook</th></tr></thead><tbody><tr v-for="row in comparisonRows" :key="row[0]"><td>{{ row[0] }}</td><td>{{ row[3] ? row[1] : format(row[1]) }}</td><td>{{ row[3] ? row[2] : format(row[2]) }}</td></tr></tbody></table>
             </div>
             <section v-if="platform !== 'compare'" class="data-note"><p>Last successful account sync: {{ when(activeAccount.last_successful_sync) }}. Unavailable metrics display as —.</p><details v-if="Object.keys(activeAccount.insight_issues || {}).length"><summary>Insight availability</summary><p v-for="(reason, metric) in activeAccount.insight_issues" :key="metric">{{ metric }}: {{ reason }}</p></details></section>
-            <section v-if="platform !== 'compare'" class="follower-history"><header><b>{{ activeLabel }} follower history</b><small>{{ activeAccount.follower_history?.message || 'History begins with successful syncs.' }}</small></header><p>Observed change: {{ activeAccount.follower_history?.change == null ? 'More observations needed' : `${activeAccount.follower_history.change > 0 ? '+' : ''}${format(activeAccount.follower_history.change)} followers` }}</p><details v-if="activeAccount.follower_history?.points?.length"><summary>{{ activeAccount.follower_history.points.length }} observed days in selected dates</summary><div v-for="point in activeAccount.follower_history.points" :key="point.date" class="history-row"><span>{{ point.date }}</span><b>{{ format(point.followers) }}</b></div></details></section>
+            <section v-if="platform !== 'compare'" class="follower-history"><header><b>{{ activeLabel }} follower history</b><small>{{ activeAccount.follower_history?.message || 'History begins with successful syncs.' }}</small></header><p>Observed change: {{ activeAccount.follower_history?.change == null ? 'More observations needed' : `${activeAccount.follower_history.change > 0 ? '+' : ''}${format(activeAccount.follower_history.change)} followers` }}</p><details v-if="activeAccount.follower_history?.points?.length"><summary>{{ activeAccount.follower_history.points.length }} observed days in selected dates</summary><div v-for="point in activeAccount.follower_history.points" :key="point.date" class="history-row"><span>{{ formatDate(point.date) }}</span><b>{{ format(point.followers) }}</b></div></details></section>
             <section v-if="typeStats.length" class="content-types"><header><b>{{ activeLabel }} content-type performance</b><small>{{ platform === 'compare' ? 'Both platforms are shown only in comparison mode' : `Only ${activeLabel} posts` }}</small></header><div><article v-for="type in typeStats" :key="type.type"><span>{{ type.type }}</span><b>{{ format(type.engagement) }}</b><small>{{ type.posts }} posts · {{ format(type.reach) }} reach · {{ format(type.views) }} views</small></article></div></section>
             <div class="post-toolbar"><div><b>{{ activeLabel }} posts</b><small>{{ displayedPosts.length }} published in selected dates · post metrics are lifetime values at sync</small></div><select v-model="sort"><option value="engagement">Top engagement</option><option value="reach">Top reach</option><option value="views">Most viewed</option><option value="newest">Newest</option></select></div>
         </template>

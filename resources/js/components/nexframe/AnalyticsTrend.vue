@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref } from 'vue';
+import { formatDate } from './dates';
 const props = defineProps({ rows: { type: Array, default: () => [] }, series: { type: Array, default: () => [] }, title: String, note: String });
 const hover = ref(null);
 const format = (value) => value == null ? 'Unavailable' : new Intl.NumberFormat('en-IN', { maximumFractionDigits: 1 }).format(value);
@@ -28,9 +29,9 @@ function move(event) {
         <div class="legend"><span v-for="series in props.series" :key="series.key" :style="{ color: series.color }">● {{ series.label }}</span></div>
         <template v-if="hasData">
             <div class="plot"><div class="scale"><span>{{ format(maximum) }}</span><span>{{ format(maximum / 2) }}</span><span>0</span></div><svg viewBox="0 0 760 190" preserveAspectRatio="none" @mousemove="move" @mouseleave="hover = null"><path d="M0 15H760M0 95H760M0 175H760" class="grid"/><g v-for="series in paths" :key="series.key"><polyline v-for="(segment, i) in series.segments" :key="i" :points="segment" :stroke="series.color"/><circle v-if="selected?.[series.key] != null" :cx="x(Math.min(hover ?? rows.length - 1, rows.length - 1))" :cy="y(selected[series.key])" r="4" :fill="series.color"/></g></svg></div>
-            <div class="dates"><span>{{ rows[0]?.date }}</span><span>{{ rows[rows.length - 1]?.date }}</span></div>
-            <div v-if="selected" class="values"><b>{{ selected.date }}</b><span v-for="series in props.series" :key="series.key" :style="{color:series.color}">{{ series.label }}: {{ format(selected[series.key]) }}</span></div>
-            <details><summary>View daily values</summary><div class="table"><table><thead><tr><th>Date</th><th v-for="series in props.series" :key="series.key">{{ series.label }}</th></tr></thead><tbody><tr v-for="row in rows" :key="row.date"><td>{{ row.date }}</td><td v-for="series in props.series" :key="series.key">{{ format(row[series.key]) }}</td></tr></tbody></table></div></details>
+            <div class="dates"><span>{{ formatDate(rows[0]?.date) }}</span><span>{{ formatDate(rows[rows.length - 1]?.date) }}</span></div>
+            <div v-if="selected" class="values"><b>{{ formatDate(selected.date) }}</b><span v-for="series in props.series" :key="series.key" :style="{color:series.color}">{{ series.label }}: {{ format(selected[series.key]) }}</span></div>
+            <details><summary>View daily values</summary><div class="table"><table><thead><tr><th>Date</th><th v-for="series in props.series" :key="series.key">{{ series.label }}</th></tr></thead><tbody><tr v-for="row in rows" :key="row.date"><td>{{ formatDate(row.date) }}</td><td v-for="series in props.series" :key="series.key">{{ format(row[series.key]) }}</td></tr></tbody></table></div></details>
         </template>
         <p v-else class="empty">Daily data is unavailable for these dates. Connect a source with daily insights to display this trend.</p>
     </article>

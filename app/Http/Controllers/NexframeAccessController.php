@@ -15,6 +15,7 @@ class NexframeAccessController extends Controller
         return response()->json([
             'authenticated' => $request->session()->get(self::SESSION_KEY) === true,
             'configured' => $this->configured(),
+            'partnership_started_at' => config('services.nexframe_dashboard.partnership_started_at'),
         ]);
     }
 

@@ -8,6 +8,7 @@ import SocialSummary from '../nexframe/SocialSummary.vue';
 import AnalyticsTrend from '../nexframe/AnalyticsTrend.vue';
 import GrowthComparison from '../nexframe/GrowthComparison.vue';
 import OverviewTrend from '../nexframe/OverviewTrend.vue';
+import { formatDate as displayDate, formatDateTime, formatDateRange } from '../nexframe/dates';
 
 const loading = ref(true);
 const error = ref('');
@@ -26,6 +27,7 @@ const loggingIn = ref(false);
 const credentials = reactive({ email: '', password: '' });
 const localDate = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 const today = new Date();
+const partnershipStart = ref('');
 const filters = reactive({
     from: localDate(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 13)),
     to: localDate(today),
@@ -59,12 +61,12 @@ const content = computed(() => {
 });
 const lastUpdated = computed(() => {
     const date = dashboard.value?.business_snapshot?.as_of || dashboard.value?.generated_at;
-    return date ? new Intl.DateTimeFormat('en-IN', { hour: 'numeric', minute: '2-digit' }).format(new Date(date)) : '—';
+    return formatDateTime(date);
 });
 const pageHeading = computed(() => ({
     overview: ['Central Analytics', 'Zo Stream growth and social performance in one view.'],
     social: ['Social Media Insights', 'Reach, views, interactions and post performance from Facebook and Instagram.'],
-    impact: ['Zo Stream Growth Impact', 'Compare the pre-partnership baseline with growth since NextFrame started.'],
+    impact: ['Zo Stream Growth Impact', 'Track growth from the partnership start date; comparisons stay within the partnership period.'],
     content: ['Content Performance', 'Review releases, Zo Stream views and matching social promotion.'],
     settings: ['Data Connections', 'Monitor the standalone dashboard and Meta API connections.'],
 }[activeSection.value]));
@@ -105,9 +107,7 @@ function signedPercent(value) {
 }
 
 function rangeLabel() {
-    const format = (value) => new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
-        .format(new Date(`${value}T12:00:00`));
-    return `${format(filters.from)} – ${format(filters.to)}`;
+    return formatDateRange(filters.from, filters.to);
 }
 
 function chartPoints(key, width = 760, height = 190) {
@@ -128,7 +128,7 @@ function chartArea(key) {
 }
 
 function axisLabel(date) {
-    return new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short' }).format(new Date(`${date}T12:00:00`));
+    return displayDate(date, { short: true });
 }
 
 function selectSection(section) {
@@ -158,11 +158,7 @@ async function load(forceRefresh = false) {
 }
 
 function formatDate(value, includeTime = false) {
-    if (!value) return '—';
-    return new Intl.DateTimeFormat('en-IN', includeTime
-        ? { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }
-        : { day: 'numeric', month: 'short', year: 'numeric' })
-        .format(new Date(value));
+    return displayDate(value, { includeTime });
 }
 
 function connectionText(platform) {
@@ -187,8 +183,18 @@ watch(comparisonMode, () => { if (signedIn.value) load(false); });
 watch(
     () => [filters.from, filters.to],
     ([from, to], previous) => {
-        if (!signedIn.value || !from || !to || from > to || !previous) return;
         window.clearTimeout(filterTimer);
+        if (partnershipStart.value) {
+            if (from && from < partnershipStart.value) {
+                filters.from = partnershipStart.value;
+                return;
+            }
+            if (to && to < partnershipStart.value) {
+                filters.to = partnershipStart.value;
+                return;
+            }
+        }
+        if (!signedIn.value || !from || !to || from > to || !previous) return;
         filterTimer = window.setTimeout(() => load(false), 350);
     }
 );
@@ -213,6 +219,8 @@ async function request(url, options = {}) {
 async function checkSession() {
     try {
         const status = await request('/analytics/nexframe/session', { cache: 'no-store' });
+        partnershipStart.value = status.partnership_started_at || '';
+        if (partnershipStart.value) filters.from = partnershipStart.value;
         signedIn.value = status.authenticated === true;
         authConfigured.value = status.configured === true;
         if (signedIn.value) await load();
@@ -285,7 +293,7 @@ onBeforeUnmount(() => {
                 <div class="nf-nextframe"><span>◇</span><b>NextFrame Studio</b></div>
                 <i class="nf-divider" />
                 <strong class="nf-page-name">{{ pageHeading[0] }}</strong>
-                <div class="nf-date" :title="rangeLabel()"><span>▣</span><input v-model="filters.from" type="date" aria-label="Date range start" :max="filters.to"><i>–</i><input v-model="filters.to" type="date" aria-label="Date range end" :min="filters.from" :max="localDate(today)"></div>
+                <div class="nf-date" :title="rangeLabel()"><span>▣</span><input v-model="filters.from" type="date" aria-label="Date range start" :min="partnershipStart || undefined" :max="filters.to"><i>–</i><input v-model="filters.to" type="date" aria-label="Date range end" :min="filters.from || partnershipStart || undefined" :max="localDate(today)"></div>
                 <label class="nf-search"><span>⌕</span><input v-model="search" placeholder="Search content…"></label>
                 <div class="nf-live"><i /> <span><b>{{ loading ? 'Refreshing…' : 'Auto refresh' }}</b><small>Business snapshot {{ lastUpdated }}</small></span></div>
                 <button class="nf-user" title="Sign out" @click="logout"><span>NF</span><p><b>NextFrame</b><small>Partner access · Sign out</small></p></button>
@@ -316,13 +324,18 @@ onBeforeUnmount(() => {
                 <div v-if="loading && !dashboard" class="nf-loading"><i /><span>Syncing analytics…</span></div>
 
                 <template v-if="dashboard">
+                    <section class="nf-report-dates" aria-label="Report dates" aria-live="polite">
+                        <div><span>Showing data for</span><strong>{{ formatDateRange(dashboard.range.from, dashboard.range.to) }}</strong><small>{{ dashboard.range.days }} {{ dashboard.range.days === 1 ? 'day' : 'days' }} · Dates inclusive · IST (UTC+05:30)</small></div>
+                        <div v-if="partnershipStart"><span>Partnership started</span><b>{{ displayDate(partnershipStart) }}</b><small>No reports before this date</small></div>
+                        <div v-if="dashboard.range.previous_from"><span>Compared with</span><b>{{ formatDateRange(dashboard.range.previous_from, dashboard.range.previous_to) }}</b><small>Previous equal-length period</small></div>
+                    </section>
                     <div v-if="dashboard.business_snapshot?.stale" class="nf-data-notice">Showing the last business snapshot from {{ lastUpdated }} while fresh analytics are being prepared. Social insights have their own sync time.</div>
                     <div v-if="dashboard.streaming_source?.id === 'watch_sessions'" class="nf-data-notice">Streaming source: Zo Stream watch-duration logs. Viewers and watch hours are available; playback-session totals are not recorded by this source.</div>
                     <div v-if="dashboard.range.includes_today" class="nf-data-notice">Today is in progress; selected-period totals are provisional.</div>
                     <div v-if="!dashboard.source_status?.streaming || !dashboard.source_status?.payments" class="nf-data-notice">Source unavailable: {{ [!dashboard.source_status?.streaming && 'streaming analytics', !dashboard.source_status?.payments && 'successful subscription payments'].filter(Boolean).join(', ') }}. Missing metrics display as —.</div>
                     <template v-if="activeSection === 'overview'">
                         <div class="nf-kpis">
-                            <article class="nf-kpi-registration"><header><span class="nf-kpi-icon cyan"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M16 4a4 4 0 0 1 0 8M22 21v-2a4 4 0 0 0-3-3.87"/><circle cx="9" cy="7" r="4"/></svg></span><p><b>New Account Registrations</b><small>All Zo Stream platforms</small></p></header><div class="nf-kpi-value"><strong>{{ number(metrics.registrations?.value) }}</strong><span :class="{ down: metrics.registrations?.change < 0 }">{{ change(metrics.registrations) }}</span></div><svg class="nf-spark" viewBox="0 0 300 65" preserveAspectRatio="none"><polyline :points="chartPoints('registrations',300,65)" /></svg><footer class="nf-kpi-footer">Compared with the previous {{ dashboard.range.days }} days</footer></article>
+                            <article class="nf-kpi-registration"><header><span class="nf-kpi-icon cyan"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M16 4a4 4 0 0 1 0 8M22 21v-2a4 4 0 0 0-3-3.87"/><circle cx="9" cy="7" r="4"/></svg></span><p><b>New Account Registrations</b><small>All Zo Stream platforms</small></p></header><div class="nf-kpi-value"><strong>{{ number(metrics.registrations?.value) }}</strong><span :class="{ down: metrics.registrations?.change < 0 }">{{ change(metrics.registrations) }}</span></div><svg class="nf-spark" viewBox="0 0 300 65" preserveAspectRatio="none"><polyline :points="chartPoints('registrations',300,65)" /></svg><footer class="nf-kpi-footer">{{ dashboard.range.previous_from ? `Compared with the previous ${dashboard.range.days} days` : 'Comparison starts within the partnership period only' }}</footer></article>
                             <article class="nf-kpi-paid"><header><span class="nf-kpi-icon blue"><svg viewBox="0 0 24 24"><path d="m3 6 4.5 5L12 3l4.5 8L21 6l-2 13H5zM5 22h14"/></svg></span><p><b>First-time Paying Users</b><small>First successful paid subscription</small></p></header><div class="nf-kpi-value"><strong>{{ number(metrics.subscriptions?.value) }}</strong><span :class="{ down: metrics.subscriptions?.change < 0 }">{{ change(metrics.subscriptions) }}</span></div><svg class="nf-spark purple" viewBox="0 0 300 65" preserveAspectRatio="none"><polyline :points="chartPoints('subscriptions',300,65)" /></svg><footer class="nf-kpi-footer">{{ number(metrics.active_subscriptions?.value) }} subscriptions active now</footer></article>
                             <article class="nf-kpi-streaming"><header><span class="nf-kpi-icon violet"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="3"/><path d="m10 8 5 3-5 3zM8 22h8"/></svg></span><p><b>Streaming Audience</b><small>Unique viewers in selected dates</small></p></header><div class="nf-kpi-value"><strong>{{ number(metrics.streaming_users?.value) }}</strong><span :class="{ down: metrics.streaming_users?.change < 0 }">{{ change(metrics.streaming_users) }}</span></div><div class="nf-mini-bars"><i v-for="row in daily" :key="row.date" :class="{ 'nf-bar-unavailable': row.streaming_users == null }" :style="{ height: row.streaming_users == null ? '0%' : Math.max(2, row.streaming_users / dailyStreamMaximum * 100) + '%' }" /></div><footer class="nf-kpi-footer">{{ number(metrics.watch_hours?.value) }} watch hours · {{ number(metrics.streaming_sessions?.value) }} sessions</footer></article>
                             <article class="nf-kpi-social"><header><span class="nf-kpi-icon pink"><svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 10.5 6.8-4M8.6 13.5l6.8 4"/></svg></span><p><b>Social Media Reach</b><small>Facebook + Instagram · audience overlap possible</small></p></header><div class="nf-kpi-value"><strong>{{ number(socialReach.value,true) }}</strong><span class="pending">{{ socialReach.value == null ? 'Awaiting insights' : socialReach.partial ? 'Partial total' : 'Combined reach' }}</span></div><div class="nf-social-status"><span class="ig">◎</span><p><b>Instagram</b><small>{{ number(socialReach.instagram,true) }} reach</small></p><span class="fb">f</span><p><b>Facebook</b><small>{{ number(socialReach.facebook,true) }} reach</small></p></div><footer class="nf-kpi-footer">{{ social.connected_platforms || 0 }} of 2 platforms connected</footer></article>
@@ -364,6 +377,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.nf-report-dates{display:flex;flex-wrap:wrap;gap:18px 32px;margin-bottom:18px;padding:18px 20px;border:1px solid #235176;border-radius:10px;background:linear-gradient(115deg,#09243d,#061629)}.nf-report-dates>div{display:grid;gap:5px;min-width:0}.nf-report-dates span{font-size:13px;color:#a6bfd7}.nf-report-dates strong{font-size:20px;line-height:1.4;color:#e7f7ff}.nf-report-dates b{font-size:16px;line-height:1.6;color:#d2e9fa}.nf-report-dates small{font-size:12px;color:#91aec9;line-height:1.5}@media(max-width:600px){.nf-report-dates{padding:15px;gap:15px}.nf-report-dates>div{width:100%}.nf-report-dates strong{font-size:18px}}
 
 :global(body){background:#020d1d}
 .nf-app{--cyan:#20caff;--muted:#8da6bf;min-height:100vh;background:#020d1d;color:#edf5ff;font-family:'DM Sans',sans-serif}

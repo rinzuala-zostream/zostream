@@ -19,8 +19,9 @@ class NexframeAnalyticsController extends Controller
 
     public function overview(Request $request, NexframeSocialAnalytics $socialAnalytics)
     {
+        $partnershipStart = config('services.nexframe_dashboard.partnership_started_at');
         $validated = $request->validate([
-            'from' => ['nullable', 'date_format:Y-m-d'],
+            'from' => array_filter(['nullable', 'date_format:Y-m-d', $partnershipStart ? 'after_or_equal:'.$partnershipStart : null]),
             'to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:from'],
             'refresh' => ['nullable', 'boolean'],
             'comparison' => ['nullable', 'in:partnership,selected'],
@@ -31,7 +32,7 @@ class NexframeAnalyticsController extends Controller
             : now()->endOfDay();
         $from = isset($validated['from'])
             ? Carbon::createFromFormat('Y-m-d', $validated['from'])->startOfDay()
-            : $to->copy()->subDays(13)->startOfDay();
+            : ($partnershipStart ? Carbon::parse($partnershipStart)->startOfDay() : $to->copy()->subDays(13)->startOfDay());
 
         $to = $to->min(now()->endOfDay());
         if ($from->gt($to)) {
@@ -50,7 +51,7 @@ class NexframeAnalyticsController extends Controller
             config('database.connections.analytics'), config('services.nexframe_dashboard.partnership_started_at'),
             config('app.timezone'), $from->toDateString(), $to->toDateString(), $comparison,
         ];
-        $key = 'nexframe:business:v2:'.hash('sha256', json_encode($identity));
+        $key = 'nexframe:business:v3:'.hash('sha256', json_encode($identity));
         // Social refresh intentionally does not bypass the business cache.
         $report = app(NexframeReportCache::class)->remember($key, fn () => $this->businessReport($from, $to, $days, $comparison));
         $social = $socialAnalytics->report($from, $to, (bool) ($validated['refresh'] ?? false));
@@ -67,7 +68,7 @@ class NexframeAnalyticsController extends Controller
             ['label' => 'First-time paying users', 'value' => $report['metrics']['subscriptions']['value'], 'available' => $report['metrics']['subscriptions']['value'] !== null],
             ['label' => 'Active streaming users', 'value' => $report['metrics']['streaming_users']['value'], 'available' => $report['source_status']['streaming']],
         ];
-        $report['content'] = $this->latestContent($social['posts'], $social);
+        $report['content'] = $this->latestContent($social['posts'], $social, $from, $to);
         $report['generated_at'] = now()->toIso8601String();
 
         return response()->json($report);
@@ -84,7 +85,7 @@ class NexframeAnalyticsController extends Controller
         $subscriptions = $this->subscriptionCount($from, $to);
         $previousSubscriptions = $this->subscriptionCount($previousFrom, $previousTo);
         $activeSubscriptions = Schema::hasTable((new Subscription)->getTable())
-            ? Subscription::query()->currentlyActive()->count()
+            ? Subscription::query()->currentlyActive()->whereBetween('start_at', [$from, $to])->count()
             : null;
 
         $streaming = $this->streamingSummary($from, $to);
@@ -101,8 +102,8 @@ class NexframeAnalyticsController extends Controller
                 'to' => $to->toDateString(),
                 'days' => $days,
                 'includes_today' => $to->isToday(),
-                'previous_from' => $previousFrom->toDateString(),
-                'previous_to' => $previousTo->toDateString(),
+                'previous_from' => $this->reportingRangeAllowed($previousFrom) ? $previousFrom->toDateString() : null,
+                'previous_to' => $this->reportingRangeAllowed($previousFrom) ? $previousTo->toDateString() : null,
             ],
             'generated_at' => now()->toIso8601String(),
             'metrics' => [
@@ -136,6 +137,9 @@ class NexframeAnalyticsController extends Controller
 
     private function registrationCount(Carbon $from, Carbon $to): ?int
     {
+        if (! $this->reportingRangeAllowed($from)) {
+            return null;
+        }
         if (! Schema::hasColumn((new UserModel)->getTable(), 'created_date')) {
             return null;
         }
@@ -145,11 +149,26 @@ class NexframeAnalyticsController extends Controller
 
     private function subscriptionCount(Carbon $from, Carbon $to): ?int
     {
+        if (! $this->reportingRangeAllowed($from)) {
+            return null;
+        }
+
         return $this->business->subscriptions($from, $to)['first_time_payers'];
+    }
+
+    private function reportingRangeAllowed(Carbon $from): bool
+    {
+        $start = config('services.nexframe_dashboard.partnership_started_at');
+
+        return ! $start || $from->gte(Carbon::parse($start)->startOfDay());
     }
 
     private function streamingSummary(Carbon $from, Carbon $to): array
     {
+        if (! $this->reportingRangeAllowed($from)) {
+            return ['viewers' => null, 'sessions' => null, 'watch_hours' => null, 'average_daily_viewers' => null];
+        }
+
         return $this->business->streaming($from, $to);
     }
 
@@ -191,11 +210,11 @@ class NexframeAnalyticsController extends Controller
         return $series;
     }
 
-    private function latestContent(array $socialPosts = [], array $social = []): array
+    private function latestContent(array $socialPosts, array $social, Carbon $from, Carbon $to): array
     {
-        $identity = config('database.connections.'.config('database.default'));
-        $key = 'nexframe:catalog:v1:'.hash('sha256', json_encode($identity));
-        $catalog = app(NexframeReportCache::class)->remember($key, function () {
+        $identity = [config('database.connections.'.config('database.default')), $from->toDateString(), $to->toDateString()];
+        $key = 'nexframe:catalog:v2:'.hash('sha256', json_encode($identity));
+        $catalog = app(NexframeReportCache::class)->remember($key, function () use ($from, $to) {
             $table = (new MovieModel)->getTable();
             if (! Schema::hasTable($table)) {
                 return ['titles' => [], 'source_status' => ['catalog' => false]];
@@ -205,7 +224,7 @@ class NexframeAnalyticsController extends Controller
                 $columns[] = 'opt_poster_url';
             }
 
-            return ['titles' => MovieModel::query()->orderByDesc('create_date')->limit(6)->get($columns)
+            return ['titles' => MovieModel::query()->whereBetween('create_date', [$from, $to])->orderByDesc('create_date')->limit(6)->get($columns)
                 ->map(fn (MovieModel $movie) => [
                     'id' => $movie->num, 'title' => $movie->title, 'category' => $movie->genre ?: '—',
                     'published_at' => $movie->create_date?->toDateString(),
@@ -294,10 +313,12 @@ class NexframeAnalyticsController extends Controller
             'includes_today' => $effectiveTo->isToday(),
             'days' => $days,
             'confidence' => $days < 7 ? 'Early signal' : ($days < 30 ? 'Developing trend' : 'Established trend'),
-            'baseline_range' => [
+            'baseline_available' => $this->reportingRangeAllowed($baselineFrom),
+            'baseline_message' => 'Comparisons use only complete periods on or after the partnership start date.',
+            'baseline_range' => $this->reportingRangeAllowed($baselineFrom) ? [
                 'from' => $baselineFrom->toDateString(),
                 'to' => $baselineTo->toDateString(),
-            ],
+            ] : null,
             'since_range' => [
                 'from' => $comparisonFrom->toDateString(),
                 'to' => $effectiveTo->toDateString(),

@@ -1,4 +1,5 @@
 <script setup>
+import { formatDateTime } from './dates';
 import { computed, onBeforeUnmount, onMounted, ref, useId } from 'vue';
 
 const props = defineProps({ post: { type: Object, required: true }, account: { type: Object, default: () => ({}) }, syncedAt: String });
@@ -9,7 +10,7 @@ const titleId = useId();
 const platformName = computed(() => props.post.platform === 'instagram' ? 'Instagram' : 'Facebook');
 const accountName = computed(() => props.account.username ? `@${props.account.username}` : props.account.name || platformName.value);
 const format = (value) => value == null ? '—' : new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(value);
-const date = (value) => value ? new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }).format(new Date(value)) : 'Unavailable';
+const date = formatDateTime;
 const originalUrl = computed(() => {
     try {
         const url = new URL(props.post.permalink);

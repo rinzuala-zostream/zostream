@@ -119,7 +119,12 @@ class NexframeMetricAccuracyTest extends TestCase
         $response = $this->withSession(['nexframe_dashboard_authenticated' => true])->getJson('/analytics/nexframe/data?from=2026-10-15&to=2026-10-16');
         $response->assertOk()->assertJsonPath('range.days', 2)
             ->assertJsonPath('impact.partnership.days', 3)
-            ->assertJsonPath('impact.partnership.baseline_range.from', '2026-10-11')
+            ->assertJsonPath('impact.partnership.baseline_range', null)
+            ->assertJsonPath('impact.partnership.baseline.registrations', null)
+            ->assertJsonPath('impact.partnership.baseline.streaming_users', null)
+            ->assertJsonPath('impact.partnership.changes.subscriptions', null)
+            ->assertJsonPath('range.previous_from', null)
+            ->assertJsonPath('metrics.registrations.previous', null)
             ->assertJsonPath('impact.partnership.since.subscriptions', 1)
             ->assertJsonPath('impact.partnership.daily_averages.since.streaming_users', 1)
             ->assertJsonPath('impact.registration_cohort.rate', null);
@@ -131,6 +136,39 @@ class NexframeMetricAccuracyTest extends TestCase
         $this->getJson('/analytics/nexframe/data?from=2026-10-16&to=2026-10-16&comparison=selected')->assertOk()
             ->assertJsonPath('impact.partnership.days', 1)
             ->assertJsonPath('impact.partnership.baseline_range.from', '2026-10-15');
+    }
+
+    public function test_default_range_begins_on_the_configured_partnership_date(): void
+    {
+        $this->withSession(['nexframe_dashboard_authenticated' => true])
+            ->getJson('/analytics/nexframe/data')->assertOk()
+            ->assertJsonPath('range.from', '2026-10-14')
+            ->assertJsonPath('range.to', '2026-10-16');
+    }
+
+    public function test_default_report_does_not_query_or_expose_pre_partnership_periods(): void
+    {
+        DB::enableQueryLog();
+        DB::connection('analytics')->enableQueryLog();
+        $this->withSession(['nexframe_dashboard_authenticated' => true])
+            ->getJson('/analytics/nexframe/data')->assertOk()
+            ->assertJsonPath('range.previous_from', null)
+            ->assertJsonPath('range.previous_to', null)
+            ->assertJsonPath('impact.partnership.baseline_available', false)
+            ->assertJsonPath('impact.partnership.baseline_range', null)
+            ->assertJsonPath('impact.partnership.baseline.subscriptions', null)
+            ->assertJsonPath('impact.partnership.daily_averages.baseline.streaming_users', null)
+            ->assertJsonPath('metrics.subscriptions.value', 1)
+            ->assertJsonPath('metrics.subscriptions.change', null);
+
+        foreach ([...DB::getQueryLog(), ...DB::connection('analytics')->getQueryLog()] as $query) {
+            foreach ($query['bindings'] as $binding) {
+                $value = $binding instanceof \DateTimeInterface ? $binding->format('Y-m-d') : (string) $binding;
+                if (preg_match('/^2026-\d{2}-\d{2}/', $value)) {
+                    $this->assertGreaterThanOrEqual('2026-10-14', substr($value, 0, 10));
+                }
+            }
+        }
     }
 
     public function test_missing_sources_return_null_instead_of_zero(): void
