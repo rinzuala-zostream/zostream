@@ -6,6 +6,7 @@ use App\Models\MovieModel;
 use App\Models\New\Subscription;
 use App\Models\UserModel;
 use App\Services\NexframeBusinessAnalytics;
+use App\Services\NexframePlayStoreAnalytics;
 use App\Services\NexframeRegistrationDate;
 use App\Services\NexframeReportCache;
 use App\Services\NexframeSocialAnalytics;
@@ -19,7 +20,7 @@ class NexframeAnalyticsController extends Controller
 {
     public function __construct(private readonly NexframeBusinessAnalytics $business) {}
 
-    public function overview(Request $request, NexframeSocialAnalytics $socialAnalytics)
+    public function overview(Request $request, NexframeSocialAnalytics $socialAnalytics, NexframePlayStoreAnalytics $playStoreAnalytics)
     {
         $partnershipStart = config('services.nexframe_dashboard.partnership_started_at');
         $validated = $request->validate([
@@ -57,18 +58,33 @@ class NexframeAnalyticsController extends Controller
         // Social refresh intentionally does not bypass the business cache.
         $report = app(NexframeReportCache::class)->remember($key, fn () => $this->businessReport($from, $to, $days, $comparison));
         $social = $socialAnalytics->report($from, $to, (bool) ($validated['refresh'] ?? false));
+        $playStore = $playStoreAnalytics->report($from, $to, (bool) ($validated['refresh'] ?? false));
         foreach ($report['daily'] as &$row) {
             $row['social_engagement'] = $social['daily_engagement'][$row['date']] ?? null;
+            $playDay = $playStore['daily'][$row['date']] ?? [];
+            $row['play_installs'] = $playDay['installs'] ?? null;
+            $row['play_uninstalls'] = $playDay['uninstalls'] ?? null;
+            $row['play_store_visitors'] = $playDay['store_visitors'] ?? null;
+            $row['play_store_acquisitions'] = $playDay['store_acquisitions'] ?? null;
         }
         unset($row);
         $report['social'] = $social;
+        $report['play_store'] = $playStore;
+        $report['source_status']['play_store'] = $playStore['healthy'];
         $report['impact']['social_subscription_correlation'] = $this->correlation($report['daily'], 'social_engagement', 'subscriptions');
+        $report['impact']['social_install_correlation'] = $this->correlation($report['daily'], 'social_engagement', 'play_installs');
+        $report['impact']['install_registration_correlation'] = $this->correlation($report['daily'], 'play_installs', 'registrations');
+        $report['impact']['install_subscription_correlation'] = $this->correlation($report['daily'], 'play_installs', 'subscriptions');
+        $report['impact']['social_install_lag'] = $this->laggedCorrelations($report['daily'], 'social_engagement', 'play_installs');
+        $report['impact']['install_registration_lag'] = $this->laggedCorrelations($report['daily'], 'play_installs', 'registrations');
+        $report['impact']['install_subscription_lag'] = $this->laggedCorrelations($report['daily'], 'play_installs', 'subscriptions');
         $connectedPlatforms = collect([$social['instagram'], $social['facebook']])->where('connected', true);
         $reachSources = $connectedPlatforms->filter(fn ($account) => ($account['insights']['reach'] ?? null) !== null)->count();
         $interactionSources = $connectedPlatforms->filter(fn ($account) => ($account['insights']['interactions'] ?? null) !== null)->count();
         $report['funnel'] = [
             ['label' => 'Combined social reach', 'value' => $social['reach'], 'available' => $social['reach'] !== null, 'partial' => $reachSources < $connectedPlatforms->count()],
             ['label' => 'Content interactions', 'value' => $social['interactions'], 'available' => $social['interactions'] !== null, 'partial' => $interactionSources < $connectedPlatforms->count()],
+            ['label' => 'Android installs', 'value' => $playStore['metrics']['installs'], 'available' => $playStore['metrics']['installs'] !== null, 'partial' => $playStore['status'] === 'partial'],
             ['label' => 'New registrations', 'value' => $report['metrics']['registrations']['value'], 'available' => $report['metrics']['registrations']['value'] !== null],
             ['label' => 'First-time paying users', 'value' => $report['metrics']['subscriptions']['value'], 'available' => $report['metrics']['subscriptions']['value'] !== null],
             ['label' => 'Active streaming users', 'value' => $report['metrics']['streaming_users']['value'], 'available' => $report['source_status']['streaming']],
@@ -364,5 +380,34 @@ class NexframeAnalyticsController extends Controller
         $denominator = sqrt($firstSpread * $secondSpread);
 
         return $denominator > 0 ? round($numerator / $denominator, 3) : null;
+    }
+
+    private function laggedCorrelations(array $rows, string $firstKey, string $secondKey): array
+    {
+        $indexed = collect($rows)->keyBy('date');
+        $values = collect([0, 1, 3, 7])->mapWithKeys(function (int $lag) use ($indexed, $firstKey, $secondKey) {
+            $pairs = $indexed->map(function (array $row) use ($indexed, $firstKey, $secondKey, $lag) {
+                $targetDate = Carbon::parse($row['date'])->addDays($lag)->toDateString();
+                $target = $indexed->get($targetDate);
+
+                return [
+                    'date' => $targetDate,
+                    'first' => $row[$firstKey] ?? null,
+                    'second' => $target[$secondKey] ?? null,
+                ];
+            })->all();
+
+            return [(string) $lag => $this->correlation($pairs, 'first', 'second')];
+        });
+        $available = $values->filter(fn ($value) => $value !== null);
+        $bestLag = $available->keys()->sortByDesc(fn ($lag) => abs((float) $available[$lag]))->first();
+
+        return [
+            'values' => $values->all(),
+            'best' => $bestLag === null ? null : [
+                'lag_days' => (int) $bestLag,
+                'correlation' => $available[$bestLag],
+            ],
+        ];
     }
 }

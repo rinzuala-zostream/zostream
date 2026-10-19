@@ -65,6 +65,14 @@ return [
             'api_version' => env('NEXFRAME_META_API_VERSION'),
             'base_url' => env('NEXFRAME_FACEBOOK_GRAPH_URL', 'https://graph.facebook.com'),
         ],
+        'play_store' => [
+            'package_name' => env('NEXFRAME_PLAYSTORE_PACKAGE_NAME'),
+            'bucket' => env('NEXFRAME_PLAYSTORE_REPORT_BUCKET'),
+            'project_id' => env('NEXFRAME_GOOGLE_CLOUD_PROJECT_ID'),
+            'credentials_path' => env('NEXFRAME_GOOGLE_SERVICE_ACCOUNT_JSON'),
+            'installs_dimension' => env('NEXFRAME_PLAYSTORE_INSTALLS_DIMENSION', 'overview'),
+            'store_performance_dimension' => env('NEXFRAME_PLAYSTORE_STORE_DIMENSION', 'country'),
+        ],
     ],
 
     'whatsapp' => [

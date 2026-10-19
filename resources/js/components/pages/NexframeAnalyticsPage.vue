@@ -8,6 +8,7 @@ import SocialSummary from '../nexframe/SocialSummary.vue';
 import AnalyticsTrend from '../nexframe/AnalyticsTrend.vue';
 import GrowthComparison from '../nexframe/GrowthComparison.vue';
 import OverviewTrend from '../nexframe/OverviewTrend.vue';
+import PlayStorePanel from '../nexframe/PlayStorePanel.vue';
 import { formatDate as displayDate, formatDateTime, formatDateRange, normalizeReportRange } from '../nexframe/dates';
 
 const loading = ref(true);
@@ -15,7 +16,7 @@ const error = ref('');
 const dashboard = ref(null);
 const activeSection = ref('overview');
 const comparisonMode = ref('partnership');
-const businessSeries = [{ key: 'registrations', label: 'Registrations', color: '#28caff' }, { key: 'subscriptions', label: 'First-time paying users', color: '#7eafff' }, { key: 'streaming_users', label: 'Streaming users', color: '#4adeb2' }];
+const businessSeries = [{ key: 'play_installs', label: 'Android installs', color: '#62dc8e' }, { key: 'registrations', label: 'Registrations', color: '#28caff' }, { key: 'subscriptions', label: 'First-time paying users', color: '#7eafff' }, { key: 'streaming_users', label: 'Streaming users', color: '#4adeb2' }];
 const socialSeries = [{ key: 'social_engagement', label: 'Daily social interactions', color: '#78d6c7' }];
 const search = ref('');
 const mobileNav = ref(false);
@@ -39,6 +40,7 @@ let loadSequence = 0;
 const metrics = computed(() => dashboard.value?.metrics || {});
 const daily = computed(() => dashboard.value?.daily || []);
 const social = computed(() => dashboard.value?.social || {});
+const playStore = computed(() => dashboard.value?.play_store || {});
 const socialReach = computed(() => {
     const instagram = social.value.instagram?.insights?.reach;
     const facebook = social.value.facebook?.insights?.reach;
@@ -104,6 +106,12 @@ function signedPercent(value) {
     if (value == null) return 'New data';
     const numeric = Number(value);
     return `${numeric > 0 ? '+' : ''}${numeric}%`;
+}
+
+function correlationLabel(series) {
+    const best = series?.best;
+    if (!best) return 'Needs 7 paired days';
+    return `${best.correlation} (${best.lag_days === 0 ? 'same day' : `+${best.lag_days}d`})`;
 }
 
 function rangeLabel() {
@@ -172,7 +180,7 @@ function connectionText(platform) {
 }
 
 function exportReport() {
-    const headers = ['date', 'registrations', 'subscriptions', 'streaming_users', 'social_engagement'];
+    const headers = ['date', 'social_engagement', 'play_store_visitors', 'play_store_acquisitions', 'play_installs', 'play_uninstalls', 'registrations', 'subscriptions', 'streaming_users'];
     const rows = daily.value.map((row) => headers.map((key) => row[key] ?? '').join(','));
     const blob = new Blob([[headers.join(','), ...rows].join('\n')], { type: 'text/csv;charset=utf-8' });
     const link = document.createElement('a');
@@ -346,6 +354,7 @@ onBeforeUnmount(() => {
                             <article class="nf-kpi-streaming"><header><span class="nf-kpi-icon violet"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="3"/><path d="m10 8 5 3-5 3zM8 22h8"/></svg></span><p><b>Streaming Audience</b><small>Unique viewers in selected dates</small></p></header><div class="nf-kpi-value"><strong>{{ number(metrics.streaming_users?.value) }}</strong><span :class="{ down: metrics.streaming_users?.change < 0 }">{{ change(metrics.streaming_users) }}</span></div><div class="nf-mini-bars"><i v-for="row in daily" :key="row.date" :class="{ 'nf-bar-unavailable': row.streaming_users == null }" :style="{ height: row.streaming_users == null ? '0%' : Math.max(2, row.streaming_users / dailyStreamMaximum * 100) + '%' }" /></div><footer class="nf-kpi-footer">{{ number(metrics.watch_hours?.value) }} watch hours · {{ number(metrics.streaming_sessions?.value) }} sessions</footer></article>
                             <article class="nf-kpi-social"><header><span class="nf-kpi-icon pink"><svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 10.5 6.8-4M8.6 13.5l6.8 4"/></svg></span><p><b>Social Media Reach</b><small>Facebook + Instagram · audience overlap possible</small></p></header><div class="nf-kpi-value"><strong>{{ number(socialReach.value,true) }}</strong><span class="pending">{{ socialReach.value == null ? 'Awaiting insights' : socialReach.partial ? 'Partial total' : 'Combined reach' }}</span></div><div class="nf-social-status"><span class="ig">◎</span><p><b>Instagram</b><small>{{ number(socialReach.instagram,true) }} reach</small></p><span class="fb">f</span><p><b>Facebook</b><small>{{ number(socialReach.facebook,true) }} reach</small></p></div><footer class="nf-kpi-footer">{{ social.connected_platforms || 0 }} of 2 platforms connected</footer></article>
                         </div>
+                        <PlayStorePanel class="nf-play-store-panel" :data="playStore" compact />
                         <div class="nf-grid-main">
                             <OverviewTrend :rows="daily" :platforms="social.daily_engagement_platforms || []" />
                             <FunnelPanel :rows="dashboard.funnel" />
@@ -365,8 +374,9 @@ onBeforeUnmount(() => {
                         <div class="nf-comparison-controls"><label>Comparison window<select v-model="comparisonMode"><option value="partnership">Since partnership started</option><option value="selected">Selected dates vs previous period</option></select></label><button class="nf-panel-button" @click="exportReport">Export daily CSV</button></div>
                         <GrowthComparison :data="partnership" :mode="comparisonMode" :cohort="impact.registration_cohort" />
 
-                        <div class="nf-growth-charts"><AnalyticsTrend :rows="daily" :series="businessSeries" title="Zo Stream daily activity" note="Counts from registrations and first successful subscription payments."/><AnalyticsTrend :rows="daily" :series="socialSeries" title="Social daily interactions" :note="'Meta reporting-day totals. Available platforms: ' + (social.daily_engagement_platforms?.join(', ') || 'none') + '. Source reporting timezones may differ.'"/></div>
-                        <div class="nf-attribution"><b>Directional analysis</b><p>{{ impact.attribution_note }}</p><span>Correlation: {{ impact.social_subscription_correlation ?? 'Requires at least 7 paired days with daily social insights' }}</span></div>
+                        <PlayStorePanel class="nf-play-store-panel" :data="playStore" />
+                        <div class="nf-growth-charts"><AnalyticsTrend :rows="daily" :series="businessSeries" title="Acquisition & Zo Stream daily activity" note="Google Play installs, registrations, first payments and streaming users remain separate metrics."/><AnalyticsTrend :rows="daily" :series="socialSeries" title="Social daily interactions" :note="'Meta reporting-day totals. Available platforms: ' + (social.daily_engagement_platforms?.join(', ') || 'none') + '. Source reporting timezones may differ.'"/></div>
+                        <div class="nf-attribution"><b>Directional analysis</b><p>{{ impact.attribution_note }}</p><span>Best 0/1/3/7-day relationship · Social → installs: {{ correlationLabel(impact.social_install_lag) }} · Installs → registrations: {{ correlationLabel(impact.install_registration_lag) }} · Installs → first payments: {{ correlationLabel(impact.install_subscription_lag) }}</span></div>
                         <div class="nf-summary-grid nf-payment-summary"><article><span>First-time paying users</span><b>{{ number(metrics.subscriptions?.value) }}</b></article><article><span>Repeat subscription payments</span><b>{{ number(metrics.repeat_payments?.value) }}</b></article><article><span>Successful paid transactions</span><b>{{ number(metrics.successful_payments?.value) }}</b></article><article><span>Unique paying users</span><b>{{ number(metrics.paying_users?.value) }}</b></article></div>
                     </template>
 
@@ -374,6 +384,7 @@ onBeforeUnmount(() => {
 
                     <template v-else-if="activeSection === 'settings'">
                         <div class="nf-settings-grid"><ConnectionCard platform="Instagram Business" icon="◎" :data="social.instagram" variables="NEXFRAME_INSTAGRAM_ACCESS_TOKEN"/><ConnectionCard platform="Facebook Page" icon="f" :data="social.facebook" variables="NEXFRAME_FACEBOOK_PAGE_ACCESS_TOKEN · NEXFRAME_FACEBOOK_PAGE_ID · NEXFRAME_META_API_VERSION"/></div>
+                        <PlayStorePanel class="nf-play-store-panel" :data="playStore" />
                         <section class="nf-connection-note"><span>ZO STREAM DATABASE</span><p>Registrations, subscriptions, catalog and playback analytics are read-only in this dashboard. No database schema changes are required.</p></section>
                     </template>
                 </template>
@@ -413,7 +424,8 @@ onBeforeUnmount(() => {
 .nf-comparison-controls{display:flex;justify-content:space-between;align-items:center;gap:15px;margin-bottom:16px}.nf-comparison-controls label{display:grid;gap:8px;color:#9db5cc;font-size:12px}.nf-comparison-controls select{padding:10px 12px;border:1px solid #275675;border-radius:8px;background:#081d33;color:#e1f0fa;font-size:13px}
 .nf-panel-button{padding:9px 12px;border:1px solid #245475;border-radius:8px;background:#0b2a47;color:#cde8fa;font-size:12px}
 .nf-growth-charts{grid-template-columns:1fr 1fr;gap:16px}.nf-attribution{display:flex;align-items:center;flex-wrap:wrap;gap:14px;margin-top:16px;padding:15px;border:1px solid #20435e;border-radius:9px;background:#071c30;font-size:12px}.nf-attribution b{font-size:13px}.nf-attribution p{flex:1;min-width:220px;margin:0;color:#94adc6;line-height:1.6}.nf-attribution>span{color:#a9d7d5}
-.nf-summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:13px}.nf-summary-grid article{padding:17px;border:1px solid #1b3c58;border-radius:9px;background:#07182c}.nf-summary-grid span{display:block;color:#99b2cb;font-size:12px}.nf-summary-grid b{display:block;margin-top:10px;font:800 26px 'Manrope',sans-serif}.nf-payment-summary{margin-top:16px}
+.nf-play-store-panel+.nf-growth-charts{margin-top:16px}
+.nf-summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:13px}.nf-summary-grid article{padding:17px;border:1px solid #1b3c58;border-radius:9px;background:#07182c}.nf-summary-grid span{display:block;color:#99b2cb;font-size:12px}.nf-summary-grid b{display:block;margin-top:10px;font:800 26px 'Manrope',sans-serif}.nf-payment-summary,.nf-play-store-panel{margin-top:16px}
 .nf-settings-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.nf-connection-note{display:flex;align-items:center;gap:20px;margin-top:16px;padding:17px;border:1px solid #23435c;border-radius:9px;background:#06172b}.nf-connection-note span{flex-shrink:0;color:var(--cyan);font-size:11px;font-weight:800;letter-spacing:.8px}.nf-connection-note p{margin:0;color:#95aec7;font-size:13px;line-height:1.6}
 .nf-auth-gate{display:grid;place-items:center;min-height:100vh;padding:24px;background:radial-gradient(circle at 50% 20%,#0b3560,transparent 45%),#020d1d}.nf-auth-card{width:min(460px,100%);padding:38px;border:1px solid #245077;border-radius:17px;background:#06182deb;box-shadow:0 30px 90px #0007;text-align:center}.nf-lock{display:grid;place-items:center;width:56px;height:56px;margin:0 auto 20px;border:1px solid #337dae;border-radius:15px;background:#0d3257;color:#78dcff;font-size:30px}.nf-auth-card>span{font-size:10px;letter-spacing:1.7px;color:#42c9f0;font-weight:800}.nf-auth-card h1{margin:15px 0;font:800 28px 'Manrope',sans-serif}.nf-auth-card h1 b{color:var(--cyan)}.nf-auth-card p{margin:0;color:#95acc5;font-size:13px;line-height:1.7}
 .nf-login-form{display:grid;gap:14px;margin-top:26px;text-align:left}.nf-login-form label{display:grid;gap:7px;color:#a0bad2;font-size:12px;font-weight:650}.nf-login-form input{height:44px;padding:0 12px;border:1px solid #285171;border-radius:8px;background:#041226;color:#edf5ff;font:14px 'DM Sans',sans-serif}.nf-login-form button{min-height:44px;border:1px solid #228af5;border-radius:8px;background:#0967d7;color:#fff;font-size:13px;font-weight:750}.nf-login-form button:disabled{opacity:.5;cursor:not-allowed}.nf-login-form button i{margin-left:12px;font-style:normal}.nf-auth-error{padding:11px;border:1px solid #76405e;border-radius:8px;background:#31152b;color:#ffbdd2;font-size:12px;text-align:center;line-height:1.5}
