@@ -388,10 +388,12 @@
 .admin-root .admin-episode-ppv-dialog h2,
 .admin-root .admin-modern-check b { color: var(--a-text); }
 .admin-root .admin-scrim,
-.admin-root .admin-episode-ppv-backdrop {
+.admin-root .admin-episode-ppv-backdrop,
+.admin-root .whatsapp-widget-scrim {
     background: rgba(3, 7, 18, .65);
-    -webkit-backdrop-filter: blur(8px);
-    backdrop-filter: blur(8px);
+    /* Dim the page without blurring it; the floating panel owns the glass. */
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
 }
 .admin-root :is(button, a, input, select, textarea):focus-visible {
     outline: 2px solid var(--a-cyan); outline-offset: 3px;
