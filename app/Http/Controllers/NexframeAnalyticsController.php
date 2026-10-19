@@ -6,10 +6,12 @@ use App\Models\MovieModel;
 use App\Models\New\Subscription;
 use App\Models\UserModel;
 use App\Services\NexframeBusinessAnalytics;
+use App\Services\NexframeRegistrationDate;
 use App\Services\NexframeReportCache;
 use App\Services\NexframeSocialAnalytics;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Throwable;
 
@@ -51,7 +53,7 @@ class NexframeAnalyticsController extends Controller
             config('database.connections.analytics'), config('services.nexframe_dashboard.partnership_started_at'),
             config('app.timezone'), $from->toDateString(), $to->toDateString(), $comparison,
         ];
-        $key = 'nexframe:business:v3:'.hash('sha256', json_encode($identity));
+        $key = 'nexframe:business:v4:'.hash('sha256', json_encode($identity));
         // Social refresh intentionally does not bypass the business cache.
         $report = app(NexframeReportCache::class)->remember($key, fn () => $this->businessReport($from, $to, $days, $comparison));
         $social = $socialAnalytics->report($from, $to, (bool) ($validated['refresh'] ?? false));
@@ -144,7 +146,10 @@ class NexframeAnalyticsController extends Controller
             return null;
         }
 
-        return UserModel::whereBetween('created_date', [$from, $to])->count();
+        $query = UserModel::query();
+        $date = NexframeRegistrationDate::sql($query->getConnection());
+
+        return $query->whereBetween(DB::raw($date), [$from, $to])->count();
     }
 
     private function subscriptionCount(Carbon $from, Carbon $to): ?int
@@ -177,9 +182,11 @@ class NexframeAnalyticsController extends Controller
         $registrations = collect();
         $registrationsAvailable = Schema::hasColumn((new UserModel)->getTable(), 'created_date');
         if ($registrationsAvailable) {
-            $registrations = UserModel::query()
-                ->whereBetween('created_date', [$from, $to])
-                ->selectRaw('DATE(created_date) as metric_date, COUNT(*) as total')
+            $registrationQuery = UserModel::query();
+            $registrationDate = NexframeRegistrationDate::sql($registrationQuery->getConnection());
+            $registrations = $registrationQuery
+                ->whereBetween(DB::raw($registrationDate), [$from, $to])
+                ->selectRaw("DATE({$registrationDate}) as metric_date, COUNT(*) as total")
                 ->groupBy('metric_date')
                 ->pluck('total', 'metric_date');
         }

@@ -100,7 +100,9 @@ class NexframeBusinessAnalytics
             return ['registrations' => null, 'converted_users' => null, 'rate' => null];
         }
 
-        $cohort = DB::table($table)->whereBetween('created_date', [$from, $to])->whereNotNull('uid');
+        $cohort = DB::table($table);
+        $registrationDate = NexframeRegistrationDate::sql($cohort->getConnection());
+        $cohort->whereBetween(DB::raw($registrationDate), [$from, $to])->whereNotNull('uid');
         $registrations = (clone $cohort)->distinct()->count('uid');
         $cohortIds = (clone $cohort)->select('uid');
         if ($cohort->getConnection()->getDriverName() === 'mysql') {

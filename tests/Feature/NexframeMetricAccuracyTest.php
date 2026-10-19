@@ -107,6 +107,10 @@ class NexframeMetricAccuracyTest extends TestCase
 
         $this->assertCount(2, $queries);
         $this->assertStringContainsString(
+            "STR_TO_DATE(created_date, '%b %e, %Y %h:%i:%s %p')",
+            $queries[0]['query'],
+        );
+        $this->assertStringContainsString(
             '`payments`.`user_id` in (select CONVERT(uid USING utf8mb4) COLLATE utf8mb4_unicode_ci from `user`',
             $queries[1]['query'],
         );
