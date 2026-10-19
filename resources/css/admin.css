@@ -205,21 +205,21 @@
 /* Midnight Floating Glass. Shared presentation only; page behaviour stays local. */
 .admin-root, .admin-login, .admin-not-found {
     --a-bg: #081120;
-    --a-panel: rgba(20, 30, 52, .10);
+    --a-panel: rgba(20, 30, 52, .035);
     --a-line: rgba(202, 213, 255, .14);
     --a-text: #f3f7ff;
     --a-muted: #a3afc8;
     --a-cyan: #a99cff;
     --a-lime: #7ce6c3;
-    --glass-nav: rgba(15, 23, 43, .16);
-    --glass-table: rgba(15, 23, 43, .26);
-    --glass-field: rgba(8, 16, 33, .46);
-    --glass-overlay: rgba(20, 29, 51, .44);
+    --glass-nav: rgba(15, 23, 43, .07);
+    --glass-table: rgba(15, 23, 43, .14);
+    --glass-field: rgba(8, 16, 33, .30);
+    --glass-overlay: rgba(20, 29, 51, .30);
     --glass-hover: rgba(139, 124, 255, .10);
     --glass-shadow: 0 12px 36px rgba(0, 0, 0, .12), inset 0 1px 0 rgba(255, 255, 255, .28), inset 1px 0 0 rgba(255, 255, 255, .08);
-    --glass-sheen: linear-gradient(135deg, rgba(220, 229, 255, .075), rgba(220, 229, 255, .008) 42%, rgba(139, 124, 255, .02));
+    --glass-sheen: linear-gradient(135deg, rgba(220, 229, 255, .04), rgba(220, 229, 255, .003) 42%, rgba(139, 124, 255, .008));
     /* A lighter frost preserves the shapes behind the transparent glass. */
-    --glass-blur: 12px;
+    --glass-blur: 5px;
     --glass-gap: 18px;
     --a-soft: rgba(139, 124, 255, .08);
     --a-warning: #ffd071;
@@ -238,17 +238,17 @@
 }
 .admin-root.is-light, .admin-login.is-light, .admin-not-found.is-light {
     --a-bg: #edf0fa;
-    --a-panel: rgba(255, 255, 255, .18);
+    --a-panel: rgba(255, 255, 255, .08);
     --a-line: rgba(73, 84, 130, .18);
     --a-text: #202b47;
     --a-muted: #586581;
     --a-cyan: #6452c9;
     --a-lime: #167963;
-    --glass-nav: rgba(248, 250, 255, .24);
-    --glass-table: rgba(248, 250, 255, .38);
-    --glass-field: rgba(255, 255, 255, .60);
-    --glass-overlay: rgba(249, 250, 255, .58);
-    --glass-sheen: linear-gradient(135deg, rgba(255, 255, 255, .26), rgba(255, 255, 255, .025) 45%, rgba(139, 124, 255, .02));
+    --glass-nav: rgba(248, 250, 255, .12);
+    --glass-table: rgba(248, 250, 255, .24);
+    --glass-field: rgba(255, 255, 255, .42);
+    --glass-overlay: rgba(249, 250, 255, .40);
+    --glass-sheen: linear-gradient(135deg, rgba(255, 255, 255, .14), rgba(255, 255, 255, .01) 45%, rgba(139, 124, 255, .008));
     --glass-hover: rgba(112, 94, 215, .08);
     --glass-shadow: 0 18px 48px rgba(55, 66, 116, .09), inset 0 1px 0 rgba(255, 255, 255, .9);
     --a-soft: rgba(100, 82, 201, .07);
@@ -413,8 +413,8 @@
 .admin-root .admin-relation-results,
 .admin-root .admin-episode-ppv-dialog {
     background: var(--glass-sheen), var(--glass-overlay); border-color: var(--a-line); box-shadow: var(--glass-shadow);
-    -webkit-backdrop-filter: blur(26px) saturate(140%);
-    backdrop-filter: blur(26px) saturate(140%);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+    backdrop-filter: blur(var(--glass-blur)) saturate(140%);
 }
 .admin-root .admin-multi-options button,
 .admin-root .admin-relation-results button { color: var(--a-text); }
@@ -436,14 +436,14 @@
     .admin-root .admin-primary:not(:disabled):hover { box-shadow: 0 10px 30px rgba(139, 124, 255, .3); }
 }
 @media (max-width: 980px) {
-    .admin-root { --glass-gap: 12px; --glass-blur: 10px; }
+    .admin-root { --glass-gap: 12px; --glass-blur: 4px; }
     .admin-root .admin-main { margin-left: 0; }
     .admin-root .admin-page { padding-top: 76px; }
     .admin-root .admin-sidebar { transform: translateX(calc(-100% - var(--glass-gap) - 2px)); border-radius: 20px; }
     .admin-root .admin-sidebar.is-open { transform: none; }
     .admin-root .admin-mobile-trigger {
         background: var(--glass-nav); color: var(--a-text); border-color: var(--a-line);
-        -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(var(--glass-blur)); backdrop-filter: blur(var(--glass-blur));
     }
     .admin-root .admin-sidebar { -webkit-backdrop-filter: blur(var(--glass-blur)); backdrop-filter: blur(var(--glass-blur)); }
     .admin-root .admin-page-header { -webkit-backdrop-filter: blur(var(--glass-blur)); backdrop-filter: blur(var(--glass-blur)); }
@@ -588,8 +588,8 @@
 /* Standalone authentication and not-found screens use the same palette. */
 .admin-login .admin-login-card {
     background: var(--glass-sheen), var(--a-panel); border-color: var(--a-line); box-shadow: var(--glass-shadow);
-    -webkit-backdrop-filter: blur(24px) saturate(140%);
-    backdrop-filter: blur(24px) saturate(140%);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+    backdrop-filter: blur(var(--glass-blur)) saturate(140%);
 }
 .admin-login .admin-login-orb { border-color: var(--a-line); background: rgba(139, 124, 255, .08); }
 .admin-login .admin-login-brand { color: var(--a-text); }
@@ -617,7 +617,7 @@
     .admin-root .admin-page :is(.ppv-summary article, .billing-stats article, .analytics-metrics article) { padding: 14px; }
     .admin-root .admin-page :is(.ppv-total, .ppv-parent-summary) { white-space: normal; flex-wrap: wrap; overflow-wrap: anywhere; }
     .admin-root .admin-page :is(.ppv-pagination, .ppv-detail-purchases > header) { gap: 12px; flex-wrap: wrap; }
-    .admin-login .admin-login-card { padding: 24px; -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
+    .admin-login .admin-login-card { padding: 24px; -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
 }
 @media (prefers-reduced-motion: reduce) {
     .admin-login *, .admin-not-found * { transition: none !important; animation: none !important; }
