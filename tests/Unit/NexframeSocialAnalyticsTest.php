@@ -125,4 +125,143 @@ class NexframeSocialAnalyticsTest extends TestCase
         $this->assertSame([], $report['daily_engagement']);
         $this->assertSame('Permission or token required', $report['instagram']['insight_issues']['reach']);
     }
+
+    public function test_facebook_fetches_post_metrics_independently_and_normalizes_supported_insights(): void
+    {
+        config()->set('services.nexframe_dashboard.instagram', []);
+        config()->set('services.nexframe_dashboard.facebook', [
+            'access_token' => 'page-token',
+            'page_id' => 'page-1',
+            'api_version' => 'v26.0',
+            'base_url' => 'https://graph.facebook.com',
+        ]);
+
+        Http::fake(function ($request) {
+            if (str_contains($request->url(), '/page-1/posts')) {
+                $fields = (string) ($request['fields'] ?? '');
+                $post = ['id' => 'page-1_post-1'];
+                if (str_contains($fields, 'likes.')) {
+                    $post['likes'] = ['summary' => ['total_count' => 7]];
+                } elseif (str_contains($fields, 'comments.')) {
+                    $post['comments'] = ['summary' => ['total_count' => 3]];
+                } elseif (str_contains($fields, 'shares')) {
+                    $post['shares'] = ['count' => 2];
+                } else {
+                    $post += [
+                        'message' => 'Zo Stream release',
+                        'created_time' => '2026-10-15T12:00:00+0000',
+                        'permalink_url' => 'https://www.facebook.com/post-1',
+                        'full_picture' => 'https://example.test/post.jpg',
+                    ];
+                }
+
+                return Http::response(['data' => [$post]]);
+            }
+            if (str_contains($request->url(), '/page-1_post-1/insights')) {
+                return Http::response(['data' => [[
+                    'name' => 'post_media_view',
+                    'values' => [['value' => 90]],
+                ]]]);
+            }
+            if (str_contains($request->url(), '/page-1/insights')) {
+                $metric = (string) ($request['metric'] ?? '');
+                $values = [
+                    'page_media_view' => 120,
+                    'page_video_views' => 90,
+                    'page_views_total' => 10,
+                    'page_daily_follows' => 4,
+                    'page_daily_unfollows_unique' => 1,
+                    'page_post_engagements' => 20,
+                    'page_total_actions' => 5,
+                ];
+
+                return Http::response(['data' => isset($values[$metric]) ? [[
+                    'name' => $metric,
+                    'values' => [['value' => $values[$metric], 'end_time' => '2026-10-16T00:00:00+0000']],
+                ]] : []]);
+            }
+            if (str_contains($request->url(), '/page-1')) {
+                return Http::response(['id' => 'page-1', 'name' => 'Zo Stream', 'username' => 'zostream', 'followers_count' => 1166]);
+            }
+
+            return Http::response([], 404);
+        });
+
+        $report = app(NexframeSocialAnalytics::class)->report(
+            Carbon::parse('2026-10-14')->startOfDay(),
+            Carbon::parse('2026-10-19')->endOfDay(),
+            true,
+        );
+        $facebook = $report['facebook'];
+        $post = $facebook['posts'][0];
+
+        $this->assertTrue($facebook['healthy']);
+        $this->assertSame('partial', $facebook['insights_status']);
+        $this->assertSame(1166, $facebook['followers']);
+        $this->assertSame(7, $post['likes']);
+        $this->assertSame(3, $post['comments']);
+        $this->assertSame(2, $post['shares']);
+        $this->assertSame(12, $post['engagement']);
+        $this->assertSame(90, $post['views']);
+        $this->assertSame(120, $facebook['insights']['views']);
+        $this->assertSame(20, $facebook['insights']['interactions']);
+        $this->assertSame(7, $facebook['insights']['likes']);
+        $this->assertSame(3, $facebook['insights']['comments']);
+        $this->assertSame(2, $facebook['insights']['shares']);
+        $this->assertSame(['2026-10-15' => 20], $facebook['daily_engagement']);
+        $this->assertNull($facebook['insights']['reach']);
+    }
+
+    public function test_facebook_permission_failures_do_not_turn_missing_post_metrics_into_zero(): void
+    {
+        config()->set('services.nexframe_dashboard.instagram', []);
+        config()->set('services.nexframe_dashboard.facebook', [
+            'access_token' => 'limited-page-token',
+            'page_id' => 'page-1',
+            'api_version' => 'v26.0',
+            'base_url' => 'https://graph.facebook.com',
+        ]);
+
+        Http::fake(function ($request) {
+            if (str_contains($request->url(), '/page-1/posts')) {
+                $fields = (string) ($request['fields'] ?? '');
+                if (str_contains($fields, 'likes.') || str_contains($fields, 'comments.')) {
+                    return Http::response(['error' => ['code' => 10]], 403);
+                }
+                if (str_contains($fields, 'shares')) {
+                    return Http::response(['data' => [['id' => 'page-1_post-1']]]);
+                }
+
+                return Http::response(['data' => [[
+                    'id' => 'page-1_post-1',
+                    'message' => 'Basic post remains available',
+                    'created_time' => '2026-10-15T12:00:00+0000',
+                ]]]);
+            }
+            if (str_contains($request->url(), '/insights')) {
+                return Http::response(['data' => []]);
+            }
+            if (str_contains($request->url(), '/page-1')) {
+                return Http::response(['id' => 'page-1', 'name' => 'Zo Stream']);
+            }
+
+            return Http::response([], 404);
+        });
+
+        $facebook = app(NexframeSocialAnalytics::class)->report(
+            Carbon::parse('2026-10-14')->startOfDay(),
+            Carbon::parse('2026-10-19')->endOfDay(),
+            true,
+        )['facebook'];
+        $post = $facebook['posts'][0];
+
+        $this->assertTrue($facebook['healthy']);
+        $this->assertSame('partial', $facebook['insights_status']);
+        $this->assertNull($post['likes']);
+        $this->assertNull($post['comments']);
+        $this->assertSame(0, $post['shares']);
+        $this->assertNull($post['engagement']);
+        $this->assertSame('Permission required: pages_read_engagement', $facebook['insight_issues']['post_likes']);
+        $this->assertSame('Permission required: pages_read_user_content', $facebook['insight_issues']['post_comments']);
+    }
 }

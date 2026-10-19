@@ -17,7 +17,7 @@ class NexframeSocialAnalytics
     public function report(Carbon $from, Carbon $to, bool $refresh = false): array
     {
         $cache = Cache::store(config('services.nexframe_dashboard.business_cache_store', 'file'));
-        $key = 'nexframe:social:v2:'.sha1($from->toDateString().'|'.$to->toDateString().'|'.json_encode(config('services.nexframe_dashboard')));
+        $key = 'nexframe:social:v3:'.sha1($from->toDateString().'|'.$to->toDateString().'|'.json_encode(config('services.nexframe_dashboard')));
 
         if ($refresh) {
             $cache->forget($key);
@@ -173,6 +173,7 @@ class NexframeSocialAnalytics
             ]);
 
             $daily = $this->dailyInsights($base.'/'.$accountId.'/insights', 'total_interactions', $token, $from, $to, true);
+            $normalizedInsights = $this->socialInsights($insights, $posts);
 
             return [
                 ...$empty,
@@ -186,8 +187,9 @@ class NexframeSocialAnalytics
                 'media_count' => isset($profile['media_count']) ? (int) $profile['media_count'] : null,
                 'profile_picture' => $profile['profile_picture_url'] ?? null,
                 'engagement' => $posts->isEmpty() ? 0 : $this->nullableCollectionSum($posts->pluck('engagement')),
-                'insights' => $this->socialInsights($insights, $posts),
+                'insights' => $normalizedInsights,
                 'insight_issues' => $this->insightIssues,
+                'insights_status' => $this->insightsStatus($normalizedInsights, $posts),
                 'daily_engagement' => $daily,
                 'posts_complete' => $media['complete'],
                 'last_successful_sync' => now()->toIso8601String(),
@@ -214,6 +216,7 @@ class NexframeSocialAnalytics
 
         try {
             $base = rtrim((string) ($config['base_url'] ?? 'https://graph.facebook.com'), '/').'/'.$version;
+            $this->insightIssues = [];
             try {
                 $profile = $this->get($base.'/'.$pageId, [
                     'fields' => 'id,name,username,fan_count,followers_count,picture.type(large)',
@@ -225,29 +228,26 @@ class NexframeSocialAnalytics
                     'access_token' => $token,
                 ]);
             }
-            try {
-                $feed = $this->get($base.'/'.$pageId.'/posts', [
-                    'fields' => 'id,message,created_time,permalink_url,full_picture,shares,likes.limit(0).summary(true),comments.limit(0).summary(true)',
-                    'limit' => 100,
-                    'since' => $from->timestamp,
-                    'until' => $to->timestamp,
-                    'access_token' => $token,
-                ]);
-            } catch (Throwable) {
-                $feed = $this->get($base.'/'.$pageId.'/posts', [
-                    'fields' => 'id,message,created_time,permalink_url,full_picture',
-                    'limit' => 100,
-                    'access_token' => $token,
-                ]);
-            }
-            $feed = $this->paginate($base.'/'.$pageId.'/posts', $feed, $token, $from);
-            $this->insightIssues = [];
-            $posts = collect($feed['data'] ?? [])->map(function (array $item) {
-                $likes = data_get($item, 'likes.summary.total_count');
-                $comments = data_get($item, 'comments.summary.total_count');
-                $shares = data_get($item, 'shares.count');
+            $feedUrl = $base.'/'.$pageId.'/posts';
+            $feedQuery = [
+                'fields' => 'id,message,created_time,permalink_url,full_picture',
+                'limit' => 100,
+                'since' => $from->timestamp,
+                'until' => $to->timestamp,
+                'access_token' => $token,
+            ];
+            $feed = $this->paginate($feedUrl, $this->get($feedUrl, $feedQuery), $token, $from);
+            $postMetrics = $this->facebookPostMetrics($feedUrl, $feedQuery, $token, $from);
+            $posts = collect($feed['data'] ?? [])->map(function (array $item) use ($postMetrics) {
+                $metrics = $postMetrics[(string) ($item['id'] ?? '')] ?? [];
+                $likes = $metrics['likes'] ?? null;
+                $comments = $metrics['comments'] ?? null;
+                $shares = $metrics['shares'] ?? null;
                 $insights = $this->insightValues(data_get($item, 'insights.data', []));
                 $views = $this->firstMetric($insights, ['post_media_view', 'post_video_views']);
+                $engagement = collect([$likes, $comments, $shares])->contains(fn ($value) => $value === null)
+                    ? null
+                    : (int) collect([$likes, $comments, $shares])->sum();
 
                 return [
                     'id' => (string) ($item['id'] ?? ''),
@@ -264,7 +264,7 @@ class NexframeSocialAnalytics
                     'reach' => $this->firstMetric($insights, ['post_impressions_unique']),
                     'views' => $views,
                     'impressions' => $this->firstMetric($insights, ['post_impressions']),
-                    'engagement' => $this->nullableSum([$likes, $comments, $shares]),
+                    'engagement' => $engagement,
                 ];
             })->filter(fn (array $post) => filled($post['id']))
                 ->filter(fn (array $post) => $this->withinRange($post['published_at'], $from, $to))
@@ -272,7 +272,8 @@ class NexframeSocialAnalytics
             $posts = $this->enrichMediaInsights($posts, $base, $token, 'facebook');
 
             $insights = $this->groupedInsights($base.'/'.$pageId.'/insights', [
-                'page_media_view,page_daily_follows,page_daily_unfollows_unique',
+                'page_media_view,page_video_views,page_views_total',
+                'page_daily_follows,page_daily_unfollows_unique',
                 'page_post_engagements,page_total_actions',
             ], [
                 'period' => 'day',
@@ -282,6 +283,23 @@ class NexframeSocialAnalytics
             ]);
 
             $daily = $this->dailyInsights($base.'/'.$pageId.'/insights', 'page_post_engagements', $token, $from, $to);
+
+            // Reach and impression metrics used by older Graph versions are no
+            // longer valid Page/Post Insights metrics in the configured API.
+            // Keep them unavailable instead of presenting a fabricated zero.
+            $this->insightIssues['reach'] ??= 'Unavailable from Facebook Page Insights for this API version';
+            $this->insightIssues['impressions'] ??= 'Unavailable from Facebook Page Insights for this API version';
+            $normalizedInsights = $this->socialInsights($insights, $posts, [
+                'views' => ['page_media_view', 'page_video_views'],
+                'profile_views' => ['page_views_total'],
+                'interactions' => ['page_post_engagements'],
+                'link_clicks' => ['page_total_actions'],
+                'follows' => ['page_daily_follows'],
+                'unfollows' => ['page_daily_unfollows_unique'],
+            ]);
+            foreach (['likes', 'comments', 'shares'] as $metric) {
+                $normalizedInsights[$metric] = $this->nullableCollectionSum($posts->pluck($metric));
+            }
 
             return [
                 ...$empty,
@@ -293,14 +311,9 @@ class NexframeSocialAnalytics
                 'followers' => isset($profile['followers_count']) ? (int) $profile['followers_count'] : (isset($profile['fan_count']) ? (int) $profile['fan_count'] : null),
                 'profile_picture' => data_get($profile, 'picture.data.url'),
                 'engagement' => $posts->isEmpty() ? 0 : $this->nullableCollectionSum($posts->pluck('engagement')),
-                'insights' => $this->socialInsights($insights, $posts, [
-                    'views' => ['page_media_view'],
-                    'interactions' => ['page_post_engagements'],
-                    'link_clicks' => ['page_total_actions'],
-                    'follows' => ['page_daily_follows'],
-                    'unfollows' => ['page_daily_unfollows_unique'],
-                ]),
+                'insights' => $normalizedInsights,
                 'insight_issues' => $this->insightIssues,
+                'insights_status' => $this->insightsStatus($normalizedInsights, $posts),
                 'daily_engagement' => $daily,
                 'posts_complete' => $feed['complete'],
                 'last_successful_sync' => now()->toIso8601String(),
@@ -323,6 +336,45 @@ class NexframeSocialAnalytics
             ->get($url, $query)
             ->throw()
             ->json();
+    }
+
+    private function facebookPostMetrics(string $url, array $baseQuery, string $token, Carbon $from): array
+    {
+        $definitions = [
+            'likes' => ['field' => 'likes.limit(0).summary(true)', 'path' => 'likes.summary.total_count', 'permission' => 'pages_read_engagement'],
+            'comments' => ['field' => 'comments.limit(0).summary(true)', 'path' => 'comments.summary.total_count', 'permission' => 'pages_read_user_content'],
+            'shares' => ['field' => 'shares', 'path' => 'shares.count', 'permission' => null],
+        ];
+        $metrics = [];
+
+        foreach ($definitions as $name => $definition) {
+            try {
+                $query = [...$baseQuery, 'fields' => 'id,'.$definition['field'], 'access_token' => $token];
+                $response = $this->paginate($url, $this->get($url, $query), $token, $from);
+                foreach ($response['data'] ?? [] as $row) {
+                    $id = (string) ($row['id'] ?? '');
+                    if ($id === '') {
+                        continue;
+                    }
+                    $value = data_get($row, $definition['path']);
+                    // Graph omits the shares object when the count is zero.
+                    if ($name === 'shares' && $value === null) {
+                        $value = 0;
+                    }
+                    if (is_numeric($value)) {
+                        $metrics[$id][$name] = (int) $value;
+                    }
+                }
+            } catch (Throwable $exception) {
+                $reason = $this->issueReason($exception);
+                if ($definition['permission'] && str_starts_with($reason, 'Permission')) {
+                    $reason = 'Permission required: '.$definition['permission'];
+                }
+                $this->insightIssues['post_'.$name] = $reason;
+            }
+        }
+
+        return $metrics;
     }
 
     private function paginate(string $url, array $first, string $token, Carbon $from): array
@@ -399,13 +451,7 @@ class NexframeSocialAnalytics
         try {
             return $this->get($url, $query);
         } catch (Throwable $exception) {
-            $code = $exception instanceof \Illuminate\Http\Client\RequestException ? $exception->response->json('error.code') : null;
-            $reason = match ((int) $code) {
-                10, 190, 200 => 'Permission or token required',
-                100 => 'Metric unsupported for this account or API version',
-                4, 17, 32, 613 => 'Rate limited; retry later',
-                default => 'Metric temporarily unavailable',
-            };
+            $reason = $this->issueReason($exception);
             $this->insightIssues[(string) ($query['metric'] ?? 'insights')] = $reason;
 
             return [];
@@ -472,7 +518,23 @@ class NexframeSocialAnalytics
                 })->all()));
             }
         } catch (Throwable) {
+            $this->insightIssues['post_views'] = 'Metric temporarily unavailable';
+
             return $posts;
+        }
+
+        if ($platform === 'facebook') {
+            $usable = collect($responses)->contains(function ($response) {
+                return $response instanceof \Illuminate\Http\Client\Response
+                    && $response->successful()
+                    && ! empty($response->json('data'));
+            });
+            if (! $usable) {
+                $failed = collect($responses)->first(fn ($response) => $response instanceof \Illuminate\Http\Client\Response && ! $response->successful());
+                $this->insightIssues['post_views'] = $failed instanceof \Illuminate\Http\Client\Response
+                    ? $this->responseIssue($failed)
+                    : 'No post insight data returned; verify read_insights permission';
+            }
         }
 
         return $posts->map(function (array $post) use ($responses, $platform) {
@@ -513,9 +575,49 @@ class NexframeSocialAnalytics
             'posts_complete' => true,
             'daily_engagement' => [],
             'insight_issues' => [],
+            'insights_status' => 'unavailable',
             'last_successful_sync' => null,
             'message' => $configured ? 'Connection has not been verified.' : 'Credentials are not configured.',
         ];
+    }
+
+    private function issueReason(Throwable $exception): string
+    {
+        if (! $exception instanceof \Illuminate\Http\Client\RequestException) {
+            return 'Metric temporarily unavailable';
+        }
+
+        return $this->responseIssue($exception->response);
+    }
+
+    private function responseIssue(\Illuminate\Http\Client\Response $response): string
+    {
+        return match ((int) $response->json('error.code')) {
+            10, 190, 200 => 'Permission or token required',
+            100 => 'Metric unsupported for this account or API version',
+            4, 17, 32, 613 => 'Rate limited; retry later',
+            default => 'Metric temporarily unavailable',
+        };
+    }
+
+    private function insightsStatus(array $insights, $posts): string
+    {
+        $accountDataAvailable = collect($insights)
+            ->except(['engagement_rate'])
+            ->contains(fn ($value) => $value !== null);
+        $postDataAvailable = collect($posts)->contains(fn (array $post) => collect([
+            $post['likes'] ?? null,
+            $post['comments'] ?? null,
+            $post['shares'] ?? null,
+            $post['reach'] ?? null,
+            $post['views'] ?? null,
+        ])->contains(fn ($value) => $value !== null));
+
+        if (! $accountDataAvailable && ! $postDataAvailable) {
+            return 'unavailable';
+        }
+
+        return $this->insightIssues ? 'partial' : 'healthy';
     }
 
     private function nullableSum(array $values): ?int
