@@ -201,3 +201,389 @@
 .is-light .admin-status{color:#17635f}.is-light .admin-status.is-error{color:#9e3039}.is-light .admin-status.is-success{color:#426611}
 .is-light .admin-empty-state,.is-light .admin-empty{color:#526970}.is-light .admin-empty-state h2{color:#263f45}
 @media(max-width:680px){.admin-root{font-size:15px}.admin-nav a{font-size:15px}.admin-table-card td{font-size:13px}.admin-page-header>div>span{font-size:14px}}
+
+/* Midnight Floating Glass. Shared presentation only; page behaviour stays local. */
+.admin-root, .admin-login, .admin-not-found {
+    --a-bg: #081120;
+    --a-panel: rgba(20, 30, 52, .72);
+    --a-line: rgba(202, 213, 255, .14);
+    --a-text: #f3f7ff;
+    --a-muted: #a3afc8;
+    --a-cyan: #a99cff;
+    --a-lime: #7ce6c3;
+    --glass-nav: rgba(15, 23, 43, .76);
+    --glass-field: rgba(8, 16, 33, .72);
+    --glass-overlay: rgba(20, 29, 51, .88);
+    --glass-hover: rgba(139, 124, 255, .10);
+    --glass-shadow: 0 18px 48px rgba(0, 0, 0, .22), inset 0 1px 0 rgba(255, 255, 255, .06);
+    --glass-blur: 18px;
+    --glass-gap: 18px;
+    --a-soft: rgba(139, 124, 255, .08);
+    --a-warning: #ffd071;
+    --a-on-accent: #10182f;
+    color-scheme: dark;
+    background:
+        radial-gradient(ellipse at 12% 8%, rgba(139, 124, 255, .19), transparent 38%),
+        radial-gradient(ellipse at 91% 20%, rgba(77, 163, 255, .15), transparent 36%),
+        radial-gradient(ellipse at 60% 95%, rgba(99, 230, 255, .07), transparent 42%),
+        linear-gradient(145deg, #0b1020, #081120 60%, #10192d);
+    background-attachment: fixed;
+}
+.admin-root.is-light, .admin-login.is-light, .admin-not-found.is-light {
+    --a-bg: #edf0fa;
+    --a-panel: rgba(255, 255, 255, .74);
+    --a-line: rgba(73, 84, 130, .18);
+    --a-text: #202b47;
+    --a-muted: #586581;
+    --a-cyan: #6452c9;
+    --a-lime: #167963;
+    --glass-nav: rgba(248, 250, 255, .80);
+    --glass-field: rgba(255, 255, 255, .84);
+    --glass-overlay: rgba(249, 250, 255, .94);
+    --glass-hover: rgba(112, 94, 215, .08);
+    --glass-shadow: 0 18px 48px rgba(55, 66, 116, .09), inset 0 1px 0 rgba(255, 255, 255, .9);
+    --a-soft: rgba(100, 82, 201, .07);
+    --a-red: #b63750;
+    --a-warning: #976000;
+    --a-on-accent: #fff;
+    color-scheme: light;
+    background:
+        radial-gradient(ellipse at 12% 8%, rgba(139, 124, 255, .18), transparent 38%),
+        radial-gradient(ellipse at 91% 20%, rgba(77, 163, 255, .16), transparent 36%),
+        linear-gradient(145deg, #edf0fa, #f6f8ff 65%, #eaf1fc);
+    background-attachment: fixed;
+}
+.admin-root .admin-sidebar {
+    inset: var(--glass-gap) auto var(--glass-gap) var(--glass-gap);
+    border: 1px solid var(--a-line);
+    border-radius: 24px;
+    background: var(--glass-nav);
+    box-shadow: var(--glass-shadow);
+    -webkit-backdrop-filter: blur(24px) saturate(140%);
+    backdrop-filter: blur(24px) saturate(140%);
+}
+.admin-root .admin-main { margin-left: calc(var(--a-side) + var(--glass-gap)); }
+.admin-root .admin-page { padding: var(--glass-gap) clamp(18px, 2.5vw, 40px) 64px; }
+.admin-root .admin-brand { min-height: 84px; }
+.admin-root .admin-brand > span,
+.admin-root .admin-user { color: var(--a-text); }
+.admin-root .admin-brand small,
+.admin-root .admin-user small,
+.admin-root .admin-nav section > p { color: var(--a-muted); }
+.admin-root .admin-nav { padding: 18px 12px; }
+.admin-root .admin-nav a { color: var(--a-muted); border: 1px solid transparent; }
+.admin-root .admin-nav a:hover { background: var(--glass-hover); color: var(--a-text); }
+.admin-root .admin-nav a.active {
+    background: linear-gradient(110deg, rgba(139, 124, 255, .22), rgba(77, 163, 255, .06));
+    border-color: rgba(139, 124, 255, .22);
+    color: var(--a-text);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .05), 0 5px 20px rgba(100, 82, 201, .08);
+}
+.admin-root .admin-user i { background: var(--glass-hover); border-color: var(--a-line); }
+.admin-root .admin-page-header,
+.admin-root .admin-panel,
+.admin-root .admin-stat-grid article,
+.admin-root .billing-stats article,
+.admin-root .admin-table-card,
+.admin-root .admin-filter-bar,
+.admin-root .admin-list-toolbar {
+    border: 1px solid var(--a-line);
+    background: var(--a-panel);
+    box-shadow: var(--glass-shadow);
+    border-radius: 22px;
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+    backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+}
+.admin-root .admin-page-header {
+    align-items: center;
+    min-height: 100px;
+    padding: 22px 24px;
+    margin-bottom: 24px;
+    background: var(--glass-nav);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    backdrop-filter: blur(20px) saturate(140%);
+}
+.admin-root .admin-page-header h1 { font-size: clamp(26px, 2.8vw, 38px); letter-spacing: -1.2px; }
+.admin-root .admin-page-header > div > span { color: var(--a-muted); font-size: 14px; }
+.admin-root .admin-page-header p { margin-bottom: 8px; letter-spacing: 1.8px; }
+.admin-root .admin-page-actions { flex-wrap: wrap; }
+.admin-root .admin-page-actions:empty { display: none; }
+.admin-root .admin-stat-grid { gap: 18px; margin-bottom: 20px; }
+.admin-root .admin-stat-grid article { padding: 24px; transition: transform .2s ease, border-color .2s ease; }
+.admin-root .admin-stat-grid article:before {
+    left: 24px; width: 48px;
+    background: linear-gradient(90deg, #8b7cff, #4da3ff);
+    box-shadow: 0 0 18px rgba(139, 124, 255, .4);
+}
+.admin-root .admin-stat-grid strong { color: var(--a-text); font-size: clamp(28px, 3vw, 36px); }
+.admin-root .admin-stat-grid p,
+.admin-root .admin-stat-grid span { color: var(--a-muted); font-size: 12px; }
+.admin-root .admin-dashboard-grid { gap: 20px; }
+.admin-root .admin-subscription-trend { margin: 20px 0; }
+.admin-root .admin-subscription-trend > header { flex-wrap: wrap; }
+.admin-root .admin-panel > header { padding: 22px 24px; }
+.admin-root .admin-filter-bar,
+.admin-root .admin-list-toolbar { padding: 14px; gap: 12px; margin-bottom: 20px; border-radius: 18px; }
+.admin-root .admin-primary {
+    background: linear-gradient(120deg, #a99cff, #75b6ff);
+    color: #10182f;
+    box-shadow: 0 8px 24px rgba(139, 124, 255, .18);
+}
+.admin-root .admin-secondary,
+.admin-root .admin-icon-button,
+.admin-root .admin-collapse,
+.admin-root .admin-back {
+    border-color: var(--a-line); background: var(--glass-hover); color: var(--a-text); border-radius: 12px;
+}
+.admin-root .admin-primary,
+.admin-root .admin-secondary,
+.admin-root .admin-danger { border-radius: 12px; }
+.admin-root .admin-search,
+.admin-root .admin-form-grid input:not([type=checkbox]),
+.admin-root .admin-form-grid select,
+.admin-root .admin-form-grid textarea,
+.admin-root .admin-tool input,
+.admin-root .admin-tool select,
+.admin-root .admin-tool textarea,
+.admin-root .admin-filter-bar select,
+.admin-root .admin-parent-filter input,
+.admin-root .admin-parent-filter button,
+.admin-root .admin-subscription-trend input,
+.admin-root .admin-subscription-trend select,
+.admin-root .admin-multi-select > button,
+.admin-root .admin-relation-picker input,
+.admin-root .admin-nested-editor input,
+.admin-root .admin-nested-editor textarea,
+.admin-root .admin-episode-ppv-tools input,
+.admin-root .admin-amount-field input {
+    border-color: var(--a-line); background: var(--glass-field); color: var(--a-text); border-radius: 12px;
+}
+.admin-root .admin-search input { color: var(--a-text); }
+.admin-root input::placeholder,
+.admin-root textarea::placeholder { color: var(--a-muted); opacity: .85; }
+.admin-root .admin-form-grid label,
+.admin-root .admin-section-grid .admin-field,
+.admin-root .admin-tool label,
+.admin-root .admin-filter-bar label,
+.admin-root .admin-subscription-trend > header label { color: var(--a-muted); }
+.admin-root .admin-editor-section { background: var(--glass-field); border-color: var(--a-line); border-radius: 16px; }
+.admin-root .admin-editor-section-toggle:hover { background: var(--glass-hover); }
+.admin-root .admin-table-card { background: var(--glass-nav); }
+.admin-root .admin-table-card thead { background: var(--glass-hover); }
+.admin-root .admin-table-card th { color: var(--a-muted); border-color: var(--a-line); }
+.admin-root .admin-table-card td { color: var(--a-text); border-color: var(--a-line); }
+.admin-root .admin-table-card tbody tr:nth-child(even) td { background: rgba(139, 124, 255, .025); }
+.admin-root .admin-table-card tr:hover td { background: var(--glass-hover); color: var(--a-text); }
+.admin-root .admin-row-actions a { color: var(--a-muted); border-color: var(--a-line); background: var(--glass-hover); }
+.admin-root .admin-pill { background: var(--glass-hover); color: var(--a-cyan); }
+.admin-root .admin-multi-options,
+.admin-root .admin-relation-results,
+.admin-root .admin-episode-ppv-dialog {
+    background: var(--glass-overlay); border-color: var(--a-line); box-shadow: var(--glass-shadow);
+    -webkit-backdrop-filter: blur(26px) saturate(140%);
+    backdrop-filter: blur(26px) saturate(140%);
+}
+.admin-root .admin-multi-options button,
+.admin-root .admin-relation-results button { color: var(--a-text); }
+.admin-root .admin-episode-ppv-dialog h2,
+.admin-root .admin-modern-check b { color: var(--a-text); }
+.admin-root .admin-scrim,
+.admin-root .admin-episode-ppv-backdrop {
+    background: rgba(3, 7, 18, .65);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+}
+.admin-root :is(button, a, input, select, textarea):focus-visible {
+    outline: 2px solid var(--a-cyan); outline-offset: 3px;
+}
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+    .admin-root .admin-stat-grid article:hover { transform: translateY(-2px); border-color: rgba(139, 124, 255, .4); }
+    .admin-root .admin-primary:not(:disabled):hover { box-shadow: 0 10px 30px rgba(139, 124, 255, .3); }
+}
+@media (max-width: 980px) {
+    .admin-root { --glass-gap: 12px; --glass-blur: 14px; }
+    .admin-root .admin-main { margin-left: 0; }
+    .admin-root .admin-page { padding-top: 76px; }
+    .admin-root .admin-sidebar { transform: translateX(calc(-100% - var(--glass-gap) - 2px)); border-radius: 20px; }
+    .admin-root .admin-sidebar.is-open { transform: none; }
+    .admin-root .admin-mobile-trigger {
+        background: var(--glass-nav); color: var(--a-text); border-color: var(--a-line);
+        -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+    }
+    .admin-root .admin-sidebar { -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); }
+    .admin-root .admin-page-header { -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
+}
+@media (max-width: 680px) {
+    .admin-root .admin-page { padding-inline: 12px; }
+    .admin-root .admin-page-header { padding: 20px 18px; gap: 18px; border-radius: 18px; }
+    .admin-root .admin-page-header h1 { font-size: 28px; overflow-wrap: anywhere; }
+    .admin-root .admin-page-actions { width: 100%; }
+    .admin-root .admin-stat-grid { gap: 12px; }
+    .admin-root .admin-stat-grid article { padding: 20px; }
+    .admin-root .admin-panel > header { padding: 18px; }
+    .admin-root .admin-subscription-trend > header { align-items: stretch; }
+    .admin-root .admin-subscription-trend > header > div { flex-basis: 100%; }
+    .admin-root .admin-subscription-trend > header label { min-width: 0; flex: 1 1 130px; }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .admin-root, .admin-login, .admin-not-found { --a-panel: #141e34; --glass-nav: #0f172b; --glass-overlay: #141d33; }
+    .admin-root.is-light, .admin-login.is-light, .admin-not-found.is-light { --a-panel: #fff; --glass-nav: #f8faff; --glass-overlay: #f9faff; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .admin-root *, .admin-root *::before, .admin-root *::after {
+        transition: none !important; animation: none !important; scroll-behavior: auto !important;
+    }
+}
+
+/* Page-specific surfaces share the shell tokens; their grids stay page-specific. */
+.admin-root .admin-page :is(.analytics-metrics article, .ppv-summary article,
+    .ppv-detail-card, .ad-review-stats button, .analytics-filters, .detail-filter-row, .analytics-tabs) {
+    border: 1px solid var(--a-line);
+    border-radius: 18px;
+    background: var(--a-panel);
+    box-shadow: var(--glass-shadow);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+    backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+}
+.admin-root .admin-page :is(.ppv-summary, .billing-stats, .ad-review-stats, .analytics-metrics) { gap: 14px; }
+.admin-root .admin-page :is(.ppv-summary article, .billing-stats article, .analytics-metrics article) { padding: 18px; }
+.admin-root .admin-page :is(.analytics-metrics span, .ppv-summary span, .billing-stats span,
+    .ad-detail-panel dt, .ppv-detail-card dt, .analytics-filters label, .detail-filter-row label,
+    .rate-grid label, .trailer-editor label, .create-section-control label) { font-size: 12px; }
+.admin-root .admin-page :is(.ppv-summary small, .ppv-library td small, .billing-stats small,
+    .trailer-hint, .trailer-editor > header small, .selected-movie span, .movie-results small,
+    .section-list small, .available-sections small) { font-size: 11px; color: var(--a-muted); }
+.admin-root .admin-page :is(.ad-preview-body p, .ppv-detail-heading p) { color: var(--a-muted); font-size: 14px; }
+.admin-root .admin-page :is(.ad-detail-panel dd, .ppv-detail-card dd) { font-size: 13px; }
+.admin-root .admin-page :is(.analytics-filters input, .analytics-filters select,
+    .detail-filter-row input, .detail-filter-row select, .analytics-insight-controls select,
+    .rate-grid input:not([type=checkbox]), .ad-decision input, .ad-decision textarea,
+    .section-list input, .section-list select, .create-section-control input,
+    .create-section-control select, .add-section-control select, .trailer-editor label > input,
+    .movie-search > div, .ppv-user-search input) {
+    min-width: 0;
+    border-color: var(--a-line);
+    border-radius: 12px;
+    background: var(--glass-field);
+    color: var(--a-text);
+    font-size: 13px;
+}
+.admin-root .admin-page :is(.rate-grid form, .section-list article, .ppv-parent-summary,
+    .selected-movie, .analytics-insight-cards article) {
+    border-color: var(--a-line); border-radius: 14px; background: var(--a-soft);
+}
+.admin-root .admin-page :is(.ad-review-stats button.active, .ad-review-stats button:hover,
+    .movie-results button:hover, .ppv-parent-summary:hover) {
+    border-color: var(--a-cyan); background: var(--glass-hover); color: var(--a-text);
+}
+.admin-root .admin-page .ad-review-link { border-color: var(--a-line); border-radius: 10px; background: var(--a-soft); }
+.admin-root .admin-page :is(.analytics-tabs button.active, .section-list article > b,
+    .trailer-editor > header > span) { background: var(--a-cyan); color: var(--a-on-accent); }
+.admin-root .admin-page .section-list article.drag-over { border-color: var(--a-cyan); }
+.admin-root .admin-page .icon-action.danger { color: var(--a-red); }
+.admin-root .admin-page .admin-pill.is-approved { background: rgba(16, 185, 129, .10); color: var(--a-lime); }
+.admin-root .admin-page .admin-pill.is-rejected { background: rgba(255, 115, 123, .10); color: var(--a-red); }
+.admin-root .admin-page .admin-pill.is-changes_requested { background: rgba(255, 196, 80, .10); color: var(--a-warning); }
+.admin-root .admin-page .analytics-table-wrap table { font-size: 13px; }
+.admin-root .admin-page .analytics-table-wrap th { font-size: 11px; background: var(--a-soft); }
+.admin-root .admin-page .analytics-table-wrap :is(th, td) { padding: 12px; }
+.admin-root .admin-page .analytics-table-wrap td small { font-size: 11px; }
+.admin-root .admin-page .analytics-table-wrap tbody tr:hover { background: var(--glass-hover); }
+.admin-root .admin-page .analytics-panel > header { padding: 0 0 14px; }
+.admin-root .admin-page .trailer-editor > header { padding: 0 0 16px; }
+.admin-root .admin-page :is(.analytics-insight-track i, .analytics-trend i b) {
+    background: linear-gradient(90deg, #8b7cff, #4da3ff);
+}
+
+/* Existing resource/editor, dashboard, polls and tools details. */
+.admin-root :is(.admin-current-record, .admin-season-ppv-panel, .admin-drilldown-bar,
+    .admin-relation-picker, .admin-plan-choice.selected, .admin-episode-ppv-card.selected,
+    .admin-multi-options button.selected, .admin-multi-tags button) {
+    border-color: var(--a-line); background: var(--glass-hover);
+}
+.admin-root :is(.admin-current-record h2, .admin-season-ppv-panel h2, .admin-plan-choice b,
+    .trend-summary-line strong, .trend-month-legend strong) { color: var(--a-text); }
+.admin-root :is(.admin-current-record > span, .admin-season-ppv-panel span,
+    .admin-pagination span, .admin-pagination button, .admin-parent-filter,
+    .trend-summary-line, .trend-legend, .trend-plan-legend, .admin-profile span,
+    .admin-plan-list small, .admin-device-list small) { color: var(--a-muted); }
+.admin-root .trend-positive strong { color: var(--a-lime); }
+.admin-root .trend-negative strong { color: var(--a-red); }
+.admin-root :is(.admin-current-record b, .admin-multi-tags button) { color: var(--a-cyan); }
+.admin-root :is(.admin-plan-list > div, .admin-voter-list th, .admin-voter-list td) { border-color: var(--a-line); }
+.admin-root .admin-voter-list th { color: var(--a-muted); background: var(--a-soft); }
+.admin-root .admin-voter-list td { font-size: 13px; }
+.admin-root .admin-voter-list tbody tr:hover { background: var(--glass-hover); }
+.admin-root .admin-status { color: var(--a-cyan); background: var(--a-soft); border-color: var(--a-line); }
+.admin-root .admin-status.is-error { color: var(--a-red); background: rgba(255, 115, 123, .08); }
+.admin-root .admin-status.is-success { color: var(--a-lime); background: rgba(16, 185, 129, .08); }
+
+/* Inbox keeps its chat layout; only its surfaces and colours change. */
+.admin-root .whatsapp-widget {
+    border-color: var(--a-line); background: var(--glass-overlay); box-shadow: var(--glass-shadow);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+    backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+}
+.admin-root :is(.whatsapp-widget-header, .whatsapp-widget-conversations > header,
+    .whatsapp-widget-reply, .whatsapp-reply) { background: var(--glass-overlay); border-color: var(--a-line); }
+.admin-root :is(.whatsapp-thread, .whatsapp-widget-thread) {
+    background: radial-gradient(ellipse at 90% 0, var(--glass-hover), transparent 60%);
+}
+.admin-root :is(.whatsapp-message, .whatsapp-widget-message) { background: var(--glass-field); color: var(--a-text); }
+.admin-root :is(.whatsapp-message.outbound, .whatsapp-widget-message.outbound) {
+    background: var(--glass-hover); border-color: var(--a-line);
+}
+.admin-root :is(.whatsapp-conversations > button, .whatsapp-widget-conversations > button) {
+    color: var(--a-text); border-color: var(--a-line);
+}
+.admin-root :is(.whatsapp-conversations, .whatsapp-widget-conversations) > button:is(:hover, .active, .unread),
+.admin-root :is(.whatsapp-conversations i, .whatsapp-widget-conversations i) { background: var(--glass-hover); }
+.admin-root :is(.whatsapp-widget-reply textarea, .whatsapp-reply textarea, .whatsapp-widget-header button) {
+    min-width: 0; background: var(--glass-field); border-color: var(--a-line); color: var(--a-text);
+}
+.admin-root :is(.whatsapp-message small, .whatsapp-widget-message small,
+    .whatsapp-conversations time, .whatsapp-widget-conversations time) { color: var(--a-muted); }
+.admin-root .whatsapp-widget-empty b { color: var(--a-text); }
+.admin-root .whatsapp-widget-launcher {
+    background: linear-gradient(120deg, #a99cff, #75b6ff); color: #10182f;
+    border-color: var(--a-line); box-shadow: 0 16px 40px rgba(100, 82, 201, .3);
+}
+.admin-root .whatsapp-widget-error { color: var(--a-red); }
+
+/* Standalone authentication and not-found screens use the same palette. */
+.admin-login .admin-login-card {
+    background: var(--a-panel); border-color: var(--a-line); box-shadow: var(--glass-shadow);
+    -webkit-backdrop-filter: blur(24px) saturate(140%);
+    backdrop-filter: blur(24px) saturate(140%);
+}
+.admin-login .admin-login-orb { border-color: var(--a-line); background: rgba(139, 124, 255, .08); }
+.admin-login .admin-login-brand { color: var(--a-text); }
+.admin-login :is(.admin-login-brand small, .admin-login-copy span, .admin-login-foot,
+    .admin-login-form > label, .admin-step-row, .admin-qr-login p) { color: var(--a-muted); }
+.admin-login .admin-login-copy span { font-size: 14px; }
+.admin-login .admin-login-form > label { font-size: 13px; }
+.admin-login .admin-login-form input { background: var(--glass-field); color: var(--a-text); border-color: var(--a-line); }
+.admin-login .admin-login-tabs { background: var(--glass-field); }
+.admin-login .admin-login-tabs button { font-size: 12px; }
+.admin-login .admin-login-tabs button.active { background: var(--glass-hover); color: var(--a-cyan); }
+.admin-login .admin-primary, .admin-not-found .admin-primary {
+    background: linear-gradient(120deg, #a99cff, #75b6ff); color: #10182f;
+    border-radius: 12px; box-shadow: 0 8px 24px rgba(139, 124, 255, .18);
+}
+.admin-login .admin-secondary { background: var(--glass-hover); border-color: var(--a-line); color: var(--a-text); }
+.admin-login .admin-status { background: var(--a-soft); border-color: var(--a-line); color: var(--a-cyan); }
+.admin-login .admin-status.is-error { background: rgba(255, 115, 123, .08); color: var(--a-red); }
+.admin-login .admin-status.is-success { color: var(--a-lime); }
+.admin-login :is(button, a, input):focus-visible,
+.admin-not-found a:focus-visible { outline: 2px solid var(--a-cyan); outline-offset: 3px; }
+.admin-not-found { padding: 24px; }
+@media (max-width: 700px) {
+    .admin-root .admin-page :is(.ppv-summary, .billing-stats, .ad-review-stats, .analytics-metrics) { gap: 10px; }
+    .admin-root .admin-page :is(.ppv-summary article, .billing-stats article, .analytics-metrics article) { padding: 14px; }
+    .admin-root .admin-page :is(.ppv-total, .ppv-parent-summary) { white-space: normal; flex-wrap: wrap; overflow-wrap: anywhere; }
+    .admin-root .admin-page :is(.ppv-pagination, .ppv-detail-purchases > header) { gap: 12px; flex-wrap: wrap; }
+    .admin-login .admin-login-card { padding: 24px; -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .admin-login *, .admin-not-found * { transition: none !important; animation: none !important; }
+}

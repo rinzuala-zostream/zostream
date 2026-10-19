@@ -9,6 +9,8 @@ const step = ref('phone'); const countryCode = ref('+91'); const phoneNumber = r
 const canPhone = computed(() => phoneNumber.value.replace(/\D/g, '').length >= 8);
 const canOtp = computed(() => /^\d{6}$/.test(otp.value));
 const mode = ref('qr');
+const savedTheme = localStorage.getItem('zostream_admin_theme');
+const isLight = savedTheme ? savedTheme === 'light' : window.matchMedia('(prefers-color-scheme: light)').matches;
 onMounted(() => { if (auth.authenticated.value) router.replace('/dashboard'); });
 async function request() {
     error.value = '';
@@ -29,7 +31,7 @@ async function verify() {
 </script>
 
 <template>
-    <main class="admin-login">
+    <main class="admin-login" :class="{ 'is-light': isLight }">
         <div class="admin-login-orb one" /><div class="admin-login-orb two" />
         <section class="admin-login-card">
             <div class="admin-login-brand"><img :src="'/images/zostream-logo.jpg'" alt="Zo Stream"><span>ZO STREAM<small>ADMIN WORKSPACE</small></span></div>

@@ -380,7 +380,7 @@ onMounted(load);
             </section>
             <footer><RouterLink :to="`/manage/${key}`" class="admin-secondary">Cancel</RouterLink><button class="admin-primary" :disabled="saving">{{saving?'Saving…':`${editing?'Save changes':'Create'} ${resource.singular}`}}</button></footer>
         </form>
-        <Teleport to="body">
+        <Teleport to=".admin-root">
             <div v-if="episodePpvOpen" class="admin-episode-ppv-backdrop" @click.self="episodePpvOpen = false">
                 <section class="admin-episode-ppv-dialog">
                     <header>

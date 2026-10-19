@@ -57,7 +57,7 @@ async function logout() {
             <nav class="admin-nav">
                 <section v-for="group in groups" :key="group.label">
                     <p>{{ group.label }}</p>
-                    <RouterLink v-for="link in group.items" :key="link.to" :to="link.to" :class="{ active: active(link.to) }" @click="mobileOpen = false">
+                    <RouterLink v-for="link in group.items" :key="link.to" :to="link.to" :title="link.label" :aria-label="link.label" :class="{ active: active(link.to) }" @click="mobileOpen = false">
                         <AdminIcon :name="link.icon" /><span>{{ link.label }}</span>
                     </RouterLink>
                 </section>
