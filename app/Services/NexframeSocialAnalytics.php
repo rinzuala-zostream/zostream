@@ -12,18 +12,20 @@ class NexframeSocialAnalytics
 {
     private array $insightIssues = [];
 
+    private array $insightLimitations = [];
+
     private array $queries = [];
 
     public function report(Carbon $from, Carbon $to, bool $refresh = false): array
     {
         $cache = Cache::store(config('services.nexframe_dashboard.business_cache_store', 'file'));
-        $key = 'nexframe:social:v3:'.sha1($from->toDateString().'|'.$to->toDateString().'|'.json_encode(config('services.nexframe_dashboard')));
+        $key = 'nexframe:social:v4:'.sha1($from->toDateString().'|'.$to->toDateString().'|'.json_encode(config('services.nexframe_dashboard')));
 
         if ($refresh) {
             $cache->forget($key);
         }
 
-        return $cache->remember($key, now()->addMinutes(15), function () use ($from, $to, $cache) {
+        return $cache->remember($key, now()->addMinutes(5), function () use ($from, $to, $cache) {
             $instagram = $this->instagram($from, $to);
             $facebook = $this->facebook($from, $to);
             foreach (['instagram', 'facebook'] as $platform) {
@@ -49,15 +51,16 @@ class NexframeSocialAnalytics
                 $account['daily_engagement'] = array_replace($account['follower_history']['daily_engagement'], $account['daily_engagement']);
                 unset($account);
             }
-            $daily = [];
-            $dailyAccounts = collect([$instagram, $facebook])->filter(fn ($account) => ! empty($account['daily_engagement']));
-            foreach ($dailyAccounts as $account) {
-                foreach ($account['daily_engagement'] ?? [] as $date => $value) {
-                    if ($dailyAccounts->every(fn ($source) => array_key_exists($date, $source['daily_engagement']))) {
-                        $daily[$date] = ($daily[$date] ?? 0) + $value;
-                    }
-                }
-            }
+            $dailySources = collect(['instagram' => $instagram, 'facebook' => $facebook])
+                ->map(fn ($account) => $account['daily_engagement'] ?? [])
+                ->filter(fn ($rows) => ! empty($rows));
+            $dailyDates = $dailySources->flatMap(fn ($rows) => array_keys($rows))->unique()->sort();
+            $daily = $dailyDates->mapWithKeys(fn ($date) => [
+                $date => (int) $dailySources->sum(fn ($rows) => $rows[$date] ?? 0),
+            ])->all();
+            $dailyAvailability = $dailyDates->mapWithKeys(fn ($date) => [
+                $date => $dailySources->filter(fn ($rows) => array_key_exists($date, $rows))->keys()->all(),
+            ])->all();
 
             return [
                 'instagram' => $instagram,
@@ -65,6 +68,7 @@ class NexframeSocialAnalytics
                 'connected_platforms' => collect([$instagram, $facebook])->where('connected', true)->count(),
                 'followers' => $this->nullableSum([$instagram['followers'], $facebook['followers']]),
                 'engagement' => $this->nullableSum([$instagram['engagement'], $facebook['engagement']]),
+                'interactions' => $this->nullableSum([$instagram['insights']['interactions'] ?? null, $facebook['insights']['interactions'] ?? null]),
                 'reach' => $this->nullableSum([$instagram['insights']['reach'] ?? null, $facebook['insights']['reach'] ?? null]),
                 'views' => $this->nullableSum([$instagram['insights']['views'] ?? null, $facebook['insights']['views'] ?? null]),
                 'impressions' => $this->nullableSum([$instagram['insights']['impressions'] ?? null, $facebook['insights']['impressions'] ?? null]),
@@ -80,6 +84,7 @@ class NexframeSocialAnalytics
                     'views' => $this->nullableCollectionSum($rows->pluck('views')),
                 ])->values()->all(),
                 'daily_engagement' => $daily,
+                'daily_engagement_availability' => $dailyAvailability,
                 'engagement_by_publish_date' => $published->all(),
                 'daily_engagement_platforms' => collect(['instagram' => $instagram, 'facebook' => $facebook])->filter(fn ($account) => ! empty($account['daily_engagement']))->keys()->all(),
                 'posts_complete' => ($instagram['posts_complete'] ?? true) && ($facebook['posts_complete'] ?? true),
@@ -101,6 +106,8 @@ class NexframeSocialAnalytics
 
         try {
             $base = rtrim((string) ($config['base_url'] ?? 'https://graph.instagram.com'), '/');
+            $this->insightIssues = [];
+            $this->insightLimitations = [];
             try {
                 $profile = $this->get($base.'/'.$accountId, [
                     'fields' => 'id,username,account_type,media_count,followers_count,follows_count,profile_picture_url',
@@ -128,7 +135,6 @@ class NexframeSocialAnalytics
                 ]);
             }
             $media = $this->paginate($base.'/'.$accountId.'/media', $media, $token, $from);
-            $this->insightIssues = [];
             $posts = collect($media['data'] ?? [])->map(function (array $item) {
                 $likes = isset($item['like_count']) ? (int) $item['like_count'] : null;
                 $comments = isset($item['comments_count']) ? (int) $item['comments_count'] : null;
@@ -189,6 +195,7 @@ class NexframeSocialAnalytics
                 'engagement' => $posts->isEmpty() ? 0 : $this->nullableCollectionSum($posts->pluck('engagement')),
                 'insights' => $normalizedInsights,
                 'insight_issues' => $this->insightIssues,
+                'insight_limitations' => $this->insightLimitations,
                 'insights_status' => $this->insightsStatus($normalizedInsights, $posts),
                 'daily_engagement' => $daily,
                 'posts_complete' => $media['complete'],
@@ -217,6 +224,7 @@ class NexframeSocialAnalytics
         try {
             $base = rtrim((string) ($config['base_url'] ?? 'https://graph.facebook.com'), '/').'/'.$version;
             $this->insightIssues = [];
+            $this->insightLimitations = [];
             try {
                 $profile = $this->get($base.'/'.$pageId, [
                     'fields' => 'id,name,username,fan_count,followers_count,picture.type(large)',
@@ -252,7 +260,7 @@ class NexframeSocialAnalytics
                 return [
                     'id' => (string) ($item['id'] ?? ''),
                     'platform' => 'facebook',
-                    'type' => 'post',
+                    'type' => str_contains((string) ($item['permalink_url'] ?? ''), '/reel/') ? 'reel' : 'post',
                     'caption' => trim((string) ($item['message'] ?? 'Facebook post')),
                     'image' => $item['full_picture'] ?? null,
                     'permalink' => $item['permalink_url'] ?? null,
@@ -287,8 +295,8 @@ class NexframeSocialAnalytics
             // Reach and impression metrics used by older Graph versions are no
             // longer valid Page/Post Insights metrics in the configured API.
             // Keep them unavailable instead of presenting a fabricated zero.
-            $this->insightIssues['reach'] ??= 'Unavailable from Facebook Page Insights for this API version';
-            $this->insightIssues['impressions'] ??= 'Unavailable from Facebook Page Insights for this API version';
+            $this->insightLimitations['reach'] ??= 'Unavailable from Facebook Page Insights for this API version';
+            $this->insightLimitations['impressions'] ??= 'Unavailable from Facebook Page Insights for this API version';
             $normalizedInsights = $this->socialInsights($insights, $posts, [
                 'views' => ['page_media_view', 'page_video_views'],
                 'profile_views' => ['page_views_total'],
@@ -313,6 +321,7 @@ class NexframeSocialAnalytics
                 'engagement' => $posts->isEmpty() ? 0 : $this->nullableCollectionSum($posts->pluck('engagement')),
                 'insights' => $normalizedInsights,
                 'insight_issues' => $this->insightIssues,
+                'insight_limitations' => $this->insightLimitations,
                 'insights_status' => $this->insightsStatus($normalizedInsights, $posts),
                 'daily_engagement' => $daily,
                 'posts_complete' => $feed['complete'],
@@ -471,7 +480,7 @@ class NexframeSocialAnalytics
                     $values = $this->insightValues($response->json('data') ?? []);
                     $insights = array_replace($insights, $values);
                     if (! array_key_exists($metric, $values)) {
-                        $this->insightIssues[$metric] = 'No data returned for these dates';
+                        $this->insightLimitations[$metric] = 'No data returned for these dates';
                     }
                 } else {
                     $code = $response instanceof \Illuminate\Http\Client\Response ? (int) $response->json('error.code') : 0;
@@ -531,9 +540,11 @@ class NexframeSocialAnalytics
             });
             if (! $usable) {
                 $failed = collect($responses)->first(fn ($response) => $response instanceof \Illuminate\Http\Client\Response && ! $response->successful());
-                $this->insightIssues['post_views'] = $failed instanceof \Illuminate\Http\Client\Response
-                    ? $this->responseIssue($failed)
-                    : 'No post insight data returned; verify read_insights permission';
+                if ($failed instanceof \Illuminate\Http\Client\Response) {
+                    $this->insightIssues['post_views'] = $this->responseIssue($failed);
+                } else {
+                    $this->insightLimitations['post_views'] = 'No post-level view data returned for this content';
+                }
             }
         }
 
@@ -575,6 +586,7 @@ class NexframeSocialAnalytics
             'posts_complete' => true,
             'daily_engagement' => [],
             'insight_issues' => [],
+            'insight_limitations' => [],
             'insights_status' => 'unavailable',
             'last_successful_sync' => null,
             'message' => $configured ? 'Connection has not been verified.' : 'Credentials are not configured.',

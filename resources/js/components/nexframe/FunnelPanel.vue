@@ -4,7 +4,7 @@ const format = (value) => value == null ? '—' : new Intl.NumberFormat('en-IN',
 </script>
 <template>
     <article class="panel growth-flow"><header><span>▽</span><div><h2>Marketing-to-Streaming</h2><p>Audience, customers & viewing activity</p></div></header>
-        <div class="stages"><div v-for="(row,index) in rows" :key="row.label" class="stage" :class="{ off: !row.available }" :style="{ '--stage-width': `${100-index*8}%`, '--stage-index': index }"><div class="stage-track"><div class="stage-shape"><span>{{ row.label }}</span></div></div><div class="stage-value"><b>{{ row.available ? format(row.value) : '—' }}</b><small>{{ row.available ? 'In selected dates' : 'Unavailable' }}</small></div></div></div>
+        <div class="stages"><div v-for="(row,index) in rows" :key="row.label" class="stage" :class="{ off: !row.available }" :style="{ '--stage-width': `${100-index*8}%`, '--stage-index': index }"><div class="stage-track"><div class="stage-shape"><span>{{ row.label }}</span></div></div><div class="stage-value"><b>{{ row.available ? format(row.value) : '—' }}</b><small>{{ row.available ? row.partial ? 'Partial total · selected dates' : 'In selected dates' : 'Unavailable' }}</small></div></div></div>
         <footer>Separate stage totals · directional view</footer>
     </article>
 </template>

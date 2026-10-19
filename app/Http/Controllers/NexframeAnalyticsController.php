@@ -63,9 +63,12 @@ class NexframeAnalyticsController extends Controller
         unset($row);
         $report['social'] = $social;
         $report['impact']['social_subscription_correlation'] = $this->correlation($report['daily'], 'social_engagement', 'subscriptions');
+        $connectedPlatforms = collect([$social['instagram'], $social['facebook']])->where('connected', true);
+        $reachSources = $connectedPlatforms->filter(fn ($account) => ($account['insights']['reach'] ?? null) !== null)->count();
+        $interactionSources = $connectedPlatforms->filter(fn ($account) => ($account['insights']['interactions'] ?? null) !== null)->count();
         $report['funnel'] = [
-            ['label' => 'Combined social reach', 'value' => $social['reach'], 'available' => $social['reach'] !== null],
-            ['label' => 'Content interactions', 'value' => $social['engagement'], 'available' => $social['engagement'] !== null],
+            ['label' => 'Combined social reach', 'value' => $social['reach'], 'available' => $social['reach'] !== null, 'partial' => $reachSources < $connectedPlatforms->count()],
+            ['label' => 'Content interactions', 'value' => $social['interactions'], 'available' => $social['interactions'] !== null, 'partial' => $interactionSources < $connectedPlatforms->count()],
             ['label' => 'New registrations', 'value' => $report['metrics']['registrations']['value'], 'available' => $report['metrics']['registrations']['value'] !== null],
             ['label' => 'First-time paying users', 'value' => $report['metrics']['subscriptions']['value'], 'available' => $report['metrics']['subscriptions']['value'] !== null],
             ['label' => 'Active streaming users', 'value' => $report['metrics']['streaming_users']['value'], 'available' => $report['source_status']['streaming']],

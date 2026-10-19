@@ -150,7 +150,7 @@ class NexframeSocialAnalyticsTest extends TestCase
                     $post += [
                         'message' => 'Zo Stream release',
                         'created_time' => '2026-10-15T12:00:00+0000',
-                        'permalink_url' => 'https://www.facebook.com/post-1',
+                        'permalink_url' => 'https://www.facebook.com/reel/post-1',
                         'full_picture' => 'https://example.test/post.jpg',
                     ];
                 }
@@ -196,20 +196,24 @@ class NexframeSocialAnalyticsTest extends TestCase
         $post = $facebook['posts'][0];
 
         $this->assertTrue($facebook['healthy']);
-        $this->assertSame('partial', $facebook['insights_status']);
+        $this->assertSame('healthy', $facebook['insights_status']);
         $this->assertSame(1166, $facebook['followers']);
         $this->assertSame(7, $post['likes']);
         $this->assertSame(3, $post['comments']);
         $this->assertSame(2, $post['shares']);
         $this->assertSame(12, $post['engagement']);
+        $this->assertSame('reel', $post['type']);
         $this->assertSame(90, $post['views']);
         $this->assertSame(120, $facebook['insights']['views']);
         $this->assertSame(20, $facebook['insights']['interactions']);
+        $this->assertSame(20, $report['interactions']);
         $this->assertSame(7, $facebook['insights']['likes']);
         $this->assertSame(3, $facebook['insights']['comments']);
         $this->assertSame(2, $facebook['insights']['shares']);
         $this->assertSame(['2026-10-15' => 20], $facebook['daily_engagement']);
         $this->assertNull($facebook['insights']['reach']);
+        $this->assertSame('Unavailable from Facebook Page Insights for this API version', $facebook['insight_limitations']['reach']);
+        $this->assertSame('Unavailable from Facebook Page Insights for this API version', $facebook['insight_limitations']['impressions']);
     }
 
     public function test_facebook_permission_failures_do_not_turn_missing_post_metrics_into_zero(): void
@@ -263,5 +267,69 @@ class NexframeSocialAnalyticsTest extends TestCase
         $this->assertNull($post['engagement']);
         $this->assertSame('Permission required: pages_read_engagement', $facebook['insight_issues']['post_likes']);
         $this->assertSame('Permission required: pages_read_user_content', $facebook['insight_issues']['post_comments']);
+    }
+
+    public function test_daily_activity_keeps_dates_reported_by_only_one_connected_platform(): void
+    {
+        config()->set('services.nexframe_dashboard.instagram', [
+            'access_token' => 'instagram-token',
+            'account_id' => 'me',
+            'base_url' => 'https://graph.instagram.com',
+        ]);
+        config()->set('services.nexframe_dashboard.facebook', [
+            'access_token' => 'page-token',
+            'page_id' => 'page-1',
+            'api_version' => 'v26.0',
+            'base_url' => 'https://graph.facebook.com',
+        ]);
+
+        Http::fake(function ($request) {
+            if (str_contains($request->url(), 'graph.instagram.com/me/media')) {
+                return Http::response(['data' => []]);
+            }
+            if (str_contains($request->url(), 'graph.instagram.com/me/insights')) {
+                if (($request['metric_type'] ?? '') === 'time_series') {
+                    return Http::response(['data' => [[
+                        'name' => 'total_interactions',
+                        'values' => [['value' => 3, 'end_time' => '2026-10-15T00:00:00+0000']],
+                    ]]]);
+                }
+
+                return Http::response(['data' => ($request['metric'] ?? '') === 'total_interactions' ? [[
+                    'name' => 'total_interactions',
+                    'total_value' => ['value' => 3],
+                ]] : []]);
+            }
+            if (str_contains($request->url(), 'graph.instagram.com/me')) {
+                return Http::response(['id' => 'ig-1', 'username' => 'zostream']);
+            }
+            if (str_contains($request->url(), 'graph.facebook.com/v26.0/page-1/posts')) {
+                return Http::response(['data' => []]);
+            }
+            if (str_contains($request->url(), 'graph.facebook.com/v26.0/page-1/insights')) {
+                return Http::response(['data' => ($request['metric'] ?? '') === 'page_post_engagements' ? [[
+                    'name' => 'page_post_engagements',
+                    'values' => [['value' => 4, 'end_time' => '2026-10-16T00:00:00+0000']],
+                ]] : []]);
+            }
+            if (str_contains($request->url(), 'graph.facebook.com/v26.0/page-1')) {
+                return Http::response(['id' => 'page-1', 'name' => 'Zo Stream']);
+            }
+
+            return Http::response([], 404);
+        });
+
+        $report = app(NexframeSocialAnalytics::class)->report(
+            Carbon::parse('2026-10-14')->startOfDay(),
+            Carbon::parse('2026-10-19')->endOfDay(),
+            true,
+        );
+
+        $this->assertSame(7, $report['interactions']);
+        $this->assertSame(['2026-10-14' => 3, '2026-10-15' => 4], $report['daily_engagement']);
+        $this->assertSame([
+            '2026-10-14' => ['instagram'],
+            '2026-10-15' => ['facebook'],
+        ], $report['daily_engagement_availability']);
     }
 }

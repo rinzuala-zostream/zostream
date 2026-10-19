@@ -263,7 +263,7 @@ async function logout() {
 onMounted(() => {
     checkSession();
     autoSyncTimer = window.setInterval(() => {
-        if (signedIn.value && !loading.value) load(true);
+        if (signedIn.value && !loading.value) load(false);
     }, 300_000);
 });
 onBeforeUnmount(() => {
