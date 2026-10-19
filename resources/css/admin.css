@@ -205,20 +205,21 @@
 /* Midnight Floating Glass. Shared presentation only; page behaviour stays local. */
 .admin-root, .admin-login, .admin-not-found {
     --a-bg: #081120;
-    --a-panel: rgba(20, 30, 52, .34);
+    --a-panel: rgba(20, 30, 52, .10);
     --a-line: rgba(202, 213, 255, .14);
     --a-text: #f3f7ff;
     --a-muted: #a3afc8;
     --a-cyan: #a99cff;
     --a-lime: #7ce6c3;
-    --glass-nav: rgba(15, 23, 43, .42);
-    --glass-table: rgba(15, 23, 43, .60);
-    --glass-field: rgba(8, 16, 33, .72);
-    --glass-overlay: rgba(20, 29, 51, .66);
+    --glass-nav: rgba(15, 23, 43, .16);
+    --glass-table: rgba(15, 23, 43, .26);
+    --glass-field: rgba(8, 16, 33, .46);
+    --glass-overlay: rgba(20, 29, 51, .44);
     --glass-hover: rgba(139, 124, 255, .10);
-    --glass-shadow: 0 18px 48px rgba(0, 0, 0, .20), inset 0 1px 0 rgba(255, 255, 255, .20), inset 1px 0 0 rgba(255, 255, 255, .05);
-    --glass-sheen: linear-gradient(135deg, rgba(220, 229, 255, .11), rgba(220, 229, 255, .025) 42%, rgba(139, 124, 255, .045));
-    --glass-blur: 24px;
+    --glass-shadow: 0 12px 36px rgba(0, 0, 0, .12), inset 0 1px 0 rgba(255, 255, 255, .28), inset 1px 0 0 rgba(255, 255, 255, .08);
+    --glass-sheen: linear-gradient(135deg, rgba(220, 229, 255, .075), rgba(220, 229, 255, .008) 42%, rgba(139, 124, 255, .02));
+    /* A lighter frost preserves the shapes behind the transparent glass. */
+    --glass-blur: 12px;
     --glass-gap: 18px;
     --a-soft: rgba(139, 124, 255, .08);
     --a-warning: #ffd071;
@@ -237,17 +238,17 @@
 }
 .admin-root.is-light, .admin-login.is-light, .admin-not-found.is-light {
     --a-bg: #edf0fa;
-    --a-panel: rgba(255, 255, 255, .40);
+    --a-panel: rgba(255, 255, 255, .18);
     --a-line: rgba(73, 84, 130, .18);
     --a-text: #202b47;
     --a-muted: #586581;
     --a-cyan: #6452c9;
     --a-lime: #167963;
-    --glass-nav: rgba(248, 250, 255, .48);
-    --glass-table: rgba(248, 250, 255, .70);
-    --glass-field: rgba(255, 255, 255, .84);
-    --glass-overlay: rgba(249, 250, 255, .76);
-    --glass-sheen: linear-gradient(135deg, rgba(255, 255, 255, .50), rgba(255, 255, 255, .08) 45%, rgba(139, 124, 255, .035));
+    --glass-nav: rgba(248, 250, 255, .24);
+    --glass-table: rgba(248, 250, 255, .38);
+    --glass-field: rgba(255, 255, 255, .60);
+    --glass-overlay: rgba(249, 250, 255, .58);
+    --glass-sheen: linear-gradient(135deg, rgba(255, 255, 255, .26), rgba(255, 255, 255, .025) 45%, rgba(139, 124, 255, .02));
     --glass-hover: rgba(112, 94, 215, .08);
     --glass-shadow: 0 18px 48px rgba(55, 66, 116, .09), inset 0 1px 0 rgba(255, 255, 255, .9);
     --a-soft: rgba(100, 82, 201, .07);
@@ -291,8 +292,8 @@
     border-radius: 24px;
     background: var(--glass-sheen), var(--glass-nav);
     box-shadow: var(--glass-shadow);
-    -webkit-backdrop-filter: blur(24px) saturate(140%);
-    backdrop-filter: blur(24px) saturate(140%);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+    backdrop-filter: blur(var(--glass-blur)) saturate(140%);
 }
 .admin-root .admin-main { margin-left: calc(var(--a-side) + var(--glass-gap)); }
 .admin-root .admin-page { padding: var(--glass-gap) clamp(18px, 2.5vw, 40px) 64px; }
@@ -332,8 +333,8 @@
     padding: 22px 24px;
     margin-bottom: 24px;
     background: var(--glass-sheen), var(--glass-nav);
-    -webkit-backdrop-filter: blur(20px) saturate(140%);
-    backdrop-filter: blur(20px) saturate(140%);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+    backdrop-filter: blur(var(--glass-blur)) saturate(140%);
 }
 .admin-root .admin-page-header h1 { font-size: clamp(26px, 2.8vw, 38px); letter-spacing: -1.2px; }
 .admin-root .admin-page-header > div > span { color: var(--a-muted); font-size: 14px; }
@@ -435,7 +436,7 @@
     .admin-root .admin-primary:not(:disabled):hover { box-shadow: 0 10px 30px rgba(139, 124, 255, .3); }
 }
 @media (max-width: 980px) {
-    .admin-root { --glass-gap: 12px; --glass-blur: 14px; }
+    .admin-root { --glass-gap: 12px; --glass-blur: 10px; }
     .admin-root .admin-main { margin-left: 0; }
     .admin-root .admin-page { padding-top: 76px; }
     .admin-root .admin-sidebar { transform: translateX(calc(-100% - var(--glass-gap) - 2px)); border-radius: 20px; }
@@ -444,8 +445,8 @@
         background: var(--glass-nav); color: var(--a-text); border-color: var(--a-line);
         -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
     }
-    .admin-root .admin-sidebar { -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); }
-    .admin-root .admin-page-header { -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
+    .admin-root .admin-sidebar { -webkit-backdrop-filter: blur(var(--glass-blur)); backdrop-filter: blur(var(--glass-blur)); }
+    .admin-root .admin-page-header { -webkit-backdrop-filter: blur(var(--glass-blur)); backdrop-filter: blur(var(--glass-blur)); }
 }
 @media (max-width: 680px) {
     .admin-root .admin-page { padding-inline: 12px; }
