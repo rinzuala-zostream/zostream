@@ -221,8 +221,12 @@
     --a-soft: rgba(139, 124, 255, .08);
     --a-warning: #ffd071;
     --a-on-accent: #10182f;
+    --canvas-grid: rgba(174, 187, 242, .035);
+    --canvas-ring: rgba(153, 137, 255, .15);
+    --canvas-ring-blue: rgba(103, 187, 255, .11);
+    --canvas-dot: rgba(180, 198, 255, .24);
     color-scheme: dark;
-    background:
+    --canvas-gradient:
         radial-gradient(ellipse at 12% 8%, rgba(139, 124, 255, .19), transparent 38%),
         radial-gradient(ellipse at 91% 20%, rgba(77, 163, 255, .15), transparent 36%),
         radial-gradient(ellipse at 60% 95%, rgba(99, 230, 255, .07), transparent 42%),
@@ -246,13 +250,37 @@
     --a-red: #b63750;
     --a-warning: #976000;
     --a-on-accent: #fff;
+    --canvas-grid: rgba(78, 91, 151, .045);
+    --canvas-ring: rgba(112, 92, 201, .13);
+    --canvas-ring-blue: rgba(55, 125, 198, .12);
+    --canvas-dot: rgba(88, 104, 165, .23);
     color-scheme: light;
-    background:
+    --canvas-gradient:
         radial-gradient(ellipse at 12% 8%, rgba(139, 124, 255, .18), transparent 38%),
         radial-gradient(ellipse at 91% 20%, rgba(77, 163, 255, .16), transparent 36%),
         linear-gradient(145deg, #edf0fa, #f6f8ff 65%, #eaf1fc);
     background-attachment: fixed;
 }
+/* Crisp canvas artwork: no filters, overlays or extra stacking contexts.
+   Only the glass surfaces above this background blur what is behind them. */
+.admin-root, .admin-root.is-light,
+.admin-login, .admin-login.is-light,
+.admin-not-found, .admin-not-found.is-light {
+    background-image:
+        radial-gradient(circle at 88% 14%, transparent 158px, var(--canvas-ring) 159px 160px, transparent 161px),
+        radial-gradient(circle at 88% 14%, transparent 218px, var(--canvas-ring) 219px 220px, transparent 221px),
+        radial-gradient(circle at 22% 86%, transparent 188px, var(--canvas-ring-blue) 189px 190px, transparent 191px),
+        radial-gradient(circle at 22% 86%, transparent 258px, var(--canvas-ring-blue) 259px 260px, transparent 261px),
+        radial-gradient(circle at 76% 28%, var(--canvas-dot) 0 2px, transparent 3px),
+        radial-gradient(circle at 40% 72%, var(--canvas-dot) 0 2px, transparent 3px),
+        repeating-linear-gradient(0deg, var(--canvas-grid) 0 1px, transparent 1px 80px),
+        repeating-linear-gradient(90deg, var(--canvas-grid) 0 1px, transparent 1px 80px),
+        var(--canvas-gradient);
+    background-color: var(--a-bg);
+    background-attachment: fixed;
+}
+/* The shared canvas already supplies the login grid and ring artwork. */
+.admin-login::before, .admin-login .admin-login-orb { display: none; }
 .admin-root .admin-sidebar {
     inset: var(--glass-gap) auto var(--glass-gap) var(--glass-gap);
     border: 1px solid var(--a-line);
