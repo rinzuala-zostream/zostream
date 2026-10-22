@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import Link from "next/link";
+import { ArrowLeft, ListFilter } from "lucide-react";
 import { AdminPageHeader } from "@/app/components/admin-page-header";
 import { PollVoterList } from "@/app/features/polls/components/poll-voter-list";
 import {
@@ -98,7 +99,7 @@ export default async function PollVotersPage({
   return (
     <main className="flex min-h-svh flex-1 flex-col px-3 py-1 text-slate-900 lg:h-svh lg:min-h-0 lg:overflow-hidden lg:px-2 lg:py-1 dark:text-white">
       <div className="flex w-full flex-1 flex-col lg:min-h-0">
-        <AdminPageHeader title="Voter list" initialMode={initialMode} />
+        <AdminPageHeader title="Poll voters" initialMode={initialMode} />
 
         <div className="admin-sidebar-scroll mt-3 flex-1 pb-4 lg:min-h-0">
           <section className="relative mb-4 overflow-hidden rounded-lg border border-white/58 bg-[linear-gradient(135deg,rgba(255,255,255,0.82),rgba(236,253,245,0.5)_46%,rgba(224,242,254,0.52))] p-5 backdrop-blur-xl sm:p-6 dark:border-white/10 dark:bg-[linear-gradient(135deg,rgba(15,23,42,0.82),rgba(20,83,45,0.2)_46%,rgba(8,47,73,0.28))] dark:shadow-[0_18px_60px_rgba(2,6,23,0.46)]">
@@ -107,13 +108,20 @@ export default async function PollVotersPage({
                 Poll voters
               </p>
               <h2 className="mt-2 text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl dark:text-white">
-                Review exactly who voted.
+                Voter activity
               </h2>
               <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-300">
-                Choose a poll to inspect voter identities, contact details, the
-                selected answer, and the vote timestamp.
+                Select a poll to review voter details, selected answers, and
+                vote times.
               </p>
             </div>
+            <Link
+              href="/polls/results"
+              className="mt-5 inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-[rgba(15,23,42,0.14)] bg-white/65 px-4 text-sm font-bold text-slate-800 transition hover:bg-white sm:mt-0 dark:border-white/10 dark:bg-white/8 dark:text-white dark:hover:bg-white/12"
+            >
+              <ArrowLeft className="size-4" />
+              All polls
+            </Link>
           </section>
 
           {errorMessage ? (
@@ -124,13 +132,17 @@ export default async function PollVotersPage({
 
           <form
             action="/polls/voters"
-            className="mb-4 grid gap-3 rounded-lg border border-[rgba(15,23,42,0.12)] bg-white/52 p-3 shadow-[0_10px_30px_rgba(15,23,42,0.06)] md:grid-cols-[minmax(0,1fr)_auto] dark:border-white/10 dark:bg-white/6"
+            className="mb-4 grid gap-3 rounded-lg border border-[rgba(15,23,42,0.12)] bg-white/52 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.06)] md:grid-cols-[minmax(0,1fr)_auto] md:items-end dark:border-white/10 dark:bg-white/6"
           >
             <label className="block min-w-0">
-              <span className="sr-only">Select poll</span>
+              <span className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-slate-600 dark:text-slate-300">
+                <ListFilter className="size-4 text-teal-700 dark:text-cyan-200" />
+                Choose a poll
+              </span>
               <select
                 name="poll_id"
                 defaultValue={selectedPollId}
+                disabled={polls.length === 0}
                 className="min-h-11 w-full rounded-md border border-[rgba(15,23,42,0.16)] bg-white/70 px-3 text-sm font-semibold text-slate-950 outline-none transition focus:border-teal-300 focus:bg-white focus:ring-4 focus:ring-teal-200/35 dark:border-white/10 dark:bg-slate-950/70 dark:text-white dark:focus:border-cyan-300/60 dark:focus:bg-slate-950 dark:focus:ring-cyan-300/15"
               >
                 {polls.map((poll) => {
@@ -147,7 +159,7 @@ export default async function PollVotersPage({
               type="submit"
               className="inline-flex min-h-11 items-center justify-center rounded-md bg-slate-950 px-5 text-sm font-bold text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
             >
-              Load voters
+              Show voter activity
             </button>
           </form>
 
@@ -169,7 +181,7 @@ export default async function PollVotersPage({
             </section>
           ) : (
             <>
-              <section className="mb-4 grid gap-3 md:grid-cols-3">
+              <section aria-label="Selected poll summary" className="mb-4 grid gap-3 md:grid-cols-3">
                 <div className="rounded-lg border border-[rgba(15,23,42,0.12)] bg-white/60 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-white/6">
                   <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700 dark:text-cyan-200">
                     Selected poll

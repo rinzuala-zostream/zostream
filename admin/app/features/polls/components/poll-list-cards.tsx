@@ -6,7 +6,6 @@ import { useState, useTransition } from "react";
 import {
   BarChart3,
   CalendarClock,
-  PencilLine,
   Trash2,
   Vote,
 } from "lucide-react";
@@ -226,22 +225,22 @@ export function PollListCards({ polls }: PollListCardsProps) {
                   ) : null}
                 </div>
 
-                <div className="mt-auto flex flex-col gap-2 pt-5 sm:flex-row">
+                <div className="mt-auto grid grid-cols-2 gap-2 pt-5">
                   <Link
                     href={`/polls/results/${pollId}`}
                     className={cn(
-                      "inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-md bg-slate-950 px-4 text-sm font-bold text-white transition hover:-translate-y-0.5 hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200",
+                      "inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-slate-950 px-3 text-sm font-bold text-white transition hover:-translate-y-0.5 hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200",
                       !pollId && "pointer-events-none opacity-50",
                     )}
                   >
-                    <PencilLine className="size-4" />
-                    Edit
+                    <BarChart3 className="size-4" />
+                    Results
                   </Link>
                   <button
                     type="button"
                     disabled={!pollId}
                     onClick={() => setSelectedPoll(poll)}
-                    className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-md border border-rose-200 bg-rose-50 px-4 text-sm font-bold text-rose-700 transition hover:-translate-y-0.5 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-300/20 dark:bg-rose-300/10 dark:text-rose-100 dark:hover:bg-rose-300/16"
+                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-rose-200 bg-rose-50 px-3 text-sm font-bold text-rose-700 transition hover:-translate-y-0.5 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-300/20 dark:bg-rose-300/10 dark:text-rose-100 dark:hover:bg-rose-300/16"
                   >
                     <Trash2 className="size-4" />
                     Delete

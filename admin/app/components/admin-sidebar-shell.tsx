@@ -326,14 +326,9 @@ const sidebarGroups: readonly SidebarGroupConfig[] = [
         icon: SquarePen,
       },
       {
-        title: "Edit Results",
+        title: "Polls",
         href: "/polls/results",
         icon: PencilLine,
-      },
-      {
-        title: "Voter List",
-        href: "/polls/voters",
-        icon: Users,
       },
     ],
     maxHeightClass: "max-h-[12rem]",

@@ -4,6 +4,7 @@ import {
   ChevronRight,
   Mail,
   Phone,
+  Clock3,
   User2,
   Vote,
 } from "lucide-react";
@@ -79,8 +80,80 @@ export function PollVoterList({
 
   return (
     <div className="space-y-4">
-      <div className="overflow-hidden rounded-lg border border-[rgba(15,23,42,0.12)] bg-white/62 shadow-[0_14px_40px_rgba(15,23,42,0.08)] dark:border-white/10 dark:bg-white/6 dark:shadow-[0_18px_54px_rgba(2,6,23,0.38)]">
-        <div className="overflow-x-auto">
+      <section className="overflow-hidden rounded-lg border border-[rgba(15,23,42,0.12)] bg-white/62 shadow-[0_14px_40px_rgba(15,23,42,0.08)] dark:border-white/10 dark:bg-white/6 dark:shadow-[0_18px_54px_rgba(2,6,23,0.38)]">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[rgba(15,23,42,0.1)] px-4 py-4 dark:border-white/10 sm:px-5">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700 dark:text-cyan-200">
+              Participation
+            </p>
+            <h2 className="mt-1 text-lg font-bold text-slate-950 dark:text-white">
+              Voter activity
+            </h2>
+          </div>
+          <span className="inline-flex items-center gap-2 rounded-md bg-teal-50 px-3 py-2 text-sm font-bold text-teal-800 dark:bg-cyan-300/10 dark:text-cyan-100">
+            <Vote className="size-4" />
+            {total} {total === 1 ? "vote" : "votes"}
+          </span>
+        </div>
+
+        <div className="grid gap-3 p-3 md:hidden">
+          {votes.map((vote) => {
+            const voteId = valueToString(vote.id);
+            const userName = valueToString(vote.user?.name);
+            const userUid = valueToString(vote.uid || vote.user?.uid);
+            const userMail = valueToString(vote.user?.mail);
+            const userPhone = valueToString(vote.user?.call);
+            const optionText = valueToString(vote.option?.option_text);
+
+            return (
+              <article
+                key={voteId || `${userUid}-${optionText}`}
+                className="rounded-md border border-[rgba(15,23,42,0.1)] bg-white/60 p-4 dark:border-white/10 dark:bg-white/4"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-teal-100 text-teal-700 dark:bg-cyan-300/12 dark:text-cyan-100">
+                      <User2 className="size-4" />
+                    </span>
+                    <div className="min-w-0">
+                      <h3 className="truncate font-bold text-slate-950 dark:text-white">
+                        {userName || "Unknown user"}
+                      </h3>
+                      <p className="truncate text-xs text-slate-500 dark:text-slate-400">
+                        {userUid || "Unknown UID"}
+                      </p>
+                    </div>
+                  </div>
+                  <span className="shrink-0 rounded-md bg-slate-100 px-2 py-1 text-xs font-bold text-slate-600 dark:bg-white/8 dark:text-slate-300">
+                    #{voteId || "—"}
+                  </span>
+                </div>
+                <div className="mt-4 grid gap-2 text-sm text-slate-600 dark:text-slate-300">
+                  <p className="flex min-w-0 items-center gap-2">
+                    <Mail className="size-4 shrink-0 text-slate-400" />
+                    <span className="truncate">{userMail || "No email"}</span>
+                  </p>
+                  <p className="flex min-w-0 items-center gap-2">
+                    <Phone className="size-4 shrink-0 text-slate-400" />
+                    <span className="truncate">{userPhone || "No phone"}</span>
+                  </p>
+                  <p className="flex min-w-0 items-center gap-2">
+                    <Vote className="size-4 shrink-0 text-teal-700 dark:text-cyan-200" />
+                    <span className="truncate font-semibold text-slate-900 dark:text-white">
+                      {optionText || "Unknown option"}
+                    </span>
+                  </p>
+                  <p className="flex items-center gap-2 text-xs">
+                    <Clock3 className="size-4 shrink-0 text-slate-400" />
+                    {formatDateTime(vote.created_at)}
+                  </p>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+
+        <div className="hidden overflow-x-auto md:block">
           <table className="min-w-[980px] w-full table-fixed border-collapse text-left text-sm">
             <thead className="bg-slate-950 text-xs font-bold uppercase text-white dark:bg-white/10 dark:text-slate-200">
               <tr>
@@ -170,7 +243,7 @@ export function PollVoterList({
             </tbody>
           </table>
         </div>
-      </div>
+      </section>
 
       <div className="flex flex-col gap-3 rounded-lg border border-[rgba(15,23,42,0.12)] bg-white/52 p-3 text-sm font-semibold text-slate-600 shadow-[0_10px_30px_rgba(15,23,42,0.06)] sm:flex-row sm:items-center sm:justify-between dark:border-white/10 dark:bg-white/6 dark:text-slate-300">
         <span>
