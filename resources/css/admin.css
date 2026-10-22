@@ -584,6 +584,7 @@
 .admin-root .admin-poll-result-bars article { padding: 16px 0; border-bottom: 1px solid var(--a-line); }
 .admin-root .admin-poll-result-bars article:last-child { border-bottom: 0; }
 .admin-root .admin-poll-option-heading { display: grid; grid-template-columns: 30px minmax(0,1fr) auto; align-items: center; gap: 10px; }
+.admin-root .admin-poll-result-bars article > .admin-poll-option-heading { height: auto; margin: 0; overflow: visible; border: 0; border-radius: 0; background: transparent; }
 .admin-root .admin-poll-option-index { color: var(--a-muted); font-size: 10px; font-weight: 800; }
 .admin-root .admin-poll-option-heading b { overflow-wrap: anywhere; color: var(--a-text); font-size: 13px; font-weight: 700; }
 .admin-root .admin-poll-option-heading strong { color: var(--a-muted); font-size: 13px; }
