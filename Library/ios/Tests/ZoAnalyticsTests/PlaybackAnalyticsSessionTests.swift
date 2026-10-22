@@ -150,6 +150,30 @@ final class PlaybackAnalyticsSessionTests: XCTestCase {
         XCTAssertEqual(pending.first?.summary.payload.revision, 2)
     }
 
+    func testOldAcknowledgementAndFailurePreserveNewerCheckpoint() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let queue = AnalyticsQueue(fileURL: directory.appendingPathComponent("queue.json"), maxPendingSessions: 5, retentionDays: 7)
+        let clock = ManualClock()
+        let session = makeSession(id: "in-flight-session", clock: clock)
+        let first = session.checkpoint()
+        try await queue.upsert(first, ownerKey: "owner", now: clock.date)
+        let second = session.checkpoint()
+        try await queue.upsert(second, ownerKey: "owner", now: clock.date)
+        // The older upload completes after a newer checkpoint was persisted.
+        try await queue.removePlayback(revisions: [first.sessionId: first.payload.revision], ownerKey: "owner")
+        try await queue.deferPlayback(revisions: [first.sessionId: first.payload.revision], ownerKey: "owner", now: clock.date)
+        let pending = await queue.duePlayback(ownerKey: "owner", limit: 10, now: clock.date)
+        XCTAssertEqual(pending.first?.summary.payload.revision, second.payload.revision)
+        XCTAssertEqual(pending.first?.attemptCount, 0)
+        try await queue.removePlayback(revisions: [second.sessionId: second.payload.revision], ownerKey: "other-owner")
+        let stillPending = await queue.duePlayback(ownerKey: "owner", limit: 10, now: clock.date)
+        XCTAssertEqual(stillPending.count, 1)
+        try await queue.removePlayback(revisions: [second.sessionId: second.payload.revision], ownerKey: "owner")
+        let finished = await queue.duePlayback(ownerKey: "owner", limit: 10, now: clock.date)
+        XCTAssertTrue(finished.isEmpty)
+    }
+
     private func makeSession(
         id: String,
         clock: ManualClock,

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V4;
 
 use App\Http\Controllers\Controller;
+use App\Support\Analytics\AnalyticsCollectionSetting;
 use App\Support\Analytics\AnalyticsPresenceStore;
 use App\Support\Api\V4Response;
 use Carbon\CarbonImmutable;
@@ -12,7 +13,6 @@ use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
-use Kreait\Firebase\Factory;
 
 class AnalyticsIngestionController extends Controller
 {
@@ -471,23 +471,7 @@ class AnalyticsIngestionController extends Controller
 
     protected function analyticsEnabled(): bool
     {
-        try {
-            $url = (string) config('firebase.database_url', '');
-            if ($url === '') {
-                return false;
-            }
-
-            $database = (new Factory)
-                ->withServiceAccount((string) config('firebase.credentials'))
-                ->withDatabaseUri($url)
-                ->createDatabase();
-
-            return $database->getReference('config/analytics/enabled')->getValue() === true;
-        } catch (\Throwable $error) {
-            report($error);
-
-            return false;
-        }
+        return app(AnalyticsCollectionSetting::class)->enabled();
     }
 
     private function rejectUnknownPlaybackKeys(array $payload, string $path = ''): void

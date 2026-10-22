@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V4;
 
 use App\Http\Controllers\Controller;
+use App\Support\Analytics\AnalyticsCollectionSetting;
 use App\Support\Api\V4Response;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -46,6 +47,7 @@ class AdminAnalyticsController extends Controller
                 'enabled' => (bool) $data['enabled'],
                 'updated_at' => $updatedAt,
             ]);
+            app(AnalyticsCollectionSetting::class)->publish((bool) $data['enabled']);
 
             return V4Response::success([
                 'path' => '/'.self::CONFIG_PATH.'/enabled',

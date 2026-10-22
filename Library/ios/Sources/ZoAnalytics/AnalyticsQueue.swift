@@ -136,9 +136,12 @@ actor AnalyticsQueue {
             .sorted { $0.queuedAt < $1.queuedAt }.prefix(limit).map { $0 }
     }
 
-    func removePlayback(sessionIds: Set<String>, ownerKey: String) throws {
+    // Network awaits allow newer checkpoints to replace in-flight revisions.
+    // Acknowledgements and failures may only affect the revision actually sent.
+    func removePlayback(revisions: [String: Int], ownerKey: String) throws {
         document.playback.removeAll {
-            $0.ownerKey == ownerKey && sessionIds.contains($0.summary.sessionId)
+            $0.ownerKey == ownerKey &&
+                $0.summary.payload.revision <= (revisions[$0.summary.sessionId] ?? -1)
         }
         try persist()
     }
@@ -155,10 +158,11 @@ actor AnalyticsQueue {
         try persist()
     }
 
-    func deferPlayback(sessionIds: Set<String>, ownerKey: String, now: Date = Date()) throws {
+    func deferPlayback(revisions: [String: Int], ownerKey: String, now: Date = Date()) throws {
         for index in document.playback.indices where
             document.playback[index].ownerKey == ownerKey &&
-            sessionIds.contains(document.playback[index].summary.sessionId) {
+            document.playback[index].summary.payload.revision <=
+                (revisions[document.playback[index].summary.sessionId] ?? -1) {
             document.playback[index].attemptCount += 1
             document.playback[index].nextAttemptAt = nextAttempt(
                 count: document.playback[index].attemptCount,

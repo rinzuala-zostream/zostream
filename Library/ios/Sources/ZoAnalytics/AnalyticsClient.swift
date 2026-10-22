@@ -163,49 +163,51 @@ public actor ZoAnalyticsClient {
             return
         }
 
-        let sessionIds = Set(pending.map { $0.summary.sessionId })
+        let revisions = Dictionary(uniqueKeysWithValues: pending.map {
+            ($0.summary.sessionId, $0.summary.payload.revision)
+        })
         do {
             if pending.count == 1, let item = pending.first {
                 try await sendPlayback(item.summary, credentials: credentials)
             } else {
                 try await sendPlaybackBatch(pending.map(\.summary), credentials: credentials)
             }
-            try await queue.removePlayback(sessionIds: sessionIds, ownerKey: credentials.ownerKey)
+            try await queue.removePlayback(revisions: revisions, ownerKey: credentials.ownerKey)
         } catch let error as ZoAnalyticsError {
             if case .http(let status, _) = error, [413, 422].contains(status), pending.count > 1 {
                 // A rejected batch contains no accepted items. Retry individually
                 // so one malformed summary cannot delete its valid neighbours.
                 for item in pending {
-                    let id = Set([item.summary.sessionId])
+                    let revision = [item.summary.sessionId: item.summary.payload.revision]
                     do {
                         try await sendPlayback(item.summary, credentials: credentials)
-                        try await queue.removePlayback(sessionIds: id, ownerKey: credentials.ownerKey)
+                        try await queue.removePlayback(revisions: revision, ownerKey: credentials.ownerKey)
                     } catch let singleError as ZoAnalyticsError {
                         if case .http(let singleStatus, _) = singleError, [413, 422].contains(singleStatus) {
-                            try await queue.removePlayback(sessionIds: id, ownerKey: credentials.ownerKey)
+                            try await queue.removePlayback(revisions: revision, ownerKey: credentials.ownerKey)
                         } else {
                             if case .http(let singleStatus, let retryable) = singleError, !retryable, singleStatus != 401 {
-                                try await queue.removePlayback(sessionIds: id, ownerKey: credentials.ownerKey)
+                                try await queue.removePlayback(revisions: revision, ownerKey: credentials.ownerKey)
                             } else {
-                                try await queue.deferPlayback(sessionIds: id, ownerKey: credentials.ownerKey)
+                                try await queue.deferPlayback(revisions: revision, ownerKey: credentials.ownerKey)
                             }
                             throw singleError
                         }
                     } catch {
-                        try await queue.deferPlayback(sessionIds: id, ownerKey: credentials.ownerKey)
+                        try await queue.deferPlayback(revisions: revision, ownerKey: credentials.ownerKey)
                         throw error
                     }
                 }
             } else {
                 if case .http(let status, let retryable) = error, !retryable, status != 401 {
-                    try await queue.removePlayback(sessionIds: sessionIds, ownerKey: credentials.ownerKey)
+                    try await queue.removePlayback(revisions: revisions, ownerKey: credentials.ownerKey)
                 } else {
-                    try await queue.deferPlayback(sessionIds: sessionIds, ownerKey: credentials.ownerKey)
+                    try await queue.deferPlayback(revisions: revisions, ownerKey: credentials.ownerKey)
                 }
                 throw error
             }
         } catch {
-            try await queue.deferPlayback(sessionIds: sessionIds, ownerKey: credentials.ownerKey)
+            try await queue.deferPlayback(revisions: revisions, ownerKey: credentials.ownerKey)
             throw error
         }
 
