@@ -102,13 +102,13 @@ export default async function PollVotersPage({
         <AdminPageHeader title="Poll voters" initialMode={initialMode} />
 
         <div className="admin-sidebar-scroll mt-3 flex-1 pb-4 lg:min-h-0">
-          <section className="relative mb-4 overflow-hidden rounded-lg border border-white/58 bg-[linear-gradient(135deg,rgba(255,255,255,0.82),rgba(236,253,245,0.5)_46%,rgba(224,242,254,0.52))] p-5 backdrop-blur-xl sm:p-6 dark:border-white/10 dark:bg-[linear-gradient(135deg,rgba(15,23,42,0.82),rgba(20,83,45,0.2)_46%,rgba(8,47,73,0.28))] dark:shadow-[0_18px_60px_rgba(2,6,23,0.46)]">
-            <div className="max-w-3xl">
+          <section className="relative mb-4 flex flex-col gap-5 overflow-hidden rounded-lg border border-white/58 bg-[linear-gradient(135deg,rgba(255,255,255,0.82),rgba(236,253,245,0.5)_46%,rgba(224,242,254,0.52))] p-5 backdrop-blur-xl sm:flex-row sm:items-center sm:justify-between sm:p-6 dark:border-white/10 dark:bg-[linear-gradient(135deg,rgba(15,23,42,0.82),rgba(20,83,45,0.2)_46%,rgba(8,47,73,0.28))] dark:shadow-[0_18px_60px_rgba(2,6,23,0.46)]">
+            <div className="min-w-0 max-w-3xl">
               <p className="text-xs font-bold uppercase tracking-[0.2em] text-teal-700 dark:text-cyan-200">
                 Poll voters
               </p>
               <h2 className="mt-2 text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl dark:text-white">
-                Voter activity
+                Review votes by poll
               </h2>
               <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-300">
                 Select a poll to review voter details, selected answers, and
@@ -117,7 +117,7 @@ export default async function PollVotersPage({
             </div>
             <Link
               href="/polls/results"
-              className="mt-5 inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-[rgba(15,23,42,0.14)] bg-white/65 px-4 text-sm font-bold text-slate-800 transition hover:bg-white sm:mt-0 dark:border-white/10 dark:bg-white/8 dark:text-white dark:hover:bg-white/12"
+              className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 self-start rounded-md border border-[rgba(15,23,42,0.14)] bg-white/65 px-4 text-sm font-bold text-slate-800 transition hover:bg-white sm:self-auto dark:border-white/10 dark:bg-white/8 dark:text-white dark:hover:bg-white/12"
             >
               <ArrowLeft className="size-4" />
               All polls
@@ -186,7 +186,7 @@ export default async function PollVotersPage({
                   <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700 dark:text-cyan-200">
                     Selected poll
                   </p>
-                  <h3 className="mt-2 text-lg font-bold text-slate-950 dark:text-white">
+                  <h3 className="mt-2 break-words text-lg font-bold text-slate-950 dark:text-white">
                     {selectedPoll.question || `Poll #${selectedPollId}`}
                   </h3>
                 </div>

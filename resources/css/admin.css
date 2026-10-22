@@ -549,6 +549,56 @@
 .admin-root .admin-voter-list th { color: var(--a-muted); background: var(--a-soft); }
 .admin-root .admin-voter-list td { font-size: 13px; }
 .admin-root .admin-voter-list tbody tr:hover { background: var(--glass-hover); }
+.admin-root .admin-poll-result-link { display: inline-flex; width: auto; min-width: 92px; height: 34px; align-items: center; justify-content: center; gap: 7px; padding: 0 10px; border: 1px solid rgba(169,156,255,.28); border-radius: 10px; background: rgba(169,156,255,.1); color: #c5bbff; font-size: 11px; font-weight: 800; text-decoration: none; }
+.admin-root .admin-poll-result-link:hover { border-color: rgba(169,156,255,.55); background: rgba(169,156,255,.17); }
+.admin-root .admin-poll-view-switch { display: inline-flex; gap: 5px; margin: 0 0 16px; padding: 5px; border: 1px solid var(--a-line); border-radius: 13px; background: var(--glass-field); }
+.admin-root .admin-poll-view-switch button { display: inline-flex; min-height: 38px; align-items: center; gap: 9px; padding: 0 14px; border: 0; border-radius: 9px; background: transparent; color: var(--a-muted); font-size: 12px; font-weight: 800; cursor: pointer; }
+.admin-root .admin-poll-view-switch button.active { background: var(--glass-hover); color: var(--a-text); box-shadow: inset 0 0 0 1px var(--a-line); }
+.admin-root .admin-poll-view-switch button span { display: grid; min-width: 21px; height: 21px; place-items: center; padding: 0 5px; border-radius: 99px; background: var(--a-soft); color: var(--a-cyan); font-size: 10px; }
+.admin-root .admin-poll-summary { margin-bottom: 16px; }
+.admin-root .admin-poll-results { padding: 0; overflow: hidden; }
+.admin-root .admin-poll-results > header,.admin-root .admin-voter-list > header { align-items: center; padding: 20px 22px; }
+.admin-root .admin-poll-results > header p,.admin-root .admin-voter-list > header p { margin: 0 0 5px; color: var(--a-cyan); font-size: 10px; font-weight: 900; letter-spacing: 1.2px; }
+.admin-root .admin-poll-results > header strong { font-size: 14px; }
+.admin-root .admin-poll-result-bars { display: grid; gap: 20px; padding: 20px 22px 23px; }
+.admin-root .admin-poll-result-bars article header { display: flex; align-items: center; justify-content: space-between; gap: 14px; color: var(--a-text); font-size: 13px; }
+.admin-root .admin-poll-result-bars article header strong { color: var(--a-cyan); font-size: 14px; }
+.admin-root .admin-poll-result-bars article > div { height: 9px; margin: 9px 0 6px; overflow: hidden; border-radius: 99px; background: var(--a-soft); }
+.admin-root .admin-poll-result-bars article i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg,var(--a-cyan),var(--a-lime)); }
+.admin-root .admin-poll-result-bars small { color: var(--a-muted); font-size: 11px; }
+.admin-root .admin-voter-list > header span { display: block; margin-top: 7px; color: var(--a-muted); font-size: 12px; }
+@media(max-width:680px) { .admin-root .admin-poll-summary { grid-template-columns: 1fr; } .admin-root .admin-poll-view-switch { display: flex; } .admin-root .admin-poll-view-switch button { flex: 1; justify-content: center; } }
+.admin-root .admin-poll-insights { max-width: 1120px; }
+.admin-root .admin-poll-leader { display: grid; grid-template-columns: 48px minmax(0,1fr) auto; align-items: center; gap: 15px; margin: 0 0 16px; padding: 20px 23px; border: 1px solid rgba(169,156,255,.24); border-radius: 18px; background: radial-gradient(ellipse at 85% 0,rgba(169,156,255,.17),transparent 50%),var(--glass-overlay); box-shadow: var(--glass-shadow); }
+.admin-root .admin-poll-leader-icon { display: grid; width: 44px; height: 44px; place-items: center; border: 1px solid rgba(169,156,255,.28); border-radius: 14px; background: rgba(169,156,255,.13); color: var(--a-cyan); font-size: 20px; }
+.admin-root .admin-poll-leader span { color: var(--a-cyan); font-size: 9px; font-weight: 900; letter-spacing: 1.4px; }
+.admin-root .admin-poll-leader h2 { margin: 5px 0 3px; color: var(--a-text); font: 750 17px 'Manrope',sans-serif; }
+.admin-root .admin-poll-leader p { margin: 0; color: var(--a-muted); font-size: 12px; }
+.admin-root .admin-poll-leader > strong { color: var(--a-text); font: 800 30px 'Manrope',sans-serif; }
+.admin-root .admin-poll-leader > strong small { color: var(--a-cyan); font-size: 15px; }
+.admin-root .admin-poll-summary article { min-height: 128px; border-color: var(--a-line); background: var(--glass-sheen),var(--glass-overlay); box-shadow: var(--glass-shadow); }
+.admin-root .admin-poll-summary article strong { font-size: 27px; }
+.admin-root .admin-poll-summary article:last-child strong { font-size: 22px; }
+.admin-root .admin-poll-results > header strong small,.admin-root .admin-voter-list > header strong small { color: var(--a-muted); font: 600 11px 'Manrope',sans-serif; }
+.admin-root .admin-poll-result-bars { gap: 0; padding: 4px 22px 8px; }
+.admin-root .admin-poll-result-bars article { padding: 16px 0; border-bottom: 1px solid var(--a-line); }
+.admin-root .admin-poll-result-bars article:last-child { border-bottom: 0; }
+.admin-root .admin-poll-option-heading { display: grid; grid-template-columns: 30px minmax(0,1fr) auto; align-items: center; gap: 10px; }
+.admin-root .admin-poll-option-index { color: var(--a-muted); font-size: 10px; font-weight: 800; }
+.admin-root .admin-poll-option-heading b { overflow-wrap: anywhere; color: var(--a-text); font-size: 13px; font-weight: 700; }
+.admin-root .admin-poll-option-heading strong { color: var(--a-muted); font-size: 13px; }
+.admin-root .admin-poll-result-bars article.leader .admin-poll-option-heading strong { color: var(--a-cyan); }
+.admin-root .admin-poll-meter { height: 8px; margin: 10px 0 6px 40px; overflow: hidden; border: 1px solid var(--a-line); border-radius: 99px; background: rgba(255,255,255,.035); }
+.admin-root .admin-poll-meter i { display: block; min-width: 0; height: 100%; border-radius: inherit; background: linear-gradient(90deg,#8b7cff,#65caff); transition: width .45s ease; }
+.admin-root .admin-poll-result-bars article.leader .admin-poll-meter i { background: linear-gradient(90deg,#8b7cff,#7ce6c3); }
+.admin-root .admin-poll-result-bars article > small { display: block; margin-left: 40px; }
+.admin-root .admin-voter-list > header strong { color: var(--a-text); font: 800 18px 'Manrope',sans-serif; }
+.admin-root .admin-voter-list td:first-child b,.admin-root .admin-voter-list td:first-child small { display: block; }
+.admin-root .admin-voter-list td:first-child b { color: var(--a-text); font-size: 13px; }
+.admin-root .admin-voter-list td:first-child small { margin-top: 4px; color: var(--a-muted); font-size: 11px; }
+.admin-root .admin-poll-vote-answer { display: inline-block; padding: 5px 9px; border: 1px solid var(--a-line); border-radius: 8px; background: var(--a-soft); color: var(--a-text); }
+.admin-root .admin-poll-view-switch { position: sticky; z-index: 3; top: 10px; width: fit-content; backdrop-filter: blur(14px); }
+@media(max-width:680px) { .admin-root .admin-poll-leader { grid-template-columns: 40px minmax(0,1fr) auto; gap: 10px; padding: 15px; } .admin-root .admin-poll-leader-icon { width: 38px; height: 38px; } .admin-root .admin-poll-leader h2 { font-size: 14px; } .admin-root .admin-poll-leader > strong { font-size: 23px; } .admin-root .admin-poll-results > header,.admin-root .admin-voter-list > header { padding: 17px; } .admin-root .admin-poll-result-bars { padding-inline: 17px; } }
 .admin-root .admin-status { color: var(--a-cyan); background: var(--a-soft); border-color: var(--a-line); }
 .admin-root .admin-status.is-error { color: var(--a-red); background: rgba(255, 115, 123, .08); }
 .admin-root .admin-status.is-success { color: var(--a-lime); background: rgba(16, 185, 129, .08); }

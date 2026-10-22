@@ -20,7 +20,6 @@ const groups = [
     { label: 'Content', items: [item('movies'), { label: 'PPV', to: '/ppv', icon: 'credit-card' }, { label: 'Trailers', to: '/trailers', icon: 'play' }, ...['seasons', 'episodes', 'banners'].map(item)] },
     { label: 'Audience', items: ['users', 'subscriptions', 'plans', 'devices'].map(item) },
     { label: 'Engagement', items: ['polls', 'legal'].map(item).concat([
-        { label: 'Poll voters', to: '/polls/voters', icon: 'users' },
         { label: 'Notifications', to: '/tools/notifications', icon: 'bell' },
         { label: 'WhatsApp Inbox', to: '/whatsapp', icon: 'message' },
         { label: 'App releases', to: '/tools/app-releases', icon: 'settings' },
