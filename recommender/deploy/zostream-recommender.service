@@ -1,0 +1,23 @@
+[Unit]
+Description=Zo Stream persistent recommendation model
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/zostream.in
+ExecStart=/usr/bin/python3 /var/www/zostream.in/recommender/server.py --model /var/www/zostream.in/recommender/artifacts/hybrid_model.json.gz --port 8765
+Restart=always
+RestartSec=3
+Environment=PYTHONDONTWRITEBYTECODE=1
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+MemoryMax=2G
+TasksMax=16
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

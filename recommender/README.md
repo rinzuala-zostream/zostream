@@ -195,3 +195,9 @@ tam tan collaborative signal weight a sang zawk.
 Model file-ah user ID leh derived preference a awm avangin source database ang bawkin private-a
 vawn tur a ni. Production API-in `premium`, `ppv`, child-mode leh subscription entitlement
 filter a apply hnuah result a serve tur a ni.
+
+## Persistent inference on the VPS
+
+See [deployment and verification instructions](deploy/README.md) to keep the model
+loaded in one loopback-only Python service. Enable `RECOMMENDER_SERVICE_URL` only
+after its health check succeeds; an empty value preserves the existing CLI path.

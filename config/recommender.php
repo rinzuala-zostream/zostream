@@ -9,6 +9,8 @@ $absolutePath = static function (?string $path, string $fallback): string {
 };
 
 return [
+    'service_url' => env('RECOMMENDER_SERVICE_URL', ''),
+    'service_timeout_seconds' => (float) env('RECOMMENDER_SERVICE_TIMEOUT_SECONDS', 5),
     'python' => env(
         'RECOMMENDER_PYTHON',
         is_file(base_path('recommender/.venv/bin/python'))
@@ -30,6 +32,7 @@ return [
     'response_cache_fresh_seconds' => (int) env('RECOMMENDER_RESPONSE_CACHE_FRESH_SECONDS', 30),
     'response_cache_stale_seconds' => (int) env('RECOMMENDER_RESPONSE_CACHE_STALE_SECONDS', 300),
     'live_section_cache_seconds' => (int) env('RECOMMENDER_LIVE_SECTION_CACHE_SECONDS', 60),
+    'metadata_cache_seconds' => (int) env('RECOMMENDER_METADATA_CACHE_SECONDS', 60),
     'train_source' => env('RECOMMENDER_TRAIN_SOURCE', 'mysql'),
     'train_data_dir' => env('RECOMMENDER_TRAIN_DATA_DIR', base_path()),
     'train_timeout_seconds' => (int) env('RECOMMENDER_TRAIN_TIMEOUT_SECONDS', 3600),

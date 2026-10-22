@@ -4,6 +4,7 @@ namespace App\Services;
 
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Symfony\Component\Process\Process;
@@ -191,9 +192,45 @@ class HomeRecommendationService
             return $payload;
         }
 
+        // These summaries are catalog data shared by all users. Canonicalize
+        // the IDs so different shelf ordering can reuse the same cached batch.
+        sort($movieIds, SORT_STRING);
+        $seconds = max(0, (int) config('recommender.metadata_cache_seconds', 60));
+        $load = fn (): array => $this->loadPpvSeasonMetadata($movieIds);
+        $metadata = $seconds === 0
+            ? $load()
+            : Cache::remember(
+                'recommendations:ppv-metadata:v1:'.hash('sha256', json_encode($movieIds, JSON_THROW_ON_ERROR)),
+                $seconds,
+                $load
+            );
+
+        $enrich = function (mixed &$value) use (&$enrich, $metadata): void {
+            if (! is_array($value)) {
+                return;
+            }
+            if (isset($value['id']) && ! isset($value['episode_number']) && ! isset($value['season_number'])) {
+                if (array_key_exists((string) $value['id'], $metadata)) {
+                    $value['ppv_seasons'] = $metadata[(string) $value['id']];
+                }
+            }
+            foreach ($value as &$child) {
+                if (is_array($child)) {
+                    $enrich($child);
+                }
+            }
+            unset($child);
+        };
+        $enrich($payload);
+
+        return $payload;
+    }
+
+    private function loadPpvSeasonMetadata(array $movieIds): array
+    {
         $movies = DB::table('movie')->whereIn('id', $movieIds)->pluck('num', 'id');
         if ($movies->isEmpty()) {
-            return $payload;
+            return [];
         }
 
         $seasonRows = DB::table('seasons')
@@ -224,26 +261,12 @@ class HomeRecommendationService
             ];
         }
 
-        $enrich = function (mixed &$value) use (&$enrich, $movies, $seasonsByMovie): void {
-            if (! is_array($value)) {
-                return;
-            }
-            if (isset($value['id']) && ! isset($value['episode_number']) && ! isset($value['season_number'])) {
-                $movieNumber = $movies->get((string) $value['id']);
-                if ($movieNumber !== null) {
-                    $value['ppv_seasons'] = $seasonsByMovie[(string) $movieNumber] ?? [];
-                }
-            }
-            foreach ($value as &$child) {
-                if (is_array($child)) {
-                    $enrich($child);
-                }
-            }
-            unset($child);
-        };
-        $enrich($payload);
+        $metadata = [];
+        foreach ($movies as $id => $number) {
+            $metadata[$id] = $seasonsByMovie[(string) $number] ?? [];
+        }
 
-        return $payload;
+        return $metadata;
     }
 
     private function run(
@@ -255,6 +278,28 @@ class HomeRecommendationService
         string $model,
         array $signals
     ): array {
+        $serviceUrl = (string) config('recommender.service_url', '');
+        if ($serviceUrl !== '') {
+            // A failed service uses the existing live-section fallback. Never
+            // spawn one memory-heavy Python process per request during outages.
+            $response = Http::connectTimeout(1)
+                ->timeout(max(1, (float) config('recommender.service_timeout_seconds', 5)))
+                ->post(rtrim($serviceUrl, '/').'/homepage', [
+                    'user_id' => $userId,
+                    'limit' => $limit,
+                    'mode' => $contentMode,
+                    'include_age_restricted' => $includeAgeRestricted,
+                    'signals' => $signals,
+                ])
+                ->throw();
+            $payload = $response->json();
+            if (! is_array($payload) || ! isset($payload['history_size'])) {
+                throw new RuntimeException('Recommendation service returned an invalid payload.');
+            }
+
+            return $payload;
+        }
+
         $command = [
             (string) config('recommender.python', 'python3'),
             $script,
