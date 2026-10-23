@@ -80,7 +80,7 @@ class MovieModel extends Model
     protected static function booted(): void
     {
         static::deleting(function (MovieModel $movie): void {
-            $movie->trailerRecord()->delete();
+            $movie->trailerRecords()->delete();
         });
     }
 
@@ -102,6 +102,11 @@ class MovieModel extends Model
     public function trailerRecord()
     {
         return $this->hasOne(Trailer::class, 'movie_id', 'num');
+    }
+
+    public function trailerRecords()
+    {
+        return $this->hasMany(Trailer::class, 'movie_id', 'num')->orderBy('id');
     }
 
 }

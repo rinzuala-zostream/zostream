@@ -321,7 +321,9 @@ class MovieController extends Controller
     public function updateTrailer(Request $request, string $id)
     {
         $validated = $request->validate([
-            'trailer' => ['required', 'string', 'url:http,https', 'max:4096'],
+            'trailer' => ['required_without:trailers', 'string', 'url:http,https', 'max:4096'],
+            'trailers' => ['required_without:trailer', 'array', 'min:1', 'max:20'],
+            'trailers.*' => ['required', 'string', 'url:http,https', 'max:4096'],
         ]);
 
         $movie = MovieModel::where('id', $id)->first();
@@ -333,10 +335,20 @@ class MovieController extends Controller
             ], 404);
         }
 
-        $trailer = Trailer::updateOrCreate(
-            ['movie_id' => $movie->num],
-            ['url' => trim($validated['trailer'])],
-        );
+        $urls = collect($validated['trailers'] ?? [$validated['trailer']])
+            ->map(fn (string $url): string => trim($url))
+            ->unique()
+            ->values();
+
+        \DB::transaction(function () use ($movie, $urls): void {
+            $movie->trailerRecords()->delete();
+            $trailers = $urls->map(fn (string $url): array => [
+                'url' => $url,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            $movie->trailerRecords()->createMany($trailers->all());
+        });
 
         return response()->json([
             'status' => 'success',
@@ -344,7 +356,8 @@ class MovieController extends Controller
             'data' => [
                 'movie_id' => $movie->id,
                 'title' => $movie->title,
-                'trailer' => $trailer->url,
+                'trailer' => $urls->first(),
+                'trailers' => $urls->all(),
             ],
         ]);
     }
@@ -750,7 +763,7 @@ class MovieController extends Controller
                 ]);
             }
 
-            $movie = MovieModel::select(['num', 'title', 'url', 'dash_url', 'hls_url'])
+            $movie = MovieModel::with('trailerRecords')->select(['num', 'title', 'url', 'dash_url', 'hls_url'])
                 ->where('id', $id)
                 ->first();
 
@@ -765,6 +778,8 @@ class MovieController extends Controller
                 'url' => $movie->url,
                 'hls_url' => $movie->hls_url,
                 'dash_url' => $movie->dash_url,
+                'trailer' => $movie->trailerRecords->first()?->url,
+                'trailers' => $movie->trailerRecords->pluck('url')->all(),
             ], fn($value) => $value !== null && $value !== '');
 
             if (empty($links)) {
