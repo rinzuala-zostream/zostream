@@ -144,10 +144,12 @@ async function loadOverview() {
 }
 
 async function loadPresence() {
-    if (activeTab.value !== 'overview' || document.hidden) return;
+    if (!mounted || presenceInFlight || activeTab.value !== 'overview' || document.hidden) return;
     const query = queryString({ platform: filters.value.platform, app_version: filters.value.app_version, user_id: filters.value.user_id });
+    presenceInFlight = true;
     try { presence.value = await api(`/analytic/reports/presence${query}`, { cache: 'no-store' }); }
-    catch { presence.value = { ...presence.value, available: false }; }
+    catch { if (mounted) presence.value = { ...presence.value, available: false }; }
+    finally { presenceInFlight = false; }
 }
 
 async function loadDetails() {
@@ -229,12 +231,18 @@ function exportCurrentPage() {
 function scale(value, max) { return `${max > 0 ? Math.max(2, Math.min(100, (Number(value || 0) / max) * 100)) : 2}%`; }
 
 let presenceTimer;
+let presenceInFlight = false;
+let mounted = false;
 onMounted(() => {
+    mounted = true;
     void loadConfig();
     void loadAll();
     presenceTimer = window.setInterval(() => { void loadPresence(); }, 30_000);
 });
-onUnmounted(() => { if (presenceTimer) window.clearInterval(presenceTimer); });
+onUnmounted(() => {
+    mounted = false;
+    if (presenceTimer) window.clearInterval(presenceTimer);
+});
 </script>
 
 <template>
