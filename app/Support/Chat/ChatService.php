@@ -123,7 +123,8 @@ final class ChatService
         return ['id' => (string) $m->id, 'room_id' => (string) $m->room_id,
             'user_id' => $m->user_id, 'request_id' => $m->request_id, 'display_name' => $m->display_name,
             'body' => $m->deleted_at ? null : $m->body, 'spoiler' => (bool) $m->spoiler,
-            'deleted' => $m->deleted_at !== null, 'created_at' => $m->created_at];
+            'deleted' => $m->deleted_at !== null,
+            'created_at' => \Illuminate\Support\Carbon::parse($m->created_at, config('app.timezone'))->toIso8601String()];
     }
 
     public function eraseUser(string $uid): void

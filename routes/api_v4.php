@@ -239,7 +239,10 @@ Route::prefix('v4')
                     ->middleware('throttle:30,1');
             });
 
-            Route::prefix('playback/sessions')->group(function () {
+            // Playback clients still consume the established top-level stream
+            // payload (status, movie_links, stream_token). Keep the V4 envelope
+            // off these routes until every installed mobile client unwraps it.
+            Route::prefix('playback/sessions')->withoutMiddleware('api.v4')->group(function () {
                 Route::post('/', [PlaybackController::class, 'start'])
                     ->middleware('throttle:playback-start');
                 Route::post('/heartbeat', [PlaybackController::class, 'heartbeat']);
