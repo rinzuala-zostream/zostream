@@ -730,6 +730,7 @@ class OTPController extends Controller
             })->delete();
 
             Subscription::where('user_id', $userId)->delete();
+            app(\App\Support\Chat\ChatService::class)->eraseUser($userId);
             $user->delete();
         });
     }

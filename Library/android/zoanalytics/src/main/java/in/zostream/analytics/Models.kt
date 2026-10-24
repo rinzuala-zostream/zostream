@@ -250,6 +250,7 @@ data class ProductEvent @JvmOverloads constructor(
 
     companion object {
         val supportedNames = setOf(
+            "chat_opened", "chat_closed", "chat_connection_failed", "chat_message_failed",
             "app_opened",
             "app_foregrounded",
             "app_backgrounded",

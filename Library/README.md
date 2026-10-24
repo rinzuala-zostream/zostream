@@ -32,7 +32,7 @@ The host app supplies fresh credentials when flushing:
 ```text
 Authorization: Bearer <access-token>
 Device-Token: <device-token>
-X-Analytics-SDK-Version: 1.4.0
+X-Analytics-SDK-Version: 1.5.0
 X-Platform: ios|tvos|android|tv
 ```
 
@@ -86,3 +86,13 @@ monotonically increasing `revision` prevents retries from double counting.
 
 See platform READMEs for integration examples. The matching server contract is
 documented in `../docs/ANALYTICS_API_V4.md`.
+
+## Mobile chat (1.5.0)
+
+The Android and iOS packages also expose `ZoChatClient` for authenticated Global
+and movie/episode chat. Chat is independent of the analytics collection flag;
+product chat events use the existing analytics queue. See
+[mobile chat contract and integration](../docs/CHAT_MOBILE.md) and
+[deployment](../docs/deploy/CHAT.md). The native app integrations include history
+pagination, reconnect recovery, spoiler controls, report/block/unblock and
+background/logout cleanup. TV chat is not enabled by this release.

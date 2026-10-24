@@ -406,7 +406,8 @@ public enum JSONValue: Codable, Sendable, Equatable {
 
 public struct ProductEvent: Codable, Sendable, Equatable {
     public static let supportedNames: Set<String> = [
-        "app_opened", "app_foregrounded", "app_backgrounded", "app_session_ended",
+        "chat_opened", "chat_closed", "chat_connection_failed", "chat_message_failed",
+            "app_opened", "app_foregrounded", "app_backgrounded", "app_session_ended",
         "screen_viewed", "content_impression", "content_opened", "search_performed",
         "search_result_selected", "search_empty", "wishlist_added", "wishlist_removed",
         "download_started", "download_completed", "download_failed", "notification_opened",

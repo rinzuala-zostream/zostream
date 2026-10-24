@@ -16,10 +16,12 @@ import AdSubmissionReviewPage from './pages/AdSubmissionReviewPage.vue';
 import AdBillingRatesPage from './pages/AdBillingRatesPage.vue';
 import AdBillingDashboardPage from './pages/AdBillingDashboardPage.vue';
 import HomeSectionsPage from './pages/HomeSectionsPage.vue';
-import AnalyticsPage from './pages/AnalyticsPage.vue';
 import TrailersPage from './pages/TrailersPage.vue';
 import PpvPage from './pages/PpvPage.vue';
 import PpvDetailPage from './pages/PpvDetailPage.vue';
+
+const AnalyticsPage = () => import('./pages/AnalyticsPage.vue');
+const ChatPage = () => import('./pages/ChatPage.vue');
 
 const aliases = [
     ['/movies/add', '/manage/movies/new'], ['/movies/update', '/manage/movies'], ['/movies/update/:id', '/manage/movies/:id'],
@@ -44,6 +46,7 @@ const router = createRouter({
             path: '/', component: AdminShell, children: [
                 { path: 'dashboard', component: DashboardPage },
                 { path: 'analytics', component: AnalyticsPage },
+                { path: 'chat', component: ChatPage },
                 { path: 'home/sections', component: HomeSectionsPage },
                 { path: 'trailers', component: TrailersPage },
                 { path: 'ppv', component: PpvPage },

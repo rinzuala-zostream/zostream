@@ -165,6 +165,21 @@ Route::prefix('v4')
             ->middleware('throttle:20,1');
 
         Route::middleware('auth.token')->group(function () {
+            Route::prefix('chat')->group(function () {
+                Route::get('/blocks', [\App\Http\Controllers\Api\V4\ChatController::class, 'blocks'])->whereNumber(['room', 'message', 'report'])->middleware(\App\Http\Middleware\ChatThrottle::class.':60');
+                Route::post('/rooms/{room}/heartbeat', [\App\Http\Controllers\Api\V4\ChatController::class, 'heartbeat'])->whereNumber(['room', 'message', 'report'])->middleware(\App\Http\Middleware\ChatThrottle::class.':60');
+                Route::post('/rooms/{room}/leave', [\App\Http\Controllers\Api\V4\ChatController::class, 'leave'])->whereNumber(['room', 'message', 'report'])->middleware(\App\Http\Middleware\ChatThrottle::class.':60');
+                Route::get('/reports', [\App\Http\Controllers\Api\V4\ChatController::class, 'reports'])->whereNumber(['room', 'message', 'report'])->middleware(['admin.token',\App\Http\Middleware\ChatThrottle::class.':60']);
+                Route::post('/reports/{report}/resolve', [\App\Http\Controllers\Api\V4\ChatController::class, 'resolveReport'])->whereNumber(['room', 'message', 'report'])->middleware(['admin.token',\App\Http\Middleware\ChatThrottle::class.':60']);
+                Route::post('/rooms/join', [\App\Http\Controllers\Api\V4\ChatController::class, 'join'])->whereNumber(['room', 'message', 'report'])->middleware(\App\Http\Middleware\ChatThrottle::class.':60');
+                Route::post('/blocks', [\App\Http\Controllers\Api\V4\ChatController::class, 'block'])->whereNumber(['room', 'message', 'report'])->middleware(\App\Http\Middleware\ChatThrottle::class.':30');
+                Route::post('/rooms/{room}/auth', [\App\Http\Controllers\Api\V4\ChatController::class, 'auth'])->whereNumber(['room', 'message', 'report'])->middleware(\App\Http\Middleware\ChatThrottle::class.':60');
+                Route::get('/rooms/{room}/messages', [\App\Http\Controllers\Api\V4\ChatController::class, 'messages'])->whereNumber(['room', 'message', 'report'])->middleware(\App\Http\Middleware\ChatThrottle::class.':300');
+                Route::post('/rooms/{room}/messages', [\App\Http\Controllers\Api\V4\ChatController::class, 'send'])->whereNumber(['room', 'message', 'report'])->middleware(\App\Http\Middleware\ChatThrottle::class.':30');
+                Route::post('/rooms/{room}/messages/{message}/report', [\App\Http\Controllers\Api\V4\ChatController::class, 'report'])->whereNumber(['room', 'message', 'report'])->middleware(\App\Http\Middleware\ChatThrottle::class.':10');
+                Route::post('/rooms/{room}/moderate', [\App\Http\Controllers\Api\V4\ChatController::class, 'moderate'])->whereNumber(['room', 'message', 'report'])->middleware(['admin.token',\App\Http\Middleware\ChatThrottle::class.':60']);
+            });
+
             Route::post('/auth/logout', [AuthController::class, 'logout']);
 
             Route::post('/ad-submissions', [AdSubmissionController::class, 'store'])
@@ -303,6 +318,15 @@ Route::prefix('v4')
                     Route::get('/catalog/ppv', [\App\Http\Controllers\Api\V4\AdminPpvController::class, 'index']);
                     Route::get('/catalog/ppv/purchases', [\App\Http\Controllers\Api\V4\AdminPpvController::class, 'purchases']);
                     Route::get('/catalog/ppv/{type}/{id}', [\App\Http\Controllers\Api\V4\AdminPpvController::class, 'show']);
+
+                    Route::prefix('chat')->middleware('throttle:analytics-reports')->group(function () {
+                        Route::get('/rooms', [\App\Http\Controllers\Api\V4\AdminChatController::class, 'rooms']);
+                        Route::get('/rooms/{room}/messages', [\App\Http\Controllers\Api\V4\AdminChatController::class, 'messages'])->whereNumber('room');
+                        Route::get('/reports', [\App\Http\Controllers\Api\V4\AdminChatController::class, 'reports']);
+                        Route::get('/restrictions', [\App\Http\Controllers\Api\V4\AdminChatController::class, 'restrictions']);
+                        Route::get('/audit', [\App\Http\Controllers\Api\V4\AdminChatController::class, 'audit']);
+                        Route::get('/metrics', [\App\Http\Controllers\Api\V4\AdminChatController::class, 'metrics']);
+                    });
 
                     Route::get('/analytics/config', [AdminAnalyticsController::class, 'showConfig']);
                     Route::put('/analytics/config', [AdminAnalyticsController::class, 'updateConfig']);

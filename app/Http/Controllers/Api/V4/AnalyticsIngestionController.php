@@ -19,6 +19,10 @@ class AnalyticsIngestionController extends Controller
     private const PLATFORMS = ['ios', 'tvos', 'android', 'tv', 'tizen', 'webos', 'web'];
 
     private const EVENT_NAMES = [
+        'chat_opened',
+        'chat_closed',
+        'chat_connection_failed',
+        'chat_message_failed',
         'app_opened',
         'app_foregrounded',
         'app_backgrounded',
@@ -543,7 +547,7 @@ class AnalyticsIngestionController extends Controller
 
     private function sanitizeProperties(array $properties): array
     {
-        $blocked = ['query', 'search_query', 'email', 'phone', 'password', 'token', 'authorization'];
+        $blocked = ['body', 'message', 'message_body', 'text', 'stream_token', 'playback_token', 'query', 'search_query', 'email', 'phone', 'password', 'token', 'authorization'];
         $sanitized = [];
 
         foreach (array_slice($properties, 0, 50, true) as $key => $value) {

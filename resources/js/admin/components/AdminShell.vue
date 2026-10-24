@@ -21,6 +21,7 @@ const groups = [
     { label: 'Audience', items: ['users', 'subscriptions', 'plans', 'devices'].map(item) },
     { label: 'Engagement', items: ['polls', 'legal'].map(item).concat([
         { label: 'Notifications', to: '/tools/notifications', icon: 'bell' },
+        { label: 'Chat moderation', to: '/chat', icon: 'message' },
         { label: 'WhatsApp Inbox', to: '/whatsapp', icon: 'message' },
         { label: 'App releases', to: '/tools/app-releases', icon: 'settings' },
         { label: 'Official clients', to: '/tools/official-clients', icon: 'monitor' },
