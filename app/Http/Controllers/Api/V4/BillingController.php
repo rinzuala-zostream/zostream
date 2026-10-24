@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V4;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\New\PaymentController;
 use App\Http\Controllers\New\SubscriptionController;
+use App\Services\PpvPricingService;
 use Illuminate\Http\Request;
 
 class BillingController extends Controller
@@ -16,7 +17,25 @@ class BillingController extends Controller
 
     public function createSubscription(Request $request)
     {
-        $this->forceUser($request);
+        $userId = $this->userId($request);
+        $request->merge(['user_id' => $userId]);
+
+        if (strtolower(trim((string) $request->input('app_payment_type'))) === 'ppv') {
+            $amount = app(PpvPricingService::class)->validatePurchaseAmount(
+                $userId,
+                trim((string) $request->input('movie_id', '')),
+                $request->input('amount')
+            );
+
+            if ($amount === null) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'PPV price changed or the selected content is unavailable. Refresh the rental price and try again.',
+                ], 422);
+            }
+
+            $request->merge(['amount' => $amount]);
+        }
 
         return $this->subscriptions->store($request);
     }

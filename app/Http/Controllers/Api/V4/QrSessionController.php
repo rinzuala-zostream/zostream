@@ -76,6 +76,7 @@ class QrSessionController extends Controller
             'token' => $token,
             'user_id' => (string) $request->input('auth_user_id'),
         ]);
+        $request->attributes->set('v4_qr_payment_flow', true);
 
         return $this->sessions->verify($request);
     }
@@ -83,6 +84,7 @@ class QrSessionController extends Controller
     public function updateSelection(Request $request, string $token)
     {
         $request->merge(['user_id' => (string) $request->input('auth_user_id')]);
+        $request->attributes->set('v4_qr_selection', true);
 
         return $this->sessions->updateSelection($request, $token);
     }

@@ -6,18 +6,17 @@ use App\Http\Controllers\Controller;
 use App\Http\Controllers\FCMNotificationController;
 use App\Models\New\Episode;
 use App\Models\New\PaymentHistory;
-use App\Models\New\PlanFeature;
 use App\Models\New\Subscription;
 use App\Models\New\VideoUrl;
 use App\Support\WebpImageUploader;
 use App\Support\MpdDurationExtractor;
+use App\Services\PpvPricingService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use App\Models\MovieModel;
 use App\Models\Trailer;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Http\UploadedFile;
@@ -88,6 +87,103 @@ class MovieController extends Controller
             Log::error('Movie index error', ['error' => $e->getMessage()]);
             return $this->errorResponse('Failed to fetch movies', $e);
         }
+    }
+
+    /**
+     * Public V4 catalog listing. Only published and enabled titles are visible,
+     * and playback links are never included in list responses.
+     */
+    public function publicCatalogIndex(Request $request)
+    {
+        $validated = $request->validate([
+            'page' => 'nullable|integer|min:1',
+            'per_page' => 'nullable|integer|min:1|max:100',
+            'q' => 'nullable|string|max:180',
+            // Accepted for compatibility; public responses always show published content.
+            'status' => 'nullable|string|in:Published,Draft,Scheduled',
+            'sort_by' => 'nullable|string|in:num,title,views,create_date,release_on',
+            'sort_dir' => 'nullable|string|in:asc,desc',
+        ]);
+
+        $query = MovieModel::query()
+            ->where('status', 'Published')
+            ->where('isEnable', 1);
+        $search = trim((string) ($validated['q'] ?? ''));
+
+        if ($search !== '') {
+            $query->where(function ($movieQuery) use ($search): void {
+                $movieQuery
+                    ->where('title', 'like', "%{$search}%")
+                    ->orWhere('id', 'like', "%{$search}%")
+                    ->orWhere('director', 'like', "%{$search}%")
+                    ->orWhere('genre', 'like', "%{$search}%");
+
+                if (ctype_digit($search)) {
+                    $movieQuery->orWhere('num', (int) $search);
+                }
+            });
+        }
+
+        $sortBy = $validated['sort_by'] ?? 'create_date';
+        $sortDir = $validated['sort_dir'] ?? 'desc';
+        $movies = $query
+            ->orderBy($sortBy, $sortDir)
+            ->orderBy('num', 'desc')
+            ->paginate((int) ($validated['per_page'] ?? 15))
+            ->withQueryString();
+
+        $movies->getCollection()->transform(
+            fn ($movie) => $this->transformMovie($movie)
+        );
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $movies,
+        ]);
+    }
+
+    /** V4 public latest shelf; omit restricted links and unpublished content. */
+    public function publicLatestUpdates(Request $request)
+    {
+        $validated = $request->validate([
+            'per_page' => 'nullable|integer|min:1|max:100',
+            'page' => 'nullable|integer|min:1',
+        ]);
+
+        $movies = MovieModel::query()
+            ->leftJoin('seasons', 'seasons.movie_id', '=', 'movie.num')
+            ->leftJoin('episodes', 'episodes.season_id', '=', 'seasons.id')
+            ->where('movie.status', 'Published')
+            ->where('movie.isEnable', 1)
+            ->select('movie.*')
+            ->selectRaw('
+                GREATEST(
+                    movie.created_at,
+                    COALESCE(MAX(seasons.created_at), movie.created_at),
+                    COALESCE(MAX(episodes.created_at), movie.created_at)
+                ) as latest_created_at
+            ')
+            ->groupBy('movie.num')
+            ->orderByDesc('latest_created_at')
+            ->paginate((int) ($validated['per_page'] ?? 10))
+            ->withQueryString();
+
+        $movies->getCollection()->transform(
+            fn ($movie) => $this->transformMovie($movie)
+        );
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Latest updates fetched successfully',
+            'data' => $movies->items(),
+            'pagination' => [
+                'current_page' => $movies->currentPage(),
+                'per_page' => $movies->perPage(),
+                'total' => $movies->total(),
+                'last_page' => $movies->lastPage(),
+                'next_page_url' => $movies->nextPageUrl(),
+            ],
+        ]);
     }
 
     /**
@@ -680,7 +776,7 @@ class MovieController extends Controller
                 unset($data['amount']);
 
             } else {
-                $movie = MovieModel::with('trailerRecord')->where('id', $id)->first();
+                $movie = MovieModel::with('trailerRecords')->where('id', $id)->first();
 
                 if (!$movie) {
                     return response()->json([
@@ -690,8 +786,9 @@ class MovieController extends Controller
                 }
 
                 $data = $movie->toArray();
-                $data['trailer'] = $movie->trailerRecord?->url;
-                unset($data['trailer_record']);
+                $data['trailers'] = $movie->trailerRecords->pluck('url')->values()->all();
+                $data['trailer'] = $data['trailers'][0] ?? null;
+                unset($data['trailer_records']);
             }
 
             return response()->json($data);
@@ -837,7 +934,13 @@ class MovieController extends Controller
             ]);
 
             $type = strtolower($validated['type']);
-            $discountPercent = $this->getPpvDiscountPercent($validated['subscriptionId'] ?? null);
+            $isV4Quote = $request->attributes->has('v4_authenticated_user_id');
+            $discountUserId = $request->attributes->get('v4_authenticated_user_id');
+            $discountPercent = $this->getPpvDiscountPercent(
+                $validated['subscriptionId'] ?? null,
+                is_string($discountUserId) ? $discountUserId : null,
+                $isV4Quote
+            );
 
             if ($type === 'movie') {
                 return $this->getPayPerViewMovieContent($validated['movie_id'], $discountPercent);
@@ -1095,28 +1198,17 @@ class MovieController extends Controller
         ]);
     }
 
-    private function getPpvDiscountPercent(?string $subscriptionId): float
+    private function getPpvDiscountPercent(
+        ?string $subscriptionId,
+        ?string $userId = null,
+        bool $requireOwnerMatch = false
+    ): float
     {
-        if (!$subscriptionId) {
-            return 0;
-        }
-
-        $subscription = Subscription::with('plan')->find($subscriptionId);
-
-        if (!$subscription || !$subscription->isActive() || !$subscription->plan) {
-            return 0;
-        }
-
-        $featuresQuery = PlanFeature::query()->where('is_active', 1);
-
-        if (!Schema::hasColumn('n_plan_features', 'plan_id')) {
-            return 0;
-        }
-
-        $featuresQuery->where('plan_id', $subscription->plan_id);
-
-        return (float) $featuresQuery
-            ->max('ppv_discount');
+        return app(PpvPricingService::class)->discountForSubscription(
+            $subscriptionId,
+            $userId,
+            $requireOwnerMatch
+        );
     }
 
     private function makePpvPaymentOption(string $paymentMovieId, $amount, float $discountPercent): array
@@ -1211,7 +1303,7 @@ class MovieController extends Controller
                 ]);
             }
 
-            $movie = MovieModel::with('trailerRecord')->select([
+            $movie = MovieModel::with('trailerRecords')->select([
                 'num',
                 'title',
                 'url',
@@ -1233,7 +1325,8 @@ class MovieController extends Controller
                 'url' => $movie->url,
                 'dash_url' => $movie->dash_url,
                 'hls_url' => $movie->hls_url,
-                'trailer' => $movie->trailerRecord?->url,
+                'trailer' => $movie->trailerRecords->first()?->url,
+                'trailers' => $movie->trailerRecords->pluck('url')->values()->all(),
                 'subtitle' => $movie->subtitle,
             ])
                 ->filter(fn($value) => $value !== null && $value !== '')
@@ -2030,9 +2123,10 @@ class MovieController extends Controller
 
     private function transformMovie($movie)
     {
-        $movie->loadMissing('trailerRecord');
-        $movie->setAttribute('trailer', $movie->trailerRecord?->url);
-        $movie->unsetRelation('trailerRecord');
+        $movie->loadMissing('trailerRecords');
+        $movie->setAttribute('trailers', $movie->trailerRecords->pluck('url')->values()->all());
+        $movie->setAttribute('trailer', $movie->trailerRecords->first()?->url);
+        $movie->unsetRelation('trailerRecords');
 
         foreach ([
             'isProtected',

@@ -126,9 +126,9 @@ Route::prefix('v4')
             ->middleware('throttle:300,1');
 
         Route::get('/catalog/items/{movieId}/seasons', [SeasonController::class, 'index']);
-        Route::get('/catalog/seasons/{id}', [SeasonController::class, 'show']);
+        Route::get('/catalog/seasons/{id}', [CatalogController::class, 'season']);
         Route::get('/catalog/seasons/{seasonId}/episodes', [EpisodeController::class, 'index']);
-        Route::get('/catalog/episodes/{id}', [EpisodeController::class, 'show']);
+        Route::get('/catalog/episodes/{id}', [CatalogController::class, 'episode']);
 
         Route::get('/billing/plans/device/{deviceType}', [SubscriptionController::class, 'getByDeviceType']);
         Route::post('/external/subscription-history', [SubscriptionController::class, 'storeExternalHistory'])

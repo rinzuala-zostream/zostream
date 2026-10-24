@@ -8,6 +8,7 @@ use App\Http\Controllers\TokenController;
 use App\Models\New\Devices;
 use App\Models\New\Plan;
 use App\Models\New\Subscription;
+use App\Services\PpvPricingService;
 use App\Models\UserModel;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -263,6 +264,39 @@ class QRSessionController extends Controller
                 ], 403);
             }
 
+            if ($request->attributes->get('v4_qr_selection') === true) {
+                if (!empty($validated['plan_id'])) {
+                    $plan = Plan::find($validated['plan_id']);
+                    $sessionDeviceType = $this->normalizeLoginDeviceType(
+                        (string) ($session['device_type'] ?? 'mobile')
+                    );
+
+                    if (!$plan || strtolower((string) $plan->device_type) !== $sessionDeviceType) {
+                        return response()->json([
+                            'status' => 'error',
+                            'message' => 'The selected plan is not available for this QR device.',
+                        ], 422);
+                    }
+
+                    $validated['amount'] = (float) $plan->price;
+                } else {
+                    $amount = app(PpvPricingService::class)->validatePurchaseAmount(
+                        (string) $validated['user_id'],
+                        (string) $validated['movie_id'],
+                        $validated['amount']
+                    );
+
+                    if ($amount === null) {
+                        return response()->json([
+                            'status' => 'error',
+                            'message' => 'PPV price changed or the selected content is unavailable. Refresh the rental price and try again.',
+                        ], 422);
+                    }
+
+                    $validated['amount'] = $amount;
+                }
+            }
+
             $appPaymentType = !empty($validated['plan_id']) ? 'subscription' : 'ppv';
             $updates = [
                 'user_id' => (string) $validated['user_id'],
@@ -458,6 +492,41 @@ class QRSessionController extends Controller
                             'status' => 'error',
                             'message' => 'Only same user can approve the payment',
                         ], 403);
+                    }
+
+                    if ($request->attributes->get('v4_qr_payment_flow') === true) {
+                        if (!empty($session['plan_id'])) {
+                            $plan = Plan::find($session['plan_id']);
+                            $sessionDeviceType = $this->normalizeLoginDeviceType(
+                                (string) ($session['device_type'] ?? 'mobile')
+                            );
+
+                            if (!$plan || strtolower((string) $plan->device_type) !== $sessionDeviceType) {
+                                return response()->json([
+                                    'status' => 'error',
+                                    'message' => 'The selected plan is not available for this QR device.',
+                                ], 422);
+                            }
+
+                            $session['amount'] = (float) $plan->price;
+                        } else {
+                            $amount = app(PpvPricingService::class)->validatePurchaseAmount(
+                                (string) $request->user_id,
+                                (string) ($session['movie_id'] ?? ''),
+                                $session['amount'] ?? null
+                            );
+
+                            if ($amount === null) {
+                                return response()->json([
+                                    'status' => 'error',
+                                    'message' => 'PPV price changed or the selected content is unavailable. Refresh the rental price and try again.',
+                                ], 422);
+                            }
+
+                            $session['amount'] = $amount;
+                        }
+
+                        $ref->update(['amount' => $session['amount']]);
                     }
 
                     // Create Razorpay order

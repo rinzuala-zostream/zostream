@@ -308,9 +308,10 @@ class MovieController extends Controller
 
     private function transformMovie($movie)
     {
-        $movie->loadMissing('trailerRecord');
-        $movie->setAttribute('trailer', $movie->trailerRecord?->url);
-        $movie->unsetRelation('trailerRecord');
+        $movie->loadMissing('trailerRecords');
+        $movie->setAttribute('trailers', $movie->trailerRecords->pluck('url')->values()->all());
+        $movie->setAttribute('trailer', $movie->trailerRecords->first()?->url);
+        $movie->unsetRelation('trailerRecords');
 
         foreach (['isProtected', 'isBollywood', 'isCompleted', 'isDocumentary', 'isDubbed', 'isEnable', 'isHollywood', 'isKorean', 'isMizo', 'isPayPerView', 'isPremium', 'isAgeRestricted', 'isSeason', 'isSubtitle'] as $key) {
             $movie->$key = (bool) $movie->$key;
