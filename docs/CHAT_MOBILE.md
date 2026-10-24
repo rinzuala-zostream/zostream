@@ -6,6 +6,15 @@ The native packages already referenced by both apps contain `ZoChatClient`;
 there is no Firebase chat dependency. Analytics collection can be disabled
 independently of chat.
 
+On both mobile apps, Home has a floating **Global Chat** button at the bottom
+right, above the bottom navigation. Online movie/episode playback has the same
+launcher for its content room. Tapping it expands a rounded panel from the
+button into the lower part of the screen. Tapping outside or Close reverses
+the animation back into the button (Android Back also closes it). The panel
+stays below full-screen height, adapts to the keyboard and safe areas, and leaves
+the underlying playback visible. Closing or leaving the screen releases the
+chat connection. Reduced-motion/system animation preferences are respected.
+
 ## Data and realtime flow
 
 1. `POST /api/v4/chat/rooms/join` with `type: global|movie|episode` and, for
