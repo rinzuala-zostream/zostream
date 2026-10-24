@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Support\Str;
 
 final class ChatController extends Controller
 {
@@ -32,6 +33,189 @@ final class ChatController extends Controller
             'channel' => 'private-chat.'.$room->id, 'websocket_url' => config('chat.websocket_url'),
             'online_count' => $this->chat->presence($r, $room->id),
             'user_id' => (string) $r->input('auth_user_id'), 'slow_mode_seconds' => config('chat.slow_mode_seconds')]);
+    }
+
+    public function lookupInvitee(Request $r)
+    {
+        $v = $r->validate(['phone' => 'required|string|min:7|max:32']);
+        $digits = preg_replace('/\D+/', '', $v['phone']);
+        abort_if(strlen($digits) < 7, 422, 'Enter a valid phone number.');
+        $user = DB::table('user')->where('uid', '!=', (string) $r->input('auth_user_id'))
+            ->whereNotNull('auth_phone')->where('auth_phone', '!=', '')
+            ->whereRaw("REPLACE(REPLACE(REPLACE(REPLACE(auth_phone, '+', ''), ' ', ''), '-', ''), '(', '') LIKE ?", ['%'.$digits])
+            ->first(['uid', 'name']);
+        abort_unless($user, 404, 'No Zo Stream user found for this phone number.');
+
+        return V4Response::success(['user_id' => (string) $user->uid, 'name' => $user->name ?: 'Viewer']);
+    }
+
+    public function createInviteRoom(Request $r)
+    {
+        abort_unless(config('chat.enabled'), 503, 'Chat is currently unavailable.');
+        $v = $r->validate([
+            'type' => ['required', Rule::in(['global', 'movie', 'episode'])],
+            'content_id' => 'required_unless:type,global|nullable|string|max:150',
+            'watch_position_ms' => 'nullable|integer|min:0|max:86400000',
+            'invitee_ids' => 'required|array|min:1|max:20',
+            'invitee_ids.*' => 'required|string|max:191|distinct',
+        ]);
+        $host = (string) $r->input('auth_user_id');
+        $type = $v['type'];
+        $content = null;
+        if ($type !== 'global') {
+            abort_unless($this->chat->playbackAllowed($r, $type, $v['content_id']), 403, 'Start online playback before creating a movie invite room.');
+            $table = $type === 'episode' ? 'episodes' : 'movie';
+            $content = DB::table($table)->where('num', $v['content_id'])->first();
+            abort_unless($content, 404, 'This content is unavailable.');
+            abort_if((bool) ($content->isPayPerView ?? false), 403, 'Invite rooms are unavailable for PPV content.');
+        }
+        $invitees = DB::table('user')->whereIn('uid', $v['invitee_ids'])->where('uid', '!=', $host)->get(['uid', 'name', 'token'])->keyBy('uid');
+        abort_if($invitees->count() !== count($v['invitee_ids']), 422, 'One or more invited users are unavailable.');
+        if ($content && (bool) ($content->isPremium ?? false)) {
+            $eligible = DB::table('n_subscriptions')->whereIn('user_id', $invitees->keys())
+                ->where('is_active', true)->where('end_at', '>=', now()->startOfDay())->distinct()->pluck('user_id')->map(fn ($id) => (string) $id)->all();
+            abort_unless(count($eligible) === $invitees->count(), 403, 'Every invited user needs an active subscription for this title.');
+        }
+
+        $roomId = DB::transaction(function () use ($host, $type, $v, $invitees, $content): int {
+            $now = now();
+            $key = 'invite:'.Str::uuid();
+            $room = DB::table('chat_rooms')->insertGetId([
+                'room_key' => $key, 'type' => 'invite', 'content_id' => $v['content_id'] ?? null,
+                'created_at' => $now, 'updated_at' => $now,
+            ]);
+            DB::table('chat_invite_rooms')->insert([
+                'room_id' => $room, 'host_user_id' => $host,
+                'content_type' => $type === 'global' ? null : $type,
+                'content_id' => $type === 'global' ? null : $v['content_id'],
+                'watch_position_ms' => (int) ($v['watch_position_ms'] ?? 0),
+                'active' => true, 'created_at' => $now, 'updated_at' => $now,
+            ]);
+            foreach ($invitees as $invitee) {
+                DB::table('chat_room_invites')->insert([
+                    'room_id' => $room, 'inviter_user_id' => $host, 'invitee_user_id' => $invitee->uid,
+                    'status' => 'pending', 'expires_at' => $now->copy()->addHours(24), 'created_at' => $now, 'updated_at' => $now,
+                ]);
+            }
+            return $room;
+        });
+
+        foreach ($invitees as $invitee) {
+            if (! empty($invitee->token)) {
+                app(\App\Http\Controllers\FCMNotificationController::class)->sendToToken(
+                    $invitee->token,
+                    'Zo Stream chat invitation',
+                    $type === 'global' ? 'You were invited to a private chat room.' : 'You were invited to watch '.($content->title ?? 'a title').' together.',
+                    key: 'chat_invite', data: ['invite_id' => (string) DB::table('chat_room_invites')->where('room_id', $roomId)->where('invitee_user_id', $invitee->uid)->value('id'), 'room_id' => (string) $roomId]
+                );
+            }
+        }
+
+        return V4Response::success(['room_id' => (string) $roomId, 'room_type' => 'invite', 'content_type' => $type === 'global' ? null : $type,
+            'content_id' => $v['content_id'] ?? null, 'content_title' => $content->title ?? null, 'invite_count' => $invitees->count()], status: 201);
+    }
+
+    public function invites(Request $r)
+    {
+        $uid = (string) $r->input('auth_user_id');
+        $rows = DB::table('chat_room_invites as i')->join('chat_rooms as r', 'r.id', '=', 'i.room_id')
+            ->join('chat_invite_rooms as ir', 'ir.room_id', '=', 'i.room_id')->leftJoin('user as u', 'u.uid', '=', 'i.inviter_user_id')
+            ->where('i.invitee_user_id', $uid)->where('i.status', 'pending')->where('i.expires_at', '>', now())
+            ->where('ir.active', true)->orderByDesc('i.id')->limit(50)
+            ->get(['i.id as invite_id', 'i.room_id', 'i.expires_at', 'ir.content_type', 'ir.content_id', 'ir.watch_position_ms', 'u.name as inviter_name']);
+        $rows->transform(function ($invite) {
+            if ($invite->content_type && $invite->content_id) {
+                $content = DB::table($invite->content_type === 'episode' ? 'episodes' : 'movie')->where('num', $invite->content_id)->first();
+                $invite->content_title = $content->title ?? null;
+                $invite->season_id = $invite->content_type === 'episode' ? ($content->season_id ?? null) : null;
+                $invite->episode_number = $invite->content_type === 'episode' ? ($content->episode_number ?? null) : null;
+                $invite->season_number = $invite->season_id ? DB::table('seasons')->where('id', $invite->season_id)->value('season_number') : null;
+            } else {
+                $invite->content_title = null; $invite->season_id = null; $invite->episode_number = null; $invite->season_number = null;
+            }
+            return $invite;
+        });
+        return V4Response::success(['invites' => $rows]);
+    }
+
+    public function respondInvite(Request $r, int $invite)
+    {
+        $v = $r->validate(['accept' => 'required|boolean']);
+        $uid = (string) $r->input('auth_user_id');
+        $row = DB::table('chat_room_invites as i')->join('chat_invite_rooms as ir', 'ir.room_id', '=', 'i.room_id')
+            ->where('i.id', $invite)->where('i.invitee_user_id', $uid)->where('i.status', 'pending')
+            ->where('i.expires_at', '>', now())->where('ir.active', true)
+            ->first(['i.room_id', 'i.inviter_user_id', 'ir.content_type', 'ir.content_id', 'ir.watch_position_ms']);
+        abort_unless($row, 404, 'This invitation has expired or is no longer available.');
+        $content = null;
+        if ($v['accept'] && $row->content_type && $row->content_id) {
+            $content = DB::table($row->content_type === 'episode' ? 'episodes' : 'movie')->where('num', $row->content_id)->first();
+            abort_unless($content, 404, 'This content is unavailable.');
+            abort_if((bool) ($content->isPayPerView ?? false), 403, 'Invite rooms are unavailable for PPV content.');
+            if ((bool) ($content->isPremium ?? false)) {
+                abort_unless(DB::table('n_subscriptions')->where('user_id', $uid)->where('is_active', true)
+                    ->where('end_at', '>=', now()->startOfDay())->exists(), 403, 'An active subscription is required to accept this invitation.');
+            }
+            // Use the host's latest persisted playback progress at accept time,
+            // instead of a potentially stale position from when the invite was sent.
+            if (\Illuminate\Support\Facades\Schema::hasTable('watch_position')
+                && \Illuminate\Support\Facades\Schema::hasColumn('watch_position', 'updated_at')) {
+                $progress = DB::table('watch_position')->where('user_id', $row->inviter_user_id)
+                    ->where('movie_id', $row->content_id)->when(\Illuminate\Support\Facades\Schema::hasColumn('watch_position', 'movie_type'),
+                        fn ($q) => $q->where('movie_type', $row->content_type))
+                    ->where('updated_at', '>=', now()->subMinute())->value('position');
+                if ($progress !== null) {
+                    $positionMs = min(86400000, max(0, (int) $progress * 1000));
+                    DB::table('chat_invite_rooms')->where('room_id', $row->room_id)->update(['watch_position_ms' => $positionMs, 'updated_at' => now()]);
+                    $row->watch_position_ms = $positionMs;
+                }
+            }
+        }
+        DB::table('chat_room_invites')->where('id', $invite)->where('status', 'pending')->update([
+            'status' => $v['accept'] ? 'accepted' : 'declined', 'responded_at' => now(), 'updated_at' => now(),
+        ]);
+        return V4Response::success(['accepted' => (bool) $v['accept'], 'room_id' => (string) $row->room_id,
+            'content_type' => $row->content_type, 'content_id' => $row->content_id,
+            'content_title' => $content->title ?? null,
+            'season_id' => ($row->content_type === 'episode' ? ($content->season_id ?? null) : null),
+            'season_number' => ($row->content_type === 'episode' && ! empty($content->season_id) ? DB::table('seasons')->where('id', $content->season_id)->value('season_number') : null),
+            'episode_number' => ($row->content_type === 'episode' ? ($content->episode_number ?? null) : null),
+            'watch_position_ms' => (int) $row->watch_position_ms]);
+    }
+
+    public function joinInviteRoom(Request $r, int $room)
+    {
+        $roomInfo = $this->chat->room($r, $room);
+        abort_unless($roomInfo->type === 'invite', 404);
+        $inviteRoom = DB::table('chat_invite_rooms')->where('room_id', $room)->first();
+        $content = $inviteRoom->content_type && $inviteRoom->content_id
+            ? DB::table($inviteRoom->content_type === 'episode' ? 'episodes' : 'movie')->where('num', $inviteRoom->content_id)->first() : null;
+        $seasonId = $inviteRoom->content_type === 'episode' ? ($content->season_id ?? null) : null;
+        $this->chat->room($r, $room);
+        return V4Response::success(['room_id' => (string) $room, 'room_type' => 'invite', 'channel' => 'private-chat.'.$room,
+            'websocket_url' => config('chat.websocket_url'), 'online_count' => $this->chat->presence($r, $room),
+            'user_id' => (string) $r->input('auth_user_id'), 'content_type' => $inviteRoom->content_type,
+            'content_id' => $inviteRoom->content_id, 'watch_position_ms' => (int) $inviteRoom->watch_position_ms,
+            'is_host' => $inviteRoom->host_user_id === (string) $r->input('auth_user_id'),
+            'content_title' => $content->title ?? null, 'season_id' => $seasonId,
+            'season_number' => $seasonId ? DB::table('seasons')->where('id', $seasonId)->value('season_number') : null,
+            'episode_number' => $content->episode_number ?? null,
+            'slow_mode_seconds' => config('chat.slow_mode_seconds')]);
+    }
+
+    public function updateInvitePosition(Request $r, int $room)
+    {
+        $v = $r->validate(['position_ms' => 'nullable|integer|min:0|max:86400000']);
+        $this->chat->room($r, $room, true);
+        $inviteRoom = DB::table('chat_invite_rooms')->where('room_id', $room)->first();
+        abort_unless($inviteRoom, 404);
+        $isHost = $inviteRoom->host_user_id === (string) $r->input('auth_user_id');
+        if ($isHost && isset($v['position_ms'])) {
+            DB::table('chat_invite_rooms')->where('room_id', $room)->update(['watch_position_ms' => $v['position_ms'], 'updated_at' => now()]);
+            $inviteRoom->watch_position_ms = $v['position_ms'];
+        }
+        abort_if(! $isHost && isset($v['position_ms']), 403, 'Only the host can update playback position.');
+        return V4Response::success(['position_ms' => (int) $inviteRoom->watch_position_ms, 'is_host' => $isHost]);
     }
 
     public function auth(Request $r, int $room)

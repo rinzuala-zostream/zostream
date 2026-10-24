@@ -21,6 +21,7 @@ public struct ChatRoom: Decodable, Sendable {
     public let channel: String
     public let websocket_url: String
     public let user_id: String
+    public let is_host: Bool?
 }
 private struct ChatEnvelope<T: Decodable>: Decodable {
     let success: Bool
@@ -94,6 +95,24 @@ public final class ZoChatClient {
 
     public func join(type: String, contentId: String?) async throws -> ChatRoom {
         owner = credentials()?.ownerKey
+        if type == "invite", let contentId {
+            let info = try await request("invite-rooms/\(contentId)/join", body: [:], as: ChatRoom.self)
+            room = info; connect()
+            syncTask?.cancel()
+            syncTask = Task { [weak self] in
+                while !Task.isCancelled {
+                    do { try await Task.sleep(nanoseconds: 30_000_000_000) } catch { return }
+                    guard let self, !self.closed else { return }
+                    if self.credentials()?.ownerKey != self.owner { self.close(); return }
+                    if let room = self.room {
+                        struct Presence: Decodable { let online_count: Int }
+                        let _: Presence? = try? await self.request("rooms/\(room.room_id)/heartbeat", body: [:], as: Presence.self)
+                    }
+                    self.onChanged?("sync", nil)
+                }
+            }
+            return info
+        }
         var body: [String: Any] = ["type": type]
         if let contentId { body["content_id"] = contentId }
         let info = try await request("rooms/join", body: body, as: ChatRoom.self)

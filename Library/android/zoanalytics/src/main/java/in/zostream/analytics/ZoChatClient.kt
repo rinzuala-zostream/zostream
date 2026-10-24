@@ -73,6 +73,17 @@ class ZoChatClient(
 
     fun join(type: String, contentId: String?, callback: (JSONObject?, String?) -> Unit) {
         owner = credentials()?.ownerKey
+        if (type == "invite") {
+            val roomId = contentId ?: return callback(null, "Invite room unavailable")
+            request("invite-rooms/$roomId/join", JSONObject()) { data, error ->
+                room = data; callback(data, error)
+                if (data != null) {
+                    connect()
+                    main.removeCallbacks(reconcile); main.postDelayed(reconcile, 30_000)
+                }
+            }
+            return
+        }
         val body = JSONObject().put("type", type)
         if (contentId != null) body.put("content_id", contentId)
         request("rooms/join", body) { data, error ->

@@ -23,10 +23,36 @@ final class ChatService
             $ban = $ban || $kind === 'ban' || ($writing && $kind === 'mute');
         }
         abort_if($ban, 403, 'Chat access is restricted.');
-        if ($room->type !== 'global') {
+        if (in_array($room->type, ['movie', 'episode'], true)) {
             // A room identifier alone never grants access to premium/PPV content.
             $valid = $this->playbackAllowed($r, $room->type, $room->content_id);
             abort_unless($valid, 403, 'Start online playback to join this movie chat.');
+        }
+        if ($room->type === 'invite') {
+            $inviteRoom = DB::table('chat_invite_rooms')->where('room_id', $id)->first();
+            abort_unless($inviteRoom && $inviteRoom->active, 403, 'This invite room is closed.');
+            $member = (string) $r->input('auth_user_id');
+            abort_unless($inviteRoom->host_user_id === $member || DB::table('chat_room_invites')
+                ->where('room_id', $id)->where('invitee_user_id', $member)->where('status', 'accepted')->exists(),
+                403, 'You were not invited to this room.');
+            if ($inviteRoom->content_type && $inviteRoom->content_id) {
+                $hostStreamActive = DB::table('n_active_streams as s')->join('n_devices as d', 'd.id', '=', 's.device_id')
+                    ->where('d.user_id', $inviteRoom->host_user_id)->where('s.status', 'active')
+                    ->where('s.content_type', $inviteRoom->content_type)->where('s.content_key', $inviteRoom->content_id)
+                    ->where('s.last_ping', '>=', now()->subMinutes(3))->exists();
+                abort_unless($hostStreamActive, 403, 'The host is no longer watching this title.');
+                $content = DB::table($inviteRoom->content_type === 'episode' ? 'episodes' : 'movie')
+                    ->where($inviteRoom->content_type === 'episode' ? 'num' : 'num', $inviteRoom->content_id)->first();
+                abort_unless($content, 404, 'This content is unavailable.');
+                if ((bool) ($content->isPayPerView ?? false)) {
+                    abort(403, 'Invite rooms are unavailable for PPV content.');
+                }
+                if ((bool) ($content->isPremium ?? false)) {
+                    abort_unless(DB::table('n_subscriptions as s')->join('n_plans as p', 'p.id', '=', 's.plan_id')
+                        ->where('s.user_id', $member)->where('s.is_active', true)->where('s.end_at', '>=', now()->startOfDay())->exists(),
+                        403, 'An active subscription is required to watch this title.');
+                }
+            }
         }
 
         return $room;
