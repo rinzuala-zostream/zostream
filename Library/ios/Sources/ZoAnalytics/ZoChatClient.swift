@@ -25,11 +25,6 @@ public struct ChatRoom: Decodable, Sendable {
     public let room_name: String?
     public let content_type: String?
 }
-private struct ChatEnvelope<T: Decodable>: Decodable {
-    let success: Bool
-    let data: T?
-    let message: String?
-}
 public struct ChatFailure: LocalizedError {
     public let message: String
     public var errorDescription: String? { message }
@@ -93,11 +88,26 @@ public final class ZoChatClient {
             try await refreshCredentials(c.accessToken)
             return try await self.request(path, body: body, as: type, retryUnauthorized: false)
         }
-        let result = try JSONDecoder().decode(ChatEnvelope<T>.self, from: data)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode), result.success, let value = result.data else {
-            throw ChatFailure(message: result.message ?? "Chat request failed")
+        guard let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+            throw ChatFailure(message: "Chat returned an unreadable response. Please try again.")
         }
-        return value
+        let successValue = json["success"]
+        let declaredSuccess: Bool
+        if let number = successValue as? NSNumber { declaredSuccess = number.intValue != 0 }
+        else if let string = successValue as? String { declaredSuccess = string.lowercased() == "true" || string == "1" }
+        else { declaredSuccess = (json["status"] as? String)?.lowercased() == "success" }
+        let payloadKeys = ["room_id", "user_id", "messages", "invites", "rooms", "ended", "accepted", "position_ms",
+                           "online_count", "auth", "blocked", "left", "users", "reported", "resolved", "updated"]
+        let undeclared = successValue == nil || successValue is NSNull
+        let directPayload = payloadKeys.contains { json[$0] != nil && !(json[$0] is NSNull) }
+        let successfulEnvelope = declaredSuccess || (undeclared && (json["data"] is [String: Any] || directPayload))
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode), successfulEnvelope else {
+            let message = (json["message"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+                ?? ((json["error"] as? [String: Any])?["message"] as? String)
+            throw ChatFailure(message: message ?? "Chat request failed")
+        }
+        let payload = json["data"] as? [String: Any] ?? json["result"] as? [String: Any] ?? json
+        return try JSONDecoder().decode(T.self, from: JSONSerialization.data(withJSONObject: payload))
     }
 
     public func join(type: String, contentId: String?) async throws -> ChatRoom {

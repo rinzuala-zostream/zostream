@@ -15,6 +15,8 @@ No production migration or deployment is performed by adding this code.
    `database/migrations/2026_10_25_000001_create_invite_chat_rooms.php`,
    `database/migrations/2026_10_26_000001_add_room_name_to_chat_invite_rooms.php`,
    `database/migrations/2026_10_26_000002_add_idle_expiry_to_private_chat_rooms.php`.
+   For unread badges/read-position restore, also run
+   `php artisan migrate --force --path=database/migrations/2026_10_26_000003_create_chat_room_reads.php`.
    Existing private rooms receive a one-hour deadline from their latest message
    or creation time. Rooms already idle for an hour become unavailable. Deploy
    this backend and apply the migrations before releasing apps with End room.

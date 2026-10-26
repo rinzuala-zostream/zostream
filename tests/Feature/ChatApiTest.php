@@ -29,6 +29,7 @@ class ChatApiTest extends TestCase
         (require database_path('migrations/2026_10_25_000001_create_invite_chat_rooms.php'))->up();
         (require database_path('migrations/2026_10_26_000001_add_room_name_to_chat_invite_rooms.php'))->up();
         (require database_path('migrations/2026_10_26_000002_add_idle_expiry_to_private_chat_rooms.php'))->up();
+        (require database_path('migrations/2026_10_26_000003_create_chat_room_reads.php'))->up();
         Schema::create('user', function (Blueprint $t) {
             $t->id();
             $t->string('uid');
@@ -263,6 +264,100 @@ class ChatApiTest extends TestCase
         $this->assertTrue((bool) DB::table('chat_invite_rooms')->where('room_id', $room)->value('active'));
     }
 
+    private function unread(array $identity = [], array $headers = [])
+    {
+        return $this->withHeaders($headers)->getJson('/api/v4/chat/unread?'.http_build_query(array_merge($this->identity(), $identity)));
+    }
+
+    public function test_unread_counts_exclude_own_deleted_blocked_and_expired_messages(): void
+    {
+        $room = $this->room();
+        $first = $this->message($room, 'bob');
+        $last = $this->message($room, 'bob');
+        $this->message($room, 'alice');
+        $deleted = $this->message($room, 'bob');
+        DB::table('chat_messages')->where('id', $deleted)->update(['deleted_at' => now()]);
+        $this->message($room, 'blocked');
+        DB::table('chat_blocks')->insert(['user_id' => 'alice', 'blocked_user_id' => 'blocked']);
+        $old = $this->message($room, 'bob');
+        DB::table('chat_messages')->where('id', $old)->update(['created_at' => now()->subDays(31)]);
+        $this->unread()->assertOk()->assertJsonPath('data.total_unread', 2)
+            ->assertJsonPath('data.rooms.0.key', 'global')
+            ->assertJsonPath('data.rooms.0.first_unread_id', (string) $first);
+        $this->postJson("/api/v4/chat/rooms/$room/read", $this->identity(['message_id' => $first]))->assertOk();
+        $this->unread()->assertJsonPath('data.total_unread', 1)
+            ->assertJsonPath('data.rooms.0.first_unread_id', (string) $last);
+    }
+
+    public function test_read_watermarks_are_monotonic_shared_between_devices_and_do_not_read_future_messages(): void
+    {
+        $room = $this->room();
+        $first = $this->message($room, 'bob');
+        $second = $this->message($room, 'bob');
+        $this->postJson("/api/v4/chat/rooms/$room/read", $this->identity(['message_id' => $second]))->assertOk();
+        $this->postJson("/api/v4/chat/rooms/$room/read", $this->identity(['message_id' => $first]))
+            ->assertOk()->assertJsonPath('data.last_read_message_id', (string) $second);
+        $third = $this->message($room, 'bob');
+        $this->unread(['auth_device_id' => 'another-device'])->assertOk()->assertJsonPath('data.total_unread', 1)
+            ->assertJsonPath('data.rooms.0.last_read_message_id', (string) $second)
+            ->assertJsonPath('data.rooms.0.first_unread_id', (string) $third);
+        $this->postJson("/api/v4/chat/rooms/$room/read", $this->identity(['message_id' => $third + 1000]))->assertStatus(422);
+    }
+
+    public function test_unread_summary_never_exposes_uninvited_pending_closed_or_expired_private_rooms(): void
+    {
+        $room = $this->createPrivateRoom();
+        $first = $this->message($room, 'alice');
+        $bob = ['auth_user_id' => 'bob', 'auth_device_id' => 'device-b'];
+        $this->unread($bob)->assertOk()->assertJsonCount(0, 'data.rooms');
+        $this->postJson("/api/v4/chat/rooms/$room/read", $bob + ['message_id' => $first])->assertForbidden();
+        $invite = DB::table('chat_room_invites')->where('room_id', $room)->value('id');
+        $this->postJson("/api/v4/chat/invites/$invite/respond", $bob + ['accept' => true])->assertOk();
+        $this->unread($bob)->assertJsonPath('data.total_unread', 1)->assertJsonPath('data.rooms.0.key', 'invite:'.$room);
+        $deadline = DB::table('chat_invite_rooms')->where('room_id', $room)->value('idle_expires_at');
+        $this->postJson("/api/v4/chat/rooms/$room/read", $bob + ['message_id' => $first])->assertOk();
+        $this->assertSame($deadline, DB::table('chat_invite_rooms')->where('room_id', $room)->value('idle_expires_at'));
+        $this->postJson("/api/v4/chat/invite-rooms/$room/end", $this->identity())->assertOk();
+        $this->unread($bob)->assertJsonCount(0, 'data.rooms')->assertJsonPath('data.total_unread', 0);
+        $this->postJson("/api/v4/chat/rooms/$room/read", $bob + ['message_id' => $first])->assertForbidden();
+    }
+
+    public function test_unread_movie_counts_require_the_matching_playback_context(): void
+    {
+        DB::table('n_devices')->insert(['id' => 1, 'user_id' => 'alice', 'device_token' => 'device-a']);
+        DB::table('n_active_streams')->insert(['device_id' => 1, 'stream_token' => 'play-a', 'status' => 'active', 'content_type' => 'movie', 'content_key' => 'film-a', 'last_ping' => now()]);
+        $room = $this->withHeaders(['X-Playback-Token' => 'play-a'])->postJson('/api/v4/chat/rooms/join', $this->identity(['type' => 'movie', 'content_id' => 'film-a']))->assertOk()->json('data.room_id');
+        $this->message($room, 'bob');
+        $this->unread()->assertJsonCount(0, 'data.rooms');
+        $this->unread(['type' => 'movie', 'content_id' => 'film-a'], ['X-Playback-Token' => 'wrong'])->assertJsonCount(0, 'data.rooms');
+        $this->unread(['type' => 'movie', 'content_id' => 'film-a'], ['X-Playback-Token' => 'play-a'])
+            ->assertJsonPath('data.total_unread', 1)->assertJsonPath('data.rooms.0.key', 'movie:film-a');
+    }
+
+    public function test_first_unread_history_can_start_before_the_recent_page_and_is_paginated(): void
+    {
+        $room = $this->room();
+        $ids = [];
+        for ($i = 0; $i < 155; $i++) { $ids[] = $this->message($room, 'bob'); }
+        $this->unread()->assertJsonPath('data.rooms.0.first_unread_id', (string) $ids[0]);
+        $page = $this->getJson("/api/v4/chat/rooms/$room/messages?".http_build_query($this->identity(['after' => 0])))
+            ->assertOk()->assertJsonPath('data.has_more', true)->json('data.messages');
+        $this->assertSame((string) $ids[0], $page[0]['id']);
+        $this->assertCount(50, $page);
+        $this->postJson("/api/v4/chat/rooms/$room/read", $this->identity(['message_id' => $ids[49]]))->assertOk();
+        $this->unread()->assertJsonPath('data.total_unread', 105)->assertJsonPath('data.rooms.0.first_unread_id', (string) $ids[50]);
+    }
+
+    public function test_banned_viewer_cannot_inspect_counts_or_advance_reads(): void
+    {
+        $room = $this->room();
+        $message = $this->message($room, 'bob');
+        DB::table('chat_bans')->insert(['room_id' => 0, 'user_id' => 'alice', 'kind' => 'ban']);
+        app(\App\Support\Chat\ChatService::class)->invalidateBan('alice', 0);
+        $this->unread()->assertOk()->assertJsonCount(0, 'data.rooms')->assertJsonPath('data.total_unread', 0);
+        $this->postJson("/api/v4/chat/rooms/$room/read", $this->identity(['message_id' => $message]))->assertForbidden();
+    }
+
     public function test_send_retry_is_idempotent_and_preserves_trusted_sender(): void
     {
         $room = $this->room();
@@ -385,7 +480,8 @@ class ChatApiTest extends TestCase
     public function test_account_erasure_tombstones_chat_and_clears_blocks(): void
     {
         $room = $this->room();
-        $this->message($room, 'alice', 'remove me');
+        $id = $this->message($room, 'alice', 'remove me');
+        $this->postJson("/api/v4/chat/rooms/$room/read", $this->identity(['message_id' => $id]))->assertOk();
         DB::table('chat_blocks')->insert(['user_id' => 'alice', 'blocked_user_id' => 'bob']);
         DB::transaction(fn () => app(\App\Support\Chat\ChatService::class)->eraseUser('alice'));
         $m = DB::table('chat_messages')->first();
@@ -393,6 +489,7 @@ class ChatApiTest extends TestCase
         $this->assertStringStartsWith('deleted:', $m->user_id);
         $this->assertSame('Deleted viewer', $m->display_name);
         $this->assertSame(0, DB::table('chat_blocks')->count());
+        $this->assertSame(0, DB::table('chat_room_reads')->count());
         $this->assertSame('deleted', DB::table('chat_outbox')->value('kind'));
     }
 

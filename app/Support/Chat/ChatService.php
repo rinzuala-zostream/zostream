@@ -181,6 +181,9 @@ final class ChatService
         DB::table('chat_blocks')->where('user_id', $uid)->orWhere('blocked_user_id', $uid)->delete();
         DB::table('chat_bans')->where('user_id', $uid)->delete();
         DB::table('chat_reports')->where('user_id', $uid)->delete();
+        if (\Illuminate\Support\Facades\Schema::hasTable('chat_room_reads')) {
+            DB::table('chat_room_reads')->where('user_id', $uid)->delete();
+        }
         DB::table('chat_outbox')->where('analytics->user_id', $uid)->update(['analytics' => null]);
         $this->invalidateBlocks($uid);
     }

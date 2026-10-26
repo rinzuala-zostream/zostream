@@ -15,6 +15,19 @@ final class ChatController extends Controller
 {
     public function __construct(private readonly ChatService $chat) {}
 
+    public function unread(Request $r, \App\Support\Chat\ChatReadService $reads)
+    {
+        abort_unless(config('chat.enabled'), 503, 'Chat is currently unavailable.');
+        $v = $r->validate(['type' => ['sometimes', Rule::in(['global', 'movie', 'episode'])], 'content_id' => 'nullable|string|max:150']);
+        return V4Response::success($reads->summary($r, $v['type'] ?? 'global', $v['content_id'] ?? null));
+    }
+
+    public function markRead(Request $r, int $room, \App\Support\Chat\ChatReadService $reads)
+    {
+        $v = $r->validate(['message_id' => 'required|integer|min:1']);
+        return V4Response::success($reads->mark($r, $room, (int) $v['message_id']));
+    }
+
     public function join(Request $r)
     {
         abort_unless(config('chat.enabled'), 503, 'Chat is currently unavailable.');

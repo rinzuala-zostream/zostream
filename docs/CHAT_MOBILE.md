@@ -6,9 +6,14 @@ The native packages already referenced by both apps contain `ZoChatClient`;
 there is no Firebase chat dependency. Analytics collection can be disabled
 independently of chat.
 
+Flow comparison and verification limits: [Android/iOS review](CHAT_MOBILE_PARITY.md).
+
 On both mobile apps, Home has a floating **Global Chat** button at the bottom
-right, above the bottom navigation. Online movie/episode playback has the same
-launcher for its content room. Tapping it expands a rounded panel from the
+right, above the bottom navigation. Online movie/episode playback has a chat
+toggle in its player controls. Portrait shows the player above chat; landscape
+shows the player on the left and chat in the right 40% of the available width.
+Closing player chat restores the full player. The Home launcher opens its
+existing chat sheet. Tapping it expands a rounded panel from the
 button into the lower part of the screen. Tapping outside or Close reverses
 the animation back into the button (Android Back also closes it). The panel
 stays below full-screen height, adapts to the keyboard and safe areas, and leaves
@@ -16,6 +21,39 @@ the underlying playback visible. Closing or leaving the screen releases the
 chat connection. Reduced-motion/system animation preferences are respected.
 
 ## Data and realtime flow
+
+### Unread badges and read position
+
+The Home launcher and player controller chat button show unread counts. Room
+tabs show individual counts; iOS's Rooms menu also lists each room's count.
+Counts exclude the viewer's own messages, blocked senders, removed messages,
+expired history and rooms they cannot currently access. Home includes Global
+and active private rooms; the player additionally includes its current content
+and matching Watch Together rooms.
+
+`GET /api/v4/chat/unread?type=global|movie|episode&content_id=...` returns
+`total_unread` and `rooms` containing `room_id`, `key`, `unread_count`,
+`last_read_message_id` and `first_unread_id`. IDs are strings. Movie counts
+require the existing playback authorization. Badge snapshots refresh every ten
+seconds while the screen is active, with additional refreshes on realtime events
+and read acknowledgements. This does not add background push notifications.
+
+`POST /api/v4/chat/rooms/{room}/read` with `message_id` advances a user/room read
+cursor monotonically. Opening a sheet or fetching history does not mark messages
+read: clients report messages actually visible in the transcript. Read cursors
+are shared between devices and do not extend a private room's idle deadline.
+Pending read acknowledgements are stored locally per account for retries.
+
+Reopening/switching to a room starts at its first unread message, with a New
+messages divider. Unread history starts immediately after that boundary and
+loads in pages, including when the boundary is older than the recent window.
+With no unread messages, the room opens at the bottom. While already following
+the bottom, incoming messages continue to auto-scroll. Reading older messages
+preserves the position; New messages jumps to the latest page. With no saved
+read cursor yet, retained incoming messages count as unread.
+
+Apply `2026_10_26_000003_create_chat_room_reads.php` before deploying these APIs
+or the updated apps. Account deletion also removes server-side read cursors.
 
 1. `POST /api/v4/chat/rooms/join` with `type: global|movie|episode` and, for
    content rooms, `content_id`. Identity comes from `auth.token`, never the body.

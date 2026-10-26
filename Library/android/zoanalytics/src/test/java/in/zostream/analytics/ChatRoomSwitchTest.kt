@@ -12,10 +12,59 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28])
 class ChatRoomSwitchTest {
+    @Test fun accountChangeDiscardsOldResponsesAndDoesNotReplayQueuedWrites() {
+        val owner = AtomicReference("alice")
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val calls = AtomicInteger()
+        val http = OkHttpClient.Builder().addInterceptor { chain ->
+            if (calls.incrementAndGet() == 1) {
+                entered.countDown()
+                check(release.await(2, TimeUnit.SECONDS))
+            }
+            Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("OK")
+                .body("""{"success":true,"data":{"rooms":[]}}""".toResponseBody("application/json".toMediaType())).build()
+        }.build()
+        val client = ZoChatClient("https://example.test", { AnalyticsCredentials("token", "device", owner.get()) }, "test",
+            onChanged = { _, _ -> }, onConnection = {}, http = http)
+        var oldCallback = false
+        var completed = false
+        try {
+            client.request("invite-rooms") { _, _ -> oldCallback = true }
+            assertTrue(entered.await(2, TimeUnit.SECONDS))
+            client.request("invite-rooms", JSONObject()) { _, _ -> oldCallback = true }
+            owner.set("bob")
+            release.countDown()
+            client.request("invite-rooms") { data, error -> assertNull(error); completed = data != null }
+            await { completed }
+            assertFalse(oldCallback)
+            assertEquals(2, calls.get())
+        } finally { release.countDown(); client.close() }
+    }
+
+    @Test fun malformedResponseShowsReadableError() {
+        val http = OkHttpClient.Builder().addInterceptor { chain ->
+            Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(502).message("Bad gateway")
+                .body("<html>Gateway unavailable</html>".toResponseBody("text/html".toMediaType())).build()
+        }.build()
+        val client = ZoChatClient("https://example.test", { AnalyticsCredentials("token", "device", "alice") }, "test",
+            onChanged = { _, _ -> }, onConnection = {}, http = http)
+        var error: String? = null
+        try {
+            client.request("invites") { data, failure -> assertNull(data); error = failure }
+            await { error != null }
+            assertEquals("Chat returned an unreadable response. Please try again.", error)
+        } finally { client.close() }
+    }
+
     private class Socket(private val original: Request, val listener: WebSocketListener) : WebSocket {
         val events = mutableListOf<JSONObject>()
         var cancellations = 0
@@ -97,5 +146,26 @@ class ChatRoomSwitchTest {
             assertEquals(1, http.sockets.size)
         } finally { client.close() }
         assertEquals(1, http.sockets.single().cancellations)
+    }
+
+    @Test fun directRoomListAndEndResponsesAreRecognized() {
+        var responseBody = """{"rooms":[]}"""
+        val http = OkHttpClient.Builder().addInterceptor { chain ->
+            Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("OK")
+                .body(responseBody.toResponseBody("application/json".toMediaType())).build()
+        }.build()
+        val client = ZoChatClient("https://example.test", { AnalyticsCredentials("token", "device", "owner") }, "test",
+            onChanged = { _, _ -> }, onConnection = {}, http = http)
+        try {
+            var response: JSONObject? = null
+            client.request("invite-rooms") { data, error -> assertNull(error); response = data }
+            await { response != null }
+            assertEquals(0, response!!.getJSONArray("rooms").length())
+            response = null
+            responseBody = """{"ended":true}"""
+            client.request("invite-rooms/1/end", JSONObject()) { data, error -> assertNull(error); response = data }
+            await { response != null }
+            assertTrue(response!!.getBoolean("ended"))
+        } finally { client.close() }
     }
 }

@@ -166,6 +166,8 @@ Route::prefix('v4')
 
         Route::middleware('auth.token')->group(function () {
             Route::prefix('chat')->group(function () {
+                Route::get('/unread', [\App\Http\Controllers\Api\V4\ChatController::class, 'unread'])->middleware(\App\Http\Middleware\ChatThrottle::class.':240');
+                Route::post('/rooms/{room}/read', [\App\Http\Controllers\Api\V4\ChatController::class, 'markRead'])->whereNumber('room')->middleware(\App\Http\Middleware\ChatThrottle::class.':240');
                 Route::get('/blocks', [\App\Http\Controllers\Api\V4\ChatController::class, 'blocks'])->whereNumber(['room', 'message', 'report'])->middleware(\App\Http\Middleware\ChatThrottle::class.':60');
                 Route::post('/rooms/{room}/heartbeat', [\App\Http\Controllers\Api\V4\ChatController::class, 'heartbeat'])->whereNumber(['room', 'message', 'report'])->middleware(\App\Http\Middleware\ChatThrottle::class.':60');
                 Route::post('/rooms/{room}/leave', [\App\Http\Controllers\Api\V4\ChatController::class, 'leave'])->whereNumber(['room', 'message', 'report'])->middleware(\App\Http\Middleware\ChatThrottle::class.':60');

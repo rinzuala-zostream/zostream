@@ -19,6 +19,39 @@ private final class ChatURLProtocol: URLProtocol {
 
 final class ChatClientTests: XCTestCase {
     @MainActor
+    func testResponseFormatsMatchAndroidAndPreserveServerErrors() async throws {
+        struct Rooms: Decodable { let rooms: [String] }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [ChatURLProtocol.self]
+        let client = ZoChatClient(baseURL: URL(string: "https://example.test")!, version: "test", credentials: {
+            AnalyticsCredentials(accessToken: "token", deviceToken: "device", ownerKey: "alice")
+        }, session: URLSession(configuration: configuration))
+        defer { client.close() }
+        for body in [
+            #"{"success":true,"data":{"rooms":["1"]}}"#,
+            #"{"success":1,"data":{"rooms":["1"]}}"#,
+            #"{"success":"true","data":{"rooms":["1"]}}"#,
+            #"{"status":"success","result":{"rooms":["1"]}}"#,
+            #"{"data":{"rooms":["1"]}}"#,
+            #"{"rooms":["1"]}"#,
+        ] {
+            ChatURLProtocol.handle = { _ in (200, body) }
+            let value = try await client.request("invite-rooms", as: Rooms.self)
+            XCTAssertEqual(value.rooms, ["1"])
+        }
+        for (status, body) in [
+            (403, #"{"success":false,"data":{},"message":"Room ended"}"#),
+            (200, #"{"success":false,"rooms":["1"],"error":{"message":"Room ended"}}"#),
+        ] {
+            ChatURLProtocol.handle = { _ in (status, body) }
+            do {
+                let _: Rooms = try await client.request("invite-rooms", as: Rooms.self)
+                XCTFail("A failed response must not be decoded as successful data")
+            } catch { XCTAssertEqual(error.localizedDescription, "Room ended") }
+        }
+    }
+
+    @MainActor
     func testExpiredCredentialRefreshRetriesOnceAndKeepsDeviceIdentity() async throws {
         struct Value: Decodable { let ok: Bool }
         let configuration = URLSessionConfiguration.ephemeral

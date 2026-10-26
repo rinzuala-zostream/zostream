@@ -46,17 +46,19 @@ class ZoChatClient(
 
     fun request(path: String, body: JSONObject? = null, callback: (JSONObject?, String?) -> Unit) {
         if (closed) return
+        val requestOwner = credentials()?.ownerKey
         executor.execute {
-            val result = runCatching { perform(path, body) }
+            val result = runCatching { perform(path, body, requestOwner) }
             main.post {
-                if (!closed)
+                if (!closed && credentials()?.ownerKey == requestOwner)
                     result.fold({ callback(it, null) }, { callback(null, it.message ?: "Chat unavailable") })
             }
         }
     }
 
-    private fun perform(path: String, body: JSONObject?): JSONObject {
+    private fun perform(path: String, body: JSONObject?, requestOwner: String?): JSONObject {
         val c = credentials() ?: error("Please sign in again")
+        check(c.ownerKey == requestOwner) { "Account changed. Reopen chat." }
         check(owner == null || owner == c.ownerKey) { "Account changed. Reopen chat." }
         val request = Request.Builder().url(baseUrl.trimEnd('/') + "/api/v4/chat/" + path)
             .header("Authorization", "Bearer " + c.accessToken.removePrefix("Bearer "))
@@ -67,7 +69,9 @@ class ZoChatClient(
         if (body != null) request.post(body.toString().toRequestBody("application/json".toMediaType()))
         val call = http.newCall(request.build()); pendingCall = call
         return call.execute().use { response ->
-            val json = JSONObject(response.body?.string() ?: "{}")
+            check(!closed && credentials()?.ownerKey == c.ownerKey) { "Account changed. Reopen chat." }
+            val json = try { JSONObject(response.body?.string() ?: "{}") }
+                catch (_: org.json.JSONException) { error("Chat returned an unreadable response. Please try again.") }
             val data = json.optJSONObject("data")
             val successValue = json.opt("success")
             val declaredSuccess = when (successValue) {
@@ -79,7 +83,7 @@ class ZoChatClient(
             // Chat endpoints on some deployed API versions return their payload directly.
             val successUndeclared = successValue == null || successValue == JSONObject.NULL
             val payloadKeys = listOf(
-                "room_id", "user_id", "messages", "invites", "accepted", "position_ms",
+                "room_id", "user_id", "messages", "invites", "rooms", "ended", "accepted", "position_ms",
                 "online_count", "auth", "blocked", "left", "users", "reported", "resolved", "updated"
             )
             val hasDirectPayload = payloadKeys.any { key -> json.has(key) && json.opt(key) != JSONObject.NULL }
@@ -91,7 +95,7 @@ class ZoChatClient(
                 val keys = json.keys().asSequence().joinToString(",")
                 val diagnostic = "Chat request failed (${response.code}) at $path (success=$successValue, status=${json.optString("status")}, fields=$keys)"
                 android.util.Log.e("ZoChatClient", diagnostic)
-                message ?: diagnostic
+                message ?: "Chat request failed. Please try again."
             }
             data ?: json.optJSONObject("result") ?: json
         }
