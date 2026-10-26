@@ -1,6 +1,12 @@
 <?php
 
 return [
+    'whatsapp_enabled' => env('CHAT_WHATSAPP_ENABLED', false),
+    'whatsapp_template' => env('CHAT_WHATSAPP_TEMPLATE', 'zostream_room_invitation'),
+    'whatsapp_language' => env('CHAT_WHATSAPP_LANGUAGE', 'en_US'),
+    'invitation_url' => env('CHAT_INVITATION_URL', 'https://app.zostream.in/invite'),
+    'ios_app_ids' => array_filter(explode(',', env('CHAT_IOS_APP_IDS', '5N48USNJ2K.com.buannel.pvt.ltd.zostream.Zo-Stream'))),
+    'android_fingerprints' => array_filter(explode(',', env('CHAT_ANDROID_SHA256_FINGERPRINTS', ''))),
     'enabled' => env('CHAT_ENABLED', false),
     'cache_store' => env('CHAT_CACHE_STORE', 'redis'),
     'retention_days' => 30,

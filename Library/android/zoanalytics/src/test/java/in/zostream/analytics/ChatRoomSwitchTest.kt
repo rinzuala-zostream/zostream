@@ -20,6 +20,39 @@ import java.util.concurrent.atomic.AtomicReference
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28])
 class ChatRoomSwitchTest {
+    @Test fun queuedMovieJoinKeepsThePlaybackTokenFromItsOwnRequest() {
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        var playbackToken: String? = "movie-token"
+        val movieHeader = AtomicReference<String?>()
+        val http = OkHttpClient.Builder().addInterceptor { chain ->
+            val request = chain.request()
+            val data = if (request.url.encodedPath.endsWith("/unread")) {
+                entered.countDown()
+                check(release.await(2, TimeUnit.SECONDS))
+                JSONObject().put("rooms", org.json.JSONArray())
+            } else {
+                movieHeader.set(request.header("X-Playback-Token"))
+                JSONObject().put("room_id", "movie").put("channel", "private-chat.movie").put("websocket_url", "")
+            }
+            Response.Builder().request(request).protocol(Protocol.HTTP_1_1).code(200).message("OK")
+                .body(JSONObject().put("success", true).put("data", data).toString().toResponseBody("application/json".toMediaType())).build()
+        }.build()
+        val client = ZoChatClient("https://example.test", { AnalyticsCredentials("token", "device", "alice") }, "test",
+            playbackToken = { playbackToken }, onChanged = { _, _ -> }, onConnection = {}, http = http)
+        var joined = false
+        try {
+            client.request("unread") { _, error -> assertNull(error) }
+            assertTrue(entered.await(2, TimeUnit.SECONDS))
+            client.join("movie", "42") { room, error -> assertNull(error); joined = room != null }
+            // A subsequent tab change must not strip authorization from the queued movie join.
+            playbackToken = null
+            release.countDown()
+            await { joined }
+            assertEquals("movie-token", movieHeader.get())
+        } finally { release.countDown(); client.close() }
+    }
+
     @Test fun accountChangeDiscardsOldResponsesAndDoesNotReplayQueuedWrites() {
         val owner = AtomicReference("alice")
         val entered = CountDownLatch(1)

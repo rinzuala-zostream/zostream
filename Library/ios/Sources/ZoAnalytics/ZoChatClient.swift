@@ -27,6 +27,7 @@ public struct ChatRoom: Decodable, Sendable {
 }
 public struct ChatFailure: LocalizedError {
     public let message: String
+    public init(message: String) { self.message = message }
     public var errorDescription: String? { message }
 }
 

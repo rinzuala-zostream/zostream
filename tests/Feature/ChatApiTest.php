@@ -30,11 +30,14 @@ class ChatApiTest extends TestCase
         (require database_path('migrations/2026_10_26_000001_add_room_name_to_chat_invite_rooms.php'))->up();
         (require database_path('migrations/2026_10_26_000002_add_idle_expiry_to_private_chat_rooms.php'))->up();
         (require database_path('migrations/2026_10_26_000003_create_chat_room_reads.php'))->up();
+        (require database_path('migrations/2026_10_26_000004_add_chat_invitation_links.php'))->up();
         Schema::create('user', function (Blueprint $t) {
             $t->id();
             $t->string('uid');
             $t->string('name');
             $t->string('token')->nullable();
+            $t->string('auth_phone')->nullable();
+            $t->string('country_code')->nullable();
         });
         Schema::create('n_devices', function (Blueprint $t) {
             $t->id();
@@ -610,4 +613,131 @@ class ChatApiTest extends TestCase
         $this->artisan('chat:prune')->assertSuccessful();
         $this->assertSame(0, DB::table('chat_messages')->count());
     }
+    private function linkedInvitation(): array
+    {
+        \Illuminate\Support\Facades\Queue::fake();
+        config(['chat.whatsapp_enabled' => true]);
+        DB::table('user')->insert(['uid' => 'bob', 'name' => 'Bob', 'auth_phone' => '9876543210', 'country_code' => '+91']);
+        $response = $this->postJson('/api/v4/chat/invite-rooms', $this->identity([
+            'type' => 'global', 'room_name' => 'Friends Room', 'invitee_ids' => ['bob'],
+        ]))->assertCreated();
+        $job = \Illuminate\Support\Facades\Queue::pushed(\App\Jobs\SendChatInvitationWhatsApp::class)->first();
+        $this->assertNotNull($job);
+        $this->assertStringNotContainsString($job->token, $response->getContent());
+        return [$job, DB::table('chat_room_invites')->where('id', $job->inviteId)->first()];
+    }
+
+    public function test_invitation_link_checks_account_before_revealing_details(): void
+    {
+        [$job, $invite] = $this->linkedInvitation();
+        $this->assertSame(hash('sha256', $job->token), $invite->link_token_hash);
+        $this->getJson('/api/v4/chat/invitation-links/'.$job->token.'?auth_user_id=alice')
+            ->assertForbidden()->assertJsonPath('error.code', 'INVITE_WRONG_ACCOUNT')->assertJsonPath('data', null);
+        $this->getJson('/api/v4/chat/invitation-links/'.$job->token.'?auth_user_id=bob')
+            ->assertOk()->assertJsonPath('data.status', 'pending')->assertJsonPath('data.room_name', 'Friends Room');
+        $this->getJson('/api/v4/chat/invitation-links/'.str_repeat('a', 64).'?auth_user_id=bob')
+            ->assertNotFound()->assertJsonPath('error.code', 'INVITE_INVALID');
+    }
+
+    public function test_invitation_link_accept_is_idempotent_and_accepted_room_can_reopen_after_invite_expiry(): void
+    {
+        [$job, $invite] = $this->linkedInvitation();
+        $url = '/api/v4/chat/invitation-links/'.$job->token;
+        $this->postJson($url.'/respond', ['auth_user_id' => 'alice', 'accept' => true])->assertForbidden();
+        $this->postJson($url.'/respond', ['auth_user_id' => 'bob', 'accept' => true])->assertOk()->assertJsonPath('data.accepted', true);
+        $this->postJson($url.'/respond', ['auth_user_id' => 'bob', 'accept' => true])->assertOk()->assertJsonPath('data.accepted', true);
+        DB::table('chat_room_invites')->where('id', $invite->id)->update(['expires_at' => now()->subDay()]);
+        $this->getJson($url.'?auth_user_id=bob')->assertOk()->assertJsonPath('data.accepted', true);
+        DB::table('chat_rooms')->where('id', $invite->room_id)->update(['closed' => true]);
+        $this->getJson($url.'?auth_user_id=bob')->assertStatus(410)->assertJsonPath('error.code', 'ROOM_ENDED');
+    }
+
+    public function test_invitation_link_decline_and_pending_expiry_have_clear_errors(): void
+    {
+        [$job, $invite] = $this->linkedInvitation();
+        $url = '/api/v4/chat/invitation-links/'.$job->token;
+        DB::table('chat_room_invites')->where('id', $invite->id)->update(['expires_at' => now()->subMinute()]);
+        $this->getJson($url.'?auth_user_id=bob')->assertStatus(410)->assertJsonPath('error.code', 'INVITE_EXPIRED');
+        DB::table('chat_room_invites')->where('id', $invite->id)->update(['expires_at' => now()->addDay()]);
+        $this->postJson($url.'/respond', ['auth_user_id' => 'bob', 'accept' => false])->assertOk()->assertJsonPath('data.accepted', false);
+        $this->getJson($url.'?auth_user_id=bob')->assertStatus(410)->assertJsonPath('error.code', 'INVITE_DECLINED');
+        $this->postJson($url.'/respond', ['auth_user_id' => 'bob', 'accept' => true])->assertStatus(410);
+    }
+
+    public function test_whatsapp_invitation_requires_recipient_preference_and_sends_one_template(): void
+    {
+        [$job, $invite] = $this->linkedInvitation();
+        $service = \Mockery::mock(\App\Services\WhatsAppCloudService::class);
+        $service->shouldNotReceive('sendTemplate');
+        $job->handle($service);
+        $this->postJson('/api/v4/chat/invitation-preferences', ['auth_user_id' => 'bob', 'whatsapp_enabled' => true])
+            ->assertOk()->assertJsonPath('data.whatsapp_enabled', true);
+        $this->getJson('/api/v4/chat/invitation-preferences?auth_user_id=alice')->assertOk()->assertJsonPath('data.whatsapp_enabled', false);
+        $service = \Mockery::mock(\App\Services\WhatsAppCloudService::class);
+        $service->shouldReceive('sendTemplate')->once()->with('919876543210', 'zostream_room_invitation',
+            ['Bob', 'Alice', 'Friends Room', 'Join the conversation in a private chat room.'], $job->token, 'en_US')
+            ->andReturn(new \App\Models\WhatsAppMessage());
+        $job->handle($service);
+        $job->handle($service);
+        $this->assertNotNull(DB::table('chat_room_invites')->where('id', $invite->id)->value('whatsapp_sent_at'));
+    }
+
+    public function test_contact_number_lookup_is_normalized_and_rejects_partial_suffixes(): void
+    {
+        DB::table('user')->insert(['uid' => 'bob', 'name' => 'Bob', 'auth_phone' => '9876543210', 'country_code' => '+91']);
+        $this->postJson('/api/v4/chat/invitees/lookup', $this->identity(['phone' => '+91 (98765) 43210']))
+            ->assertOk()->assertJsonPath('data.user_id', 'bob');
+        $this->postJson('/api/v4/chat/invitees/lookup', $this->identity(['phone' => '6543210']))->assertNotFound();
+    }
+
+    public function test_public_invitation_page_never_exposes_private_room_data(): void
+    {
+        $this->get('/invite/'.str_repeat('a', 64))->assertOk()->assertSee('Open in Zo Stream')
+            ->assertHeader('Referrer-Policy', 'no-referrer')->assertDontSee('Friends Room');
+    }
+
+    public function test_watch_invitation_link_opens_the_correct_episode_and_preserves_entitlement_checks(): void
+    {
+        [$job, $invite] = $this->linkedInvitation();
+        Schema::create('seasons', function (Blueprint $t) { $t->id(); $t->integer('season_number'); });
+        Schema::create('episodes', function (Blueprint $t) {
+            $t->string('num'); $t->string('title'); $t->integer('season_id'); $t->integer('episode_number'); $t->boolean('isPremium')->default(false);
+        });
+        Schema::create('n_subscriptions', function (Blueprint $t) {
+            $t->id(); $t->string('user_id'); $t->boolean('is_active'); $t->timestamp('end_at');
+        });
+        DB::table('seasons')->insert(['id' => 9, 'season_number' => 2]);
+        DB::table('episodes')->insert(['num' => '42', 'title' => 'Episode', 'season_id' => 9, 'episode_number' => 3, 'isPremium' => true]);
+        DB::table('chat_invite_rooms')->where('room_id', $invite->room_id)->update([
+            'content_type' => 'episode', 'content_id' => '42', 'idle_expires_at' => null, 'watch_position_ms' => 123000,
+        ]);
+        $url = '/api/v4/chat/invitation-links/'.$job->token;
+        $this->postJson($url.'/respond', ['auth_user_id' => 'bob', 'accept' => true])->assertForbidden();
+        $this->assertSame('pending', DB::table('chat_room_invites')->where('id', $invite->id)->value('status'));
+        DB::table('n_subscriptions')->insert(['user_id' => 'bob', 'is_active' => true, 'end_at' => now()->addDay()]);
+        $this->postJson($url.'/respond', ['auth_user_id' => 'bob', 'accept' => true])->assertOk()
+            ->assertJsonPath('data.content_type', 'episode')->assertJsonPath('data.content_id', '42')
+            ->assertJsonPath('data.season_id', '9')->assertJsonPath('data.episode_number', 3)
+            ->assertJsonPath('data.subscription_id', 1)->assertJsonPath('data.watch_position_ms', 123000);
+        $this->getJson($url.'?auth_user_id=bob')->assertOk()->assertJsonPath('data.accepted', true);
+        DB::table('episodes')->delete();
+        $this->getJson($url.'?auth_user_id=bob')->assertStatus(410)->assertJsonPath('error.code', 'CONTENT_UNAVAILABLE');
+    }
+
+    public function test_whatsapp_failure_can_retry_and_revoked_consent_prevents_delivery(): void
+    {
+        [$job, $invite] = $this->linkedInvitation();
+        DB::table('chat_invitation_preferences')->insert(['user_id' => 'bob', 'whatsapp_enabled' => true]);
+        $service = \Mockery::mock(\App\Services\WhatsAppCloudService::class);
+        $service->shouldReceive('sendTemplate')->once()->andThrow(new \RuntimeException('Provider unavailable'));
+        try { $job->handle($service); $this->fail('Provider failure must be retryable'); }
+        catch (\RuntimeException $e) { $this->assertSame('Provider unavailable', $e->getMessage()); }
+        $this->assertNull(DB::table('chat_room_invites')->where('id', $invite->id)->value('whatsapp_sent_at'));
+        DB::table('chat_invitation_preferences')->where('user_id', 'bob')->update(['whatsapp_enabled' => false]);
+        $service = \Mockery::mock(\App\Services\WhatsAppCloudService::class);
+        $service->shouldNotReceive('sendTemplate');
+        $job->handle($service);
+        $this->assertSame('pending', DB::table('chat_room_invites')->where('id', $invite->id)->value('status'));
+    }
+
 }

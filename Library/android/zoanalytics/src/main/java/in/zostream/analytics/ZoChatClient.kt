@@ -47,8 +47,9 @@ class ZoChatClient(
     fun request(path: String, body: JSONObject? = null, callback: (JSONObject?, String?) -> Unit) {
         if (closed) return
         val requestOwner = credentials()?.ownerKey
+        val requestPlaybackToken = playbackToken()
         executor.execute {
-            val result = runCatching { perform(path, body, requestOwner) }
+            val result = runCatching { perform(path, body, requestOwner, requestPlaybackToken) }
             main.post {
                 if (!closed && credentials()?.ownerKey == requestOwner)
                     result.fold({ callback(it, null) }, { callback(null, it.message ?: "Chat unavailable") })
@@ -56,7 +57,7 @@ class ZoChatClient(
         }
     }
 
-    private fun perform(path: String, body: JSONObject?, requestOwner: String?): JSONObject {
+    private fun perform(path: String, body: JSONObject?, requestOwner: String?, requestPlaybackToken: String?): JSONObject {
         val c = credentials() ?: error("Please sign in again")
         check(c.ownerKey == requestOwner) { "Account changed. Reopen chat." }
         check(owner == null || owner == c.ownerKey) { "Account changed. Reopen chat." }
@@ -65,7 +66,7 @@ class ZoChatClient(
             .header("Device-Token", c.deviceToken).header("Accept", "application/json")
             .header("X-Analytics-SDK-Version", ZoAnalyticsConfiguration.SDK_VERSION)
             .header("X-Client-Platform", "android").header("X-Client-Version", version)
-        playbackToken()?.takeIf { it.isNotBlank() }?.let { request.header("X-Playback-Token", it) }
+        requestPlaybackToken?.takeIf { it.isNotBlank() }?.let { request.header("X-Playback-Token", it) }
         if (body != null) request.post(body.toString().toRequestBody("application/json".toMediaType()))
         val call = http.newCall(request.build()); pendingCall = call
         return call.execute().use { response ->
@@ -93,7 +94,8 @@ class ZoChatClient(
                 val message = json.optString("message").takeIf { it.isNotBlank() && it != "null" }
                     ?: nestedError?.takeIf { it.isNotBlank() && it != "null" }
                 val keys = json.keys().asSequence().joinToString(",")
-                val diagnostic = "Chat request failed (${response.code}) at $path (success=$successValue, status=${json.optString("status")}, fields=$keys)"
+                val diagnosticPath = if (path.startsWith("invitation-links/")) "invitation-links/[redacted]" else path
+                val diagnostic = "Chat request failed (${response.code}) at $diagnosticPath (success=$successValue, status=${json.optString("status")}, fields=$keys)"
                 android.util.Log.e("ZoChatClient", diagnostic)
                 message ?: "Chat request failed. Please try again."
             }

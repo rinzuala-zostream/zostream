@@ -53,11 +53,17 @@ final class ChatController extends Controller
         $v = $r->validate(['phone' => 'required|string|min:7|max:32']);
         $digits = preg_replace('/\D+/', '', $v['phone']);
         abort_if(strlen($digits) < 7, 422, 'Enter a valid phone number.');
-        $user = DB::table('user')->where('uid', '!=', (string) $r->input('auth_user_id'))
+        $matches = DB::table('user')->where('uid', '!=', (string) $r->input('auth_user_id'))
             ->whereNotNull('auth_phone')->where('auth_phone', '!=', '')
-            ->whereRaw("REPLACE(REPLACE(REPLACE(REPLACE(auth_phone, '+', ''), ' ', ''), '-', ''), '(', '') LIKE ?", ['%'.$digits])
-            ->first(['uid', 'name']);
-        abort_unless($user, 404, 'No Zo Stream user found for this phone number.');
+            ->whereRaw("REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(auth_phone, '+', ''), ' ', ''), '-', ''), '(', ''), ')', '') LIKE ?", ['%'.substr($digits, -7)])
+            ->get(['uid', 'name', 'auth_phone', 'country_code'])->filter(function ($candidate) use ($digits) {
+                $local = preg_replace('/\D+/', '', $candidate->auth_phone);
+                $country = preg_replace('/\D+/', '', $candidate->country_code ?? '');
+                return $digits === $local || ($country !== '' && $digits === $country.$local);
+            });
+        abort_if($matches->count() > 1, 422, 'More than one account matches this number. Enter the full number with country code.');
+        $user = $matches->first();
+        abort_unless($user, 404, 'No Zo Stream account was found for this phone number. Check the number and country code.');
 
         return V4Response::success(['user_id' => (string) $user->uid, 'name' => $user->name ?: 'Viewer']);
     }
@@ -94,7 +100,8 @@ final class ChatController extends Controller
             abort_unless(count($eligible) === $invitees->count(), 403, 'Every invited user needs an active subscription for this title.');
         }
 
-        $roomId = DB::transaction(function () use ($host, $type, $v, $invitees, $content): int {
+        $links = [];
+        $roomId = DB::transaction(function () use ($host, $type, $v, $invitees, $content, &$links): int {
             $now = now();
             $key = 'invite:'.Str::uuid();
             $room = DB::table('chat_rooms')->insertGetId([
@@ -111,22 +118,39 @@ final class ChatController extends Controller
                 'idle_expires_at' => $type === 'global' ? $now->copy()->addHour() : null,
             ]);
             foreach ($invitees as $invitee) {
-                DB::table('chat_room_invites')->insert([
+                $token = Str::random(64);
+                $inviteId = DB::table('chat_room_invites')->insertGetId([
                     'room_id' => $room, 'inviter_user_id' => $host, 'invitee_user_id' => $invitee->uid,
+                    'link_token_hash' => hash('sha256', $token),
                     'status' => 'pending', 'expires_at' => $now->copy()->addHours(24), 'created_at' => $now, 'updated_at' => $now,
                 ]);
+                $links[$inviteId] = $token;
             }
             return $room;
         });
+        if (config('chat.whatsapp_enabled')) {
+            foreach ($links as $inviteId => $token) {
+                try {
+                    \App\Jobs\SendChatInvitationWhatsApp::dispatch($inviteId, $token)->afterCommit();
+                } catch (\Throwable $e) {
+                    // A notification outage must not undo a successfully created room.
+                    \Illuminate\Support\Facades\Log::warning('Chat WhatsApp invitation could not be queued', ['invite_id' => $inviteId]);
+                }
+            }
+        }
 
         foreach ($invitees as $invitee) {
             if (! empty($invitee->token)) {
-                app(\App\Http\Controllers\FCMNotificationController::class)->sendToToken(
-                    $invitee->token,
-                    'Zo Stream chat invitation',
-                    $type === 'global' ? 'You were invited to a private chat room.' : 'You were invited to watch '.($content->title ?? 'a title').' together.',
-                    key: 'chat_invite', data: ['invite_id' => (string) DB::table('chat_room_invites')->where('room_id', $roomId)->where('invitee_user_id', $invitee->uid)->value('id'), 'room_id' => (string) $roomId]
-                );
+                try {
+                    app(\App\Http\Controllers\FCMNotificationController::class)->sendToToken(
+                        $invitee->token,
+                        'Zo Stream chat invitation',
+                        $type === 'global' ? 'You were invited to a private chat room.' : 'You were invited to watch '.($content->title ?? 'a title').' together.',
+                        key: 'chat_invite', data: ['invite_id' => (string) DB::table('chat_room_invites')->where('room_id', $roomId)->where('invitee_user_id', $invitee->uid)->value('id'), 'room_id' => (string) $roomId]
+                    );
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::warning('Chat push invitation failed', ['room_id' => $roomId]);
+                }
             }
         }
 

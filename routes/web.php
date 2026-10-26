@@ -104,3 +104,17 @@ Route::get('/test-r2', function () {
 
     return 'OK';
 });
+
+// Serve these on app.zostream.in without redirects. Keep existing content links.
+Route::get('/.well-known/apple-app-site-association', fn () => response()->json([
+    'applinks' => ['apps' => [], 'details' => array_map(fn ($id) => ['appID' => trim($id),
+        'paths' => ['/watch/*', '/listen/*', '/invite/*']], array_values(config('chat.ios_app_ids')))],
+]));
+Route::get('/.well-known/assetlinks.json', fn () => response()->json(config('chat.android_fingerprints') ? [[
+    'relation' => ['delegate_permission/common.handle_all_urls'],
+    'target' => ['namespace' => 'android_app', 'package_name' => 'com.buannel.studio.pvt.ltd.zostream',
+        'sha256_cert_fingerprints' => array_values(config('chat.android_fingerprints'))],
+]] : []));
+Route::get('/invite/{token}', fn (string $token) => response()->view('chat-invitation', ['token' => $token])
+    ->header('Cache-Control', 'no-store')->header('Referrer-Policy', 'no-referrer')
+    ->header('X-Robots-Tag', 'noindex, nofollow'))->where('token', '[A-Za-z0-9]{1,128}');
