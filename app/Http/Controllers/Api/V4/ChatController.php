@@ -177,12 +177,17 @@ final class ChatController extends Controller
             ->where('ir.active', true)->orderByDesc('i.id')->limit(50)
             ->get(['i.id as invite_id', 'i.room_id', 'i.expires_at', 'ir.room_name', 'ir.content_type', 'ir.content_id', 'ir.watch_position_ms', 'u.name as inviter_name']);
         $rows->transform(function ($invite) {
+            $invite->invite_id = (string) $invite->invite_id;
+            $invite->room_id = (string) $invite->room_id;
+            $invite->watch_position_ms = (int) $invite->watch_position_ms;
+            $invite->inviter_name = $invite->inviter_name ?? 'Viewer';
             if ($invite->content_type && $invite->content_id) {
                 $content = DB::table($invite->content_type === 'episode' ? 'episodes' : 'movie')->where('num', $invite->content_id)->first();
                 $invite->content_title = $content->title ?? null;
-                $invite->season_id = $invite->content_type === 'episode' ? ($content->season_id ?? null) : null;
-                $invite->episode_number = $invite->content_type === 'episode' ? ($content->episode_number ?? null) : null;
-                $invite->season_number = $invite->season_id ? DB::table('seasons')->where('id', $invite->season_id)->value('season_number') : null;
+                $invite->season_id = $invite->content_type === 'episode' && isset($content->season_id) ? (string) $content->season_id : null;
+                $invite->episode_number = $invite->content_type === 'episode' && isset($content->episode_number) ? (int) $content->episode_number : null;
+                $seasonNumber = $invite->season_id ? DB::table('seasons')->where('id', $invite->season_id)->value('season_number') : null;
+                $invite->season_number = $seasonNumber !== null ? (int) $seasonNumber : null;
             } else {
                 $invite->content_title = null; $invite->season_id = null; $invite->episode_number = null; $invite->season_number = null;
             }
@@ -228,12 +233,14 @@ final class ChatController extends Controller
         DB::table('chat_room_invites')->where('id', $invite)->where('status', 'pending')->update([
             'status' => $v['accept'] ? 'accepted' : 'declined', 'responded_at' => now(), 'updated_at' => now(),
         ]);
+        $seasonId = $row->content_type === 'episode' && isset($content->season_id) ? (string) $content->season_id : null;
+        $seasonNumber = $seasonId ? DB::table('seasons')->where('id', $seasonId)->value('season_number') : null;
         return V4Response::success(['accepted' => (bool) $v['accept'], 'room_id' => (string) $row->room_id, 'room_name' => $row->room_name,
             'content_type' => $row->content_type, 'content_id' => $row->content_id,
             'content_title' => $content->title ?? null,
-            'season_id' => ($row->content_type === 'episode' ? ($content->season_id ?? null) : null),
-            'season_number' => ($row->content_type === 'episode' && ! empty($content->season_id) ? DB::table('seasons')->where('id', $content->season_id)->value('season_number') : null),
-            'episode_number' => ($row->content_type === 'episode' ? ($content->episode_number ?? null) : null),
+            'season_id' => $seasonId,
+            'season_number' => $seasonNumber !== null ? (int) $seasonNumber : null,
+            'episode_number' => ($row->content_type === 'episode' && isset($content->episode_number) ? (int) $content->episode_number : null),
             'watch_position_ms' => (int) $row->watch_position_ms]);
     }
 

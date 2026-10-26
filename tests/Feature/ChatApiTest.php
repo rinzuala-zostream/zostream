@@ -173,6 +173,43 @@ class ChatApiTest extends TestCase
         $this->postJson("/api/v4/chat/invites/$invite/respond", $bob + ['accept' => true])->assertNotFound();
     }
 
+    public function test_invitation_list_and_episode_accept_use_ios_compatible_json_types(): void
+    {
+        $room = $this->createPrivateRoom();
+        $invite = (string) DB::table('chat_room_invites')->where('room_id', $room)->value('id');
+        $bob = ['auth_user_id' => 'bob', 'auth_device_id' => 'device-b'];
+        $this->getJson('/api/v4/chat/invites?'.http_build_query($bob))->assertOk()
+            ->assertJsonPath('data.invites.0.invite_id', $invite)
+            ->assertJsonPath('data.invites.0.room_id', $room)
+            ->assertJsonPath('data.invites.0.watch_position_ms', 0)
+            ->assertJsonPath('data.invites.0.inviter_name', 'Alice');
+        Schema::create('seasons', function (Blueprint $t) {
+            $t->id();
+            $t->string('season_number');
+        });
+        Schema::create('episodes', function (Blueprint $t) {
+            $t->string('num');
+            $t->string('title');
+            $t->integer('season_id');
+            $t->string('episode_number');
+        });
+        DB::table('seasons')->insert(['id' => 7, 'season_number' => '2']);
+        DB::table('episodes')->insert(['num' => '42', 'title' => 'Episode', 'season_id' => 7, 'episode_number' => '3']);
+        DB::table('chat_invite_rooms')->where('room_id', $room)->update([
+            'content_type' => 'episode', 'content_id' => '42', 'idle_expires_at' => null,
+        ]);
+        $this->getJson('/api/v4/chat/invites?'.http_build_query($bob))->assertOk()
+            ->assertJsonPath('data.invites.0.season_id', '7')
+            ->assertJsonPath('data.invites.0.season_number', 2)
+            ->assertJsonPath('data.invites.0.episode_number', 3);
+        $this->postJson("/api/v4/chat/invites/$invite/respond", $bob + ['accept' => true])->assertOk()
+            ->assertJsonPath('data.room_id', $room)
+            ->assertJsonPath('data.season_id', '7')
+            ->assertJsonPath('data.season_number', 2)
+            ->assertJsonPath('data.episode_number', 3)
+            ->assertJsonPath('data.watch_position_ms', 0);
+    }
+
     public function test_only_creator_can_end_private_room_and_both_members_lose_access(): void
     {
         $room = $this->createPrivateRoom();
