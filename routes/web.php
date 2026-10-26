@@ -115,16 +115,20 @@ Route::get('/.well-known/assetlinks.json', fn () => response()->json(config('cha
     'target' => ['namespace' => 'android_app', 'package_name' => 'com.buannel.studio.pvt.ltd.zostream',
         'sha256_cert_fingerprints' => array_values(config('chat.android_fingerprints'))],
 ]] : []));
-// Some template editors encoded the placeholder as literal text before appending
-// the token. Canonicalize links already delivered without accepting an invitation.
-Route::get('/invite/{token}', function (string $token) {
-    if (str_starts_with($token, '{{1}}')) {
-        $token = substr($token, 5);
-        abort_unless(preg_match('/^[A-Za-z0-9]{64}$/D', $token), 404);
-        return redirect('/invite/'.$token)->header('Cache-Control', 'no-store')
-            ->header('Referrer-Policy', 'no-referrer');
+Route::get('/invite/{token}', fn (string $token) => response()->view('chat-invitation', ['token' => $token])
+    ->header('Cache-Control', 'no-store')->header('Referrer-Policy', 'no-referrer')
+    ->header('X-Robots-Tag', 'noindex, nofollow'))->where('token', '[A-Za-z0-9]{1,128}');
+
+// Accept literal, encoded and double-encoded template placeholders in old links.
+// This redirect performs no invitation lookup and does not grant room access.
+Route::get('/invite/{legacyInvitation}', function (string $legacyInvitation) {
+    $token = $legacyInvitation;
+    for ($i = 0; $i < 2; $i++) {
+        $token = rawurldecode($token);
     }
-    return response()->view('chat-invitation', ['token' => $token])
-        ->header('Cache-Control', 'no-store')->header('Referrer-Policy', 'no-referrer')
-        ->header('X-Robots-Tag', 'noindex, nofollow');
-})->where('token', '(?:\{\{1\}\})?[A-Za-z0-9]{1,128}');
+    abort_unless(str_starts_with($token, '{{1}}'), 404);
+    $token = substr($token, 5);
+    abort_unless(preg_match('/^[A-Za-z0-9]{64}$/D', $token), 404);
+    return redirect('/invite/'.$token)->header('Cache-Control', 'no-store')
+        ->header('Referrer-Policy', 'no-referrer')->header('X-Robots-Tag', 'noindex, nofollow');
+})->where('legacyInvitation', '[^/]+');
