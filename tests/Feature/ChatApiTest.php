@@ -687,7 +687,10 @@ class ChatApiTest extends TestCase
     public function test_public_invitation_page_never_exposes_private_room_data(): void
     {
         $this->get('/invite/'.str_repeat('a', 64))->assertOk()->assertSee('Open in Zo Stream')
-            ->assertHeader('Referrer-Policy', 'no-referrer')->assertDontSee('Friends Room');
+            ->assertHeader('Referrer-Policy', 'no-referrer')->assertDontSee('Friends Room')
+            ->assertSee('intent://app.zostream.in/invite/', false)
+            ->assertSee('package=com.buannel.studio.pvt.ltd.zostream', false)
+            ->assertSee('zostream://invite/', false);
     }
 
     public function test_watch_invitation_link_opens_the_correct_episode_and_preserves_entitlement_checks(): void

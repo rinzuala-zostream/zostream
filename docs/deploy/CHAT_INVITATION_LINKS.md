@@ -54,3 +54,9 @@ No live WhatsApp sends or device installation are part of local automated tests.
 ## Legacy template URL placeholder
 
 Links containing `/invite/%7B%7B1%7D%7D{token}` have a literal `{{1}}` prefix. The web route redirects these to `/invite/{token}` only when the remaining token is exactly 64 alphanumeric characters. Updated native clients also normalize this prefix before validating/resolving it. Neither redirect nor normalization accepts an invitation; authenticated recipient verification still applies. Configure the template URL placeholder as an actual dynamic variable rather than encoded literal text. Deploy the updated routes and clear/rebuild route caches after this change.
+
+## Browser fallback and association caches
+
+The invitation landing page uses an explicit Android HTTPS intent addressed to the Zo Stream package on user tap. Its browser fallback points to the download page. On iOS, its Open button uses `zostream://invite/{token}`, registered in the updated app, to avoid reopening the same HTTPS page in Safari. HTTPS Universal Links remain the primary link in WhatsApp. Install the updated iOS build for the custom-scheme fallback, and deploy the updated Blade view on the backend.
+
+The origin AASA and Apple CDN AASA can differ temporarily. Compare `https://app.zostream.in/.well-known/apple-app-site-association` with `https://app-site-association.cdn-apple.com/a/v1/app.zostream.in`; both must include `/invite/*` for normal invitation Universal Links. Server cache-clearing commands do not force Apple CDN or device caches to refresh. Browser fallback still performs the same authenticated invitation verification; it does not grant membership by itself.
