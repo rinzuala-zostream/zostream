@@ -734,4 +734,14 @@ class ChatApiTest extends TestCase
         $this->assertSame('pending', DB::table('chat_room_invites')->where('id', $invite->id)->value('status'));
     }
 
+    public function test_encoded_template_placeholder_redirects_to_canonical_invitation_without_accepting_it(): void
+    {
+        [$job, $invite] = $this->linkedInvitation();
+        $this->get('/invite/%7B%7B1%7D%7D'.$job->token)
+            ->assertRedirect('/invite/'.$job->token)->assertHeader('Referrer-Policy', 'no-referrer');
+        $this->get('/invite/'.$job->token)->assertOk();
+        $this->assertSame('pending', DB::table('chat_room_invites')->where('id', $invite->id)->value('status'));
+        $this->get('/invite/%7B%7B1%7D%7Dbad')->assertNotFound();
+    }
+
 }

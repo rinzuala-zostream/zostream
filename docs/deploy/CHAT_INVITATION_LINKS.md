@@ -50,3 +50,7 @@ The web fallback contains an Open in Zo Stream link and a download link. Android
 - With server delivery enabled, create a new invitation and verify four body variables and URL suffix using the approved template. Verify delivery without a preference record and with an old disabled preference. Restart queue workers after deploying this change.
 
 No live WhatsApp sends or device installation are part of local automated tests.
+
+## Legacy template URL placeholder
+
+Links containing `/invite/%7B%7B1%7D%7D{token}` have a literal `{{1}}` prefix. The web route redirects these to `/invite/{token}` only when the remaining token is exactly 64 alphanumeric characters. Updated native clients also normalize this prefix before validating/resolving it. Neither redirect nor normalization accepts an invitation; authenticated recipient verification still applies. Configure the template URL placeholder as an actual dynamic variable rather than encoded literal text. Deploy the updated routes and clear/rebuild route caches after this change.
