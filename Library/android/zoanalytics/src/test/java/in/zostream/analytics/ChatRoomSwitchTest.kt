@@ -1,0 +1,101 @@
+package `in`.zostream.analytics
+
+import android.os.Looper
+import okhttp3.*
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.ResponseBody.Companion.toResponseBody
+import okio.ByteString
+import org.json.JSONObject
+import org.junit.Assert.*
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
+import org.robolectric.annotation.Config
+
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [28])
+class ChatRoomSwitchTest {
+    private class Socket(private val original: Request, val listener: WebSocketListener) : WebSocket {
+        val events = mutableListOf<JSONObject>()
+        var cancellations = 0
+        override fun request() = original
+        override fun queueSize() = 0L
+        override fun send(bytes: ByteString) = false
+        override fun send(text: String): Boolean {
+            val event = JSONObject(text)
+            events.add(event)
+            if (event.optString("event") == "pusher:subscribe") {
+                listener.onMessage(this, JSONObject().put("event", "pusher_internal:subscription_succeeded")
+                    .put("channel", event.getJSONObject("data").getString("channel")).put("data", JSONObject()).toString())
+            }
+            return true
+        }
+        override fun close(code: Int, reason: String?) = true
+        override fun cancel() { cancellations++ }
+        fun emit(channel: String) {
+            listener.onMessage(this, JSONObject().put("event", "chat.changed").put("channel", channel)
+                .put("data", JSONObject().put("kind", "created").put("message_id", "9")).toString())
+        }
+    }
+
+    private class Http : OkHttpClient() {
+        private val delegate = Builder().addInterceptor { chain ->
+        val request = chain.request()
+        val data = if (request.url.encodedPath.endsWith("/auth")) {
+            val id = request.url.pathSegments[4]
+            JSONObject().put("auth", "signed").put("channel", "private-chat.$id")
+        } else {
+            val buffer = okio.Buffer(); request.body!!.writeTo(buffer)
+            val body = JSONObject(buffer.readUtf8())
+            val id = if (body.optString("type") == "global") "global" else "movie"
+            JSONObject().put("room_id", id).put("channel", "private-chat.$id")
+                .put("websocket_url", "wss://example.test/app/key")
+        }
+        Response.Builder().request(request).protocol(Protocol.HTTP_1_1).code(200).message("OK")
+            .body(JSONObject().put("success", true).put("data", data).toString().toResponseBody("application/json".toMediaType())).build()
+        }.build()
+        override fun newCall(request: Request): Call = delegate.newCall(request)
+        val sockets = mutableListOf<Socket>()
+        override fun newWebSocket(request: Request, listener: WebSocketListener): WebSocket {
+            val socket = Socket(request, listener); sockets.add(socket)
+            listener.onMessage(socket, """{"event":"pusher:connection_established","data":{"socket_id":"1.2"}}""")
+            return socket
+        }
+    }
+
+    private fun await(condition: () -> Boolean) {
+        repeat(200) {
+            shadowOf(Looper.getMainLooper()).idle()
+            if (condition()) return
+            Thread.sleep(5)
+        }
+        fail("Chat operation did not finish")
+    }
+
+    @Test fun switchingRoomsReusesSocketAndRejectsOldChannelEvents() {
+        val http = Http()
+        var live = 0
+        var changes = 0
+        val client = ZoChatClient("https://example.test", { AnalyticsCredentials("token", "device", "owner") }, "test",
+            onChanged = { kind, _ -> if (kind == "created") changes++ }, onConnection = { if (it) live++ }, http = http)
+        try {
+            client.join("movie", "42") { _, error -> assertNull(error) }
+            await { live == 1 }
+            val socket = http.sockets.single()
+            client.join("global", null) { _, error -> assertNull(error) }
+            await { live == 2 }
+            assertEquals(1, http.sockets.size)
+            assertEquals(0, socket.cancellations)
+            assertTrue(socket.events.any { it.optString("event") == "pusher:unsubscribe" && it.getJSONObject("data").optString("channel") == "private-chat.movie" })
+            socket.emit("private-chat.movie")
+            socket.emit("private-chat.global")
+            shadowOf(Looper.getMainLooper()).idle()
+            assertEquals(1, changes)
+            client.join("movie", "42") { _, error -> assertNull(error) }
+            await { live == 3 }
+            assertEquals(1, http.sockets.size)
+        } finally { client.close() }
+        assertEquals(1, http.sockets.single().cancellations)
+    }
+}

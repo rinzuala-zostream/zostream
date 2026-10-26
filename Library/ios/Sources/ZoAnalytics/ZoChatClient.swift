@@ -22,6 +22,8 @@ public struct ChatRoom: Decodable, Sendable {
     public let websocket_url: String
     public let user_id: String
     public let is_host: Bool?
+    public let room_name: String?
+    public let content_type: String?
 }
 private struct ChatEnvelope<T: Decodable>: Decodable {
     let success: Bool
@@ -47,6 +49,11 @@ public final class ZoChatClient {
     private var retryTask: Task<Void, Never>?
     private var syncTask: Task<Void, Never>?
     private var room: ChatRoom?
+    private var roomRevision = 0
+    private var socketId: String?
+    private var socketURL: String?
+    private var channel: String?
+    private var subscriptionTask: Task<Void, Never>?
     private var closed = false
     private var generation = 0
     private var owner: String?
@@ -94,29 +101,32 @@ public final class ZoChatClient {
     }
 
     public func join(type: String, contentId: String?) async throws -> ChatRoom {
-        owner = credentials()?.ownerKey
-        if type == "invite", let contentId {
-            let info = try await request("invite-rooms/\(contentId)/join", body: [:], as: ChatRoom.self)
-            room = info; connect()
-            syncTask?.cancel()
-            syncTask = Task { [weak self] in
-                while !Task.isCancelled {
-                    do { try await Task.sleep(nanoseconds: 30_000_000_000) } catch { return }
-                    guard let self, !self.closed else { return }
-                    if self.credentials()?.ownerKey != self.owner { self.close(); return }
-                    if let room = self.room {
-                        struct Presence: Decodable { let online_count: Int }
-                        let _: Presence? = try? await self.request("rooms/\(room.room_id)/heartbeat", body: [:], as: Presence.self)
-                    }
-                    self.onChanged?("sync", nil)
-                }
-            }
-            return info
+        let identity = credentials()?.ownerKey
+        guard !closed, owner == nil || owner == identity else {
+            throw ChatFailure(message: "Account changed. Reopen chat.")
         }
-        var body: [String: Any] = ["type": type]
-        if let contentId { body["content_id"] = contentId }
-        let info = try await request("rooms/join", body: body, as: ChatRoom.self)
-        room = info; connect()
+        owner = identity
+        roomRevision += 1; let revision = roomRevision
+        subscriptionTask?.cancel()
+        let previousChannel = channel
+        channel = nil; room = nil
+        if let previousChannel {
+            do { try await sendEvent("pusher:unsubscribe", data: ["channel": previousChannel]) }
+            catch { if !Task.isCancelled, revision == roomRevision { reconnect(generation) } }
+        }
+        guard !closed, revision == roomRevision, !Task.isCancelled else { throw CancellationError() }
+        let info: ChatRoom
+        if type == "invite", let contentId {
+            info = try await request("invite-rooms/\(contentId)/join", body: [:], as: ChatRoom.self)
+        } else {
+            var body: [String: Any] = ["type": type]
+            if let contentId { body["content_id"] = contentId }
+            info = try await request("rooms/join", body: body, as: ChatRoom.self)
+        }
+        guard !closed, revision == roomRevision, !Task.isCancelled else { throw CancellationError() }
+        room = info
+        if socket != nil, socketURL == info.websocket_url { subscribe() }
+        else { connect() }
         syncTask?.cancel()
         syncTask = Task { [weak self] in
             while !Task.isCancelled {
@@ -133,6 +143,32 @@ public final class ZoChatClient {
         return info
     }
 
+    private func sendEvent(_ event: String, data: [String: Any]) async throws {
+        guard let socket else { return }
+        let bytes = try JSONSerialization.data(withJSONObject: ["event": event, "data": data])
+        try await socket.send(.string(String(decoding: bytes, as: UTF8.self)))
+    }
+
+    private func subscribe() {
+        guard let socketId, let room else { return }
+        let current = generation, revision = roomRevision
+        subscriptionTask?.cancel()
+        subscriptionTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                struct Auth: Decodable { let auth: String; let channel: String }
+                let auth = try await self.request("rooms/\(room.room_id)/auth", body: ["socket_id": socketId], as: Auth.self)
+                guard !self.closed, current == self.generation, revision == self.roomRevision, !Task.isCancelled else { return }
+                guard auth.channel == room.channel else { throw ChatFailure(message: "Chat channel mismatch") }
+                self.channel = auth.channel
+                try await self.sendEvent("pusher:subscribe", data: ["channel": auth.channel, "auth": auth.auth])
+            } catch {
+                guard !Task.isCancelled, revision == self.roomRevision else { return }
+                self.reconnect(current)
+            }
+        }
+    }
+
     public func history(roomId: String, before: String? = nil, after: String? = nil) async throws -> ChatPage {
         let query = before.map { "?before=\($0)" } ?? after.map { "?after=\($0)" } ?? ""
         return try await request("rooms/\(roomId)/messages\(query)", as: ChatPage.self)
@@ -141,6 +177,8 @@ public final class ZoChatClient {
     private func connect() {
         guard !closed, let room, let url = URL(string: room.websocket_url), url.scheme == "wss" else { onConnection?(false); return }
         generation += 1; let current = generation
+        retryTask?.cancel(); subscriptionTask?.cancel()
+        socketId = nil; channel = nil; socketURL = room.websocket_url
         socket?.cancel(with: .goingAway, reason: nil); receiveTask?.cancel()
         var request = URLRequest(url: url)
         request.setValue(baseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/")), forHTTPHeaderField: "Origin")
@@ -158,35 +196,47 @@ public final class ZoChatClient {
                     else { payload = event["data"] as? [String: Any] ?? [:] }
                     switch name {
                     case "pusher:connection_established":
-                        struct Auth: Decodable { let auth: String; let channel: String }
                         guard let socketId = payload["socket_id"] as? String else { continue }
-                        let auth = try await self.request("rooms/\(room.room_id)/auth", body: ["socket_id": socketId], as: Auth.self)
-                        let data = try JSONSerialization.data(withJSONObject: ["event": "pusher:subscribe", "data": ["channel": auth.channel, "auth": auth.auth]])
-                        try await ws.send(.string(String(decoding: data, as: UTF8.self)))
+                        self.socketId = socketId
+                        self.subscribe()
                     case "pusher_internal:subscription_succeeded":
+                        guard let channel = self.channel, event["channel"] as? String == channel else { continue }
                         self.retry = 0; self.onConnection?(true); self.onChanged?("sync", nil)
                     case "pusher:ping": try await ws.send(.string("{\"event\":\"pusher:pong\",\"data\":{}}"))
-                    case "chat.changed": self.onChanged?(payload["kind"] as? String ?? "sync", payload["message_id"] as? String)
+                    case "chat.changed":
+                        guard let channel = self.channel, event["channel"] as? String == channel else { continue }
+                        self.onChanged?(payload["kind"] as? String ?? "sync", payload["message_id"] as? String)
                     case "pusher:error": throw ChatFailure(message: "Chat connection failed")
                     default: break
                     }
                 }
             } catch {
                 guard let self, !self.closed, current == self.generation else { return }
-                self.onConnection?(false)
-                let delay = min(30.0, pow(2.0, Double(self.retry))) + Double.random(in: 0...0.5)
-                self.retry += 1
-                self.retryTask?.cancel()
-                self.retryTask = Task { [weak self] in
-                    do { try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000)) } catch { return }
-                    self?.connect()
-                }
+                self.reconnect(current)
             }
         }
     }
 
+    private func reconnect(_ current: Int) {
+        guard !closed, current == generation else { return }
+        generation += 1; let waiting = generation
+        subscriptionTask?.cancel(); receiveTask?.cancel()
+        socket?.cancel(with: .goingAway, reason: nil); socket = nil
+        socketId = nil; channel = nil
+        onConnection?(false)
+        let delay = min(30.0, pow(2.0, Double(retry))) + Double.random(in: 0...0.5)
+        retry += 1
+        retryTask?.cancel()
+        retryTask = Task { [weak self] in
+            do { try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000)) } catch { return }
+            guard let self, self.generation == waiting else { return }
+            self.connect()
+        }
+    }
+
     public func close() {
-        closed = true; generation += 1
+        closed = true; generation += 1; roomRevision += 1
+        subscriptionTask?.cancel(); channel = nil; socketId = nil; room = nil
         receiveTask?.cancel(); retryTask?.cancel(); syncTask?.cancel()
         socket?.cancel(with: .goingAway, reason: nil); socket = nil
         session.invalidateAndCancel()

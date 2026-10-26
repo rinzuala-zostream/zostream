@@ -54,6 +54,7 @@ final class ChatController extends Controller
         abort_unless(config('chat.enabled'), 503, 'Chat is currently unavailable.');
         $v = $r->validate([
             'type' => ['required', Rule::in(['global', 'movie', 'episode'])],
+            'room_name' => ['required', 'string', 'min:1', 'max:60', 'regex:/\\S/'],
             'content_id' => 'required_unless:type,global|nullable|string|max:150',
             'watch_position_ms' => 'nullable|integer|min:0|max:86400000',
             'invitee_ids' => 'required|array|min:1|max:20',
@@ -86,6 +87,7 @@ final class ChatController extends Controller
             ]);
             DB::table('chat_invite_rooms')->insert([
                 'room_id' => $room, 'host_user_id' => $host,
+                'room_name' => trim($v['room_name']),
                 'content_type' => $type === 'global' ? null : $type,
                 'content_id' => $type === 'global' ? null : $v['content_id'],
                 'watch_position_ms' => (int) ($v['watch_position_ms'] ?? 0),
@@ -111,7 +113,7 @@ final class ChatController extends Controller
             }
         }
 
-        return V4Response::success(['room_id' => (string) $roomId, 'room_type' => 'invite', 'content_type' => $type === 'global' ? null : $type,
+        return V4Response::success(['room_id' => (string) $roomId, 'room_type' => 'invite', 'room_name' => trim($v['room_name']), 'content_type' => $type === 'global' ? null : $type,
             'content_id' => $v['content_id'] ?? null, 'content_title' => $content->title ?? null, 'invite_count' => $invitees->count()], status: 201);
     }
 
@@ -122,7 +124,7 @@ final class ChatController extends Controller
             ->join('chat_invite_rooms as ir', 'ir.room_id', '=', 'i.room_id')->leftJoin('user as u', 'u.uid', '=', 'i.inviter_user_id')
             ->where('i.invitee_user_id', $uid)->where('i.status', 'pending')->where('i.expires_at', '>', now())
             ->where('ir.active', true)->orderByDesc('i.id')->limit(50)
-            ->get(['i.id as invite_id', 'i.room_id', 'i.expires_at', 'ir.content_type', 'ir.content_id', 'ir.watch_position_ms', 'u.name as inviter_name']);
+            ->get(['i.id as invite_id', 'i.room_id', 'i.expires_at', 'ir.room_name', 'ir.content_type', 'ir.content_id', 'ir.watch_position_ms', 'u.name as inviter_name']);
         $rows->transform(function ($invite) {
             if ($invite->content_type && $invite->content_id) {
                 $content = DB::table($invite->content_type === 'episode' ? 'episodes' : 'movie')->where('num', $invite->content_id)->first();
@@ -145,7 +147,7 @@ final class ChatController extends Controller
         $row = DB::table('chat_room_invites as i')->join('chat_invite_rooms as ir', 'ir.room_id', '=', 'i.room_id')
             ->where('i.id', $invite)->where('i.invitee_user_id', $uid)->where('i.status', 'pending')
             ->where('i.expires_at', '>', now())->where('ir.active', true)
-            ->first(['i.room_id', 'i.inviter_user_id', 'ir.content_type', 'ir.content_id', 'ir.watch_position_ms']);
+            ->first(['i.room_id', 'i.inviter_user_id', 'ir.room_name', 'ir.content_type', 'ir.content_id', 'ir.watch_position_ms']);
         abort_unless($row, 404, 'This invitation has expired or is no longer available.');
         $content = null;
         if ($v['accept'] && $row->content_type && $row->content_id) {
@@ -174,7 +176,7 @@ final class ChatController extends Controller
         DB::table('chat_room_invites')->where('id', $invite)->where('status', 'pending')->update([
             'status' => $v['accept'] ? 'accepted' : 'declined', 'responded_at' => now(), 'updated_at' => now(),
         ]);
-        return V4Response::success(['accepted' => (bool) $v['accept'], 'room_id' => (string) $row->room_id,
+        return V4Response::success(['accepted' => (bool) $v['accept'], 'room_id' => (string) $row->room_id, 'room_name' => $row->room_name,
             'content_type' => $row->content_type, 'content_id' => $row->content_id,
             'content_title' => $content->title ?? null,
             'season_id' => ($row->content_type === 'episode' ? ($content->season_id ?? null) : null),
@@ -194,7 +196,7 @@ final class ChatController extends Controller
         $this->chat->room($r, $room);
         return V4Response::success(['room_id' => (string) $room, 'room_type' => 'invite', 'channel' => 'private-chat.'.$room,
             'websocket_url' => config('chat.websocket_url'), 'online_count' => $this->chat->presence($r, $room),
-            'user_id' => (string) $r->input('auth_user_id'), 'content_type' => $inviteRoom->content_type,
+            'user_id' => (string) $r->input('auth_user_id'), 'room_name' => $inviteRoom->room_name, 'content_type' => $inviteRoom->content_type,
             'content_id' => $inviteRoom->content_id, 'watch_position_ms' => (int) $inviteRoom->watch_position_ms,
             'is_host' => $inviteRoom->host_user_id === (string) $r->input('auth_user_id'),
             'content_title' => $content->title ?? null, 'season_id' => $seasonId,

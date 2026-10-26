@@ -28,6 +28,10 @@ class ZoChatClient(
     @Volatile private var closed = false
     private var generation = 0
     private var retry = 0
+    private var roomRevision = 0
+    private var socketId: String? = null
+    private var socketUrl: String? = null
+    private var channel: String? = null
     @Volatile private var owner: String? = null
     @Volatile private var pendingCall: Call? = null
     private val reconcile = object : Runnable {
@@ -72,26 +76,50 @@ class ZoChatClient(
     }
 
     fun join(type: String, contentId: String?, callback: (JSONObject?, String?) -> Unit) {
-        owner = credentials()?.ownerKey
+        if (closed) { callback(null, "Chat connection closed"); return }
+        val identity = credentials()?.ownerKey
+        if (owner != null && owner != identity) { close(); callback(null, "Account changed. Reopen chat."); return }
+        owner = identity
+        val revision = ++roomRevision
+        channel?.let { sendEvent("pusher:unsubscribe", JSONObject().put("channel", it)) }
+        channel = null; room = null
+        val path: String
+        val body = JSONObject()
         if (type == "invite") {
-            val roomId = contentId ?: return callback(null, "Invite room unavailable")
-            request("invite-rooms/$roomId/join", JSONObject()) { data, error ->
-                room = data; callback(data, error)
-                if (data != null) {
-                    connect()
-                    main.removeCallbacks(reconcile); main.postDelayed(reconcile, 30_000)
-                }
-            }
-            return
+            val id = contentId ?: return callback(null, "Invite room unavailable")
+            path = "invite-rooms/$id/join"
+        } else {
+            path = "rooms/join"
+            body.put("type", type)
+            if (contentId != null) body.put("content_id", contentId)
         }
-        val body = JSONObject().put("type", type)
-        if (contentId != null) body.put("content_id", contentId)
-        request("rooms/join", body) { data, error ->
-            room = data; callback(data, error)
-            if (data != null) {
-                connect()
+        request(path, body) { data, error ->
+            if (revision != roomRevision) return@request
+            room = data
+            callback(data, error)
+            if (data != null && revision == roomRevision && !closed) {
+                if (socket != null && socketUrl == data.optString("websocket_url")) subscribe()
+                else connect()
                 main.removeCallbacks(reconcile); main.postDelayed(reconcile, 30_000)
             }
+        }
+    }
+
+    private fun sendEvent(event: String, data: JSONObject): Boolean =
+        socket?.send(JSONObject().put("event", event).put("data", data).toString()) == true
+
+    private fun subscribe() {
+        val id = socketId ?: return // A handshake already in flight will subscribe to the latest room.
+        val info = room ?: return
+        val revision = roomRevision
+        val current = generation
+        request("rooms/${info.getString("room_id")}/auth", JSONObject().put("socket_id", id)) { auth, _ ->
+            if (closed || current != generation || revision != roomRevision) return@request
+            if (auth == null || auth.optString("channel") != info.optString("channel")) {
+                reconnect(current); return@request
+            }
+            channel = auth.getString("channel")
+            if (!sendEvent("pusher:subscribe", JSONObject().put("channel", channel).put("auth", auth.getString("auth")))) reconnect(current)
         }
     }
 
@@ -101,6 +129,7 @@ class ZoChatClient(
         val url = info.optString("websocket_url")
         if (!url.startsWith("wss://")) { onConnection(false); return }
         val current = ++generation
+        socketId = null; channel = null; socketUrl = url
         socket?.cancel()
         socket = http.newWebSocket(Request.Builder().url(url).header("Origin", baseUrl.trimEnd('/')).build(), object : WebSocketListener() {
             override fun onMessage(webSocket: WebSocket, text: String) {
@@ -111,16 +140,19 @@ class ZoChatClient(
                         when (event.optString("event")) {
                             "pusher:connection_established" -> {
                                 val data = JSONObject(event.getString("data"))
-                                request("rooms/${info.getString("room_id")}/auth", JSONObject().put("socket_id", data.getString("socket_id"))) { auth, _ ->
-                                    if (auth != null) webSocket.send(JSONObject().put("event", "pusher:subscribe")
-                                        .put("data", JSONObject().put("channel", auth.getString("channel")).put("auth", auth.getString("auth"))).toString())
-                                    else { onConnection(false); webSocket.cancel(); reconnect(current) }
-                                }
+                                socketId = data.getString("socket_id")
+                                subscribe()
                             }
-                            "pusher_internal:subscription_succeeded" -> { retry = 0; onConnection(true); onChanged("sync", null) }
+                            "pusher_internal:subscription_succeeded" -> {
+                                if (channel != null && event.optString("channel") == channel) {
+                                    retry = 0; onConnection(true); onChanged("sync", null)
+                                }
+                                Unit
+                            }
                             "pusher:ping" -> webSocket.send("{\"event\":\"pusher:pong\",\"data\":{}}")
                             "pusher:error" -> { webSocket.cancel(); reconnect(current) }
                             "chat.changed" -> {
+                                if (channel == null || event.optString("channel") != channel) return@post
                                 val data = event.opt("data").let { if (it is JSONObject) it else JSONObject(it?.toString() ?: "{}") }
                                 onChanged(data.getString("kind"), data.optString("message_id").takeIf { it != "null" && it.isNotEmpty() })
                             }
@@ -136,16 +168,18 @@ class ZoChatClient(
 
     private fun reconnect(current: Int) {
         if (closed || current != generation) return
-        generation++
+        val waiting = ++generation
+        socket?.cancel(); socket = null; socketId = null; channel = null
         onConnection(false)
         val delay = (1000L shl retry.coerceAtMost(5)) + (0..500).random()
         retry++
-        main.postDelayed({ if (!closed) connect() }, delay)
+        main.postDelayed({ if (!closed && generation == waiting) connect() }, delay)
     }
 
     override fun close() {
         if (closed) return
-        closed = true; generation++; main.removeCallbacksAndMessages(null)
+        closed = true; generation++; roomRevision++; main.removeCallbacksAndMessages(null)
+        channel = null; socketId = null; room = null
         socket?.cancel(); pendingCall?.cancel(); executor.shutdownNow()
 
     }
