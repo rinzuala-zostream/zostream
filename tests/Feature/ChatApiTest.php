@@ -26,10 +26,14 @@ class ChatApiTest extends TestCase
             'broadcasting.connections.reverb.app_id' => 'chat', 'broadcasting.connections.reverb.options' => ['host' => 'localhost', 'port' => 8080, 'scheme' => 'http']]);
         DB::purge('chat_testing');
         (require database_path('migrations/2026_10_24_000001_create_chat_tables.php'))->up();
+        (require database_path('migrations/2026_10_25_000001_create_invite_chat_rooms.php'))->up();
+        (require database_path('migrations/2026_10_26_000001_add_room_name_to_chat_invite_rooms.php'))->up();
+        (require database_path('migrations/2026_10_26_000002_add_idle_expiry_to_private_chat_rooms.php'))->up();
         Schema::create('user', function (Blueprint $t) {
             $t->id();
             $t->string('uid');
             $t->string('name');
+            $t->string('token')->nullable();
         });
         Schema::create('n_devices', function (Blueprint $t) {
             $t->id();
@@ -81,8 +85,6 @@ class ChatApiTest extends TestCase
 
     public function test_room_tabs_include_only_active_hosted_and_accepted_rooms(): void
     {
-        (require database_path('migrations/2026_10_25_000001_create_invite_chat_rooms.php'))->up();
-        (require database_path('migrations/2026_10_26_000001_add_room_name_to_chat_invite_rooms.php'))->up();
         $create = function (string $host, string $name, ?string $status = null, bool $active = true, bool $closed = false, bool $watch = false): string {
             $id = DB::table('chat_rooms')->insertGetId([
                 'room_key' => 'invite:'.Str::uuid(), 'type' => 'invite', 'closed' => $closed,
@@ -91,6 +93,7 @@ class ChatApiTest extends TestCase
             DB::table('chat_invite_rooms')->insert([
                 'room_id' => $id, 'host_user_id' => $host, 'room_name' => $name, 'active' => $active,
                 'content_type' => $watch ? 'movie' : null, 'content_id' => $watch ? '42' : null,
+                'idle_expires_at' => $watch ? null : now()->addHour(),
                 'created_at' => now(), 'updated_at' => now(),
             ]);
             if ($status) {
@@ -118,10 +121,109 @@ class ChatApiTest extends TestCase
             ->assertJsonPath('data.rooms.1.room_id', $accepted)
             ->assertJsonPath('data.rooms.2.room_id', $hosted)
             ->assertJsonPath('data.rooms.2.room_name', 'My room')
-            ->assertJsonPath('data.rooms.2.content_id', null);
+            ->assertJsonPath('data.rooms.2.content_id', null)
+            ->assertJsonPath('data.rooms.2.is_host', true)
+            ->assertJsonPath('data.rooms.1.is_host', false);
 
         config(['chat.enabled' => false]);
         $this->getJson('/api/v4/chat/invite-rooms?'.http_build_query($this->identity()))->assertStatus(503);
+    }
+
+    private function createPrivateRoom(): string
+    {
+        DB::table('user')->insertOrIgnore(['uid' => 'bob', 'name' => 'Bob']);
+        return $this->postJson('/api/v4/chat/invite-rooms', $this->identity([
+            'type' => 'global', 'room_name' => 'Friends', 'invitee_ids' => ['bob'],
+        ]))->assertCreated()->json('data.room_id');
+    }
+
+    public function test_private_room_idle_deadline_moves_only_for_new_messages(): void
+    {
+        $this->freezeTime();
+        $room = $this->createPrivateRoom();
+        $createdDeadline = DB::table('chat_invite_rooms')->where('room_id', $room)->value('idle_expires_at');
+        $this->assertSame(now()->addHour()->toDateTimeString(), $createdDeadline);
+        $this->travel(59)->minutes();
+        $this->postJson("/api/v4/chat/invite-rooms/$room/join", $this->identity())->assertOk();
+        $this->postJson("/api/v4/chat/rooms/$room/heartbeat", $this->identity())->assertOk();
+        $this->assertSame($createdDeadline, DB::table('chat_invite_rooms')->where('room_id', $room)->value('idle_expires_at'));
+        $request = (string) Str::uuid();
+        $this->send($room, 'Still here', $request)->assertCreated();
+        $messageDeadline = DB::table('chat_invite_rooms')->where('room_id', $room)->value('idle_expires_at');
+        $this->assertSame(now()->addHour()->toDateTimeString(), $messageDeadline);
+        $this->travel(30)->minutes();
+        $this->send($room, 'Still here', $request)->assertOk();
+        $this->assertSame($messageDeadline, DB::table('chat_invite_rooms')->where('room_id', $room)->value('idle_expires_at'));
+        $this->travel(30)->minutes();
+        $this->postJson("/api/v4/chat/invite-rooms/$room/join", $this->identity())->assertForbidden();
+        $this->send($room)->assertForbidden();
+        $this->getJson("/api/v4/chat/rooms/$room/messages?".http_build_query($this->identity()))->assertForbidden();
+        $this->getJson('/api/v4/chat/invite-rooms?'.http_build_query($this->identity()))->assertJsonCount(0, 'data.rooms');
+    }
+
+    public function test_expired_private_room_cannot_be_accepted_and_pending_invite_disappears(): void
+    {
+        $this->freezeTime();
+        $room = $this->createPrivateRoom();
+        $invite = DB::table('chat_room_invites')->where('room_id', $room)->value('id');
+        $bob = ['auth_user_id' => 'bob', 'auth_device_id' => 'device-b'];
+        $this->getJson('/api/v4/chat/invites?'.http_build_query($bob))->assertJsonCount(1, 'data.invites');
+        $this->travel(60)->minutes();
+        $this->getJson('/api/v4/chat/invites?'.http_build_query($bob))->assertJsonCount(0, 'data.invites');
+        $this->postJson("/api/v4/chat/invites/$invite/respond", $bob + ['accept' => true])->assertNotFound();
+    }
+
+    public function test_only_creator_can_end_private_room_and_both_members_lose_access(): void
+    {
+        $room = $this->createPrivateRoom();
+        $invite = DB::table('chat_room_invites')->where('room_id', $room)->value('id');
+        $bob = ['auth_user_id' => 'bob', 'auth_device_id' => 'device-b'];
+        $this->postJson("/api/v4/chat/invites/$invite/respond", $bob + ['accept' => true])->assertOk();
+        foreach ([$this->identity(), $bob] as $member) {
+            // Reopening the sheet restores the room for both host and accepted invitee.
+            $this->getJson('/api/v4/chat/invite-rooms?'.http_build_query($member))->assertJsonPath('data.rooms.0.room_id', $room);
+        }
+        $this->postJson("/api/v4/chat/invite-rooms/$room/end", $bob)->assertForbidden();
+        $this->postJson("/api/v4/chat/invite-rooms/$room/end", ['auth_user_id' => 'stranger'])->assertForbidden();
+        $this->send($room)->assertCreated();
+        $this->postJson("/api/v4/chat/invite-rooms/$room/end", $this->identity())->assertOk()->assertJsonPath('data.ended', true);
+        $this->postJson("/api/v4/chat/invite-rooms/$room/end", $this->identity())->assertOk();
+        $this->assertSame(1, DB::table('chat_outbox')->where('kind', 'ended')->count());
+        foreach ([$this->identity(), $bob] as $member) {
+            $this->getJson('/api/v4/chat/invite-rooms?'.http_build_query($member))->assertJsonCount(0, 'data.rooms');
+            $this->postJson("/api/v4/chat/invite-rooms/$room/join", $member)->assertForbidden();
+            $this->getJson("/api/v4/chat/rooms/$room/messages?".http_build_query($member))->assertForbidden();
+            $this->postJson("/api/v4/chat/rooms/$room/messages", $member + ['request_id' => (string) Str::uuid(), 'body' => 'Late'])->assertForbidden();
+        }
+    }
+
+    public function test_expiry_migration_uses_existing_last_message_and_room_creation(): void
+    {
+        $this->freezeTime();
+        $first = $this->createPrivateRoom();
+        $this->travel(10)->minutes();
+        $second = $this->createPrivateRoom();
+        $this->message($first);
+        $migration = require database_path('migrations/2026_10_26_000002_add_idle_expiry_to_private_chat_rooms.php');
+        $migration->down();
+        $migration->up();
+        foreach ([$first, $second] as $room) {
+            $this->assertSame(now()->addHour()->toDateTimeString(), DB::table('chat_invite_rooms')->where('room_id', $room)->value('idle_expires_at'));
+        }
+    }
+
+    public function test_watch_rooms_do_not_use_private_idle_expiry_or_private_end_action(): void
+    {
+        $this->freezeTime();
+        $room = $this->createPrivateRoom();
+        DB::table('chat_invite_rooms')->where('room_id', $room)->update([
+            'content_type' => 'movie', 'content_id' => '42', 'idle_expires_at' => null,
+        ]);
+        $this->travel(2)->hours();
+        $this->getJson('/api/v4/chat/invite-rooms?'.http_build_query($this->identity()))
+            ->assertOk()->assertJsonPath('data.rooms.0.room_id', $room);
+        $this->postJson("/api/v4/chat/invite-rooms/$room/end", $this->identity())->assertStatus(422);
+        $this->assertTrue((bool) DB::table('chat_invite_rooms')->where('room_id', $room)->value('active'));
     }
 
     public function test_send_retry_is_idempotent_and_preserves_trusted_sender(): void

@@ -64,6 +64,28 @@ This avoids reopening an unthrottled write path during a Redis outage.
 
 ## Security and moderation API
 
+### Private room lifecycle
+
+`POST /invite-rooms` creates a private room when `type` is `global`. Private
+rooms expire after one hour without a new message, measured from creation if
+no messages have been sent. Reading, joining, accepting invitations, heartbeats
+and retrying an existing message do not extend this deadline. Watch Together
+rooms retain their existing playback-based access rules.
+
+`GET /invite-rooms` restores active room tabs for the creator and accepted
+invitees whenever the chat sheet opens. Pending invitees use Invitations first.
+Expired, ended and closed rooms are excluded. Both apps also refresh this list
+during the 30-second foreground reconciliation and return to Global if the
+selected room is no longer available.
+
+Only the creator of a private room can call `POST /invite-rooms/{room}/end`.
+Android and iOS show **End room** in that creator's chat options, with a
+confirmation. Ending is permanent and idempotent; it denies further joins,
+history, authorization, heartbeats and messages for everyone. A durable `ended`
+notification lets connected members refresh promptly. Message writes and manual
+termination lock the same membership row so a concurrent send cannot reopen an
+ended room. Idle expiry is enforced by API checks without depending on cron.
+
 Every chat route is authenticated. Use HTTPS and WSS. Plain text only, maximum
 1,000 characters; both UIs render text without HTML. Sender identity is trusted
 middleware data and display names come from the user record. Per-account request

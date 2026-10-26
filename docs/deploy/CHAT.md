@@ -11,6 +11,13 @@ No production migration or deployment is performed by adding this code.
    private networking and memory monitoring. Reverb is included in this lockfile.
 2. Run `php artisan migrate --force
    --path=database/migrations/2026_10_24_000001_create_chat_tables.php`.
+   Also run these chat migrations in order with `php artisan migrate --force --path=<path>`:
+   `database/migrations/2026_10_25_000001_create_invite_chat_rooms.php`,
+   `database/migrations/2026_10_26_000001_add_room_name_to_chat_invite_rooms.php`,
+   `database/migrations/2026_10_26_000002_add_idle_expiry_to_private_chat_rooms.php`.
+   Existing private rooms receive a one-hour deadline from their latest message
+   or creation time. Rooms already idle for an hour become unavailable. Deploy
+   this backend and apply the migrations before releasing apps with End room.
 3. Generate private Reverb credentials and configure the `.env.example` chat
    entries. `REVERB_APP_KEY` is public; `REVERB_APP_SECRET` is private. The public
    URL must include that public key:

@@ -8,6 +8,14 @@ use Illuminate\Support\Facades\DB;
 
 final class ChatService
 {
+    public function assertInviteRoomActive(?object $room): void
+    {
+        abort_unless($room && $room->active, 403, 'This invite room has ended.');
+        abort_if($room->content_type === null && ($room->idle_expires_at === null
+            || \Illuminate\Support\Carbon::parse($room->idle_expires_at)->lessThanOrEqualTo(now())),
+            403, 'This private room ended after 1 hour without messages.');
+    }
+
     public function room(Request $r, int $id, bool $writing = false): object
     {
         abort_unless(config('chat.enabled'), 503, 'Chat is currently unavailable.');
@@ -30,7 +38,7 @@ final class ChatService
         }
         if ($room->type === 'invite') {
             $inviteRoom = DB::table('chat_invite_rooms')->where('room_id', $id)->first();
-            abort_unless($inviteRoom && $inviteRoom->active, 403, 'This invite room is closed.');
+            $this->assertInviteRoomActive($inviteRoom);
             $member = (string) $r->input('auth_user_id');
             abort_unless($inviteRoom->host_user_id === $member || DB::table('chat_room_invites')
                 ->where('room_id', $id)->where('invitee_user_id', $member)->where('status', 'accepted')->exists(),

@@ -178,6 +178,7 @@ Route::prefix('v4')
                 Route::get('/invites', [\App\Http\Controllers\Api\V4\ChatController::class, 'invites'])->middleware(\App\Http\Middleware\ChatThrottle::class.':30');
                 Route::post('/invites/{invite}/respond', [\App\Http\Controllers\Api\V4\ChatController::class, 'respondInvite'])->whereNumber('invite')->middleware(\App\Http\Middleware\ChatThrottle::class.':20');
                 Route::post('/invite-rooms/{room}/join', [\App\Http\Controllers\Api\V4\ChatController::class, 'joinInviteRoom'])->whereNumber('room')->middleware(\App\Http\Middleware\ChatThrottle::class.':30');
+                Route::post('/invite-rooms/{room}/end', [\App\Http\Controllers\Api\V4\ChatController::class, 'endInviteRoom'])->whereNumber('room')->middleware(\App\Http\Middleware\ChatThrottle::class.':20');
                 Route::post('/invite-rooms/{room}/position', [\App\Http\Controllers\Api\V4\ChatController::class, 'updateInvitePosition'])->whereNumber('room')->middleware(\App\Http\Middleware\ChatThrottle::class.':120');
                 Route::post('/blocks', [\App\Http\Controllers\Api\V4\ChatController::class, 'block'])->whereNumber(['room', 'message', 'report'])->middleware(\App\Http\Middleware\ChatThrottle::class.':30');
                 Route::post('/rooms/{room}/auth', [\App\Http\Controllers\Api\V4\ChatController::class, 'auth'])->whereNumber(['room', 'message', 'report'])->middleware(\App\Http\Middleware\ChatThrottle::class.':60');
