@@ -68,10 +68,32 @@ class ZoChatClient(
         val call = http.newCall(request.build()); pendingCall = call
         return call.execute().use { response ->
             val json = JSONObject(response.body?.string() ?: "{}")
-            check(response.isSuccessful && json.optBoolean("success")) {
-                json.optString("message").takeIf { it.isNotBlank() && it != "null" } ?: "Chat request failed (${response.code})"
+            val data = json.optJSONObject("data")
+            val successValue = json.opt("success")
+            val declaredSuccess = when (successValue) {
+                is Boolean -> successValue
+                is Number -> successValue.toInt() != 0
+                is String -> successValue.equals("true", ignoreCase = true) || successValue == "1"
+                else -> json.optString("status").equals("success", ignoreCase = true)
             }
-            json.getJSONObject("data")
+            // Chat endpoints on some deployed API versions return their payload directly.
+            val successUndeclared = successValue == null || successValue == JSONObject.NULL
+            val payloadKeys = listOf(
+                "room_id", "user_id", "messages", "invites", "accepted", "position_ms",
+                "online_count", "auth", "blocked", "left", "users", "reported", "resolved", "updated"
+            )
+            val hasDirectPayload = payloadKeys.any { key -> json.has(key) && json.opt(key) != JSONObject.NULL }
+            val successfulEnvelope = declaredSuccess || (successUndeclared && (data != null || hasDirectPayload))
+            check(response.isSuccessful && successfulEnvelope) {
+                val nestedError = json.optJSONObject("error")?.optString("message")
+                val message = json.optString("message").takeIf { it.isNotBlank() && it != "null" }
+                    ?: nestedError?.takeIf { it.isNotBlank() && it != "null" }
+                val keys = json.keys().asSequence().joinToString(",")
+                val diagnostic = "Chat request failed (${response.code}) at $path (success=$successValue, status=${json.optString("status")}, fields=$keys)"
+                android.util.Log.e("ZoChatClient", diagnostic)
+                message ?: diagnostic
+            }
+            data ?: json.optJSONObject("result") ?: json
         }
     }
 

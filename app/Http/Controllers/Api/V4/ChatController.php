@@ -117,6 +117,30 @@ final class ChatController extends Controller
             'content_id' => $v['content_id'] ?? null, 'content_title' => $content->title ?? null, 'invite_count' => $invitees->count()], status: 201);
     }
 
+    public function inviteRooms(Request $r)
+    {
+        abort_unless(config('chat.enabled'), 503, 'Chat is currently unavailable.');
+        $uid = (string) $r->input('auth_user_id');
+        $rooms = DB::table('chat_invite_rooms as ir')
+            ->join('chat_rooms as r', 'r.id', '=', 'ir.room_id')
+            ->where('ir.active', true)->where('r.closed', false)
+            ->where(function ($q) use ($uid) {
+                $q->where('ir.host_user_id', $uid)->orWhereExists(function ($member) use ($uid) {
+                    $member->selectRaw('1')->from('chat_room_invites as i')
+                        ->whereColumn('i.room_id', 'ir.room_id')
+                        ->where('i.invitee_user_id', $uid)->where('i.status', 'accepted');
+                });
+            })
+            ->orderByDesc('ir.room_id')
+            ->get(['ir.room_id', 'ir.room_name', 'ir.content_type', 'ir.content_id']);
+        $rooms->transform(function ($room) {
+            $room->room_id = (string) $room->room_id;
+            return $room;
+        });
+
+        return V4Response::success(['rooms' => $rooms]);
+    }
+
     public function invites(Request $r)
     {
         $uid = (string) $r->input('auth_user_id');

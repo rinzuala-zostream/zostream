@@ -79,6 +79,51 @@ class ChatApiTest extends TestCase
         return DB::table('chat_messages')->insertGetId(['room_id' => $room, 'user_id' => $uid, 'request_id' => (string) Str::uuid(), 'display_name' => $uid, 'body' => $body, 'spoiler' => false, 'created_at' => now(), 'updated_at' => now()]);
     }
 
+    public function test_room_tabs_include_only_active_hosted_and_accepted_rooms(): void
+    {
+        (require database_path('migrations/2026_10_25_000001_create_invite_chat_rooms.php'))->up();
+        (require database_path('migrations/2026_10_26_000001_add_room_name_to_chat_invite_rooms.php'))->up();
+        $create = function (string $host, string $name, ?string $status = null, bool $active = true, bool $closed = false, bool $watch = false): string {
+            $id = DB::table('chat_rooms')->insertGetId([
+                'room_key' => 'invite:'.Str::uuid(), 'type' => 'invite', 'closed' => $closed,
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+            DB::table('chat_invite_rooms')->insert([
+                'room_id' => $id, 'host_user_id' => $host, 'room_name' => $name, 'active' => $active,
+                'content_type' => $watch ? 'movie' : null, 'content_id' => $watch ? '42' : null,
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+            if ($status) {
+                DB::table('chat_room_invites')->insert([
+                    'room_id' => $id, 'inviter_user_id' => $host, 'invitee_user_id' => 'alice', 'status' => $status,
+                    'expires_at' => now()->subDay(), 'created_at' => now(), 'updated_at' => now(),
+                ]);
+            }
+            return (string) $id;
+        };
+        $hosted = $create('alice', 'My room');
+        $accepted = $create('bob', 'Joined room', 'accepted');
+        $watch = $create('alice', 'Watch room', watch: true);
+        $create('bob', 'Pending room', 'pending');
+        $create('bob', 'Declined room', 'declined');
+        $create('bob', 'Someone else');
+        $create('alice', 'Inactive room', active: false);
+        $create('alice', 'Closed room', closed: true);
+
+        $this->getJson('/api/v4/chat/invite-rooms?'.http_build_query($this->identity()))
+            ->assertOk()->assertJsonCount(3, 'data.rooms')
+            ->assertJsonPath('data.rooms.0.room_id', $watch)
+            ->assertJsonPath('data.rooms.0.content_type', 'movie')
+            ->assertJsonPath('data.rooms.0.content_id', '42')
+            ->assertJsonPath('data.rooms.1.room_id', $accepted)
+            ->assertJsonPath('data.rooms.2.room_id', $hosted)
+            ->assertJsonPath('data.rooms.2.room_name', 'My room')
+            ->assertJsonPath('data.rooms.2.content_id', null);
+
+        config(['chat.enabled' => false]);
+        $this->getJson('/api/v4/chat/invite-rooms?'.http_build_query($this->identity()))->assertStatus(503);
+    }
+
     public function test_send_retry_is_idempotent_and_preserves_trusted_sender(): void
     {
         $room = $this->room();
