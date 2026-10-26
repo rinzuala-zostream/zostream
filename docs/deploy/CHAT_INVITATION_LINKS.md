@@ -28,7 +28,7 @@ Use the actual approved template name and language. Reuse existing `WHATSAPP_PHO
 
 Template body parameters, in order: recipient name, inviter name, room name, detail sentence. Normal chat detail: `Join the conversation in a private chat room.` Watch Together detail: `Watch {title} together and chat while you watch.` Dynamic URL button index 0 receives only the token suffix. Template button: `View Invitation`; template URL: `https://app.zostream.in/invite/{{1}}`.
 
-Recipients opt in using Chat options → WhatsApp invitations. Default is off. App invitations continue regardless of this preference. The job rechecks consent, pending state, expiry and room availability at delivery, retries provider failures and skips invitations already marked sent. Notification failures do not roll back room creation. Existing invitations created before this migration remain available in the app, but do not receive new link tokens or WhatsApp messages retroactively.
+When `CHAT_WHATSAPP_ENABLED=true`, new room invitations are automatically sent to the recipient’s registered WhatsApp number. There is no mobile ON/OFF preference. Legacy `chat_invitation_preferences` records are ignored; keep the existing table to preserve migration history. App invitations continue independently. The job rechecks pending state, expiry and room availability at delivery, retries provider failures and skips invitations already marked sent. Notification failures do not roll back room creation. Existing invitations created before this migration remain available in the app, but do not receive new link tokens or WhatsApp messages retroactively.
 
 ## Domain association
 
@@ -47,6 +47,6 @@ The web fallback contains an Open in Zo Stream link and a download link. Android
 - Accept Watch Together, including episodes: entitlement checks, stream start and room chat, with host position.
 - Reopen an accepted link, decline, expire an invitation, end/idle-expire a room and remove content.
 - Disconnect during loading/responding: clear Retry/Close state without duplicate acceptance.
-- Enable WhatsApp consent on the recipient, create a new invitation and verify four body variables and URL suffix using the approved template. Disable consent and verify only the app invitation remains.
+- With server delivery enabled, create a new invitation and verify four body variables and URL suffix using the approved template. Verify delivery without a preference record and with an old disabled preference. Restart queue workers after deploying this change.
 
 No live WhatsApp sends or device installation are part of local automated tests.

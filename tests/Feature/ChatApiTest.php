@@ -664,15 +664,9 @@ class ChatApiTest extends TestCase
         $this->postJson($url.'/respond', ['auth_user_id' => 'bob', 'accept' => true])->assertStatus(410);
     }
 
-    public function test_whatsapp_invitation_requires_recipient_preference_and_sends_one_template(): void
+    public function test_whatsapp_invitation_sends_once_without_a_recipient_preference(): void
     {
         [$job, $invite] = $this->linkedInvitation();
-        $service = \Mockery::mock(\App\Services\WhatsAppCloudService::class);
-        $service->shouldNotReceive('sendTemplate');
-        $job->handle($service);
-        $this->postJson('/api/v4/chat/invitation-preferences', ['auth_user_id' => 'bob', 'whatsapp_enabled' => true])
-            ->assertOk()->assertJsonPath('data.whatsapp_enabled', true);
-        $this->getJson('/api/v4/chat/invitation-preferences?auth_user_id=alice')->assertOk()->assertJsonPath('data.whatsapp_enabled', false);
         $service = \Mockery::mock(\App\Services\WhatsAppCloudService::class);
         $service->shouldReceive('sendTemplate')->once()->with('919876543210', 'zostream_room_invitation',
             ['Bob', 'Alice', 'Friends Room', 'Join the conversation in a private chat room.'], $job->token, 'en_US')
@@ -724,19 +718,19 @@ class ChatApiTest extends TestCase
         $this->getJson($url.'?auth_user_id=bob')->assertStatus(410)->assertJsonPath('error.code', 'CONTENT_UNAVAILABLE');
     }
 
-    public function test_whatsapp_failure_can_retry_and_revoked_consent_prevents_delivery(): void
+    public function test_whatsapp_failure_can_retry_even_with_an_old_disabled_preference(): void
     {
         [$job, $invite] = $this->linkedInvitation();
-        DB::table('chat_invitation_preferences')->insert(['user_id' => 'bob', 'whatsapp_enabled' => true]);
+        DB::table('chat_invitation_preferences')->insert(['user_id' => 'bob', 'whatsapp_enabled' => false]);
         $service = \Mockery::mock(\App\Services\WhatsAppCloudService::class);
         $service->shouldReceive('sendTemplate')->once()->andThrow(new \RuntimeException('Provider unavailable'));
         try { $job->handle($service); $this->fail('Provider failure must be retryable'); }
         catch (\RuntimeException $e) { $this->assertSame('Provider unavailable', $e->getMessage()); }
         $this->assertNull(DB::table('chat_room_invites')->where('id', $invite->id)->value('whatsapp_sent_at'));
-        DB::table('chat_invitation_preferences')->where('user_id', 'bob')->update(['whatsapp_enabled' => false]);
         $service = \Mockery::mock(\App\Services\WhatsAppCloudService::class);
-        $service->shouldNotReceive('sendTemplate');
+        $service->shouldReceive('sendTemplate')->once()->andReturn(new \App\Models\WhatsAppMessage());
         $job->handle($service);
+        $this->assertNotNull(DB::table('chat_room_invites')->where('id', $invite->id)->value('whatsapp_sent_at'));
         $this->assertSame('pending', DB::table('chat_room_invites')->where('id', $invite->id)->value('status'));
     }
 

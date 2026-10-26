@@ -34,8 +34,7 @@ class SendChatInvitationWhatsApp implements ShouldQueue, ShouldBeEncrypted
             ->where('ir.room_id', $invite->room_id)->where('ir.active', true)->where('r.closed', false)
             ->where(fn ($q) => $q->whereNotNull('ir.content_type')->orWhere('ir.idle_expires_at', '>', now()))
             ->first(['ir.*']);
-        if (! $room || ! DB::table('chat_invitation_preferences')->where('user_id', $invite->invitee_user_id)
-            ->where('whatsapp_enabled', true)->exists()) { return; }
+        if (! $room) { return; }
         $user = DB::table('user')->where('uid', $invite->invitee_user_id)->first();
         if (! $user || empty($user->auth_phone)) { return; }
         $phone = preg_replace('/\D+/', '', $user->auth_phone);

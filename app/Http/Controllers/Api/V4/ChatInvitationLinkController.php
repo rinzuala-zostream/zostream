@@ -9,17 +9,6 @@ use Illuminate\Support\Facades\DB;
 
 class ChatInvitationLinkController extends Controller
 {
-    public function preference(Request $r)
-    {
-        if ($r->isMethod('post')) {
-            $v = $r->validate(['whatsapp_enabled' => 'required|boolean']);
-            DB::table('chat_invitation_preferences')->updateOrInsert(['user_id' => (string) $r->input('auth_user_id')],
-                ['whatsapp_enabled' => $v['whatsapp_enabled'], 'created_at' => now(), 'updated_at' => now()]);
-        }
-        return V4Response::success(['whatsapp_enabled' => (bool) DB::table('chat_invitation_preferences')
-            ->where('user_id', (string) $r->input('auth_user_id'))->value('whatsapp_enabled')]);
-    }
-
     public function show(Request $r, string $token)
     {
         return $this->resolve($r, $token, false);
