@@ -8,6 +8,7 @@ Run the new migration after the previous chat migrations:
 
 ```sh
 php artisan migrate --force --path=database/migrations/2026_10_26_000004_add_chat_invitation_links.php
+php artisan migrate --force --path=database/migrations/2026_10_26_000005_ensure_chat_delivery_queue_tables.php
 ```
 
 Configure the approved template and existing Cloud API credentials:
@@ -20,6 +21,8 @@ CHAT_INVITATION_URL=https://app.zostream.in/invite
 CHAT_IOS_APP_IDS=5N48USNJ2K.com.buannel.pvt.ltd.zostream.Zo-Stream
 CHAT_ANDROID_SHA256_FINGERPRINTS=YOUR_PLAY_APP_SIGNING_SHA256_FINGERPRINT
 ```
+
+The queue table migration creates missing `jobs` and `failed_jobs` tables, and preserves existing queue data on repeat execution or rollback.
 
 Use the actual approved template name and language. Reuse existing `WHATSAPP_PHONE_ID` and `WHATSAPP_TOKEN`; do not add them to mobile clients. Use a persistent queue and a running queue worker (not `sync`) for notification delivery. Refresh cached configuration and restart workers using your normal deployment procedure. The encrypted queue payload contains the raw invitation token, so preserve the application encryption key across web/worker processes.
 
