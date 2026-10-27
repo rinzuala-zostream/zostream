@@ -315,6 +315,13 @@ final class ChatController extends Controller
             'slow_mode_seconds' => config('chat.slow_mode_seconds')]);
     }
 
+    public function privateWatchStatus(Request $r, int $room)
+    {
+        $this->chat->room($r, $room);
+        $watch = app(\App\Support\Chat\PrivateWatchService::class)->liveSession($room);
+        return V4Response::success(['session_id' => $watch ? (string) $watch->id : null]);
+    }
+
     public function joinPrivateWatch(Request $r, int $room, int $session)
     {
         return V4Response::success(app(\App\Support\Chat\PrivateWatchService::class)->join($r, $room, $session));
@@ -322,7 +329,9 @@ final class ChatController extends Controller
 
     public function privateWatchPosition(Request $r, int $room, int $session)
     {
-        $v = $r->validate(['position_ms' => 'nullable|integer|min:0|max:86400000']);
+        $v = $r->validate(['position_ms' => 'nullable|integer|min:0|max:86400000', 'paused' => 'sometimes|boolean',
+            'control_sequence' => 'sometimes|integer|min:1|max:9007199254740991']);
+        abort_if((isset($v['paused']) || isset($v['control_sequence'])) && !isset($v['position_ms']), 422, 'Playback controls require a position.');
         $service = app(\App\Support\Chat\PrivateWatchService::class);
         $watch = $service->resolve($r, $room, $session);
         $host = $watch->host_user_id === (string) $r->input('auth_user_id');
@@ -330,26 +339,26 @@ final class ChatController extends Controller
             abort_unless($host && $this->chat->playbackAllowed($r, $watch->content_type, $watch->content_id)
                 && hash_equals($watch->stream_token_hash, hash('sha256', (string) $r->header('X-Playback-Token'))),
                 403, 'Only the creator’s active player can update this watch session.');
-            DB::table('chat_watch_sessions')->where('id', $session)->where('active', true)
-                ->update(['position_ms' => $v['position_ms'], 'updated_at' => now()]);
-            $watch->position_ms = $v['position_ms'];
+            $watch = app(\App\Support\Chat\WatchPlaybackState::class)->update($r, 'chat_watch_sessions', $session, 'position_ms', $v);
         }
-        return V4Response::success(['position_ms' => (int) $watch->position_ms, 'is_host' => $host]);
+        return V4Response::success(app(\App\Support\Chat\WatchPlaybackState::class)->payload($watch, 'position_ms', $host));
     }
 
     public function updateInvitePosition(Request $r, int $room)
     {
-        $v = $r->validate(['position_ms' => 'nullable|integer|min:0|max:86400000']);
+        $v = $r->validate(['position_ms' => 'nullable|integer|min:0|max:86400000', 'paused' => 'sometimes|boolean',
+            'control_sequence' => 'sometimes|integer|min:1|max:9007199254740991']);
+        abort_if((isset($v['paused']) || isset($v['control_sequence'])) && !isset($v['position_ms']), 422, 'Playback controls require a position.');
         $this->chat->room($r, $room, true);
         $inviteRoom = DB::table('chat_invite_rooms')->where('room_id', $room)->first();
         abort_unless($inviteRoom, 404);
         $isHost = $inviteRoom->host_user_id === (string) $r->input('auth_user_id');
         if ($isHost && isset($v['position_ms'])) {
-            DB::table('chat_invite_rooms')->where('room_id', $room)->update(['watch_position_ms' => $v['position_ms'], 'updated_at' => now()]);
-            $inviteRoom->watch_position_ms = $v['position_ms'];
+            abort_unless($inviteRoom->content_type && $this->chat->playbackAllowed($r, $inviteRoom->content_type, $inviteRoom->content_id), 403, 'Only the creator’s active player can update playback.');
+            $inviteRoom = app(\App\Support\Chat\WatchPlaybackState::class)->update($r, 'chat_invite_rooms', $inviteRoom->id, 'watch_position_ms', $v);
         }
         abort_if(! $isHost && isset($v['position_ms']), 403, 'Only the host can update playback position.');
-        return V4Response::success(['position_ms' => (int) $inviteRoom->watch_position_ms, 'is_host' => $isHost]);
+        return V4Response::success(app(\App\Support\Chat\WatchPlaybackState::class)->payload($inviteRoom, 'watch_position_ms', $isHost));
     }
 
     public function auth(Request $r, int $room)

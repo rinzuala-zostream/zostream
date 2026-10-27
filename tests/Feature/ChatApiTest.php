@@ -32,6 +32,7 @@ class ChatApiTest extends TestCase
         (require database_path('migrations/2026_10_26_000003_create_chat_room_reads.php'))->up();
         (require database_path('migrations/2026_10_26_000004_add_chat_invitation_links.php'))->up();
         (require database_path('migrations/2026_10_27_000001_create_chat_watch_sessions.php'))->up();
+        (require database_path('migrations/2026_10_27_000002_add_watch_playback_controls.php'))->up();
         Schema::create('user', function (Blueprint $t) {
             $t->id();
             $t->string('uid');
@@ -715,6 +716,7 @@ class ChatApiTest extends TestCase
 
     private function privateWatchFixture(): string
     {
+        $this->freezeTime();
         $room = $this->createPrivateRoom();
         DB::table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
         Schema::create('movie', function (Blueprint $t) {
@@ -838,6 +840,57 @@ class ChatApiTest extends TestCase
         DB::table('n_active_streams')->update(['last_ping' => now()->subMinutes(4)]);
         $this->postJson($url, ['auth_user_id' => 'bob'])->assertStatus(410);
         $this->postJson("/api/v4/chat/invite-rooms/$room/join", ['auth_user_id' => 'bob'])->assertOk();
+    }
+
+    public function test_realtime_watch_controls_preserve_pause_and_reject_delayed_updates(): void
+    {
+        $room = $this->privateWatchFixture();
+        $session = $this->sendPrivateWatch($room)->assertCreated()->json('data.watch_invite.session_id');
+        $url = "/api/v4/chat/rooms/$room/watch-sessions/$session/position";
+        $this->postJson($url, $this->identity(['position_ms' => 10000, 'paused' => false, 'control_sequence' => 10]))
+            ->assertOk()->assertJsonPath('data.revision', '10');
+        $this->travel(2)->seconds();
+        $this->postJson($url, ['auth_user_id' => 'bob'])->assertOk()->assertJsonPath('data.position_ms', 12000);
+        $this->postJson($url, $this->identity(['position_ms' => 12000, 'paused' => true, 'control_sequence' => 12]))->assertOk();
+        $this->postJson($url, $this->identity(['position_ms' => 20000, 'paused' => false, 'control_sequence' => 11]))
+            ->assertOk()->assertJsonPath('data.paused', true)->assertJsonPath('data.revision', '12');
+        $this->travel(2)->seconds();
+        $this->postJson($url, ['auth_user_id' => 'bob'])->assertOk()->assertJsonPath('data.position_ms', 12000)->assertJsonPath('data.paused', true);
+        $this->postJson($url, ['auth_user_id' => 'bob', 'position_ms' => 0, 'paused' => false, 'control_sequence' => 99])->assertForbidden();
+        $this->assertSame(2, DB::table('chat_outbox')->where('kind', 'watch_control')->count());
+        Http::fake(['*' => Http::response('{}', 200)]);
+        $this->artisan('chat:deliver', ['--once' => true])->assertSuccessful();
+        Http::assertSent(fn ($request) => ($request->data()['name'] ?? null) === 'chat.changed'
+            && json_decode($request->data()['data'] ?? '{}', true)['kind'] === 'watch_control');
+    }
+
+    public function test_live_card_status_follows_stream_lifecycle_and_replacement(): void
+    {
+        $room = $this->privateWatchFixture();
+        $first = $this->sendPrivateWatch($room)->assertCreated()->json('data.watch_invite.session_id');
+        $url = "/api/v4/chat/rooms/$room/watch-status?auth_user_id=bob";
+        $this->getJson($url)->assertOk()->assertJsonPath('data.session_id', $first);
+        Cache::flush();
+        $next = $this->sendPrivateWatch($room)->assertCreated()->json('data.watch_invite.session_id');
+        $this->getJson($url)->assertOk()->assertJsonPath('data.session_id', $next);
+        DB::table('n_active_streams')->update(['status' => 'stopped']);
+        $this->getJson($url)->assertOk()->assertJsonPath('data.session_id', null);
+        $this->getJson("/api/v4/chat/rooms/$room/watch-status?auth_user_id=stranger")->assertForbidden();
+    }
+
+    public function test_new_watch_rooms_also_publish_play_pause_seek_controls(): void
+    {
+        $this->privateWatchFixture();
+        $room = $this->withHeaders(['X-Playback-Token' => 'play-a'])->postJson('/api/v4/chat/invite-rooms', $this->identity([
+            'type' => 'movie', 'content_id' => 'film-a', 'room_name' => 'Watch', 'invitee_ids' => ['bob'],
+        ]))->assertCreated()->json('data.room_id');
+        DB::table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
+        $url = "/api/v4/chat/invite-rooms/$room/position";
+        $this->postJson($url, $this->identity(['position_ms' => 8000, 'paused' => true, 'control_sequence' => 3]))->assertOk();
+        $this->travel(5)->seconds();
+        $this->postJson($url, ['auth_user_id' => 'bob'])->assertOk()->assertJsonPath('data.position_ms', 8000)->assertJsonPath('data.paused', true);
+        $this->postJson($url, ['auth_user_id' => 'bob', 'paused' => false, 'position_ms' => 0])->assertForbidden();
+        $this->assertSame(1, DB::table('chat_outbox')->where('kind', 'watch_control')->count());
     }
 
     public function test_public_invitation_page_never_exposes_private_room_data(): void

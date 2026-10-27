@@ -27,7 +27,7 @@ final class PrivateWatchService
             'room_id' => $inviteRoom->room_id, 'message_id' => $message, 'host_user_id' => $inviteRoom->host_user_id,
             'host_stream_id' => $stream->id, 'stream_token_hash' => hash('sha256', $r->header('X-Playback-Token')),
             'content_type' => $watch['content_type'], 'content_id' => $watch['content_id'],
-            'position_ms' => $watch['position_ms'] ?? 0, 'active' => true, 'created_at' => now(), 'updated_at' => now(),
+            'position_ms' => $watch['position_ms'] ?? 0, 'sampled_at_ms' => now()->getTimestampMs(), 'active' => true, 'created_at' => now(), 'updated_at' => now(),
         ]);
         DB::table('chat_messages')->where('id', $message)->update(['body' => 'Watch '.$content->title.' together', 'spoiler' => false,
             'watch_invite' => json_encode(['session_id' => (string) $session, 'content_type' => $watch['content_type'],
@@ -47,6 +47,16 @@ final class PrivateWatchService
         $content = ChatContent::find($session->content_type, $session->content_id);
         return ['session_id' => (string) $session->id, 'content_type' => $session->content_type,
             'content_id' => $session->content_id, 'content_title' => $content->title ?? 'Unavailable title'];
+    }
+
+    public function liveSession(int $room): ?object
+    {
+        $watch = DB::table('chat_watch_sessions')->where('room_id', $room)->where('active', true)->first();
+        if (! $watch || ! DB::table('chat_messages')->where('id', $watch->message_id)->whereNull('deleted_at')->exists()) { return null; }
+        $stream = DB::table('n_active_streams')->where('id', $watch->host_stream_id)->where('status', 'active')
+            ->where('content_type', $watch->content_type)->where('content_key', $watch->content_id)
+            ->where('last_ping', '>=', now()->subMinutes(3))->first();
+        return $stream && hash_equals($watch->stream_token_hash, hash('sha256', $stream->stream_token)) ? $watch : null;
     }
 
     public function resolve(Request $r, int $room, int $session): object
@@ -81,7 +91,7 @@ final class PrivateWatchService
             'subscription_id' => (int) (DB::table('n_subscriptions')->where('user_id', (string) $r->input('auth_user_id'))
                 ->where('is_active', true)->where('end_at', '>=', now()->startOfDay())->value('id') ?? 0),
             'content_type' => $watch->content_type, 'content_id' => $watch->content_id,
-            'content_title' => $content->title, 'watch_position_ms' => (int) $watch->position_ms,
+            'content_title' => $content->title, 'watch_position_ms' => app(WatchPlaybackState::class)->payload($watch, 'position_ms', false)['position_ms'],
             'season_id' => $season, 'season_number' => $season ? DB::table('seasons')->where('id', $season)->value('season_number') : null,
             'episode_number' => $content->episode_number ?? null];
     }

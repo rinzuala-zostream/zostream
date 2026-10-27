@@ -113,10 +113,33 @@ The private room retains its content type, membership and history. Watch
 sessions are attached to messages and to the creator's specific active stream.
 Sending `/watch` again replaces the previous session. Stopped, expired or
 replaced streams and deleted cards cannot be joined; normal private chat stays
-available under its existing one-hour inactivity rule. Position updates use the
-same four-second polling interval as existing watch rooms.
+available under its existing one-hour inactivity rule. Position controls use `watch_control` WebSocket invalidations with an authenticated
+state fetch; a ten-second API check recovers state after missed events.
 
 Verify with two accounts: creator slash autocomplete, member card tap from Home
 and from the player, movie/episode routing, current position sync, premium
 subscription failure, stale cards, replacement sessions and normal chat after
 playback ends. Restart chat workers after deploying the API changes.
+
+## LIVE cards and playback controls
+
+Before deploying this API or the updated mobile builds, apply:
+
+```sh
+php artisan migrate --force --path=database/migrations/2026_10_27_000002_add_watch_playback_controls.php
+```
+
+Restart the `chat:deliver` worker to deliver `watch_control` events. These private
+channel events contain no playback tokens or content payloads. Accepted members
+fetch authoritative position/paused state through the existing position endpoint.
+Both dedicated watch rooms and `/watch` sessions support host play, pause and seek.
+Control sequence numbers reject delayed writes; server timestamps and position
+extrapolation account for playback during transport. Mobile clients retain a
+control subscription when switching chat tabs and never publish guest controls.
+A ten-second state fetch also recovers missed events/reconnects.
+
+Private-room cards check `/rooms/{room}/watch-status` when joining and every ten
+seconds. Only the current session with an active matching host stream receives
+LIVE highlighting. Stopped/replaced sessions lose their highlight. Creators see
+“You’re hosting”; invitees see the Watch button until the session ends. Private
+room membership, history and its inactivity rule are unchanged.
