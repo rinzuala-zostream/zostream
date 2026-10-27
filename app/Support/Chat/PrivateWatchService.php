@@ -36,7 +36,7 @@ final class PrivateWatchService
 
     private function content(string $type, string $id): object
     {
-        $content = DB::table($type === 'episode' ? 'episodes' : 'movie')->where('num', $id)->first();
+        $content = ChatContent::find($type, $id);
         abort_unless($content, 404, 'This content is unavailable.');
         abort_if((bool) ($content->isPayPerView ?? false), 403, 'Watch together is unavailable for PPV content.');
         return $content;
@@ -44,7 +44,7 @@ final class PrivateWatchService
 
     public function metadata(object $session): array
     {
-        $content = DB::table($session->content_type === 'episode' ? 'episodes' : 'movie')->where('num', $session->content_id)->first();
+        $content = ChatContent::find($session->content_type, $session->content_id);
         return ['session_id' => (string) $session->id, 'content_type' => $session->content_type,
             'content_id' => $session->content_id, 'content_title' => $content->title ?? 'Unavailable title'];
     }

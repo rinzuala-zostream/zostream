@@ -46,7 +46,7 @@ class SendChatInvitationWhatsApp implements ShouldQueue, ShouldBeEncrypted
         $host = DB::table('user')->where('uid', $invite->inviter_user_id)->value('name') ?: 'A Zo Stream user';
         $detail = 'Join the conversation in a private chat room.';
         if ($room->content_type) {
-            $title = DB::table($room->content_type === 'episode' ? 'episodes' : 'movie')->where('num', $room->content_id)->value('title');
+            $title = \App\Support\Chat\ChatContent::find($room->content_type, $room->content_id)?->title;
             if (! $title) { return; }
             $detail = 'Watch '.$title.' together and chat while you watch.';
         }

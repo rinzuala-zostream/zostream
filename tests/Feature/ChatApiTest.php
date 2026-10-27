@@ -193,7 +193,7 @@ class ChatApiTest extends TestCase
             $t->string('season_number');
         });
         Schema::create('episodes', function (Blueprint $t) {
-            $t->string('num');
+            $t->string('num'); $t->string('id')->nullable();
             $t->string('title');
             $t->integer('season_id');
             $t->string('episode_number');
@@ -718,12 +718,12 @@ class ChatApiTest extends TestCase
         $room = $this->createPrivateRoom();
         DB::table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
         Schema::create('movie', function (Blueprint $t) {
-            $t->string('num'); $t->string('title'); $t->boolean('isPremium')->default(false); $t->boolean('isPayPerView')->default(false);
+            $t->string('num'); $t->string('id')->nullable(); $t->string('title'); $t->boolean('isPremium')->default(false); $t->boolean('isPayPerView')->default(false);
         });
         Schema::create('n_subscriptions', function (Blueprint $t) {
             $t->id(); $t->string('user_id'); $t->boolean('is_active'); $t->timestamp('end_at');
         });
-        DB::table('movie')->insert(['num' => 'film-a', 'title' => 'Film A']);
+        DB::table('movie')->insert(['num' => '101', 'id' => 'film-a', 'title' => 'Film A']);
         DB::table('n_devices')->insert(['id' => 1, 'user_id' => 'alice', 'device_token' => 'device-a']);
         DB::table('n_active_streams')->insert(['device_id' => 1, 'stream_token' => 'play-a', 'status' => 'active',
             'content_type' => 'movie', 'content_key' => 'film-a', 'last_ping' => now()]);
@@ -736,6 +736,22 @@ class ChatApiTest extends TestCase
             'request_id' => $request ?? (string) Str::uuid(), 'body' => '/watch',
             'watch' => ['content_type' => 'movie', 'content_id' => 'film-a', 'position_ms' => 12000],
         ]));
+    }
+
+    public function test_new_watch_rooms_resolve_public_playback_ids_instead_of_database_row_numbers(): void
+    {
+        $this->privateWatchFixture();
+        $room = $this->withHeaders(['X-Playback-Token' => 'play-a'])->postJson('/api/v4/chat/invite-rooms', $this->identity([
+            'type' => 'movie', 'content_id' => 'film-a', 'room_name' => 'Watch Film A', 'invitee_ids' => ['bob'],
+        ]))->assertCreated()->json('data.room_id');
+        $this->postJson("/api/v4/chat/invite-rooms/$room/join", $this->identity())->assertOk()
+            ->assertJsonPath('data.content_title', 'Film A')->assertJsonPath('data.content_id', 'film-a');
+        $this->getJson('/api/v4/chat/invites?auth_user_id=bob')->assertOk()->assertJsonPath('data.invites.0.content_title', 'Film A');
+        $invite = DB::table('chat_room_invites')->where('room_id', $room)->value('id');
+        $this->postJson("/api/v4/chat/invites/$invite/respond", ['auth_user_id' => 'bob', 'accept' => true])->assertOk()
+            ->assertJsonPath('data.content_id', 'film-a');
+        $this->postJson("/api/v4/chat/invite-rooms/$room/join", ['auth_user_id' => 'bob'])->assertOk()
+            ->assertJsonPath('data.content_title', 'Film A');
     }
 
     public function test_watch_command_keeps_private_room_and_joins_at_current_host_position(): void
@@ -803,10 +819,10 @@ class ChatApiTest extends TestCase
         $room = $this->privateWatchFixture();
         Schema::create('seasons', function (Blueprint $t) { $t->id(); $t->integer('season_number'); });
         Schema::create('episodes', function (Blueprint $t) {
-            $t->string('num'); $t->string('title'); $t->integer('season_id'); $t->integer('episode_number');
+            $t->string('num'); $t->string('id')->nullable(); $t->string('title'); $t->integer('season_id'); $t->integer('episode_number');
         });
         DB::table('seasons')->insert(['id' => 7, 'season_number' => 2]);
-        DB::table('episodes')->insert(['num' => 'episode-a', 'title' => 'Episode A', 'season_id' => 7, 'episode_number' => 3]);
+        DB::table('episodes')->insert(['num' => '202', 'id' => 'episode-a', 'title' => 'Episode A', 'season_id' => 7, 'episode_number' => 3]);
         DB::table('n_active_streams')->update(['content_type' => 'episode', 'content_key' => 'episode-a']);
         $card = $this->withHeaders(['X-Playback-Token' => 'play-a'])->postJson("/api/v4/chat/rooms/$room/messages", $this->identity([
             'request_id' => (string) Str::uuid(), 'body' => '/watch',
@@ -838,7 +854,7 @@ class ChatApiTest extends TestCase
         [$job, $invite] = $this->linkedInvitation();
         Schema::create('seasons', function (Blueprint $t) { $t->id(); $t->integer('season_number'); });
         Schema::create('episodes', function (Blueprint $t) {
-            $t->string('num'); $t->string('title'); $t->integer('season_id'); $t->integer('episode_number'); $t->boolean('isPremium')->default(false);
+            $t->string('num'); $t->string('id')->nullable(); $t->string('title'); $t->integer('season_id'); $t->integer('episode_number'); $t->boolean('isPremium')->default(false);
         });
         Schema::create('n_subscriptions', function (Blueprint $t) {
             $t->id(); $t->string('user_id'); $t->boolean('is_active'); $t->timestamp('end_at');

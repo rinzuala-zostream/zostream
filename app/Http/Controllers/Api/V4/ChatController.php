@@ -101,8 +101,7 @@ final class ChatController extends Controller
         $content = null;
         if ($type !== 'global') {
             abort_unless($this->chat->playbackAllowed($r, $type, $v['content_id']), 403, 'Start online playback before creating a movie invite room.');
-            $table = $type === 'episode' ? 'episodes' : 'movie';
-            $content = DB::table($table)->where('num', $v['content_id'])->first();
+            $content = \App\Support\Chat\ChatContent::find($type, $v['content_id']);
             abort_unless($content, 404, 'This content is unavailable.');
             abort_if((bool) ($content->isPayPerView ?? false), 403, 'Invite rooms are unavailable for PPV content.');
         }
@@ -233,7 +232,7 @@ final class ChatController extends Controller
             $invite->watch_position_ms = (int) $invite->watch_position_ms;
             $invite->inviter_name = $invite->inviter_name ?? 'Viewer';
             if ($invite->content_type && $invite->content_id) {
-                $content = DB::table($invite->content_type === 'episode' ? 'episodes' : 'movie')->where('num', $invite->content_id)->first();
+                $content = \App\Support\Chat\ChatContent::find($invite->content_type, $invite->content_id);
                 $invite->content_title = $content->title ?? null;
                 $invite->season_id = $invite->content_type === 'episode' && isset($content->season_id) ? (string) $content->season_id : null;
                 $invite->episode_number = $invite->content_type === 'episode' && isset($content->episode_number) ? (int) $content->episode_number : null;
@@ -259,7 +258,7 @@ final class ChatController extends Controller
         abort_unless($row, 404, 'This invitation has expired or is no longer available.');
         $content = null;
         if ($v['accept'] && $row->content_type && $row->content_id) {
-            $content = DB::table($row->content_type === 'episode' ? 'episodes' : 'movie')->where('num', $row->content_id)->first();
+            $content = \App\Support\Chat\ChatContent::find($row->content_type, $row->content_id);
             abort_unless($content, 404, 'This content is unavailable.');
             abort_if((bool) ($content->isPayPerView ?? false), 403, 'Invite rooms are unavailable for PPV content.');
             if ((bool) ($content->isPremium ?? false)) {
@@ -301,7 +300,7 @@ final class ChatController extends Controller
         abort_unless($roomInfo->type === 'invite', 404);
         $inviteRoom = DB::table('chat_invite_rooms')->where('room_id', $room)->first();
         $content = $inviteRoom->content_type && $inviteRoom->content_id
-            ? DB::table($inviteRoom->content_type === 'episode' ? 'episodes' : 'movie')->where('num', $inviteRoom->content_id)->first() : null;
+            ? \App\Support\Chat\ChatContent::find($inviteRoom->content_type, $inviteRoom->content_id) : null;
         $seasonId = $inviteRoom->content_type === 'episode' ? ($content->season_id ?? null) : null;
         $this->chat->room($r, $room);
         $watch = DB::table('chat_watch_sessions')->where('room_id', $room)->where('active', true)->first();

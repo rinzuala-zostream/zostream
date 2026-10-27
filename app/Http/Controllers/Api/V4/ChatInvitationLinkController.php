@@ -47,7 +47,7 @@ class ChatInvitationLinkController extends Controller
         if ($invite->status !== 'accepted' && $invite->expires_at <= now()) { return V4Response::error('INVITE_EXPIRED', 'This invitation has expired. Ask the sender for a new invitation.', 410); }
         $content = null;
         if ($room->content_type) {
-            $content = DB::table($room->content_type === 'episode' ? 'episodes' : 'movie')->where('num', $room->content_id)->first();
+            $content = \App\Support\Chat\ChatContent::find($room->content_type, $room->content_id);
             if (! $content) { return V4Response::error('CONTENT_UNAVAILABLE', 'This movie or episode is no longer available.', 410); }
         }
         if ($respond && $invite->status === 'pending') {

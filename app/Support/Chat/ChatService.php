@@ -49,8 +49,7 @@ final class ChatService
                     ->where('s.content_type', $inviteRoom->content_type)->where('s.content_key', $inviteRoom->content_id)
                     ->where('s.last_ping', '>=', now()->subMinutes(3))->exists();
                 abort_unless($hostStreamActive, 403, 'The host is no longer watching this title.');
-                $content = DB::table($inviteRoom->content_type === 'episode' ? 'episodes' : 'movie')
-                    ->where($inviteRoom->content_type === 'episode' ? 'num' : 'num', $inviteRoom->content_id)->first();
+                $content = ChatContent::find($inviteRoom->content_type, $inviteRoom->content_id);
                 abort_unless($content, 404, 'This content is unavailable.');
                 if ((bool) ($content->isPayPerView ?? false)) {
                     abort(403, 'Invite rooms are unavailable for PPV content.');
