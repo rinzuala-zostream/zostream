@@ -33,10 +33,30 @@ and matching Watch Together rooms.
 
 `GET /api/v4/chat/unread?type=global|movie|episode&content_id=...` returns
 `total_unread` and `rooms` containing `room_id`, `key`, `unread_count`,
-`last_read_message_id` and `first_unread_id`. IDs are strings. Movie counts
-require the existing playback authorization. Badge snapshots refresh every ten
-seconds while the screen is active, with additional refreshes on realtime events
-and read acknowledgements. This does not add background push notifications.
+`last_read_message_id`, `first_unread_id` and `last_message_id`. IDs are strings.
+The initial snapshot also returns `event_cursor`, `user_id`, `blocked_user_ids`,
+`channels` and `websocket_url`. Movie counts require playback authorization.
+One badge socket subscribes to those channels using POST `unread/auth` with
+`socket_id` and `channel`. Global/content discovery channels also work before the
+first numeric room exists; private room channels require accepted membership.
+Each account has a separate private channel for its read receipts and changes.
+
+The ten-second unread poll is removed. Created/deleted message frames update
+counts locally without an API fetch, excluding own/blocked/removed messages.
+Snapshot cursors, message watermarks and event IDs prevent duplicate/late frames
+from changing counts twice. Events arriving during a snapshot are buffered and
+replayed. Authoritative read snapshots reach only the reader's account channel,
+keeping multiple devices consistent; the read API also includes that badge state,
+so acknowledging visible messages does not fetch the whole summary again.
+
+Initial load, chat opening and reconnect reconcile an API baseline. While live,
+a five-minute integrity snapshot recovers missed events, retention and access
+changes; disconnected fallback runs once per minute. First-unread deletions,
+new room discovery and membership/block changes request a debounced recovery.
+The bounded event log also recovers after 256 message events. Socket ping/pong
+keeps this observer alive without joining rooms or sending room presence API
+heartbeats. Existing open-chat presence is independent. No background push
+notifications are added.
 
 `POST /api/v4/chat/rooms/{room}/read` with `message_id` advances a user/room read
 cursor monotonically. Opening a sheet or fetching history does not mark messages
@@ -53,7 +73,9 @@ preserves the position; New messages jumps to the latest page. With no saved
 read cursor yet, retained incoming messages count as unread.
 
 Apply `2026_10_26_000003_create_chat_room_reads.php` before deploying these APIs
-or the updated apps. Account deletion also removes server-side read cursors.
+or the updated apps. Also apply `2026_10_27_000004_add_chat_badge_recipient.php`
+before enabling the live badge sender. Account deletion removes read cursors and
+queued personal badge events.
 
 1. `POST /api/v4/chat/rooms/join` with `type: global|movie|episode` and, for
    content rooms, `content_id`. Identity comes from `auth.token`, never the body.
@@ -180,3 +202,23 @@ is harmless, but multiple workers waste resources. Monitor pending outbox age,
 Redis memory, WebSocket connections and HTTP error rates.
 
 Deployment: [chat deployment](deploy/CHAT.md).
+
+
+### Invite more people to an existing room
+
+The creator sees **Invite people** in the room's chat options on Android and Apple.
+It opens the phone-number/contact picker for that room, without asking for a new
+room name or changing playback. Accepted members do not see this action.
+
+After account lookup, POST `/api/v4/chat/invite-rooms/{room}/invitees` with
+`{"invitee_ids":["user-id"]}`. The API accepts 1–20 distinct account IDs per request,
+requires the active room's creator, and checks premium watch-room subscriptions
+for new invitees. It returns `room_id`, `invite_count`, and `already_invited_count`.
+Existing pending links and accepted memberships remain unchanged; declined or
+expired invitations get a fresh link. New invitations use the existing in-app,
+push and queued WhatsApp delivery paths. No link tokens appear in the response.
+
+Deploy the updated API and both mobile builds. No database migration is needed.
+Verify a creator can invite another account to the same room, a member cannot,
+retries do not send duplicate invitations, and an accepted invite opens the
+existing transcript. Closed/ended/expired rooms reject new invitations.

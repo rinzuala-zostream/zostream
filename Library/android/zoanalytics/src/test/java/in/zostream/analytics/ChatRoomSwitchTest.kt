@@ -124,7 +124,10 @@ class ChatRoomSwitchTest {
     private class Http : OkHttpClient() {
         private val delegate = Builder().addInterceptor { chain ->
         val request = chain.request()
-        val data = if (request.url.encodedPath.endsWith("/auth")) {
+        val data = if (request.url.encodedPath.endsWith("/unread/auth")) {
+            val buffer = okio.Buffer(); request.body!!.writeTo(buffer)
+            JSONObject().put("auth", "signed").put("channel", JSONObject(buffer.readUtf8()).getString("channel"))
+        } else if (request.url.encodedPath.endsWith("/auth")) {
             val id = request.url.pathSegments[4]
             JSONObject().put("auth", "signed").put("channel", "private-chat.$id")
         } else {
@@ -209,6 +212,39 @@ class ChatRoomSwitchTest {
             shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(30))
             assertEquals(1, syncs)
             assertTrue(socket.events.any { it.optString("event") == "pusher:ping" })
+        } finally { client.close() }
+    }
+
+    @Test fun badgeSubscriptionsShareOneSocketAndRejectUnsubscribedChannels() {
+        val http = Http()
+        var syncs = 0
+        val badges = mutableListOf<JSONObject>()
+        val client = ZoChatClient("https://example.test", { AnalyticsCredentials("token", "device", "owner") }, "test",
+            onChanged = { kind, _ -> if (kind == "sync") syncs++ }, onConnection = {}, http = http)
+        client.onBadgeEvent = { badges.add(it) }
+        val summary = JSONObject().put("websocket_url", "wss://example.test/app/key")
+            .put("channels", org.json.JSONArray().put("private-chat.1").put("private-chat-user-own"))
+        try {
+            client.configureUnread(summary)
+            await { client.isConnected }
+            assertEquals(1, syncs)
+            val socket = http.sockets.single()
+            fun emit(channel: String) = socket.listener.onMessage(socket, JSONObject().put("event", "chat.badge")
+                .put("channel", channel).put("data", JSONObject().put("badge", JSONObject().put("kind", "read"))).toString())
+            emit("private-chat-user-other")
+            emit("private-chat-user-own")
+            emit("private-chat.1")
+            shadowOf(Looper.getMainLooper()).idle()
+            assertEquals(2, badges.size)
+            client.configureUnread(summary)
+            shadowOf(Looper.getMainLooper()).idle()
+            assertEquals(1, http.sockets.size)
+            assertEquals(2, socket.events.count { it.optString("event") == "pusher:subscribe" })
+            client.configureUnread(JSONObject(summary.toString()).put("channels", org.json.JSONArray().put("private-chat-user-own")))
+            emit("private-chat.1")
+            shadowOf(Looper.getMainLooper()).idle()
+            assertEquals(2, badges.size)
+            assertTrue(socket.events.any { it.optString("event") == "pusher:unsubscribe" })
         } finally { client.close() }
     }
 

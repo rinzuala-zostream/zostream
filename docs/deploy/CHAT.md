@@ -217,3 +217,40 @@ must update from socket frames without position/status requests; normal playback
 has only the one-minute watch heartbeat. Disable the socket and verify fallback,
 restore it and verify baseline recovery plus immediate subsequent controls. Stop
 or replace the creator's stream, and confirm the original card loses LIVE status.
+
+
+## Live unread badges
+
+Deploy this migration before the API release that writes personal badge events:
+
+```sh
+php artisan migrate --force --path=database/migrations/2026_10_27_000004_add_chat_badge_recipient.php
+```
+
+Restart `chat:deliver` with the new release before updating the mobile builds.
+The worker must understand `recipient_user_id`: personal read/sync events publish
+only to the account's hashed private channel, never to a room channel. Keep old
+worker processes stopped during this transition. Run your normal API config/route
+cache refresh. Android and Apple both require updated app builds and SDK sources.
+
+`chat.changed` carries lightweight room badge events (IDs/eligibility, without
+message text). `chat.badge` carries account-private read snapshots and recovery
+signals. Authenticated POST `/api/v4/chat/unread/auth` authorizes each subscription;
+private membership, bans/closure and content playback are checked. One socket
+observes the account, Global, current content and allowed private rooms, and does
+not count as chat presence. Stable public-context channels discover newly created
+rooms; private rooms have no shared public discovery channel.
+
+No unread count endpoint runs per message. Each phone applies event deltas and
+read snapshots locally, with deduplication and buffering across baseline requests.
+The idle ten-second poll becomes a five-minute integrity snapshot (30 times fewer
+scheduled count fetches). Disconnected fallback is one minute. Opening/reconnecting,
+first-unread deletions, membership/block changes and bounded-log recovery may also
+fetch a baseline. This reduces scheduled badge database work; production capacity
+still needs measurement under actual message/viewer traffic.
+
+Verify Home and player badges with the chat sheet closed, own and blocked senders,
+message deletion, read acknowledgement from a second device, duplicate/reordered
+frames, and socket reconnect. Confirm there are no ten-second unread requests and
+no additional unread fetch for each ordinary message/read event. Check that another
+account cannot authorize your personal channel or an unaccepted private room.

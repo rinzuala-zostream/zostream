@@ -23,6 +23,10 @@ class ZoChatClient(
     init { require(baseUrl.startsWith("https://")) { "Chat API must use HTTPS" } }
     private val main = Handler(Looper.getMainLooper())
     private val executor = Executors.newSingleThreadExecutor()
+    var onBadgeEvent: ((JSONObject) -> Unit)? = null
+    private var unreadChannels: Set<String>? = null
+    private val unreadSent = mutableSetOf<String>()
+    private val unreadSubscribed = mutableSetOf<String>()
     var onWatchState: ((JSONObject) -> Unit)? = null
     var isConnected = false
         private set
@@ -43,7 +47,7 @@ class ZoChatClient(
         override fun run() {
             if (closed) return
             if (credentials()?.ownerKey != owner) { close(); return }
-            room?.let { request("rooms/${it.getString("room_id")}/heartbeat", JSONObject()) { _, _ -> } }
+            room?.takeIf { unreadChannels == null }?.let { request("rooms/${it.getString("room_id")}/heartbeat", JSONObject()) { _, _ -> } }
             val now = android.os.SystemClock.elapsedRealtime()
             if (isConnected) {
                 if (now - lastSocketActivity > 90_000) reconnect(generation)
@@ -146,11 +150,42 @@ class ZoChatClient(
         }
     }
 
+    /** One socket observes all authorized badge channels without joining room presence. */
+    fun configureUnread(summary: JSONObject) {
+        if (closed) return
+        val identity = credentials()?.ownerKey ?: return
+        if (owner != null && owner != identity) { close(); return }
+        owner = identity
+        val list = summary.optJSONArray("channels") ?: return
+        val wanted = (0 until list.length()).map { list.getString(it) }.toSet()
+        val previous = unreadChannels.orEmpty()
+        if ((wanted - previous).isNotEmpty()) isConnected = false
+        (previous - wanted).forEach { sendEvent("pusher:unsubscribe", JSONObject().put("channel", it)) }
+        unreadSent.retainAll(wanted); unreadSubscribed.retainAll(wanted)
+        unreadChannels = wanted
+        room = summary
+        if (socket != null && socketUrl == summary.optString("websocket_url")) subscribe()
+        else connect()
+        main.removeCallbacks(reconcile); main.postDelayed(reconcile, 30_000)
+    }
+
     private fun sendEvent(event: String, data: JSONObject): Boolean =
         socket?.send(JSONObject().put("event", event).put("data", data).toString()) == true
 
     private fun subscribe() {
         val id = socketId ?: return // A handshake already in flight will subscribe to the latest room.
+        unreadChannels?.let { wanted ->
+            val current = generation
+            (wanted - unreadSent - unreadSubscribed).forEach { target ->
+                unreadSent.add(target)
+                request("unread/auth", JSONObject().put("socket_id", id).put("channel", target)) { auth, _ ->
+                    if (closed || current != generation || target !in unreadChannels.orEmpty()) return@request
+                    if (auth == null || auth.optString("channel") != target) { reconnect(current); return@request }
+                    if (!sendEvent("pusher:subscribe", JSONObject().put("channel", target).put("auth", auth.getString("auth")))) reconnect(current)
+                }
+            }
+            return
+        }
         val info = room ?: return
         val revision = roomRevision
         val current = generation
@@ -171,11 +206,13 @@ class ZoChatClient(
         if (!url.startsWith("wss://")) { onConnection(false); return }
         val current = ++generation
         socketId = null; channel = null; socketUrl = url
+        unreadSent.clear(); unreadSubscribed.clear()
         socket?.cancel()
         socket = http.newWebSocket(Request.Builder().url(url).header("Origin", baseUrl.trimEnd('/')).build(), object : WebSocketListener() {
             override fun onMessage(webSocket: WebSocket, text: String) {
                 main.post {
                     if (closed || current != generation) return@post
+                    if (credentials()?.ownerKey != owner) { close(); return@post }
                     lastSocketActivity = android.os.SystemClock.elapsedRealtime()
                     runCatching {
                         val event = JSONObject(text)
@@ -186,6 +223,16 @@ class ZoChatClient(
                                 subscribe()
                             }
                             "pusher_internal:subscription_succeeded" -> {
+                                val target = event.optString("channel")
+                                if (unreadChannels != null) {
+                                    if (target in unreadSent && target in unreadChannels.orEmpty()) {
+                                        unreadSubscribed.add(target)
+                                        if (!isConnected && unreadSubscribed.containsAll(unreadChannels.orEmpty())) {
+                                            retry = 0; isConnected = true; onConnection(true); onChanged("sync", null)
+                                        }
+                                    }
+                                    return@post
+                                }
                                 if (channel != null && event.optString("channel") == channel) {
                                     retry = 0; isConnected = true; onConnection(true); onChanged("sync", null)
                                 }
@@ -193,7 +240,14 @@ class ZoChatClient(
                             }
                             "pusher:ping" -> webSocket.send("{\"event\":\"pusher:pong\",\"data\":{}}")
                             "pusher:error" -> { webSocket.cancel(); reconnect(current) }
-                            "chat.changed" -> {
+                            "chat.changed", "chat.badge" -> {
+                                if (unreadChannels != null) {
+                                    val target = event.optString("channel")
+                                    if (target !in unreadSubscribed || target !in unreadChannels.orEmpty()) return@post
+                                    val data = event.opt("data").let { if (it is JSONObject) it else JSONObject(it?.toString() ?: "{}") }
+                                    data.optJSONObject("badge")?.let { onBadgeEvent?.invoke(it) }
+                                    return@post
+                                }
                                 if (channel == null || event.optString("channel") != channel) return@post
                                 val data = event.opt("data").let { if (it is JSONObject) it else JSONObject(it?.toString() ?: "{}") }
                                 val kind = data.getString("kind")
@@ -216,6 +270,7 @@ class ZoChatClient(
         if (closed || current != generation) return
         val waiting = ++generation
         socket?.cancel(); socket = null; socketId = null; channel = null
+        unreadSent.clear(); unreadSubscribed.clear()
         isConnected = false
         onConnection(false)
         val delay = (1000L shl retry.coerceAtMost(5)) + (0..500).random()

@@ -34,6 +34,7 @@ class ChatApiTest extends TestCase
         (require database_path('migrations/2026_10_27_000001_create_chat_watch_sessions.php'))->up();
         (require database_path('migrations/2026_10_27_000002_add_watch_playback_controls.php'))->up();
         (require database_path('migrations/2026_10_27_000003_create_chat_watch_participants.php'))->up();
+        (require database_path('migrations/2026_10_27_000004_add_chat_badge_recipient.php'))->up();
         Schema::create('user', function (Blueprint $t) {
             $t->id();
             $t->string('uid');
@@ -142,6 +143,78 @@ class ChatApiTest extends TestCase
         return $this->postJson('/api/v4/chat/invite-rooms', $this->identity([
             'type' => 'global', 'room_name' => 'Friends', 'invitee_ids' => ['bob'],
         ]))->assertCreated()->json('data.room_id');
+    }
+
+    public function test_creator_can_invite_more_people_to_the_existing_room_and_deliver_a_link(): void
+    {
+        $room = $this->createPrivateRoom();
+        $message = $this->message($room);
+        DB::table('user')->insert(['uid' => 'charlie', 'name' => 'Charlie', 'auth_phone' => '9876543211']);
+        config(['chat.whatsapp_enabled' => true]);
+        \Illuminate\Support\Facades\Queue::fake();
+        $response = $this->postJson("/api/v4/chat/invite-rooms/$room/invitees", $this->identity(['invitee_ids' => ['charlie']]))
+            ->assertOk()->assertJsonPath('data.room_id', $room)->assertJsonPath('data.invite_count', 1);
+        $this->assertSame(1, DB::table('chat_invite_rooms')->count());
+        $job = \Illuminate\Support\Facades\Queue::pushed(\App\Jobs\SendChatInvitationWhatsApp::class)->sole();
+        $this->assertStringNotContainsString($job->token, $response->getContent());
+        $this->postJson('/api/v4/chat/invitation-links/'.$job->token.'/respond', ['auth_user_id' => 'charlie', 'accept' => true])
+            ->assertOk()->assertJsonPath('data.room_id', $room);
+        $this->getJson("/api/v4/chat/rooms/$room/messages?auth_user_id=charlie")->assertOk()->assertJsonPath('data.messages.0.id', (string) $message);
+    }
+
+    public function test_only_creator_can_add_invitees_and_inactive_rooms_reject_invitations(): void
+    {
+        $room = $this->createPrivateRoom();
+        DB::table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
+        DB::table('user')->insert(['uid' => 'charlie', 'name' => 'Charlie']);
+        $url = "/api/v4/chat/invite-rooms/$room/invitees";
+        $this->postJson($url, ['auth_user_id' => 'bob', 'invitee_ids' => ['charlie']])->assertForbidden();
+        $this->postJson($url, ['auth_user_id' => 'stranger', 'invitee_ids' => ['charlie']])->assertForbidden();
+        $this->postJson($url, $this->identity(['invitee_ids' => ['alice']]))->assertUnprocessable();
+        $this->postJson($url, $this->identity(['invitee_ids' => ['missing']]))->assertUnprocessable();
+        DB::table('chat_invite_rooms')->where('room_id', $room)->update(['active' => false]);
+        $this->postJson($url, $this->identity(['invitee_ids' => ['charlie']]))->assertForbidden();
+        $this->assertSame(1, DB::table('chat_room_invites')->count());
+    }
+
+    public function test_repeated_add_invites_preserve_members_and_pending_links_but_refresh_declined_invites(): void
+    {
+        $room = $this->createPrivateRoom();
+        config(['chat.whatsapp_enabled' => true]);
+        \Illuminate\Support\Facades\Queue::fake();
+        $url = "/api/v4/chat/invite-rooms/$room/invitees";
+        $hash = DB::table('chat_room_invites')->value('link_token_hash');
+        $this->postJson($url, $this->identity(['invitee_ids' => ['bob']]))->assertOk()->assertJsonPath('data.invite_count', 0);
+        $this->assertSame($hash, DB::table('chat_room_invites')->value('link_token_hash'));
+        DB::table('chat_room_invites')->update(['status' => 'accepted']);
+        $this->postJson($url, $this->identity(['invitee_ids' => ['bob']]))->assertOk()->assertJsonPath('data.already_invited_count', 1);
+        \Illuminate\Support\Facades\Queue::assertNothingPushed();
+        DB::table('chat_room_invites')->update(['status' => 'declined', 'whatsapp_sent_at' => now(), 'responded_at' => now()]);
+        $this->postJson($url, $this->identity(['invitee_ids' => ['bob']]))->assertOk()->assertJsonPath('data.invite_count', 1);
+        $this->assertSame(1, DB::table('chat_room_invites')->count());
+        $this->assertNotSame($hash, DB::table('chat_room_invites')->value('link_token_hash'));
+        $this->assertNull(DB::table('chat_room_invites')->value('whatsapp_sent_at'));
+        $this->assertNull(DB::table('chat_room_invites')->value('responded_at'));
+        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\SendChatInvitationWhatsApp::class, 1);
+    }
+
+    public function test_add_invitees_to_premium_watch_room_checks_the_new_users_subscription(): void
+    {
+        $this->privateWatchFixture();
+        $room = $this->withHeaders(['X-Playback-Token' => 'play-a'])->postJson('/api/v4/chat/invite-rooms', $this->identity([
+            'type' => 'movie', 'content_id' => 'film-a', 'room_name' => 'Watch', 'invitee_ids' => ['bob'],
+        ]))->assertCreated()->json('data.room_id');
+        Schema::create('n_plans', function (Blueprint $t) { $t->id(); });
+        Schema::table('n_subscriptions', function (Blueprint $t) { $t->integer('plan_id')->nullable(); });
+        DB::table('n_plans')->insert(['id' => 1]);
+        DB::table('n_subscriptions')->insert(['user_id' => 'alice', 'plan_id' => 1, 'is_active' => true, 'end_at' => now()->addDay()]);
+        DB::table('user')->insert(['uid' => 'charlie', 'name' => 'Charlie']);
+        DB::table('movie')->update(['isPremium' => true]);
+        Cache::flush();
+        $url = "/api/v4/chat/invite-rooms/$room/invitees";
+        $this->postJson($url, $this->identity(['invitee_ids' => ['charlie']]))->assertForbidden();
+        DB::table('n_subscriptions')->insert(['user_id' => 'charlie', 'plan_id' => 1, 'is_active' => true, 'end_at' => now()->addDay()]);
+        $this->postJson($url, $this->identity(['invitee_ids' => ['charlie']]))->assertOk()->assertJsonPath('data.invite_count', 1);
     }
 
     public function test_private_room_idle_deadline_moves_only_for_new_messages(): void
@@ -273,6 +346,71 @@ class ChatApiTest extends TestCase
     private function unread(array $identity = [], array $headers = [])
     {
         return $this->withHeaders($headers)->getJson('/api/v4/chat/unread?'.http_build_query(array_merge($this->identity(), $identity)));
+    }
+
+    public function test_badge_channel_auth_is_scoped_to_the_account_and_authorized_rooms(): void
+    {
+        $room = $this->createPrivateRoom();
+        $channel = \App\Support\Chat\ChatReadService::userChannel('alice');
+        $this->unread()->assertOk()->assertJsonPath('data.channels.0', $channel)
+            ->assertJsonPath('data.channels.1', 'private-chat.'.$room)->assertJsonStructure(['data' => ['event_cursor', 'blocked_user_ids']]);
+        $url = '/api/v4/chat/unread/auth';
+        $this->postJson($url, $this->identity(['socket_id' => '1.2', 'channel' => $channel]))->assertOk()
+            ->assertJsonPath('data.auth', 'test-key:'.hash_hmac('sha256', '1.2:'.$channel, 'test-secret'));
+        $this->postJson($url, ['auth_user_id' => 'bob', 'socket_id' => '1.2', 'channel' => $channel])->assertForbidden();
+        $this->postJson($url, ['auth_user_id' => 'bob', 'socket_id' => '1.2', 'channel' => 'private-chat.'.$room])->assertForbidden();
+        DB::table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
+        $this->postJson($url, ['auth_user_id' => 'bob', 'socket_id' => '1.2', 'channel' => 'private-chat.'.$room])->assertOk();
+        $this->postJson($url, $this->identity(['socket_id' => '1.2', 'channel' => 'private-chat-user-anyone']))->assertForbidden();
+    }
+
+    public function test_badges_can_discover_a_new_public_room_without_subscribing_to_other_content(): void
+    {
+        $global = \App\Support\Chat\ChatReadService::contextChannel('global');
+        $this->unread()->assertOk()->assertJsonPath('data.channels.1', $global)->assertJsonCount(0, 'data.rooms');
+        $this->postJson('/api/v4/chat/unread/auth', $this->identity(['socket_id' => '1.2', 'channel' => $global]))->assertOk();
+        $movie = \App\Support\Chat\ChatReadService::contextChannel('movie', 'not-playing');
+        $this->postJson('/api/v4/chat/unread/auth', $this->identity(['socket_id' => '1.2', 'channel' => $movie]))->assertForbidden();
+        $room = $this->room();
+        $this->send($room)->assertCreated();
+        Http::fake(['*' => Http::response('{}', 200)]);
+        $this->artisan('chat:deliver', ['--once' => true])->assertSuccessful();
+        Http::assertSent(fn ($request) => in_array($global, $request->data()['channels'] ?? [], true));
+    }
+
+    public function test_badge_read_receipts_push_authoritative_counts_only_to_the_readers_private_channel(): void
+    {
+        $room = $this->room();
+        $first = $this->message($room, 'bob');
+        $second = $this->message($room, 'bob');
+        $this->postJson("/api/v4/chat/rooms/$room/read", $this->identity(['message_id' => $first]))->assertOk()
+            ->assertJsonPath('data.badge.unread_count', 1)->assertJsonPath('data.badge.first_unread_id', (string) $second)
+            ->assertJsonPath('data.badge.last_message_id', (string) $second);
+        $this->postJson("/api/v4/chat/rooms/$room/read", $this->identity(['message_id' => $first]))->assertOk();
+        $this->assertSame(1, DB::table('chat_outbox')->where('kind', 'read')->count());
+        Http::fake(['*' => Http::response('{}', 200)]);
+        $this->artisan('chat:deliver', ['--once' => true])->assertSuccessful();
+        Http::assertSent(function ($request) use ($first, $second) {
+            $event = json_decode($request->data()['data'] ?? '{}', true);
+            return ($request->data()['name'] ?? null) === 'chat.badge'
+                && $request->data()['channels'] === [\App\Support\Chat\ChatReadService::userChannel('alice')]
+                && $event['badge']['read_through'] === (string) $first && $event['badge']['unread_count'] === 1
+                && $event['badge']['first_unread_id'] === (string) $second && isset($event['badge']['snapshot_cursor']);
+        });
+    }
+
+    public function test_message_badge_frames_carry_no_message_body_or_credentials(): void
+    {
+        $room = $this->room();
+        $message = $this->send($room, 'secret message body')->assertCreated()->json('data.id');
+        Http::fake(['*' => Http::response('{}', 200)]);
+        $this->artisan('chat:deliver', ['--once' => true])->assertSuccessful();
+        Http::assertSent(function ($request) use ($message) {
+            $event = json_decode($request->data()['data'] ?? '{}', true);
+            return ($event['badge']['kind'] ?? null) === 'created' && $event['badge']['message_id'] === $message
+                && $event['badge']['sender_id'] === 'alice' && $event['badge']['eligible'] === true
+                && !str_contains($request->data()['data'], 'secret message body');
+        });
     }
 
     public function test_unread_counts_exclude_own_deleted_blocked_and_expired_messages(): void

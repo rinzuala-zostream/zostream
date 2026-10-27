@@ -65,6 +65,9 @@ public final class ZoChatClient {
     private var retry = 0
     private var lastFallbackSync: TimeInterval = 0
     public private(set) var isConnected = false
+    public var onBadgeEvent: (([String: Any]) -> Void)?
+    private var unreadChannels: Set<String>?
+    private var unreadSubscribed: Set<String> = []
     public var onWatchState: (([String: Any]) -> Void)?
     public var onChanged: ((String, String?) -> Void)?
     public var onConnection: ((Bool) -> Void)?
@@ -151,6 +154,25 @@ public final class ZoChatClient {
         room = info
         if socket != nil, socketURL == info.websocket_url { subscribe() }
         else { connect() }
+        startReconciliation()
+        return info
+    }
+
+    public func configureUnread(channels: [String], websocketURL: String) {
+        guard !closed, let identity = credentials()?.ownerKey, owner == nil || owner == identity else { return }
+        owner = identity
+        let wanted = Set(channels)
+        if !wanted.subtracting(unreadChannels ?? []).isEmpty { isConnected = false }
+        let removed = (unreadChannels ?? []).subtracting(wanted)
+        unreadChannels = wanted; unreadSubscribed.formIntersection(wanted)
+        room = ChatRoom(room_id: "", room_type: "unread", channel: "", websocket_url: websocketURL,
+                        user_id: "", is_host: nil, room_name: nil, content_type: nil, watch_session: nil)
+        Task { for channel in removed { try? await sendEvent("pusher:unsubscribe", data: ["channel": channel]) } }
+        if socket != nil && socketURL == websocketURL { subscribe() } else { connect() }
+        startReconciliation()
+    }
+
+    private func startReconciliation() {
         syncTask?.cancel()
         syncTask = Task { [weak self] in
             while !Task.isCancelled {
@@ -161,7 +183,7 @@ public final class ZoChatClient {
                 self.socket?.sendPing { [weak self] error in
                     if error != nil { Task { @MainActor in self?.reconnect(socketGeneration) } }
                 }
-                if let room = self.room {
+                if let room = self.room, self.unreadChannels == nil {
                     struct Presence: Decodable { let online_count: Int }
                     let _: Presence? = try? await self.request("rooms/\(room.room_id)/heartbeat", body: [:], as: Presence.self)
                 }
@@ -171,7 +193,6 @@ public final class ZoChatClient {
                 }
             }
         }
-        return info
     }
 
     private func sendEvent(_ event: String, data: [String: Any]) async throws {
@@ -184,6 +205,21 @@ public final class ZoChatClient {
         guard let socketId, let room else { return }
         let current = generation, revision = roomRevision
         subscriptionTask?.cancel()
+        if let targets = unreadChannels {
+            subscriptionTask = Task { [weak self] in
+                guard let self else { return }
+                do {
+                    struct Auth: Decodable { let auth: String; let channel: String }
+                    for target in targets.subtracting(self.unreadSubscribed) {
+                        let auth = try await self.request("unread/auth", body: ["socket_id": socketId, "channel": target], as: Auth.self)
+                        guard !self.closed, current == self.generation, self.unreadChannels?.contains(target) == true, !Task.isCancelled else { return }
+                        guard auth.channel == target else { throw ChatFailure(message: "Badge channel mismatch") }
+                        try await self.sendEvent("pusher:subscribe", data: ["channel": target, "auth": auth.auth])
+                    }
+                } catch { if !Task.isCancelled { self.reconnect(current) } }
+            }
+            return
+        }
         subscriptionTask = Task { [weak self] in
             guard let self else { return }
             do {
@@ -210,6 +246,7 @@ public final class ZoChatClient {
         generation += 1; let current = generation
         retryTask?.cancel(); subscriptionTask?.cancel()
         socketId = nil; channel = nil; socketURL = room.websocket_url
+        unreadSubscribed.removeAll()
         socket?.cancel(with: .goingAway, reason: nil); receiveTask?.cancel()
         var request = URLRequest(url: url)
         request.setValue(baseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/")), forHTTPHeaderField: "Origin")
@@ -219,6 +256,7 @@ public final class ZoChatClient {
                 while !Task.isCancelled {
                     let message = try await ws.receive()
                     guard let self, !self.closed, current == self.generation else { return }
+                    guard self.credentials()?.ownerKey == self.owner else { self.close(); return }
                     let raw: Data
                     switch message { case .string(let text): raw = Data(text.utf8); case .data(let data): raw = data; @unknown default: continue }
                     guard let event = try JSONSerialization.jsonObject(with: raw) as? [String: Any], let name = event["event"] as? String else { continue }
@@ -231,10 +269,23 @@ public final class ZoChatClient {
                         self.socketId = socketId
                         self.subscribe()
                     case "pusher_internal:subscription_succeeded":
+                        if let targets = self.unreadChannels {
+                            guard let target = event["channel"] as? String, targets.contains(target) else { continue }
+                            self.unreadSubscribed.insert(target)
+                            if !self.isConnected && self.unreadSubscribed.isSuperset(of: targets) {
+                                self.retry = 0; self.isConnected = true; self.onConnection?(true); self.onChanged?("sync", nil)
+                            }
+                            continue
+                        }
                         guard let channel = self.channel, event["channel"] as? String == channel else { continue }
                         self.retry = 0; self.isConnected = true; self.onConnection?(true); self.onChanged?("sync", nil)
                     case "pusher:ping": try await ws.send(.string("{\"event\":\"pusher:pong\",\"data\":{}}"))
-                    case "chat.changed":
+                    case "chat.changed", "chat.badge":
+                        if let targets = self.unreadChannels {
+                            guard let target = event["channel"] as? String, targets.contains(target), self.unreadSubscribed.contains(target) else { continue }
+                            if let badge = payload["badge"] as? [String: Any] { self.onBadgeEvent?(badge) }
+                            continue
+                        }
                         guard let channel = self.channel, event["channel"] as? String == channel else { continue }
                         let kind = payload["kind"] as? String ?? "sync"
                         if let watch = payload["watch"] as? [String: Any] {
@@ -259,6 +310,7 @@ public final class ZoChatClient {
         subscriptionTask?.cancel(); receiveTask?.cancel()
         socket?.cancel(with: .goingAway, reason: nil); socket = nil
         socketId = nil; channel = nil
+        unreadSubscribed.removeAll()
         isConnected = false
         onConnection?(false)
         let delay = min(30.0, pow(2.0, Double(retry))) + Double.random(in: 0...0.5)

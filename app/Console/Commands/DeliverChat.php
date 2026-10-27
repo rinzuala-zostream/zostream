@@ -63,10 +63,34 @@ final class DeliverChat extends Command
         if (empty($c['app_id']) || empty($c['key']) || empty($c['secret'])) {
             throw new \RuntimeException('Missing Reverb settings');
         }
+        $recipient = $row->recipient_user_id ?? null;
         $event = ['kind' => $row->kind, 'message_id' => $row->message_id ? (string) $row->message_id : null];
-        $watch = app(\App\Support\Chat\PrivateWatchService::class)->snapshot((int) $row->room_id);
-        if ($watch !== null) { $event['watch'] = $watch + ['event_id' => (string) $row->id]; }
-        $body = json_encode(['name' => 'chat.changed', 'channels' => ['private-chat.'.$row->room_id],
+        if ($recipient !== null) {
+            $badge = $row->kind === 'read'
+                ? app(\App\Support\Chat\ChatReadService::class)->readState($recipient, (int) $row->room_id)
+                : ['kind' => 'sync', 'room_id' => (string) $row->room_id];
+            $event['badge'] = $badge + ['event_id' => (string) $row->id];
+            $channel = \App\Support\Chat\ChatReadService::userChannel($recipient);
+        } else {
+            $channel = 'private-chat.'.$row->room_id;
+            $watch = app(\App\Support\Chat\PrivateWatchService::class)->snapshot((int) $row->room_id);
+            if ($watch !== null) { $event['watch'] = $watch + ['event_id' => (string) $row->id]; }
+            if (in_array($row->kind, ['created', 'deleted', 'ended'], true)) {
+                $message = $row->message_id ? DB::table('chat_messages')->find($row->message_id) : null;
+                $event['badge'] = ['kind' => $message && str_starts_with($message->user_id, 'deleted:') ? 'sync' : $row->kind, 'room_id' => (string) $row->room_id,
+                    'event_id' => (string) $row->id, 'message_id' => $row->message_id ? (string) $row->message_id : null,
+                    'sender_id' => $message?->user_id, 'retained' => $message && \Illuminate\Support\Carbon::parse($message->created_at)->gte(now()->subDays(config('chat.retention_days'))), 'eligible' => $message && ! $message->deleted_at
+                        && \Illuminate\Support\Carbon::parse($message->created_at)->gte(now()->subDays(config('chat.retention_days')))];
+            }
+        }
+        $channels = [$channel];
+        if ($recipient === null && isset($event['badge'])) {
+            $room = DB::table('chat_rooms')->find($row->room_id);
+            if ($room && in_array($room->type, ['global', 'movie', 'episode'], true)) {
+                $channels[] = \App\Support\Chat\ChatReadService::contextChannel($room->type, $room->content_id);
+            }
+        }
+        $body = json_encode(['name' => $recipient !== null ? 'chat.badge' : 'chat.changed', 'channels' => $channels,
             'data' => json_encode($event)], JSON_THROW_ON_ERROR);
         $path = '/apps/'.rawurlencode($c['app_id']).'/events';
         $query = ['auth_key' => $c['key'], 'auth_timestamp' => (string) time(), 'auth_version' => '1.0', 'body_md5' => md5($body)];

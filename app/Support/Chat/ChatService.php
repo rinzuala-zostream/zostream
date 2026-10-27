@@ -198,10 +198,13 @@ final class ChatService
             DB::table('chat_room_reads')->where('user_id', $uid)->delete();
         }
         DB::table('chat_outbox')->where('analytics->user_id', $uid)->update(['analytics' => null]);
+        if (\Illuminate\Support\Facades\Schema::hasColumn('chat_outbox', 'recipient_user_id')) {
+            DB::table('chat_outbox')->where('recipient_user_id', $uid)->delete();
+        }
         $this->invalidateBlocks($uid);
     }
 
-    public function outbox(Request $r, int $room, string $kind, ?int $message, ?string $event): void
+    public function outbox(Request $r, int $room, string $kind, ?int $message, ?string $event, ?string $recipient = null): void
     {
         $analytics = null;
         if ($event && $r->input('app_session_id') && app(\App\Support\Analytics\AnalyticsCollectionSetting::class)->enabled()) {
@@ -211,6 +214,7 @@ final class ChatService
                 'platform' => in_array($r->header('X-Client-Platform'), ['android', 'ios'], true) ? $r->header('X-Client-Platform') : 'unknown', 'app_version' => mb_substr($r->header('X-Client-Version', 'unknown'), 0, 64)]);
         }
         DB::table('chat_outbox')->insert(['room_id' => $room, 'kind' => $kind, 'message_id' => $message,
-            'analytics' => $analytics, 'created_at' => now(), 'updated_at' => now()]);
+            'analytics' => $analytics, 'created_at' => now(), 'updated_at' => now()]
+            + ($recipient !== null ? ['recipient_user_id' => $recipient] : []));
     }
 }

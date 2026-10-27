@@ -19,7 +19,19 @@ final class ChatController extends Controller
     {
         abort_unless(config('chat.enabled'), 503, 'Chat is currently unavailable.');
         $v = $r->validate(['type' => ['sometimes', Rule::in(['global', 'movie', 'episode'])], 'content_id' => 'nullable|string|max:150']);
+        $this->chat->refreshPlayback($r);
         return V4Response::success($reads->summary($r, $v['type'] ?? 'global', $v['content_id'] ?? null));
+    }
+
+    public function unreadAuth(Request $r)
+    {
+        abort_unless(config('chat.enabled'), 503, 'Chat is currently unavailable.');
+        $v = $r->validate(['socket_id' => ['required', 'regex:/^[0-9]+\.[0-9]+$/'], 'channel' => 'required|string|max:120']);
+        app(\App\Support\Chat\ChatReadService::class)->authorizeChannel($r, $v['channel']);
+        $key = config('broadcasting.connections.reverb.key');
+        $secret = config('broadcasting.connections.reverb.secret');
+        abort_unless($key && $secret, 503, 'Live chat is not configured.');
+        return V4Response::success(['channel' => $v['channel'], 'auth' => $key.':'.hash_hmac('sha256', $v['socket_id'].':'.$v['channel'], $secret)]);
     }
 
     public function markRead(Request $r, int $room, \App\Support\Chat\ChatReadService $reads)
@@ -141,6 +153,15 @@ final class ChatController extends Controller
             }
             return $room;
         });
+        $this->chat->outbox($r, $roomId, 'badge_sync', null, null, $host);
+        $this->notifyRoomInvitees($r, $roomId, $invitees, $links, $content);
+
+        return V4Response::success(['room_id' => (string) $roomId, 'room_type' => 'invite', 'room_name' => trim($v['room_name']), 'content_type' => $type === 'global' ? null : $type,
+            'content_id' => $v['content_id'] ?? null, 'content_title' => $content->title ?? null, 'invite_count' => $invitees->count()], status: 201);
+    }
+
+    private function notifyRoomInvitees(Request $r, int $roomId, \Illuminate\Support\Collection $invitees, array $links, ?object $content): void
+    {
         if (config('chat.whatsapp_enabled')) {
             foreach ($links as $inviteId => $token) {
                 try {
@@ -158,7 +179,7 @@ final class ChatController extends Controller
                     app(\App\Http\Controllers\FCMNotificationController::class)->sendToToken(
                         $invitee->token,
                         'Zo Stream chat invitation',
-                        $type === 'global' ? 'You were invited to a private chat room.' : 'You were invited to watch '.($content->title ?? 'a title').' together.',
+                        $content === null ? 'You were invited to a private chat room.' : 'You were invited to watch '.($content->title ?? 'a title').' together.',
                         key: 'chat_invite', data: ['invite_id' => (string) DB::table('chat_room_invites')->where('room_id', $roomId)->where('invitee_user_id', $invitee->uid)->value('id'), 'room_id' => (string) $roomId]
                     );
                 } catch (\Throwable $e) {
@@ -166,9 +187,59 @@ final class ChatController extends Controller
                 }
             }
         }
+    }
 
-        return V4Response::success(['room_id' => (string) $roomId, 'room_type' => 'invite', 'room_name' => trim($v['room_name']), 'content_type' => $type === 'global' ? null : $type,
-            'content_id' => $v['content_id'] ?? null, 'content_title' => $content->title ?? null, 'invite_count' => $invitees->count()], status: 201);
+    public function inviteToRoom(Request $r, int $room)
+    {
+        $v = $r->validate(['invitee_ids' => 'required|array|min:1|max:20',
+            'invitee_ids.*' => 'required|string|max:191|distinct']);
+        $host = (string) $r->input('auth_user_id');
+        $links = [];
+        $content = null;
+        $invited = DB::transaction(function () use ($r, $room, $v, $host, &$links, &$content) {
+            $inviteRoom = DB::table('chat_invite_rooms')->where('room_id', $room)->lockForUpdate()->first();
+            abort_unless($inviteRoom, 404);
+            abort_unless($inviteRoom->host_user_id === $host, 403, 'Only the room creator can invite more people.');
+            $this->chat->refreshPlayback($r);
+            $this->chat->room($r, $room, true);
+            $users = DB::table('user')->whereIn('uid', $v['invitee_ids'])->where('uid', '!=', $host)
+                ->get(['uid', 'name', 'token'])->keyBy('uid');
+            abort_unless($users->count() === count($v['invitee_ids']), 422, 'One or more invited users are unavailable.');
+            $existingInvites = DB::table('chat_room_invites')->where('room_id', $room)
+                ->whereIn('invitee_user_id', $users->keys())->get()->keyBy('invitee_user_id');
+            $users = $users->reject(function ($user) use ($existingInvites) {
+                $existing = $existingInvites->get($user->uid);
+                return $existing && ($existing->status === 'accepted' || ($existing->status === 'pending' && $existing->expires_at > now()));
+            });
+            if ($users->isEmpty()) { return $users; }
+            if ($inviteRoom->content_type !== null) {
+                $content = \App\Support\Chat\ChatContent::find($inviteRoom->content_type, $inviteRoom->content_id);
+                abort_unless($content, 404, 'This content is unavailable.');
+                abort_if((bool) ($content->isPayPerView ?? false), 403, 'Invite rooms are unavailable for PPV content.');
+                if ((bool) ($content->isPremium ?? false)) {
+                    $eligible = DB::table('n_subscriptions')->whereIn('user_id', $users->keys())
+                        ->where('is_active', true)->where('end_at', '>=', now()->startOfDay())->distinct()->count('user_id');
+                    abort_unless($eligible === $users->count(), 403, 'Every invited user needs an active subscription for this title.');
+                }
+            }
+            return $users->filter(function ($user) use ($room, $host, $existingInvites, &$links) {
+                $existing = $existingInvites->get($user->uid);
+                $token = Str::random(64);
+                $values = ['inviter_user_id' => $host, 'status' => 'pending', 'expires_at' => now()->addHours(24),
+                    'responded_at' => null, 'whatsapp_sent_at' => null, 'link_token_hash' => hash('sha256', $token), 'updated_at' => now()];
+                if ($existing) {
+                    DB::table('chat_room_invites')->where('id', $existing->id)->update($values);
+                    $id = $existing->id;
+                } else {
+                    $id = DB::table('chat_room_invites')->insertGetId($values + ['room_id' => $room, 'invitee_user_id' => $user->uid, 'created_at' => now()]);
+                }
+                $links[$id] = $token;
+                return true;
+            });
+        });
+        $this->notifyRoomInvitees($r, $room, $invited, $links, $content);
+        return V4Response::success(['room_id' => (string) $room, 'invite_count' => $invited->count(),
+            'already_invited_count' => count($v['invitee_ids']) - $invited->count()]);
     }
 
     public function inviteRooms(Request $r)
@@ -283,6 +354,7 @@ final class ChatController extends Controller
         DB::table('chat_room_invites')->where('id', $invite)->where('status', 'pending')->update([
             'status' => $v['accept'] ? 'accepted' : 'declined', 'responded_at' => now(), 'updated_at' => now(),
         ]);
+        if ($v['accept']) { $this->chat->outbox($r, (int) $row->room_id, 'badge_sync', null, null, $uid); }
         $seasonId = $row->content_type === 'episode' && isset($content->season_id) ? (string) $content->season_id : null;
         $seasonNumber = $seasonId ? DB::table('seasons')->where('id', $seasonId)->value('season_number') : null;
         return V4Response::success(['accepted' => (bool) $v['accept'], 'room_id' => (string) $row->room_id, 'room_name' => $row->room_name,
@@ -564,6 +636,7 @@ final class ChatController extends Controller
             $q->delete();
         }
         $this->chat->invalidateBlocks($uid);
+        $this->chat->outbox($r, 0, 'badge_sync', null, null, $uid);
 
         return V4Response::success(['blocked' => $v['blocked']]);
     }
@@ -602,6 +675,8 @@ final class ChatController extends Controller
         });
         $this->chat->invalidate($room, true);
         $this->chat->invalidateBan($v['target'], $room);
+        if (in_array($v['action'], ['ban', 'unban'], true)) { $this->chat->outbox($r, $room, 'badge_sync', null, null, $v['target']); }
+        if ($v['action'] === 'close') { $this->chat->outbox($r, $room, 'ended', null, null); }
 
         return V4Response::success(['updated' => true]);
     }
