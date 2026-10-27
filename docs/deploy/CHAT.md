@@ -93,3 +93,30 @@ To disable chat, set `CHAT_ENABLED=false` and rebuild config cache. APIs then
 refuse joins, reads and sends; change notifications contain no chat text. Keep
 stored history for recovery. A code rollout should restart Reverb and the outbox
 worker so they load the updated config and code.
+
+## Watch together in an existing private room
+
+Apply the new migration before deploying the updated API/workers or releasing mobile builds:
+
+```sh
+php artisan migrate --force --path=database/migrations/2026_10_27_000001_create_chat_watch_sessions.php
+```
+
+Android and iOS still support creating a watch room from the player. To use an
+existing private room, its creator opens a movie/episode, selects that private
+room in player chat, types `/`, taps the `/watch` suggestion and presses Send.
+Accepted members tap the resulting title card to open the player at the host's
+current position. Premium titles require the joining member's subscription;
+PPV titles remain excluded.
+
+The private room retains its content type, membership and history. Watch
+sessions are attached to messages and to the creator's specific active stream.
+Sending `/watch` again replaces the previous session. Stopped, expired or
+replaced streams and deleted cards cannot be joined; normal private chat stays
+available under its existing one-hour inactivity rule. Position updates use the
+same four-second polling interval as existing watch rooms.
+
+Verify with two accounts: creator slash autocomplete, member card tap from Home
+and from the player, movie/episode routing, current position sync, premium
+subscription failure, stale cards, replacement sessions and normal chat after
+playback ends. Restart chat workers after deploying the API changes.

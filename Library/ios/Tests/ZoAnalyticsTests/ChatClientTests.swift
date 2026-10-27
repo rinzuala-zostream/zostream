@@ -86,6 +86,17 @@ final class ChatClientTests: XCTestCase {
         XCTAssertTrue(page.has_more)
     }
 
+    func testPrivateWatchCardAndRoomMetadataDecodeWithoutChangingPrivateRoomType() throws {
+        let data = Data(#"{"id":"12","room_id":"2","user_id":"alice","request_id":"request","display_name":"Alice","body":"Watch Film A together","spoiler":false,"deleted":false,"created_at":"2026-10-27T10:00:00Z","watch_invite":{"session_id":"5","content_type":"movie","content_id":"film-a","content_title":"Film A"}}"#.utf8)
+        let message = try JSONDecoder().decode(ChatMessage.self, from: data)
+        XCTAssertEqual(message.watch_invite?.session_id, "5")
+        XCTAssertEqual(message.watch_invite?.content_title, "Film A")
+        let roomData = Data(#"{"room_id":"2","room_type":"invite","channel":"private-chat.2","websocket_url":"","user_id":"alice","is_host":true,"content_type":null,"watch_session":{"session_id":"5","content_type":"movie","content_id":"film-a","content_title":"Film A"}}"#.utf8)
+        let room = try JSONDecoder().decode(ChatRoom.self, from: roomData)
+        XCTAssertNil(room.content_type)
+        XCTAssertEqual(room.watch_session?.session_id, "5")
+    }
+
     func testOnlyClientChatEventsAreAllowlisted() {
         XCTAssertTrue(ProductEvent.supportedNames.contains("chat_opened"))
         XCTAssertTrue(ProductEvent.supportedNames.contains("chat_closed"))

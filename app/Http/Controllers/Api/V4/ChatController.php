@@ -52,6 +52,7 @@ final class ChatController extends Controller
     {
         $v = $r->validate(['phone' => 'required|string|min:7|max:32']);
         $digits = preg_replace('/\D+/', '', $v['phone']);
+        if (str_starts_with(trim($v['phone']), '00')) { $digits = substr($digits, 2); }
         abort_if(strlen($digits) < 7, 422, 'Enter a valid phone number.');
         $matches = DB::table('user')->where('uid', '!=', (string) $r->input('auth_user_id'))
             ->whereNotNull('auth_phone')->where('auth_phone', '!=', '')
@@ -59,7 +60,20 @@ final class ChatController extends Controller
             ->get(['uid', 'name', 'auth_phone', 'country_code'])->filter(function ($candidate) use ($digits) {
                 $local = preg_replace('/\D+/', '', $candidate->auth_phone);
                 $country = preg_replace('/\D+/', '', $candidate->country_code ?? '');
-                return $digits === $local || ($country !== '' && $digits === $country.$local);
+                $international = str_starts_with(trim($candidate->auth_phone), '+');
+                if (str_starts_with(trim($candidate->auth_phone), '00')) {
+                    $local = substr($local, 2);
+                    $international = true;
+                }
+                // Older Indian accounts stored ten local digits without country_code.
+                // Keep that fallback explicit; never match an arbitrary phone suffix.
+                if ($country === '' && ! $international && strlen($local) === 10) {
+                    $country = '91';
+                }
+                if ($digits === $local) { return true; }
+                if ($country === '' || $international) { return false; }
+                $national = ltrim($local, '0');
+                return $digits === $country.$national;
             });
         abort_if($matches->count() > 1, 422, 'More than one account matches this number. Enter the full number with country code.');
         $user = $matches->first();
@@ -290,7 +304,8 @@ final class ChatController extends Controller
             ? DB::table($inviteRoom->content_type === 'episode' ? 'episodes' : 'movie')->where('num', $inviteRoom->content_id)->first() : null;
         $seasonId = $inviteRoom->content_type === 'episode' ? ($content->season_id ?? null) : null;
         $this->chat->room($r, $room);
-        return V4Response::success(['room_id' => (string) $room, 'room_type' => 'invite', 'channel' => 'private-chat.'.$room,
+        $watch = DB::table('chat_watch_sessions')->where('room_id', $room)->where('active', true)->first();
+        return V4Response::success(['watch_session' => $watch ? app(\App\Support\Chat\PrivateWatchService::class)->metadata($watch) : null, 'room_id' => (string) $room, 'room_type' => 'invite', 'channel' => 'private-chat.'.$room,
             'websocket_url' => config('chat.websocket_url'), 'online_count' => $this->chat->presence($r, $room),
             'user_id' => (string) $r->input('auth_user_id'), 'room_name' => $inviteRoom->room_name, 'content_type' => $inviteRoom->content_type,
             'content_id' => $inviteRoom->content_id, 'watch_position_ms' => (int) $inviteRoom->watch_position_ms,
@@ -299,6 +314,28 @@ final class ChatController extends Controller
             'season_number' => $seasonId ? DB::table('seasons')->where('id', $seasonId)->value('season_number') : null,
             'episode_number' => $content->episode_number ?? null,
             'slow_mode_seconds' => config('chat.slow_mode_seconds')]);
+    }
+
+    public function joinPrivateWatch(Request $r, int $room, int $session)
+    {
+        return V4Response::success(app(\App\Support\Chat\PrivateWatchService::class)->join($r, $room, $session));
+    }
+
+    public function privateWatchPosition(Request $r, int $room, int $session)
+    {
+        $v = $r->validate(['position_ms' => 'nullable|integer|min:0|max:86400000']);
+        $service = app(\App\Support\Chat\PrivateWatchService::class);
+        $watch = $service->resolve($r, $room, $session);
+        $host = $watch->host_user_id === (string) $r->input('auth_user_id');
+        if (isset($v['position_ms'])) {
+            abort_unless($host && $this->chat->playbackAllowed($r, $watch->content_type, $watch->content_id)
+                && hash_equals($watch->stream_token_hash, hash('sha256', (string) $r->header('X-Playback-Token'))),
+                403, 'Only the creator’s active player can update this watch session.');
+            DB::table('chat_watch_sessions')->where('id', $session)->where('active', true)
+                ->update(['position_ms' => $v['position_ms'], 'updated_at' => now()]);
+            $watch->position_ms = $v['position_ms'];
+        }
+        return V4Response::success(['position_ms' => (int) $watch->position_ms, 'is_host' => $host]);
     }
 
     public function updateInvitePosition(Request $r, int $room)
@@ -365,10 +402,13 @@ final class ChatController extends Controller
     {
         $roomInfo = $this->chat->room($r, $room, true);
         $v = $r->validate(['request_id' => 'required|uuid', 'body' => 'required|string|max:1000',
+            'watch' => 'sometimes|array', 'watch.content_type' => ['required_with:watch', Rule::in(['movie', 'episode'])],
+            'watch.content_id' => 'required_with:watch|string|max:191', 'watch.position_ms' => 'nullable|integer|min:0|max:86400000',
             'spoiler' => 'sometimes|boolean', 'app_session_id' => 'nullable|uuid', 'playback_session_id' => 'nullable|uuid']);
         $uid = (string) $r->input('auth_user_id');
         $body = trim($v['body']);
         abort_if($body === '' || preg_match('/[\x00-\x08\x0B\x0C\x0E-\x1F]/u', $body), 422, 'Enter a valid message.');
+        abort_if($body === '/watch' && ($roomInfo->type !== 'invite' || empty($v['watch'])), 422, 'Use /watch in a private room while watching a title.');
         $old = DB::table('chat_messages')->where('user_id', $uid)->where('request_id', $v['request_id'])->first();
         if ($old) {
             abort_unless((int) $old->room_id === $room, 409);
@@ -395,6 +435,10 @@ final class ChatController extends Controller
             $m = DB::table('chat_messages')->where('user_id', $uid)->where('request_id', $v['request_id'])->first();
             abort_unless((int) $m->room_id === $room, 409);
             if ($inserted) {
+                if ($body === '/watch') {
+                    app(\App\Support\Chat\PrivateWatchService::class)->start($r, $inviteRoom, $m->id, $v['watch']);
+                    $m = DB::table('chat_messages')->find($m->id);
+                }
                 if ($roomInfo->type === 'invite' && $inviteRoom->content_type === null) {
                     DB::table('chat_invite_rooms')->where('room_id', $room)->update(['idle_expires_at' => now()->addHour()]);
                 }

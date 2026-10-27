@@ -1,5 +1,12 @@
 import Foundation
 
+public struct ChatWatchInvite: Decodable, Sendable {
+    public let session_id: String
+    public let content_type: String
+    public let content_id: String
+    public let content_title: String
+}
+
 public struct ChatMessage: Decodable, Identifiable, Sendable {
     public let id: String
     public let room_id: String
@@ -10,6 +17,7 @@ public struct ChatMessage: Decodable, Identifiable, Sendable {
     public let spoiler: Bool
     public let deleted: Bool
     public let created_at: String
+    public let watch_invite: ChatWatchInvite?
 }
 public struct ChatPage: Decodable, Sendable {
     public let messages: [ChatMessage]
@@ -24,6 +32,7 @@ public struct ChatRoom: Decodable, Sendable {
     public let is_host: Bool?
     public let room_name: String?
     public let content_type: String?
+    public let watch_session: ChatWatchInvite?
 }
 public struct ChatFailure: LocalizedError {
     public let message: String

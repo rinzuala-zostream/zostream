@@ -156,6 +156,7 @@ final class ChatService
     {
         return ['id' => (string) $m->id, 'room_id' => (string) $m->room_id,
             'user_id' => $m->user_id, 'request_id' => $m->request_id, 'display_name' => $m->display_name,
+            'watch_invite' => $m->deleted_at ? null : json_decode($m->watch_invite ?? 'null', true),
             'body' => $m->deleted_at ? null : $m->body, 'spoiler' => (bool) $m->spoiler,
             'deleted' => $m->deleted_at !== null,
             'created_at' => \Illuminate\Support\Carbon::parse($m->created_at, config('app.timezone'))->toIso8601String()];
