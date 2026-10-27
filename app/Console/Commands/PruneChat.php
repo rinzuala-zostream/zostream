@@ -24,6 +24,8 @@ final class PruneChat extends Command
                 break;
             }
             DB::table('chat_reports')->whereIn('message_id', $ids)->delete();
+            DB::table('chat_watch_participants')->whereIn('session_id',
+                DB::table('chat_watch_sessions')->select('id')->whereIn('message_id', $ids))->delete();
             DB::table('chat_watch_sessions')->whereIn('message_id', $ids)->delete();
             DB::table('chat_messages')->whereIn('id', $ids)->delete();
         } while (true);

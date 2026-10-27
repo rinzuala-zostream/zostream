@@ -80,9 +80,47 @@ final class PrivateWatchService
         return $watch;
     }
 
+    private function recordJoin(Request $r, object $watch): void
+    {
+        $uid = (string) $r->input('auth_user_id');
+        if ($uid === $watch->host_user_id) { return; }
+        DB::table('chat_watch_participants')->insertOrIgnore([
+            'session_id' => $watch->id, 'user_id' => $uid, 'joined_at' => now(),
+        ]);
+    }
+
+    public function touchParticipant(Request $r, object $watch): void
+    {
+        $uid = (string) $r->input('auth_user_id');
+        if ($uid === $watch->host_user_id) { return; }
+        $stream = DB::table('n_active_streams as s')->join('n_devices as d', 'd.id', '=', 's.device_id')
+            ->where('d.user_id', $uid)->where('d.device_token', $r->input('auth_device_id'))
+            ->where('s.stream_token', (string) $r->header('X-Playback-Token'))->where('s.status', 'active')
+            ->where('s.content_type', $watch->content_type)->where('s.content_key', $watch->content_id)->first(['s.id']);
+        if (! $stream) { return; }
+        $this->recordJoin($r, $watch);
+        DB::table('chat_watch_participants')->where('session_id', $watch->id)->where('user_id', $uid)
+            ->update(['stream_id' => $stream->id, 'stream_token_hash' => hash('sha256', $r->header('X-Playback-Token')), 'last_seen_at' => now()]);
+    }
+
+    // Counts are distinct invitees; the creator is excluded from both totals.
+    public function counts(object $watch): array
+    {
+        $members = DB::table('chat_watch_participants')->where('session_id', $watch->id)->get();
+        $streams = DB::table('n_active_streams')->whereIn('id', $members->pluck('stream_id')->filter())
+            ->where('status', 'active')->where('content_type', $watch->content_type)->where('content_key', $watch->content_id)
+            ->get()->keyBy('id');
+        return ['joined_count' => $members->count(), 'streaming_count' => $members->filter(function ($member) use ($streams) {
+            $stream = $streams->get($member->stream_id);
+            return $stream && $member->last_seen_at && \Illuminate\Support\Carbon::parse($member->last_seen_at)->gte(now()->subSeconds(35))
+                && hash_equals($member->stream_token_hash, hash('sha256', $stream->stream_token));
+        })->count()];
+    }
+
     public function join(Request $r, int $room, int $session): array
     {
         $watch = $this->resolve($r, $room, $session);
+        $this->recordJoin($r, $watch);
         $content = $this->content($watch->content_type, $watch->content_id);
         $season = $watch->content_type === 'episode' ? ($content->season_id ?? null) : null;
         return ['room_id' => (string) $room, 'room_name' => DB::table('chat_invite_rooms')->where('room_id', $room)->value('room_name'),

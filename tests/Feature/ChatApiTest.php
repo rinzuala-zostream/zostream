@@ -33,6 +33,7 @@ class ChatApiTest extends TestCase
         (require database_path('migrations/2026_10_26_000004_add_chat_invitation_links.php'))->up();
         (require database_path('migrations/2026_10_27_000001_create_chat_watch_sessions.php'))->up();
         (require database_path('migrations/2026_10_27_000002_add_watch_playback_controls.php'))->up();
+        (require database_path('migrations/2026_10_27_000003_create_chat_watch_participants.php'))->up();
         Schema::create('user', function (Blueprint $t) {
             $t->id();
             $t->string('uid');
@@ -840,6 +841,59 @@ class ChatApiTest extends TestCase
         DB::table('n_active_streams')->update(['last_ping' => now()->subMinutes(4)]);
         $this->postJson($url, ['auth_user_id' => 'bob'])->assertStatus(410);
         $this->postJson("/api/v4/chat/invite-rooms/$room/join", ['auth_user_id' => 'bob'])->assertOk();
+    }
+
+    public function test_watch_sync_and_rejoin_survive_three_minutes_and_private_chat_idle_deadline(): void
+    {
+        $room = $this->privateWatchFixture();
+        $session = $this->sendPrivateWatch($room)->assertCreated()->json('data.watch_invite.session_id');
+        $url = "/api/v4/chat/rooms/$room/watch-sessions/$session/position";
+        $this->travel(4)->minutes();
+        $this->postJson($url, $this->identity(['position_ms' => 25000, 'paused' => true]))->assertOk();
+        $this->postJson($url, ['auth_user_id' => 'bob'])->assertOk()->assertJsonPath('data.paused', true);
+        $this->travel(61)->minutes();
+        $this->postJson($url, $this->identity(['position_ms' => 32000, 'paused' => false]))->assertOk();
+        $this->postJson("/api/v4/chat/rooms/$room/watch-sessions/$session/join", ['auth_user_id' => 'bob'])
+            ->assertOk()->assertJsonPath('data.watch_position_ms', 32000);
+        DB::table('n_active_streams')->update(['status' => 'stopped']);
+        $this->postJson($url, $this->identity(['position_ms' => 1]))->assertStatus(410);
+        $this->assertSame('stopped', DB::table('n_active_streams')->value('status'));
+    }
+
+    public function test_invitee_cannot_refresh_creator_stream_using_a_copied_playback_token(): void
+    {
+        $room = $this->privateWatchFixture();
+        $session = $this->sendPrivateWatch($room)->assertCreated()->json('data.watch_invite.session_id');
+        $lastPing = DB::table('n_active_streams')->value('last_ping');
+        $this->travel(4)->minutes();
+        $this->withHeaders(['X-Playback-Token' => 'play-a'])
+            ->postJson("/api/v4/chat/rooms/$room/watch-sessions/$session/position", ['auth_user_id' => 'bob', 'auth_device_id' => 'device-a'])
+            ->assertStatus(410);
+        $this->assertSame($lastPing, DB::table('n_active_streams')->value('last_ping'));
+    }
+
+    public function test_watch_counts_distinguish_unique_joins_from_active_invitee_players(): void
+    {
+        $room = $this->privateWatchFixture();
+        $session = $this->sendPrivateWatch($room)->assertCreated()->json('data.watch_invite.session_id');
+        $base = "/api/v4/chat/rooms/$room";
+        $bob = ['auth_user_id' => 'bob', 'auth_device_id' => 'device-b'];
+        $this->postJson("$base/watch-sessions/$session/join", $bob)->assertOk();
+        $this->postJson("$base/watch-sessions/$session/join", $bob)->assertOk();
+        $this->getJson("$base/watch-status?auth_user_id=alice")->assertOk()
+            ->assertJsonPath('data.joined_count', 1)->assertJsonPath('data.streaming_count', 0);
+        DB::table('n_devices')->insert(['id' => 2, 'user_id' => 'bob', 'device_token' => 'device-b']);
+        DB::table('n_active_streams')->insert(['device_id' => 2, 'stream_token' => 'play-b', 'status' => 'active',
+            'content_type' => 'movie', 'content_key' => 'film-a', 'last_ping' => now()]);
+        $this->withHeaders(['X-Playback-Token' => 'play-b'])->postJson("$base/watch-sessions/$session/position", $bob)->assertOk();
+        $this->getJson("$base/watch-status?auth_user_id=alice")->assertOk()->assertJsonPath('data.streaming_count', 1);
+        DB::table('n_active_streams')->where('device_id', 2)->update(['status' => 'stopped']);
+        $this->getJson("$base/watch-status?auth_user_id=alice")->assertOk()
+            ->assertJsonPath('data.session_id', $session)->assertJsonPath('data.joined_count', 1)->assertJsonPath('data.streaming_count', 0);
+        $this->postJson("$base/watch-sessions/$session/join", $bob)->assertOk();
+        DB::table('n_active_streams')->where('device_id', 2)->update(['status' => 'active']);
+        $this->travel(36)->seconds();
+        $this->getJson("$base/watch-status?auth_user_id=alice")->assertOk()->assertJsonPath('data.streaming_count', 0);
     }
 
     public function test_realtime_watch_controls_preserve_pause_and_reject_delayed_updates(): void

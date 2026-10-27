@@ -142,4 +142,34 @@ Private-room cards check `/rooms/{room}/watch-status` when joining and every ten
 seconds. Only the current session with an active matching host stream receives
 LIVE highlighting. Stopped/replaced sessions lose their highlight. Creators see
 “You’re hosting”; invitees see the Watch button until the session ends. Private
-room membership, history and its inactivity rule are unchanged.
+room membership and history stay available. A live watch session keeps its private
+room available while the creator is streaming.
+
+
+## Watch session freshness and invitation counts
+
+Apply this migration before the API update:
+
+```sh
+php artisan migrate --force --path=database/migrations/2026_10_27_000003_create_chat_watch_participants.php
+```
+
+Watch position requests now refresh only the authenticated device's matching active
+playback token, at most once per 45 seconds. This keeps the three-minute host
+freshness check working even though legacy stream ping is a no-op. Stopped and
+replaced tokens remain invalid. Host watch requests renew the private room's idle
+deadline, and a live session is exempt from private chat inactivity expiry.
+
+`GET /api/v4/chat/rooms/{room}/watch-status` adds `joined_count` and
+`streaming_count` for the live session. Both count distinct invitees and exclude
+the creator. Joins are idempotent; reopening the invitation does not increase the
+joined total. Streaming requires a recent authenticated player position request
+(within 35 seconds), the same token, and an active matching stream. Reading chat
+alone does not count as watching. An orderly stream stop removes the viewer from
+the next count; a disconnected player ages out within 35 seconds. Both mobile
+apps refresh the creator's invitation counts every ten seconds.
+
+Verify using two accounts for more than three minutes: host pause/play/seek,
+invitee exit and rejoin with the original card, and joined/watching counts before
+joining, during playback, and after exit. Also verify playback beyond one hour
+without sending additional chat messages. Restart chat workers after deployment.

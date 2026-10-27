@@ -12,7 +12,8 @@ final class ChatService
     {
         abort_unless($room && $room->active, 403, 'This invite room has ended.');
         abort_if($room->content_type === null && ($room->idle_expires_at === null
-            || \Illuminate\Support\Carbon::parse($room->idle_expires_at)->lessThanOrEqualTo(now())),
+            || \Illuminate\Support\Carbon::parse($room->idle_expires_at)->lessThanOrEqualTo(now()))
+            && ! app(PrivateWatchService::class)->liveSession((int) $room->room_id),
             403, 'This private room ended after 1 hour without messages.');
     }
 
@@ -63,6 +64,18 @@ final class ChatService
         }
 
         return $room;
+    }
+
+    // Watch players publish every ten seconds, independently of legacy ping.
+    // Never revive a stopped stream or accept another account/device's token.
+    public function refreshPlayback(Request $r): void
+    {
+        $token = (string) $r->header('X-Playback-Token');
+        if ($token === '') { return; }
+        DB::table('n_active_streams')->where('stream_token', $token)->where('status', 'active')
+            ->whereIn('device_id', DB::table('n_devices')->select('id')
+                ->where('user_id', (string) $r->input('auth_user_id'))->where('device_token', $r->input('auth_device_id')))
+            ->where('last_ping', '<=', now()->subSeconds(45))->update(['last_ping' => now()]);
     }
 
     public function playbackAllowed(Request $r, string $type, string $contentId): bool

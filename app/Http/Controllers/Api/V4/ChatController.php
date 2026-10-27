@@ -319,7 +319,8 @@ final class ChatController extends Controller
     {
         $this->chat->room($r, $room);
         $watch = app(\App\Support\Chat\PrivateWatchService::class)->liveSession($room);
-        return V4Response::success(['session_id' => $watch ? (string) $watch->id : null]);
+        return V4Response::success(['session_id' => $watch ? (string) $watch->id : null]
+            + ($watch ? app(\App\Support\Chat\PrivateWatchService::class)->counts($watch) : ['joined_count' => 0, 'streaming_count' => 0]));
     }
 
     public function joinPrivateWatch(Request $r, int $room, int $session)
@@ -333,6 +334,7 @@ final class ChatController extends Controller
             'control_sequence' => 'sometimes|integer|min:1|max:9007199254740991']);
         abort_if((isset($v['paused']) || isset($v['control_sequence'])) && !isset($v['position_ms']), 422, 'Playback controls require a position.');
         $service = app(\App\Support\Chat\PrivateWatchService::class);
+        $this->chat->refreshPlayback($r);
         $watch = $service->resolve($r, $room, $session);
         $host = $watch->host_user_id === (string) $r->input('auth_user_id');
         if (isset($v['position_ms'])) {
@@ -340,6 +342,11 @@ final class ChatController extends Controller
                 && hash_equals($watch->stream_token_hash, hash('sha256', (string) $r->header('X-Playback-Token'))),
                 403, 'Only the creator’s active player can update this watch session.');
             $watch = app(\App\Support\Chat\WatchPlaybackState::class)->update($r, 'chat_watch_sessions', $session, 'position_ms', $v);
+        }
+        $service->touchParticipant($r, $watch);
+        if ($host) {
+            DB::table('chat_invite_rooms')->where('room_id', $room)->where('idle_expires_at', '<=', now()->addMinutes(30))
+                ->update(['idle_expires_at' => now()->addHour()]);
         }
         return V4Response::success(app(\App\Support\Chat\WatchPlaybackState::class)->payload($watch, 'position_ms', $host));
     }
@@ -349,6 +356,7 @@ final class ChatController extends Controller
         $v = $r->validate(['position_ms' => 'nullable|integer|min:0|max:86400000', 'paused' => 'sometimes|boolean',
             'control_sequence' => 'sometimes|integer|min:1|max:9007199254740991']);
         abort_if((isset($v['paused']) || isset($v['control_sequence'])) && !isset($v['position_ms']), 422, 'Playback controls require a position.');
+        $this->chat->refreshPlayback($r);
         $this->chat->room($r, $room, true);
         $inviteRoom = DB::table('chat_invite_rooms')->where('room_id', $room)->first();
         abort_unless($inviteRoom, 404);
