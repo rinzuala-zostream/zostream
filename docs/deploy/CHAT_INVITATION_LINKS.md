@@ -60,3 +60,57 @@ Links containing `/invite/%7B%7B1%7D%7D{token}` have a literal `{{1}}` prefix. T
 The invitation landing page uses an explicit Android HTTPS intent addressed to the Zo Stream package on user tap. Its browser fallback points to the download page. On iOS, its Open button uses `zostream://invite/{token}`, registered in the updated app, to avoid reopening the same HTTPS page in Safari. HTTPS Universal Links remain the primary link in WhatsApp. Install the updated iOS build for the custom-scheme fallback, and deploy the updated Blade view on the backend.
 
 The origin AASA and Apple CDN AASA can differ temporarily. Compare `https://app.zostream.in/.well-known/apple-app-site-association` with `https://app-site-association.cdn-apple.com/a/v1/app.zostream.in`; both must include `/invite/*` for normal invitation Universal Links. Server cache-clearing commands do not force Apple CDN or device caches to refresh. Browser fallback still performs the same authenticated invitation verification; it does not grant membership by itself.
+
+
+## Room invitations do not arrive, but OTP/invoice messages work
+
+Room invitations use an encrypted Laravel queue job, independently of the
+`chat:deliver` WebSocket worker. Deploy the latest code and inspect the effective
+configuration without exposing tokens or sending any messages:
+
+```sh
+php artisan optimize:clear
+php artisan chat:whatsapp-status
+# Optional: inspect one invitation rather than the latest one.
+php artisan chat:whatsapp-status --invite=123
+```
+
+The command checks the room WhatsApp switch, credential presence, template and
+language, migration tables, database queue backlog and the invitation's current
+state. It prints neither phone numbers nor invitation tokens. It cannot confirm
+whether a worker is running or whether Meta approved the template. If delivery
+is disabled, set `CHAT_WHATSAPP_ENABLED=true` and rebuild the normal deployment
+config cache. The template name/language must exactly match your approved
+four-variable template and dynamic URL button described above.
+
+Run a Laravel queue worker under Supervisor as well as `chat:deliver` (adjust
+paths and user to your server). Existing managed queue workers can be reused;
+do not add a duplicate worker unnecessarily:
+
+```ini
+[program:zostream-queue]
+command=php /var/www/zostream/current/artisan queue:work --sleep=1 --tries=3 --timeout=45
+directory=/var/www/zostream/current
+user=www-data
+autostart=true
+autorestart=true
+redirect_stderr=true
+stdout_logfile=/var/log/zostream-queue.log
+stopwaitsecs=60
+```
+
+After changing code/config, restart existing queue workers using your process
+manager or `php artisan queue:restart`. The restart command does not start a
+missing worker. Use `php artisan queue:failed` to identify failed jobs; inspect
+only the relevant invitation failures rather than retrying all application jobs.
+
+The invitation sender now uses the same explicit +91 fallback as account lookup
+for legacy ten-digit Indian phone numbers without `country_code`. It also
+normalizes explicit `+`/`00` international prefixes and national trunk zeros.
+Previously such numbers were either silently skipped or sent with an incorrect
+prefix. Skipped jobs now log `Chat WhatsApp invitation skipped` with the invite
+ID and a reason; provider failures log the numeric provider code and template
+name/language without the recipient number or link token. Existing invitations
+whose jobs already completed as skipped are not automatically sent again: create
+a new invitation after deploying and checking the worker. Live provider delivery
+has not been verified by local tests.

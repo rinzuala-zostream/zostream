@@ -113,8 +113,9 @@ The private room retains its content type, membership and history. Watch
 sessions are attached to messages and to the creator's specific active stream.
 Sending `/watch` again replaces the previous session. Stopped, expired or
 replaced streams and deleted cards cannot be joined; normal private chat stays
-available under its existing one-hour inactivity rule. Position controls use `watch_control` WebSocket invalidations with an authenticated
-state fetch; a ten-second API check recovers state after missed events.
+available under its existing one-hour inactivity rule. Position controls use private-channel `watch_control` events carrying authoritative
+playback state. Clients apply the payload directly; API recovery runs on reconnect
+or while the control socket is disconnected.
 
 Verify with two accounts: creator slash autocomplete, member card tap from Home
 and from the player, movie/episode routing, current position sync, premium
@@ -129,17 +130,18 @@ Before deploying this API or the updated mobile builds, apply:
 php artisan migrate --force --path=database/migrations/2026_10_27_000002_add_watch_playback_controls.php
 ```
 
-Restart the `chat:deliver` worker to deliver `watch_control` events. These private
-channel events contain no playback tokens or content payloads. Accepted members
-fetch authoritative position/paused state through the existing position endpoint.
+Restart the `chat:deliver` worker to deliver `watch_control` and `watch_status`
+events. These private-channel events carry position/paused state and invitation
+counts, and never playback tokens, URLs, credentials or messages.
 Both dedicated watch rooms and `/watch` sessions support host play, pause and seek.
 Control sequence numbers reject delayed writes; server timestamps and position
 extrapolation account for playback during transport. Mobile clients retain a
 control subscription when switching chat tabs and never publish guest controls.
-A ten-second state fetch also recovers missed events/reconnects.
+An authenticated state fetch recovers on join/reconnect; a disconnected socket
+uses a one-minute API fallback.
 
-Private-room cards check `/rooms/{room}/watch-status` when joining and every ten
-seconds. Only the current session with an active matching host stream receives
+Private-room cards check `/rooms/{room}/watch-status` when joining or reconnecting.
+While connected, card liveness and counts update from WebSocket payloads. Only the current session with an active matching host stream receives
 LIVE highlighting. Stopped/replaced sessions lose their highlight. Creators see
 “You’re hosting”; invitees see the Watch button until the session ends. Private
 room membership and history stay available. A live watch session keeps its private
@@ -164,12 +166,54 @@ deadline, and a live session is exempt from private chat inactivity expiry.
 `streaming_count` for the live session. Both count distinct invitees and exclude
 the creator. Joins are idempotent; reopening the invitation does not increase the
 joined total. Streaming requires a recent authenticated player position request
-(within 35 seconds), the same token, and an active matching stream. Reading chat
+(within 150 seconds), the same token, and an active matching stream. Reading chat
 alone does not count as watching. An orderly stream stop removes the viewer from
-the next count; a disconnected player ages out within 35 seconds. Both mobile
-apps refresh the creator's invitation counts every ten seconds.
+the next count; a disconnected player ages out after its 150-second lease, with the next room
+heartbeat probe broadcasting the change (up to 60 seconds later).
 
 Verify using two accounts for more than three minutes: host pause/play/seek,
 invitee exit and rejoin with the original card, and joined/watching counts before
 joining, during playback, and after exit. Also verify playback beyond one hour
 without sending additional chat messages. Restart chat workers after deployment.
+
+
+## WebSocket playback and count delivery
+
+Deploy the updated API, `Library` SDKs, Android app and Apple app together, then
+restart the long-running `chat:deliver` worker. This change needs no additional
+migration beyond the watch-participants migration above. Older app builds keep
+their polling behavior until updated.
+
+`chat.changed` on the authenticated private room channel now includes a `watch`
+object with `room_id`, `session_id`, `active`, a monotonic string `event_id`,
+`joined_count`, `streaming_count`, and `playback` (position, paused, revision and
+server time). Dedicated content watch rooms have a null session ID and no invitee
+counts. A null playback signals an ended/unavailable session. The worker builds
+snapshots from current authoritative state, so a delayed/retried event cannot
+restore an older session. Clients reject older event IDs and playback revisions.
+Guests apply incoming state without another HTTP request. They retain their watch
+subscription when switching chat tabs. Socket ping/pong detects broken links.
+
+The ten-second playback and invitation-status polls are removed on both mobile
+platforms. Initial join and successful reconnect fetch a baseline. While the socket
+is disconnected, API reconciliation runs about once per minute. Live players POST
+`rooms/{room}/watch-heartbeat` once per minute with the session ID, maintaining
+authenticated stream freshness, room lifetime and participant presence. The host
+heartbeat also uploads a sequenced position/paused sample to correct clock drift;
+guests receive that sample over WebSocket. It returns only liveness and the current control revision. If a guest is missing
+that revision after allowing two seconds for an in-flight frame, it performs a
+baseline recovery. This also recovers when the delivery worker stalls while the
+socket itself remains connected.
+Explicit host controls still use authenticated HTTP writes and push immediately.
+
+Join, participant playback activation, stream stop and token replacement publish
+updated counts/liveness. Steady heartbeats only publish membership status when it
+changes. Room probes share a 15-second cache throttle rather than scanning the
+participant list separately for every viewer. Existing chat presence heartbeats
+and unread-badge reconciliation remain separate from watch playback.
+
+Verify with two devices and API traffic inspection: play/pause/seek and counts
+must update from socket frames without position/status requests; normal playback
+has only the one-minute watch heartbeat. Disable the socket and verify fallback,
+restore it and verify baseline recovery plus immediate subsequent controls. Stop
+or replace the creator's stream, and confirm the original card loses LIVE status.

@@ -63,8 +63,11 @@ final class DeliverChat extends Command
         if (empty($c['app_id']) || empty($c['key']) || empty($c['secret'])) {
             throw new \RuntimeException('Missing Reverb settings');
         }
+        $event = ['kind' => $row->kind, 'message_id' => $row->message_id ? (string) $row->message_id : null];
+        $watch = app(\App\Support\Chat\PrivateWatchService::class)->snapshot((int) $row->room_id);
+        if ($watch !== null) { $event['watch'] = $watch + ['event_id' => (string) $row->id]; }
         $body = json_encode(['name' => 'chat.changed', 'channels' => ['private-chat.'.$row->room_id],
-            'data' => json_encode(['kind' => $row->kind, 'message_id' => $row->message_id ? (string) $row->message_id : null])], JSON_THROW_ON_ERROR);
+            'data' => json_encode($event)], JSON_THROW_ON_ERROR);
         $path = '/apps/'.rawurlencode($c['app_id']).'/events';
         $query = ['auth_key' => $c['key'], 'auth_timestamp' => (string) time(), 'auth_version' => '1.0', 'body_md5' => md5($body)];
         ksort($query);

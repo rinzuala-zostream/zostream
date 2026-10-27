@@ -181,6 +181,37 @@ class ChatRoomSwitchTest {
         assertEquals(1, http.sockets.single().cancellations)
     }
 
+    @Test fun watchFramesDeliverStateDirectlyAndLiveSocketDoesNotReconcileByPolling() {
+        val http = Http()
+        var syncs = 0
+        var watchInvalidations = 0
+        val states = mutableListOf<JSONObject>()
+        val client = ZoChatClient("https://example.test", { AnalyticsCredentials("token", "device", "owner") }, "test",
+            onChanged = { kind, _ -> if (kind == "sync") syncs++ else if (kind == "watch_control") watchInvalidations++ },
+            onConnection = {}, http = http)
+        client.onWatchState = { states.add(it) }
+        try {
+            client.join("movie", "42") { _, error -> assertNull(error) }
+            await { client.isConnected }
+            val socket = http.sockets.single()
+            val watch = JSONObject().put("room_id", "movie").put("session_id", "7").put("event_id", "12")
+                .put("joined_count", 2).put("streaming_count", 1)
+                .put("playback", JSONObject().put("position_ms", 42000).put("paused", true).put("revision", "3"))
+            fun emit(channel: String) = socket.listener.onMessage(socket, JSONObject().put("event", "chat.changed")
+                .put("channel", channel).put("data", JSONObject().put("kind", "watch_control").put("watch", watch)).toString())
+            emit("private-chat.old")
+            emit("private-chat.movie")
+            shadowOf(Looper.getMainLooper()).idle()
+            assertEquals(1, states.size)
+            assertEquals(42000, states.single().getJSONObject("playback").getInt("position_ms"))
+            assertEquals(0, watchInvalidations)
+            assertEquals(1, syncs)
+            shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(30))
+            assertEquals(1, syncs)
+            assertTrue(socket.events.any { it.optString("event") == "pusher:ping" })
+        } finally { client.close() }
+    }
+
     @Test fun directRoomListAndEndResponsesAreRecognized() {
         var responseBody = """{"rooms":[]}"""
         val http = OkHttpClient.Builder().addInterceptor { chain ->

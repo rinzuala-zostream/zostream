@@ -80,6 +80,79 @@ final class PrivateWatchService
         return $watch;
     }
 
+    public function snapshot(int $room): ?array
+    {
+        $invite = DB::table('chat_invite_rooms')->where('room_id', $room)->first();
+        if (! $invite) { return null; }
+        $state = app(WatchPlaybackState::class);
+        if ($invite->content_type !== null) {
+            $live = $invite->active && DB::table('n_active_streams as s')->join('n_devices as d', 'd.id', '=', 's.device_id')
+                ->where('d.user_id', $invite->host_user_id)->where('s.status', 'active')
+                ->where('s.content_type', $invite->content_type)->where('s.content_key', $invite->content_id)
+                ->where('s.last_ping', '>=', now()->subMinutes(3))->exists();
+            return ['room_id' => (string) $room, 'session_id' => null, 'active' => $live,
+                'playback' => $live ? $state->payload($invite, 'watch_position_ms', false) : null];
+        }
+        $watch = $invite->active ? $this->liveSession($room) : null;
+        return ['room_id' => (string) $room, 'active' => $watch !== null, 'session_id' => $watch ? (string) $watch->id : null,
+            'playback' => $watch ? $state->payload($watch, 'position_ms', false) : null]
+            + ($watch ? $this->counts($watch) : ['joined_count' => 0, 'streaming_count' => 0]);
+    }
+
+    public function publishStatus(Request $r, int $room, bool $force = false): void
+    {
+        $cache = \Illuminate\Support\Facades\Cache::store(config('chat.cache_store'));
+        try {
+            // A large room shares one liveness probe; each viewer need not scan
+            // the participant list on every heartbeat.
+            if (! $force && ! $cache->add('chat:watch-probe:'.$room, true, 15)) { return; }
+            $snapshot = $this->snapshot($room);
+            if (! $snapshot) { return; }
+            unset($snapshot['playback']);
+            $signature = hash('sha256', json_encode($snapshot));
+            $key = 'chat:watch-status:'.$room;
+            if ($force || $cache->get($key) !== $signature) {
+                $this->chat->outbox($r, $room, 'watch_status', null, null);
+                $cache->put($key, $signature, 3600);
+            }
+        } catch (\Throwable $e) {
+            // A cache outage must not break player stop/heartbeat requests.
+            $this->chat->outbox($r, $room, 'watch_status', null, null);
+        }
+    }
+
+    public function heartbeat(Request $r, int $room, ?int $session): void
+    {
+        $this->chat->refreshPlayback($r);
+        $this->chat->room($r, $room);
+        $this->publishStatus($r, $room);
+        if ($session !== null) {
+            $watch = $this->resolve($r, $room, $session);
+            $this->touchParticipant($r, $watch);
+            if ($watch->host_user_id === (string) $r->input('auth_user_id')) {
+                DB::table('chat_invite_rooms')->where('room_id', $room)->where('idle_expires_at', '<=', now()->addMinutes(30))
+                    ->update(['idle_expires_at' => now()->addHour()]);
+            }
+        }
+        $this->publishStatus($r, $room);
+    }
+
+    public function streamChanged(Request $r, int $stream): void
+    {
+        if (! \Illuminate\Support\Facades\Schema::hasTable('chat_watch_participants')) { return; }
+        $rooms = DB::table('chat_watch_sessions')->where('active', true)
+            ->where(fn ($q) => $q->where('host_stream_id', $stream)->orWhereIn('id',
+                DB::table('chat_watch_participants')->select('session_id')->where('stream_id', $stream)))
+            ->pluck('room_id');
+        $owner = DB::table('n_active_streams as s')->join('n_devices as d', 'd.id', '=', 's.device_id')
+            ->where('s.id', $stream)->first(['d.user_id', 's.content_type', 's.content_key']);
+        if ($owner) {
+            $rooms = $rooms->merge(DB::table('chat_invite_rooms')->where('active', true)->where('host_user_id', $owner->user_id)
+                ->whereNotNull('content_type')->pluck('room_id'))->unique();
+        }
+        foreach ($rooms as $room) { $this->publishStatus($r, (int) $room, true); }
+    }
+
     private function recordJoin(Request $r, object $watch): void
     {
         $uid = (string) $r->input('auth_user_id');
@@ -98,9 +171,14 @@ final class PrivateWatchService
             ->where('s.stream_token', (string) $r->header('X-Playback-Token'))->where('s.status', 'active')
             ->where('s.content_type', $watch->content_type)->where('s.content_key', $watch->content_id)->first(['s.id']);
         if (! $stream) { return; }
+        $previous = DB::table('chat_watch_participants')->where('session_id', $watch->id)->where('user_id', $uid)->first();
+        $changed = ! $previous || (int) $previous->stream_id !== (int) $stream->id || ! $previous->last_seen_at
+            || \Illuminate\Support\Carbon::parse($previous->last_seen_at)->lt(now()->subSeconds(150))
+            || $previous->stream_token_hash !== hash('sha256', $r->header('X-Playback-Token'));
         $this->recordJoin($r, $watch);
         DB::table('chat_watch_participants')->where('session_id', $watch->id)->where('user_id', $uid)
             ->update(['stream_id' => $stream->id, 'stream_token_hash' => hash('sha256', $r->header('X-Playback-Token')), 'last_seen_at' => now()]);
+        if ($changed) { $this->publishStatus($r, (int) $watch->room_id, true); }
     }
 
     // Counts are distinct invitees; the creator is excluded from both totals.
@@ -112,7 +190,7 @@ final class PrivateWatchService
             ->get()->keyBy('id');
         return ['joined_count' => $members->count(), 'streaming_count' => $members->filter(function ($member) use ($streams) {
             $stream = $streams->get($member->stream_id);
-            return $stream && $member->last_seen_at && \Illuminate\Support\Carbon::parse($member->last_seen_at)->gte(now()->subSeconds(35))
+            return $stream && $member->last_seen_at && \Illuminate\Support\Carbon::parse($member->last_seen_at)->gte(now()->subSeconds(150))
                 && hash_equals($member->stream_token_hash, hash('sha256', $stream->stream_token));
         })->count()];
     }
@@ -121,6 +199,7 @@ final class PrivateWatchService
     {
         $watch = $this->resolve($r, $room, $session);
         $this->recordJoin($r, $watch);
+        $this->publishStatus($r, $room, true);
         $content = $this->content($watch->content_type, $watch->content_id);
         $season = $watch->content_type === 'episode' ? ($content->season_id ?? null) : null;
         return ['room_id' => (string) $room, 'room_name' => DB::table('chat_invite_rooms')->where('room_id', $room)->value('room_name'),

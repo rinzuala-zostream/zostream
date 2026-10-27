@@ -104,7 +104,8 @@ class WhatsAppCloudService
 
         if (! $response->successful()) {
             throw new RuntimeException(
-                data_get($response->json(), 'error.message', 'WhatsApp rejected the message.')
+                data_get($response->json(), 'error.message', 'WhatsApp rejected the message.'),
+                (int) data_get($response->json(), 'error.code', 0),
             );
         }
 

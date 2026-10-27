@@ -323,6 +323,25 @@ final class ChatController extends Controller
             + ($watch ? app(\App\Support\Chat\PrivateWatchService::class)->counts($watch) : ['joined_count' => 0, 'streaming_count' => 0]));
     }
 
+    public function privateWatchHeartbeat(Request $r, int $room)
+    {
+        $v = $r->validate(['session_id' => 'nullable|integer|min:1', 'position_ms' => 'nullable|integer|min:0|max:86400000',
+            'paused' => 'sometimes|boolean', 'control_sequence' => 'sometimes|integer|min:1|max:9007199254740991']);
+        if (isset($v['position_ms'])) {
+            // The host's one-minute heartbeat can carry a clock-drift sample.
+            // Guests receive it over the socket; no position polling is needed.
+            if (isset($v['session_id'])) { $this->privateWatchPosition($r, $room, (int) $v['session_id']); }
+            else { $this->updateInvitePosition($r, $room); }
+        } else {
+            abort_if(isset($v['paused']) || isset($v['control_sequence']), 422, 'Playback controls require a position.');
+            app(\App\Support\Chat\PrivateWatchService::class)->heartbeat($r, $room, isset($v['session_id']) ? (int) $v['session_id'] : null);
+        }
+        $revision = isset($v['session_id'])
+            ? DB::table('chat_watch_sessions')->where('room_id', $room)->where('id', $v['session_id'])->value('control_sequence')
+            : DB::table('chat_invite_rooms')->where('room_id', $room)->value('control_sequence');
+        return V4Response::success(['active' => true, 'revision' => (string) ($revision ?? 0)]);
+    }
+
     public function joinPrivateWatch(Request $r, int $room, int $session)
     {
         return V4Response::success(app(\App\Support\Chat\PrivateWatchService::class)->join($r, $room, $session));
@@ -344,6 +363,7 @@ final class ChatController extends Controller
             $watch = app(\App\Support\Chat\WatchPlaybackState::class)->update($r, 'chat_watch_sessions', $session, 'position_ms', $v);
         }
         $service->touchParticipant($r, $watch);
+        $service->publishStatus($r, $room);
         if ($host) {
             DB::table('chat_invite_rooms')->where('room_id', $room)->where('idle_expires_at', '<=', now()->addMinutes(30))
                 ->update(['idle_expires_at' => now()->addHour()]);

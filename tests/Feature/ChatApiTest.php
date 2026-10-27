@@ -679,6 +679,53 @@ class ChatApiTest extends TestCase
         $this->assertNotNull(DB::table('chat_room_invites')->where('id', $invite->id)->value('whatsapp_sent_at'));
     }
 
+    public function test_whatsapp_invitation_normalizes_the_same_legacy_and_international_accounts_as_lookup(): void
+    {
+        [$job, $invite] = $this->linkedInvitation();
+        $cases = [
+            ['9876543210', null, '919876543210'],
+            ['+91 (98765) 43210', '+91', '919876543210'],
+            ['00919876543210', '+91', '919876543210'],
+            ['919876543210', '+91', '919876543210'],
+            ['09876543210', '+91', '919876543210'],
+            ['07700900123', '+44', '447700900123'],
+        ];
+        foreach ($cases as [$number, $country, $expected]) {
+            DB::table('user')->where('uid', 'bob')->update(['auth_phone' => $number, 'country_code' => $country]);
+            DB::table('chat_room_invites')->where('id', $invite->id)->update(['whatsapp_sent_at' => null]);
+            $service = \Mockery::mock(\App\Services\WhatsAppCloudService::class);
+            $service->shouldReceive('sendTemplate')->once()->with($expected, 'zostream_room_invitation',
+                ['Bob', 'Alice', 'Friends Room', 'Join the conversation in a private chat room.'], $job->token, 'en_US')
+                ->andReturn(new \App\Models\WhatsAppMessage());
+            $job->handle($service);
+            $this->assertNotNull(DB::table('chat_room_invites')->where('id', $invite->id)->value('whatsapp_sent_at'));
+        }
+    }
+
+    public function test_whatsapp_invitation_logs_an_unusable_phone_without_exposing_it_or_the_token(): void
+    {
+        [$job, $invite] = $this->linkedInvitation();
+        DB::table('user')->where('uid', 'bob')->update(['auth_phone' => '12345', 'country_code' => null]);
+        \Illuminate\Support\Facades\Log::shouldReceive('notice')->once()->with('Chat WhatsApp invitation skipped',
+            ['invite_id' => $invite->id, 'reason' => 'recipient_phone_unavailable']);
+        $service = \Mockery::mock(\App\Services\WhatsAppCloudService::class);
+        $service->shouldNotReceive('sendTemplate');
+        $job->handle($service);
+        $this->assertNull(DB::table('chat_room_invites')->where('id', $invite->id)->value('whatsapp_sent_at'));
+    }
+
+    public function test_whatsapp_diagnostics_report_disabled_delivery_without_sending_a_message(): void
+    {
+        [$job, $invite] = $this->linkedInvitation();
+        config(['chat.whatsapp_enabled' => false]);
+        \Illuminate\Support\Facades\Http::preventStrayRequests();
+        $this->artisan('chat:whatsapp-status', ['--invite' => $invite->id])
+            ->expectsOutputToContain('CHAT_WHATSAPP_ENABLED')
+            ->expectsOutputToContain('MISSING - run migrations')
+            ->expectsOutputToContain('separate queue:work process')->assertFailed();
+        \Illuminate\Support\Facades\Http::assertNothingSent();
+    }
+
     public function test_contact_number_lookup_is_normalized_and_rejects_partial_suffixes(): void
     {
         DB::table('user')->insert(['uid' => 'bob', 'name' => 'Bob', 'auth_phone' => '9876543210', 'country_code' => '+91']);
@@ -892,7 +939,7 @@ class ChatApiTest extends TestCase
             ->assertJsonPath('data.session_id', $session)->assertJsonPath('data.joined_count', 1)->assertJsonPath('data.streaming_count', 0);
         $this->postJson("$base/watch-sessions/$session/join", $bob)->assertOk();
         DB::table('n_active_streams')->where('device_id', 2)->update(['status' => 'active']);
-        $this->travel(36)->seconds();
+        $this->travel(151)->seconds();
         $this->getJson("$base/watch-status?auth_user_id=alice")->assertOk()->assertJsonPath('data.streaming_count', 0);
     }
 
@@ -916,6 +963,69 @@ class ChatApiTest extends TestCase
         $this->artisan('chat:deliver', ['--once' => true])->assertSuccessful();
         Http::assertSent(fn ($request) => ($request->data()['name'] ?? null) === 'chat.changed'
             && json_decode($request->data()['data'] ?? '{}', true)['kind'] === 'watch_control');
+    }
+
+    public function test_watch_heartbeat_keeps_session_alive_without_writing_playback_controls(): void
+    {
+        $room = $this->privateWatchFixture();
+        $session = $this->sendPrivateWatch($room)->assertCreated()->json('data.watch_invite.session_id');
+        $base = "/api/v4/chat/rooms/$room";
+        $this->postJson("$base/watch-sessions/$session/position", $this->identity(['position_ms' => 10000, 'paused' => false]))->assertOk();
+        $bob = ['auth_user_id' => 'bob', 'auth_device_id' => 'device-b'];
+        $this->postJson("$base/watch-sessions/$session/join", $bob)->assertOk();
+        DB::table('n_devices')->insert(['id' => 2, 'user_id' => 'bob', 'device_token' => 'device-b']);
+        DB::table('n_active_streams')->insert(['device_id' => 2, 'stream_token' => 'play-b', 'status' => 'active',
+            'content_type' => 'movie', 'content_key' => 'film-a', 'last_ping' => now()]);
+        for ($i = 0; $i < 5; $i++) {
+            $this->travel(60)->seconds();
+            $this->withHeaders(['X-Playback-Token' => 'play-a'])->postJson("$base/watch-heartbeat", $this->identity(['session_id' => $session]))
+                ->assertOk()->assertJsonPath('data.active', true)->assertJsonMissingPath('data.position_ms');
+            $this->withHeaders(['X-Playback-Token' => 'play-b'])->postJson("$base/watch-heartbeat", $bob + ['session_id' => $session])->assertOk();
+        }
+        $this->assertSame(1, DB::table('chat_outbox')->where('kind', 'watch_control')->count());
+        $this->getJson("$base/watch-status?auth_user_id=alice")->assertOk()->assertJsonPath('data.streaming_count', 1);
+        $this->postJson("$base/watch-sessions/$session/position", $bob)->assertOk()->assertJsonPath('data.position_ms', 310000);
+        Http::fake(['*' => Http::response('{}', 200)]);
+        $this->artisan('chat:deliver', ['--once' => true])->assertSuccessful();
+        Http::assertSent(function ($request) use ($session) {
+            $event = json_decode($request->data()['data'] ?? '{}', true);
+            $watch = $event['watch'] ?? [];
+            return ($watch['session_id'] ?? null) === $session && ($watch['streaming_count'] ?? null) === 1
+                && ($watch['playback']['position_ms'] ?? null) === 310000 && isset($watch['event_id'])
+                && !str_contains(json_encode($watch), 'play-a') && !str_contains(json_encode($watch), 'play-b');
+        });
+        $this->postJson("$base/watch-heartbeat", ['auth_user_id' => 'stranger', 'session_id' => $session])->assertForbidden();
+    }
+
+    public function test_watch_heartbeat_samples_are_host_only_and_reject_delayed_controls(): void
+    {
+        $room = $this->privateWatchFixture();
+        $session = $this->sendPrivateWatch($room)->assertCreated()->json('data.watch_invite.session_id');
+        $url = "/api/v4/chat/rooms/$room/watch-heartbeat";
+        $this->postJson($url, $this->identity(['session_id' => $session, 'position_ms' => 10000, 'paused' => true, 'control_sequence' => 20]))
+            ->assertOk()->assertJsonPath('data.revision', '20')->assertJsonPath('data.active', true)->assertJsonMissingPath('data.position_ms');
+        $this->postJson($url, ['auth_user_id' => 'bob', 'session_id' => $session, 'position_ms' => 999, 'paused' => false, 'control_sequence' => 100])
+            ->assertForbidden();
+        $this->postJson($url, $this->identity(['session_id' => $session, 'position_ms' => 1, 'paused' => false, 'control_sequence' => 19]))->assertOk();
+        $this->postJson("/api/v4/chat/rooms/$room/watch-sessions/$session/position", ['auth_user_id' => 'bob'])->assertOk()
+            ->assertJsonPath('data.position_ms', 10000)->assertJsonPath('data.paused', true)->assertJsonPath('data.revision', '20');
+        $this->assertSame(1, DB::table('chat_outbox')->where('kind', 'watch_control')->count());
+    }
+
+    public function test_stream_stop_pushes_updated_counts_and_host_session_end(): void
+    {
+        $room = $this->privateWatchFixture();
+        $session = $this->sendPrivateWatch($room)->assertCreated()->json('data.watch_invite.session_id');
+        DB::table('n_active_streams')->update(['status' => 'stopped']);
+        app(\App\Support\Chat\PrivateWatchService::class)->streamChanged(\Illuminate\Http\Request::create('/', 'POST'), 1);
+        $this->assertSame(1, DB::table('chat_outbox')->where('kind', 'watch_status')->count());
+        Http::fake(['*' => Http::response('{}', 200)]);
+        $this->artisan('chat:deliver', ['--once' => true])->assertSuccessful();
+        Http::assertSent(function ($request) {
+            $event = json_decode($request->data()['data'] ?? '{}', true);
+            return ($event['kind'] ?? null) === 'watch_status' && array_key_exists('session_id', $event['watch'] ?? [])
+                && $event['watch']['session_id'] === null && $event['watch']['playback'] === null;
+        });
     }
 
     public function test_live_card_status_follows_stream_lifecycle_and_replacement(): void
@@ -945,6 +1055,15 @@ class ChatApiTest extends TestCase
         $this->postJson($url, ['auth_user_id' => 'bob'])->assertOk()->assertJsonPath('data.position_ms', 8000)->assertJsonPath('data.paused', true);
         $this->postJson($url, ['auth_user_id' => 'bob', 'paused' => false, 'position_ms' => 0])->assertForbidden();
         $this->assertSame(1, DB::table('chat_outbox')->where('kind', 'watch_control')->count());
+        DB::table('n_active_streams')->update(['status' => 'stopped']);
+        app(\App\Support\Chat\PrivateWatchService::class)->streamChanged(\Illuminate\Http\Request::create('/', 'POST'), 1);
+        Http::fake(['*' => Http::response('{}', 200)]);
+        $this->artisan('chat:deliver', ['--once' => true])->assertSuccessful();
+        Http::assertSent(function ($request) use ($room) {
+            $event = json_decode($request->data()['data'] ?? '{}', true);
+            return ($event['kind'] ?? null) === 'watch_status' && ($event['watch']['room_id'] ?? null) === $room
+                && $event['watch']['active'] === false && $event['watch']['playback'] === null;
+        });
     }
 
     public function test_public_invitation_page_never_exposes_private_room_data(): void

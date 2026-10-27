@@ -457,6 +457,14 @@ class NewStreamController extends Controller
 
             DB::commit();
 
+            if ($existingStream) {
+                try {
+                    app(\App\Support\Chat\PrivateWatchService::class)->streamChanged($request, (int) $existingStream->id);
+                } catch (\Throwable $e) {
+                    Log::warning('Watch status notification failed after stream replacement', ['stream_id' => $existingStream->id]);
+                }
+            }
+
             // Every successful start request represents a new playback attempt.
             // Count it immediately, including repeat watches by the same user.
             // Use the original movie ID here because content IDs may be UUIDs or
@@ -977,6 +985,12 @@ class NewStreamController extends Controller
             $device->update(['last_activity' => now()]);
 
             DB::commit();
+
+            try {
+                app(\App\Support\Chat\PrivateWatchService::class)->streamChanged($request, (int) $stream->id);
+            } catch (\Throwable $e) {
+                Log::warning('Watch status notification failed after stream stop', ['stream_id' => $stream->id]);
+            }
 
             $watchData = [];
 

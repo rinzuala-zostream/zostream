@@ -63,6 +63,9 @@ public final class ZoChatClient {
     private var generation = 0
     private var owner: String?
     private var retry = 0
+    private var lastFallbackSync: TimeInterval = 0
+    public private(set) var isConnected = false
+    public var onWatchState: (([String: Any]) -> Void)?
     public var onChanged: ((String, String?) -> Void)?
     public var onConnection: ((Bool) -> Void)?
 
@@ -129,6 +132,7 @@ public final class ZoChatClient {
         roomRevision += 1; let revision = roomRevision
         subscriptionTask?.cancel()
         let previousChannel = channel
+        isConnected = false
         channel = nil; room = nil
         if let previousChannel {
             do { try await sendEvent("pusher:unsubscribe", data: ["channel": previousChannel]) }
@@ -153,11 +157,18 @@ public final class ZoChatClient {
                 do { try await Task.sleep(nanoseconds: 30_000_000_000) } catch { return }
                 guard let self, !self.closed else { return }
                 if self.credentials()?.ownerKey != self.owner { self.close(); return }
+                let socketGeneration = self.generation
+                self.socket?.sendPing { [weak self] error in
+                    if error != nil { Task { @MainActor in self?.reconnect(socketGeneration) } }
+                }
                 if let room = self.room {
                     struct Presence: Decodable { let online_count: Int }
                     let _: Presence? = try? await self.request("rooms/\(room.room_id)/heartbeat", body: [:], as: Presence.self)
                 }
-                self.onChanged?("sync", nil)
+                let now = ProcessInfo.processInfo.systemUptime
+                if !self.isConnected && now - self.lastFallbackSync >= 60 {
+                    self.lastFallbackSync = now; self.onChanged?("sync", nil)
+                }
             }
         }
         return info
@@ -221,11 +232,16 @@ public final class ZoChatClient {
                         self.subscribe()
                     case "pusher_internal:subscription_succeeded":
                         guard let channel = self.channel, event["channel"] as? String == channel else { continue }
-                        self.retry = 0; self.onConnection?(true); self.onChanged?("sync", nil)
+                        self.retry = 0; self.isConnected = true; self.onConnection?(true); self.onChanged?("sync", nil)
                     case "pusher:ping": try await ws.send(.string("{\"event\":\"pusher:pong\",\"data\":{}}"))
                     case "chat.changed":
                         guard let channel = self.channel, event["channel"] as? String == channel else { continue }
-                        self.onChanged?(payload["kind"] as? String ?? "sync", payload["message_id"] as? String)
+                        let kind = payload["kind"] as? String ?? "sync"
+                        if let watch = payload["watch"] as? [String: Any] {
+                            self.onWatchState?(watch)
+                            if self.onWatchState != nil && ["watch_control", "watch_status"].contains(kind) { continue }
+                        }
+                        self.onChanged?(kind, payload["message_id"] as? String)
                     case "pusher:error": throw ChatFailure(message: "Chat connection failed")
                     default: break
                     }
@@ -243,6 +259,7 @@ public final class ZoChatClient {
         subscriptionTask?.cancel(); receiveTask?.cancel()
         socket?.cancel(with: .goingAway, reason: nil); socket = nil
         socketId = nil; channel = nil
+        isConnected = false
         onConnection?(false)
         let delay = min(30.0, pow(2.0, Double(retry))) + Double.random(in: 0...0.5)
         retry += 1
@@ -255,6 +272,7 @@ public final class ZoChatClient {
     }
 
     public func close() {
+        isConnected = false
         closed = true; generation += 1; roomRevision += 1
         subscriptionTask?.cancel(); channel = nil; socketId = nil; room = nil
         receiveTask?.cancel(); retryTask?.cancel(); syncTask?.cancel()

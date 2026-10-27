@@ -23,6 +23,9 @@ class ZoChatClient(
     init { require(baseUrl.startsWith("https://")) { "Chat API must use HTTPS" } }
     private val main = Handler(Looper.getMainLooper())
     private val executor = Executors.newSingleThreadExecutor()
+    var onWatchState: ((JSONObject) -> Unit)? = null
+    var isConnected = false
+        private set
     private var socket: WebSocket? = null
     private var room: JSONObject? = null
     @Volatile private var closed = false
@@ -34,12 +37,21 @@ class ZoChatClient(
     private var channel: String? = null
     @Volatile private var owner: String? = null
     @Volatile private var pendingCall: Call? = null
+    private var lastSocketActivity = 0L
+    private var lastFallbackSync = 0L
     private val reconcile = object : Runnable {
         override fun run() {
             if (closed) return
             if (credentials()?.ownerKey != owner) { close(); return }
             room?.let { request("rooms/${it.getString("room_id")}/heartbeat", JSONObject()) { _, _ -> } }
-            onChanged("sync", null)
+            val now = android.os.SystemClock.elapsedRealtime()
+            if (isConnected) {
+                if (now - lastSocketActivity > 90_000) reconnect(generation)
+                else sendEvent("pusher:ping", JSONObject())
+            }
+            if (!isConnected && now - lastFallbackSync >= 60_000) {
+                lastFallbackSync = now; onChanged("sync", null)
+            }
             main.postDelayed(this, 30_000)
         }
     }
@@ -110,6 +122,7 @@ class ZoChatClient(
         owner = identity
         val revision = ++roomRevision
         channel?.let { sendEvent("pusher:unsubscribe", JSONObject().put("channel", it)) }
+        isConnected = false
         channel = null; room = null
         val path: String
         val body = JSONObject()
@@ -163,6 +176,7 @@ class ZoChatClient(
             override fun onMessage(webSocket: WebSocket, text: String) {
                 main.post {
                     if (closed || current != generation) return@post
+                    lastSocketActivity = android.os.SystemClock.elapsedRealtime()
                     runCatching {
                         val event = JSONObject(text)
                         when (event.optString("event")) {
@@ -173,7 +187,7 @@ class ZoChatClient(
                             }
                             "pusher_internal:subscription_succeeded" -> {
                                 if (channel != null && event.optString("channel") == channel) {
-                                    retry = 0; onConnection(true); onChanged("sync", null)
+                                    retry = 0; isConnected = true; onConnection(true); onChanged("sync", null)
                                 }
                                 Unit
                             }
@@ -182,7 +196,11 @@ class ZoChatClient(
                             "chat.changed" -> {
                                 if (channel == null || event.optString("channel") != channel) return@post
                                 val data = event.opt("data").let { if (it is JSONObject) it else JSONObject(it?.toString() ?: "{}") }
-                                onChanged(data.getString("kind"), data.optString("message_id").takeIf { it != "null" && it.isNotEmpty() })
+                                val kind = data.getString("kind")
+                                val watch = data.optJSONObject("watch")
+                                if (watch != null) onWatchState?.invoke(watch)
+                                if (watch != null && onWatchState != null && kind in listOf("watch_control", "watch_status")) return@post
+                                onChanged(kind, data.optString("message_id").takeIf { it != "null" && it.isNotEmpty() })
                             }
                             else -> Unit
                         }
@@ -198,6 +216,7 @@ class ZoChatClient(
         if (closed || current != generation) return
         val waiting = ++generation
         socket?.cancel(); socket = null; socketId = null; channel = null
+        isConnected = false
         onConnection(false)
         val delay = (1000L shl retry.coerceAtMost(5)) + (0..500).random()
         retry++
@@ -206,6 +225,7 @@ class ZoChatClient(
 
     override fun close() {
         if (closed) return
+        isConnected = false
         closed = true; generation++; roomRevision++; main.removeCallbacksAndMessages(null)
         channel = null; socketId = null; room = null
         socket?.cancel(); pendingCall?.cancel(); executor.shutdownNow()

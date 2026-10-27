@@ -69,6 +69,15 @@ class WhatsAppWebhookTest extends TestCase
         parent::tearDown();
     }
 
+    public function test_provider_error_code_is_preserved_for_invitation_delivery_diagnostics(): void
+    {
+        config(['app.whatsapp_phone_id' => 'phone-id', 'app.whatsapp_token' => 'access-token']);
+        Http::fake(['*' => Http::response(['error' => ['message' => 'Template unavailable', 'code' => 132001]], 400)]);
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionCode(132001);
+        app(WhatsAppCloudService::class)->sendTemplate('919876543210', 'zostream_room_invitation');
+    }
+
     public function test_meta_can_verify_the_webhook(): void
     {
         WhatsAppSetting::current()->update(['verify_token' => 'verify-me']);
