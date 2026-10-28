@@ -13,5 +13,7 @@ return [
     'page_size' => 50,
     'recent_limit' => 100,
     'slow_mode_seconds' => 2,
+    'private_member_limit' => 10,
+    'watch_member_limit' => 5,
     'websocket_url' => env('CHAT_WEBSOCKET_URL', ''),
 ];

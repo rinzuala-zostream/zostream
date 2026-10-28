@@ -20,6 +20,46 @@ import java.util.concurrent.atomic.AtomicReference
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28])
 class ChatRoomSwitchTest {
+    @Test fun visibleTranscriptPublishesHiddenStateOnSwitchAndCloseWithoutStoppingTheSocketEarly() {
+        val reports = java.util.Collections.synchronizedList(mutableListOf<Pair<String, JSONObject>>())
+        val http = OkHttpClient.Builder().addInterceptor { chain ->
+            val request = chain.request()
+            val path = request.url.encodedPath
+            val data = if (path.endsWith("/heartbeat")) {
+                val buffer = okio.Buffer(); request.body!!.writeTo(buffer)
+                reports.add(path to JSONObject(buffer.readUtf8()))
+                JSONObject().put("online_count", 1)
+            } else {
+                val id = if (path.contains("invite-rooms/2")) "2" else "1"
+                JSONObject().put("room_id", id).put("channel", "private-chat.$id").put("websocket_url", "")
+            }
+            Response.Builder().request(request).protocol(Protocol.HTTP_1_1).code(200).message("OK")
+                .body(JSONObject().put("success", true).put("data", data).toString().toResponseBody("application/json".toMediaType())).build()
+        }.build()
+        val client = ZoChatClient("https://example.test", { AnalyticsCredentials("token", "device", "alice") }, "test",
+            onChanged = { _, _ -> }, onConnection = {}, http = http)
+        fun snapshot() = synchronized(reports) { reports.toList() }
+        try {
+            client.setRoomVisible(true)
+            var joined = false
+            client.join("global", null) { _, error -> assertNull(error); joined = true }
+            await { joined && snapshot().size == 1 }
+            joined = false
+            client.join("invite", "2") { _, error -> assertNull(error); joined = true }
+            await { joined && snapshot().size == 3 }
+            client.close()
+            await { snapshot().size == 4 }
+            for (id in listOf("1", "2")) {
+                val states = snapshot().filter { it.first.endsWith("/$id/heartbeat") }.map { it.second }
+                    .sortedBy { it.getLong("visibility_sequence") }
+                assertEquals(2, states.size)
+                assertTrue(states[0].getBoolean("visible"))
+                assertFalse(states[1].getBoolean("visible"))
+                assertTrue(states[1].getLong("visibility_sequence") > states[0].getLong("visibility_sequence"))
+            }
+        } finally { client.close() }
+    }
+
     @Test fun queuedMovieJoinKeepsThePlaybackTokenFromItsOwnRequest() {
         val entered = CountDownLatch(1)
         val release = CountDownLatch(1)

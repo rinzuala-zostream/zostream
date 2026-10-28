@@ -517,3 +517,51 @@ joined**, disallow selecting them, and keep confirmation disabled until the
 membership check succeeds. Failed checks offer Retry. Disabled create-room type
 options also use explicit neutral grey styling. Deploy the API and app updates;
 this membership check adds no database migration.
+
+## Member limits and private-message push
+
+Private rooms accept at most **10 members including the creator**. Dedicated
+Watch Together rooms accept at most **5 including the creator**. Pending invites
+do not reserve seats: acceptance locks the room and returns HTTP 409 when full,
+leaving that invitation pending so it can still be declined. Existing accepted
+members can reopen their room. A `/watch` session in a private room also admits
+at most 5 distinct members including its creator; repeated joins by the same
+user reuse their seat. A heartbeat cannot bypass this admission check. Seats
+belong to that watch session; starting a new session creates a new participant list.
+
+Only private/dedicated-watch room messages enqueue `message_push` outbox rows,
+one per accepted recipient other than the sender, in the message transaction.
+`chat:deliver` handles push separately from WebSocket broadcasts, so a failed push
+can retry without rebroadcasting the message. Delivery rechecks membership, room
+lifecycle, deletion, blocks, bans, read receipts and current visibility. Spoiler
+text is replaced by a generic preview. Pending invitees never receive room-message
+push. Messages older than five minutes expire instead of notifying from a backlog.
+
+The native chat clients report foreground room visibility on the existing
+heartbeat endpoint and renew it every 30 seconds. A foreground Watch Together
+player also holds visibility for its watch room even when its chat is hidden.
+Merely keeping a WebSocket connected does not suppress notifications. Each client
+has its own `visibility_id`, so closing chat cannot clear a watch player's marker
+on the same device. Hiding, switching rooms, closing, and backgrounding publish a
+hidden state; sequence numbers reject late older requests. Unclean exits or failed
+final requests expire within 90 seconds. Cache failure falls back to delivering
+the notification. The final hidden-state request survives transport shutdown.
+
+`key=chat_message` carries `room_id` and `message_id`. Both apps route taps through
+an authenticated room join, opening private chat or the dedicated watch player;
+a room ID never grants membership. Sign-in can resume the pending destination.
+Invitation notifications retain their token-based accept/decline flow.
+
+Deploy the backend and shared SDK changes, then release both native apps. Old
+clients do not report visibility and may receive pushes while their room is open.
+This update requires no new database migration beyond the existing chat schema.
+Refresh production configuration and restart the long-running delivery worker:
+
+```sh
+php artisan config:cache
+sudo supervisorctl restart zostream-chat-delivery
+```
+
+Verify on physical Android/iOS devices: full-room rejection, rejoin at capacity,
+push while a different room is open or the app is in the background, no push in
+the visible target room/foreground watch player, and correct cold/warm tap routing.

@@ -74,7 +74,7 @@ class ZoChatClient(
         override fun run() {
             if (closed) return
             if (credentials()?.ownerKey != owner) { close(); return }
-            room?.takeIf { unreadChannels == null }?.let { request("rooms/${it.getString("room_id")}/heartbeat", JSONObject()) { _, _ -> } }
+            room?.takeIf { unreadChannels == null }?.let { request("rooms/${it.getString("room_id")}/heartbeat", roomVisible?.let { visible -> visibilityBody(visible) } ?: JSONObject()) { _, _ -> } }
             val now = android.os.SystemClock.elapsedRealtime()
             if (room != null && (unreadChannels != null || !subscriptionPending) &&
                 (if (unreadChannels != null) unreadExpiry.values.any { it <= now } else subscriptionExpiry <= now)) subscribe()
@@ -160,11 +160,41 @@ class ZoChatClient(
         }
     }
 
+    private var roomVisible: Boolean? = null
+    private var visibilitySequence = 0L
+    private val visibilityId = java.util.UUID.randomUUID().toString()
+    private fun visibilityBody(visible: Boolean): JSONObject {
+        visibilitySequence = maxOf(visibilitySequence + 1, System.currentTimeMillis())
+        return JSONObject().put("visible", visible).put("visibility_sequence", visibilitySequence).put("visibility_id", visibilityId)
+    }
+    private fun reportVisibility(id: String, visible: Boolean) {
+        val c = credentials() ?: return
+        if (owner != null && owner != c.ownerKey) return
+        val request = Request.Builder().url(baseUrl.trimEnd('/') + "/api/v4/chat/rooms/$id/heartbeat")
+            .header("Authorization", "Bearer " + c.accessToken.removePrefix("Bearer "))
+            .header("Device-Token", c.deviceToken).header("Accept", "application/json")
+            .header("X-Client-Platform", "android").header("X-Client-Version", version)
+            .post(visibilityBody(visible).toString().toRequestBody("application/json".toMediaType()))
+        playbackToken()?.takeIf { it.isNotBlank() }?.let { request.header("X-Playback-Token", it) }
+        // Keep the final hidden-state request independent of the closing executor.
+        val call = http.newCall(request.build())
+        call.timeout().timeout(5, TimeUnit.SECONDS)
+        call.enqueue(object : Callback {
+            override fun onFailure(call: Call, e: java.io.IOException) = Unit
+            override fun onResponse(call: Call, response: Response) { response.close() }
+        })
+    }
+    fun setRoomVisible(visible: Boolean) {
+        roomVisible = visible
+        room?.takeIf { unreadChannels == null }?.let { reportVisibility(it.getString("room_id"), visible) }
+    }
+
     fun join(type: String, contentId: String?, callback: (JSONObject?, String?) -> Unit) {
         if (closed) { callback(null, "Chat connection closed"); return }
         val identity = credentials()?.ownerKey
         if (owner != null && owner != identity) { close(); callback(null, "Account changed. Reopen chat."); return }
         owner = identity
+        if (roomVisible != null) room?.let { reportVisibility(it.getString("room_id"), false) }
         val revision = ++roomRevision
         channel?.let { sendEvent("pusher:unsubscribe", JSONObject().put("channel", it)) }
         isConnected = false
@@ -182,6 +212,7 @@ class ZoChatClient(
         request(path, body) { data, error ->
             if (revision != roomRevision) return@request
             room = data
+            if (data != null) roomVisible?.let { reportVisibility(data.getString("room_id"), it) }
             callback(data, error)
             if (data != null && revision == roomRevision && !closed) {
                 if (socket != null && socketUrl == data.optString("websocket_url")) subscribe()
@@ -355,6 +386,7 @@ class ZoChatClient(
 
     override fun close() {
         if (closed) return
+        if (roomVisible != null) room?.let { reportVisibility(it.getString("room_id"), false) }
         isConnected = false
         closed = true; generation++; roomRevision++; main.removeCallbacksAndMessages(null)
         channel = null; socketId = null; room = null

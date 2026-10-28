@@ -180,9 +180,18 @@ final class PrivateWatchService
     {
         $uid = (string) $r->input('auth_user_id');
         if ($uid === $watch->host_user_id) { return; }
-        DB::table('chat_watch_participants')->insertOrIgnore([
-            'session_id' => $watch->id, 'user_id' => $uid, 'joined_at' => now(),
-        ]);
+        DB::transaction(function () use ($watch, $uid): void {
+            $current = DB::table('chat_watch_sessions')->where('id', $watch->id)->lockForUpdate()->first();
+            abort_unless($current?->active, 410, 'This watch session has ended.');
+            $members = DB::table('chat_watch_participants')->where('session_id', $watch->id)->lockForUpdate()->pluck('user_id');
+            if ($members->contains($uid)) { return; }
+            $limit = (int) config('chat.watch_member_limit');
+            abort_if($members->count() + 1 >= $limit,
+                409, "This watch session is full (maximum {$limit} members including the creator).");
+            DB::table('chat_watch_participants')->insert([
+                'session_id' => $watch->id, 'user_id' => $uid, 'joined_at' => now(),
+            ]);
+        });
     }
 
     public function touchParticipant(Request $r, object $watch): void

@@ -28,7 +28,9 @@ final class DeliverChat extends Command
             $rows = DB::table('chat_outbox')->whereNull('delivered_at')->where(fn ($q) => $q->whereNull('available_at')->orWhere('available_at', '<=', now()))->orderBy('id')->limit(100)->get();
             foreach ($rows as $row) {
                 try {
-                    if ($row->kind !== 'reported') {
+                    if ($row->kind === 'message_push') {
+                        app(\App\Support\Chat\ChatMessageNotifications::class)->deliver($row);
+                    } elseif ($row->kind !== 'reported') {
                         $this->publish($row);
                     }
                     DB::table('chat_outbox')->where('id', $row->id)->update(['delivered_at' => now()]);

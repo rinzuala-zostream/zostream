@@ -154,12 +154,43 @@ public final class ZoChatClient {
         return try JSONDecoder().decode(T.self, from: JSONSerialization.data(withJSONObject: payload))
     }
 
+    private var roomVisible: Bool?
+    private var visibilitySequence: Int64 = 0
+    private let visibilityID = UUID().uuidString
+    private func visibilityBody(_ visible: Bool) -> [String: Any] {
+        visibilitySequence = max(visibilitySequence + 1, Int64(Date().timeIntervalSince1970 * 1000))
+        return ["visible": visible, "visibility_sequence": visibilitySequence, "visibility_id": visibilityID]
+    }
+
+    // This final visibility request must survive closing the chat transport.
+    private func reportVisibility(_ id: String, visible: Bool) {
+        guard let c = credentials(), owner == nil || owner == c.ownerKey,
+              let url = URL(string: baseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/api/v4/chat/rooms/\(id)/heartbeat") else { return }
+        var request = URLRequest(url: url, timeoutInterval: 5)
+        request.httpMethod = "POST"
+        request.setValue("Bearer " + c.accessToken.replacingOccurrences(of: "Bearer ", with: ""), forHTTPHeaderField: "Authorization")
+        request.setValue(c.deviceToken, forHTTPHeaderField: "Device-Token")
+        request.setValue("ios", forHTTPHeaderField: "X-Client-Platform")
+        request.setValue(version, forHTTPHeaderField: "X-Client-Version")
+        request.setValue(playbackToken(), forHTTPHeaderField: "X-Playback-Token")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: visibilityBody(visible))
+        URLSession.shared.dataTask(with: request).resume()
+    }
+
+    public func setRoomVisible(_ visible: Bool) {
+        roomVisible = visible
+        if let room, unreadChannels == nil { reportVisibility(room.room_id, visible: visible) }
+    }
+
     public func join(type: String, contentId: String?) async throws -> ChatRoom {
         let identity = credentials()?.ownerKey
         guard !closed, owner == nil || owner == identity else {
             throw ChatFailure(message: "Account changed. Reopen chat.")
         }
         owner = identity
+        if let room, roomVisible != nil { reportVisibility(room.room_id, visible: false) }
         roomRevision += 1; let revision = roomRevision
         subscriptionTask?.cancel()
         let previousChannel = channel
@@ -180,6 +211,7 @@ public final class ZoChatClient {
         }
         guard !closed, revision == roomRevision, !Task.isCancelled else { throw CancellationError() }
         room = info
+        if let roomVisible { reportVisibility(info.room_id, visible: roomVisible) }
         if socket != nil, socketURL == info.websocket_url { subscribe() }
         else { connect() }
         startReconciliation()
@@ -228,7 +260,7 @@ public final class ZoChatClient {
                     struct Presence: Decodable { let online_count: Int }
                     let revision = self.roomRevision
                     do {
-                        let _: Presence = try await self.request("rooms/\(room.room_id)/heartbeat", body: [:], as: Presence.self)
+                        let _: Presence = try await self.request("rooms/\(room.room_id)/heartbeat", body: self.roomVisible.map { self.visibilityBody($0) } ?? [:], as: Presence.self)
                     } catch let error as ChatFailure where [403, 404, 410].contains(error.statusCode ?? 0) {
                         if revision == self.roomRevision { await self.revokeRoom() }
                     } catch { /* Reconcile and retry transient failures. */ }
@@ -402,6 +434,7 @@ public final class ZoChatClient {
     }
 
     public func close() {
+        if let room, roomVisible != nil { reportVisibility(room.room_id, visible: false) }
         isConnected = false
         closed = true; generation += 1; roomRevision += 1
         subscriptionTask?.cancel(); channel = nil; socketId = nil; room = nil

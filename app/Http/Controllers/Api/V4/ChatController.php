@@ -352,6 +352,12 @@ final class ChatController extends Controller
                 ->tap(fn ($q) => app(InviteRoomLifecycle::class)->candidates($q))
                 ->lockForUpdate()->first(['i.room_id', 'i.inviter_user_id', 'ir.room_name', 'ir.content_type', 'ir.content_id', 'ir.watch_position_ms', 'ir.active', 'ir.idle_expires_at']);
             abort_unless(app(InviteRoomLifecycle::class)->active($row), 404, 'This invitation has expired or is no longer available.');
+            if ($v['accept']) {
+                $limit = (int) config($row->content_type ? 'chat.watch_member_limit' : 'chat.private_member_limit');
+                $accepted = DB::table('chat_room_invites')->where('room_id', $row->room_id)
+                    ->where('status', 'accepted')->lockForUpdate()->pluck('invitee_user_id')->unique()->count();
+                abort_if($accepted + 1 >= $limit, 409, "This room is full (maximum {$limit} members including the creator).");
+            }
             $content = null;
             if ($v['accept'] && $row->content_type && $row->content_id) {
                 $content = \App\Support\Chat\ChatContent::find($row->content_type, $row->content_id);
@@ -581,6 +587,9 @@ final class ChatController extends Controller
                     DB::table('chat_invite_rooms')->where('room_id', $room)->update(['idle_expires_at' => now()->addHour()]);
                 }
                 $this->chat->outbox($r, $room, 'created', $m->id, 'chat_message_sent');
+                if ($roomInfo->type === 'invite') {
+                    app(\App\Support\Chat\ChatMessageNotifications::class)->queue($m, $inviteRoom);
+                }
             }
 
             return $m;
@@ -621,6 +630,10 @@ final class ChatController extends Controller
     public function heartbeat(Request $r, int $room)
     {
         $this->chat->room($r, $room);
+        $v = $r->validate(['visible' => 'sometimes|boolean', 'visibility_sequence' => 'required_with:visible|integer|min:1|max:9007199254740991', 'visibility_id' => 'sometimes|uuid']);
+        if (array_key_exists('visible', $v)) {
+            app(\App\Support\Chat\ChatVisibility::class)->update($r, $room, $v['visible']);
+        }
 
         return V4Response::success(['online_count' => $this->chat->presence($r, $room)]);
     }
