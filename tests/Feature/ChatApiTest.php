@@ -273,6 +273,7 @@ class ChatApiTest extends TestCase
         DB::table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
         $auth = $this->socketAuth($room, 'bob', $this->socketSession('bob'));
         $application = new \Laravel\Reverb\Application('chat', 'key', 'secret', 60, 30, [], 2048);
+        $this->assertMatchesRegularExpression('/^private-chat-control\.'.preg_quote((string) $room, '/').'\.[a-f0-9]{32}\.lease\.\d+$/', $auth['control_channel']);
         $connection = new class($application) extends \Laravel\Reverb\Contracts\Connection {
             public array $sent = [];
             public string $socket = '1.2';

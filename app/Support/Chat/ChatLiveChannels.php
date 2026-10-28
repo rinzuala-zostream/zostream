@@ -29,17 +29,17 @@ final class ChatLiveChannels
         $control = ChatChannels::authorization($socket, $controlChannel);
         $expires = min(now()->timestamp + $auth['expires_in'] + ChatChannels::GRACE_SECONDS, $session->access_expires_at->timestamp);
         $feed = $request->boolean('messages') ? ChatChannels::authorization($socket, 'private-chat-feed.'.$room.'.'.substr(hash('sha256', $token), 0, 32)) : null;
-        $claim = ['room_id' => $room, 'socket_id' => $socket, 'channel' => $auth['channel'], 'control_channel' => $controlChannel, 'ticket_key' => $key,
+        $claim = ['room_id' => $room, 'socket_id' => $socket, 'channel' => $auth['channel'], 'control_channel' => $control['channel'], 'ticket_key' => $key,
             'feed_channel' => $feed['channel'] ?? null, 'expires' => $expires,
             'user_id' => (string) $session->user_id, 'device_id' => (string) $session->device_id,
             'session_id' => $session->getKey(), 'session_hash' => hash('sha256', $session->access_token),
             'playback_hash' => hash('sha256', (string) $request->header('X-Playback-Token'))];
         try {
             $this->cache()->put($key, $claim, max(1, $expires - now()->timestamp));
-            $this->cache()->put('chat:control-ticket:'.hash('sha256', $controlChannel), $key, max(1, $expires - now()->timestamp));
+            $this->cache()->put('chat:control-ticket:'.hash('sha256', $control['channel']), $key, max(1, $expires - now()->timestamp));
             if ($feed) { $this->indexTicket($room, $key, min($expires, now()->timestamp + 90)); }
         } catch (\Throwable) { return $auth; }
-        return $auth + ['control_channel' => $controlChannel, 'control_auth' => $control['auth'], 'control_token' => $token,
+        return $auth + ['control_channel' => $control['channel'], 'control_auth' => $control['auth'], 'control_token' => $token,
             'feed_channel' => $feed['channel'] ?? null, 'feed_auth' => $feed['auth'] ?? null];
     }
 
@@ -64,7 +64,7 @@ final class ChatLiveChannels
 
     public function ticketForControlChannel(string $channel): ?array
     {
-        if (! preg_match('/^private-chat-control\.([0-9]+)\.([a-f0-9]{32})$/', $channel, $matches)) { return null; }
+        if (! preg_match('/^private-chat-control\.([0-9]+)\.([a-f0-9]{32})\.lease\.[0-9]+$/', $channel, $matches)) { return null; }
         $room = (int) $matches[1];
         $prefix = 'chat:socket-ticket:';
         // Ticket lookup is indexed by room in Redis to avoid a key scan on Reverb's event loop.
