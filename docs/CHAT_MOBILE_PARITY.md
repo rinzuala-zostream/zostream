@@ -38,6 +38,15 @@ independently of the selected chat tab and continues while the chat panel is
 hidden on the player. Leaving the player/backgrounding releases that session.
 Host pause/play/seek controls synchronize through sequenced WebSocket state. Watch cards can route Home users into the invited player.
 
+Watch Together guest controls: seeking/scrubbing is disabled for invitees;
+creators retain seeking. A guest may pause locally without pausing the creator.
+Play after a local pause requests a fresh authorized creator position before
+resuming. Watch players use stable 1x speed, and device-clock differences are
+not added to the server's extrapolated position. A creator's buffering state is
+published as paused so guests do not advance while the creator is stalled.
+Creator departure/end stops the guest player and its watch stream; the private
+chat remains available. Both player screens show the Watch Together role/state.
+
 Follow-up audit fixes cover failed/expired invite-room joins, an explicit iOS
 join retry, retry payloads that include spoiler state, reports pinned to their
 original room, blocked-user cache refresh on reopen/reconciliation, selected-tab

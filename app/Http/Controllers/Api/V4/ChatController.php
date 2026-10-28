@@ -458,7 +458,8 @@ final class ChatController extends Controller
             'control_sequence' => 'sometimes|integer|min:1|max:9007199254740991']);
         abort_if((isset($v['paused']) || isset($v['control_sequence'])) && !isset($v['position_ms']), 422, 'Playback controls require a position.');
         $this->chat->refreshPlayback($r);
-        $this->chat->room($r, $room, true);
+        // Playback-state reads/creator controls are separate from chat-message mute.
+        $this->chat->room($r, $room);
         $inviteRoom = DB::table('chat_invite_rooms')->where('room_id', $room)->first();
         abort_unless($inviteRoom, 404);
         $isHost = $inviteRoom->host_user_id === (string) $r->input('auth_user_id');
@@ -483,16 +484,15 @@ final class ChatController extends Controller
         $v = $r->validate(['before' => ['nullable', 'integer', 'min:1', Rule::prohibitedIf($r->filled('after'))], 'after' => 'nullable|integer|min:0']);
         $limit = config('chat.page_size');
         $blocked = $this->chat->blocked((string) $r->input('auth_user_id'));
-        $recent = $this->chat->recent($room);
         $after = $v['after'] ?? null;
         $before = $v['before'] ?? null;
-        $min = $recent ? min(array_column($recent, 'id')) : null;
-        if ($before === null && (($after === null && (count($recent) < config('chat.recent_limit') || count(array_filter($recent, fn ($m) => ! in_array($m['user_id'], $blocked, true))) > $limit)) || ($after !== null && ($min === null || $after >= $min)))) {
-            $rows = array_values(array_filter($recent, fn ($m) => ! in_array($m['user_id'], $blocked, true) && ($after === null || $m['id'] > $after)));
-            if ($after !== null) {
-                $rows = array_reverse($rows);
-            }
-            $hasMore = count($rows) > $limit || ($after === null && count($recent) >= config('chat.recent_limit'));
+        // Live delta reads must see committed rows even if an in-flight cache
+        // loader repopulated the recent snapshot around a message commit.
+        $recent = $after === null && $before === null ? $this->chat->recent($room) : [];
+        if ($before === null && $after === null && (count($recent) < config('chat.recent_limit')
+            || count(array_filter($recent, fn ($m) => ! in_array($m['user_id'], $blocked, true))) > $limit)) {
+            $rows = array_values(array_filter($recent, fn ($m) => ! in_array($m['user_id'], $blocked, true)));
+            $hasMore = count($rows) > $limit || count($recent) >= config('chat.recent_limit');
             $rows = array_slice($rows, 0, $limit);
         } else {
             $q = DB::table('chat_messages')->where('room_id', $room)->whereNotIn('user_id', $blocked)

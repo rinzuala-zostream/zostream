@@ -101,9 +101,11 @@ final class DeliverChat extends Command
         $encoded = http_build_query($query, '', '&', PHP_QUERY_RFC3986);
         $query['auth_signature'] = hash_hmac('sha256', "POST\n".$path."\n".$encoded, $c['secret']);
         $host = $c['options']['scheme'].'://'.$c['options']['host'].':'.$c['options']['port'];
+        // Receivers can fetch history as soon as Reverb accepts the event,
+        // before this publish request returns to the worker.
+        app(ChatService::class)->invalidate($row->room_id);
         Http::connectTimeout(2)->timeout(5)->withBody($body, 'application/json')
             ->post($host.$path.'?'.http_build_query($query, '', '&', PHP_QUERY_RFC3986))->throw();
-        app(ChatService::class)->invalidate($row->room_id);
     }
 
     private function analytics(object $row): void

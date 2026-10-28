@@ -26,6 +26,34 @@ changing deployment configuration, rebuild the config cache and restart both
 chat processes. Preserve the leased-channel API/worker/mobile compatibility
 described below. Do not switch off TLS or allow all origins as a workaround.
 
+### Live, but messages appear only after reopening
+
+`Live` confirms a socket subscription, not that the delivery worker is running
+the same release or publishing to that subscription's channel. HTTP 101 and an
+empty outbox also cannot establish that. After each backend chat release,
+restart the long-running delivery process to load the new code/config:
+
+```sh
+sudo supervisorctl restart zostream-chat-delivery
+```
+
+Keep the receiver's chat open and send a new message from another account.
+Reverb itself need not restart for a delivery-worker code update; restart it
+when its configuration/code changes. On 28 October, the reported production
+case recovered immediately after restarting only `zostream-chat-delivery`,
+without reopening the receiver. This points to stale worker process state;
+the exact earlier publication channel was not captured.
+
+The same investigation reproduced a separate cache race in local feature tests:
+a receiver fetching after publication could receive the old recent snapshot.
+The worker now invalidates recent history before publishing, and `after` delta
+requests read committed database rows rather than the recent snapshot. Initial
+latest-page reads retain their cache; authorization, blocked-user filtering,
+retention and pagination remain enforced. Deploy this API/worker fix and restart
+the delivery process. The cache regressions failed before the fix and pass after
+it; the backend chat/queue/diagnostic/WhatsApp suite passes 84 tests with 803
+assertions. No additional mobile reload or polling behavior is introduced.
+
 The 28 October mobile SDK update requests transcript deltas every five seconds
 while a room is open and its socket is disconnected. The UI ignores these
 recovery ticks while hidden; room lists, presence and unread snapshots keep
@@ -329,3 +357,46 @@ integrity check; room authorization/presence maintenance remains thirty seconds.
 Confirm reconciliation does not add watch-position
 polls. Also verify live private rooms after an elapsed idle deadline, closed-room
 invitation rejection, disabled viewer endpoints, and account-deletion cleanup.
+
+## Watch Together guest playback controls — 28 October
+
+Deploy the updated backend and both mobile apps; no new migration is required.
+Restart `zostream-chat-delivery` after deployment. Verify with two real accounts
+before release; these changes affect playback, not just the chat card.
+
+- Invitees cannot use the player seek buttons, double-tap seeking or scrubber.
+  Creators retain seeking. iOS also sets AVKit's
+  [linear-playback restriction](https://developer.apple.com/documentation/avkit/avplayerviewcontroller/requireslinearplayback)
+  for invitee player presentation.
+- Invitees may pause locally. Incoming creator controls do not cancel that
+  local pause. Play requests an authorized, fresh creator position; playback
+  resumes from that position, respecting a still-paused creator. A newer socket
+  state wins over an older HTTP response arriving during this request.
+- Both watch players run at stable 1x. Random speed variation and user speed
+  changes are suppressed during Watch Together. Creator buffering is reported
+  as paused; guests follow when playback resumes. Client device-clock differences
+  are not added to the server's already-extrapolated position. Decoder and network
+  delay still prevent a guarantee of frame-identical playback.
+- A creator-end snapshot, replacement watch session, or denied watch access
+  stops the invitee player and submits its stream stop. The backend also marks
+  a stopped creator's private `/watch` session inactive and stops matching bound
+  guest stream tokens. Replaced tokens and another active watch binding are
+  preserved. The private chat remains usable subject to normal room lifetime.
+- Player overlays show Creator/Following creator and the ended state. Content
+  changes reset the watch restriction so independent playback retains its controls.
+
+Test pause for at least a minute and resume while the creator is playing,
+paused and buffering; test host seek, slow/late responses, differing device
+clocks, switching content, guest quality changes, host Back/Close and natural
+completion. Test with chat hidden or another room selected. Confirm the invitee
+stops once, its player service/stream closes, and the ended message remains.
+An abrupt crash/network loss without a stop signal still relies on existing
+stream freshness/heartbeat expiry; it cannot emit an immediate departure event.
+
+Local verification: backend chat/diagnostic/queue/WhatsApp tests pass (87 tests,
+821 assertions). Android app/SDK compilation and chat tests pass, including fresh
+resume, clock-skew and duplicate-end-event cases. Eleven extracted iOS player
+behavior checks and five state-ordering checks run using standalone Swift
+harnesses; screen syntax parsing passes. Full iOS app compilation, XCTest,
+device rendering, two-device latency and live provider delivery are not verified
+by those harnesses.

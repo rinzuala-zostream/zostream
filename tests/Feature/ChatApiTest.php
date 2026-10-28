@@ -666,6 +666,39 @@ class ChatApiTest extends TestCase
         $this->assertTrue($catchup['has_more']);
     }
 
+    public function test_live_delta_sees_committed_messages_even_when_recent_cache_is_stale(): void
+    {
+        $room = $this->room();
+        $first = $this->message($room, 'bob', 'First');
+        $url = "/api/v4/chat/rooms/$room/messages";
+        $this->getJson($url.'?'.http_build_query($this->identity()))->assertOk()->assertJsonCount(1, 'data.messages');
+        // Another request commits before cache invalidation/broadcast processing.
+        $second = $this->message($room, 'bob', 'Arrives while chat is open');
+        $this->assertCount(1, app(\App\Support\Chat\ChatService::class)->recent((int) $room));
+        $this->getJson($url.'?'.http_build_query($this->identity(['after' => $first])))->assertOk()
+            ->assertJsonPath('data.messages.0.id', (string) $second)
+            ->assertJsonPath('data.messages.0.body', 'Arrives while chat is open');
+    }
+
+    public function test_delivery_invalidates_recent_cache_before_receivers_can_fetch_history(): void
+    {
+        $room = $this->room();
+        $message = $this->send($room, 'First message in open room')->assertCreated()->json('data.id');
+        Cache::store(config('chat.cache_store'))->put('chat:recent:'.$room, [], 10);
+        $seenDuringPublish = null;
+        Http::fake(function () use ($room, &$seenDuringPublish) {
+            // A receiving socket can trigger history before the publish HTTP call returns.
+            $seenDuringPublish = app(\App\Support\Chat\ChatService::class)->recent((int) $room);
+
+            return Http::response('{}', 200);
+        });
+        $this->artisan('chat:deliver', ['--once' => true])->assertSuccessful();
+        $this->assertIsArray($seenDuringPublish);
+        $this->assertCount(1, $seenDuringPublish);
+        $this->assertSame($message, $seenDuringPublish[0]['id']);
+        $this->assertNotNull(DB::table('chat_outbox')->value('delivered_at'));
+    }
+
     public function test_movie_room_requires_current_owned_playback_on_every_read_and_send(): void
     {
         DB::table('n_devices')->insert(['id' => 1, 'user_id' => 'alice', 'device_token' => 'device-a']);
@@ -1282,6 +1315,55 @@ class ChatApiTest extends TestCase
         $this->postJson("/api/v4/chat/rooms/$room/watch-sessions/$session/position", ['auth_user_id' => 'bob'])->assertOk()
             ->assertJsonPath('data.position_ms', 10000)->assertJsonPath('data.paused', true)->assertJsonPath('data.revision', '20');
         $this->assertSame(1, DB::table('chat_outbox')->where('kind', 'watch_control')->count());
+    }
+
+    public function test_creator_stream_end_stops_only_the_bound_guest_watch_stream(): void
+    {
+        $room = $this->privateWatchFixture();
+        $session = $this->sendPrivateWatch($room)->assertCreated()->json('data.watch_invite.session_id');
+        DB::table('n_devices')->insert(['id' => 2, 'user_id' => 'bob', 'device_token' => 'device-b']);
+        $guest = DB::table('n_active_streams')->insertGetId(['device_id' => 2, 'stream_token' => 'play-b', 'status' => 'active',
+            'content_type' => 'movie', 'content_key' => 'film-a', 'last_ping' => now()]);
+        $this->withHeaders(['X-Playback-Token' => 'play-b'])->postJson("/api/v4/chat/rooms/$room/watch-heartbeat", [
+            'auth_user_id' => 'bob', 'auth_device_id' => 'device-b', 'session_id' => $session,
+        ])->assertOk();
+        DB::table('n_active_streams')->where('stream_token', 'play-a')->update(['status' => 'stopped']);
+        app(\App\Support\Chat\PrivateWatchService::class)->streamChanged(\Illuminate\Http\Request::create('/', 'POST', ['auth_user_id' => 'alice']), 1);
+        $this->assertSame('stopped', DB::table('n_active_streams')->where('id', $guest)->value('status'));
+        $this->assertFalse((bool) DB::table('chat_watch_sessions')->where('id', $session)->value('active'));
+        $this->assertFalse(app(\App\Support\Chat\PrivateWatchService::class)->snapshot((int) $room)['active']);
+        $this->postJson("/api/v4/chat/rooms/$room/watch-sessions/$session/join", ['auth_user_id' => 'bob'])->assertStatus(410);
+        $this->getJson("/api/v4/chat/rooms/$room/messages?auth_user_id=bob")->assertOk();
+    }
+
+    public function test_creator_end_does_not_stop_a_guests_replaced_independent_stream_token(): void
+    {
+        $room = $this->privateWatchFixture();
+        $session = $this->sendPrivateWatch($room)->assertCreated()->json('data.watch_invite.session_id');
+        DB::table('n_devices')->insert(['id' => 2, 'user_id' => 'bob', 'device_token' => 'device-b']);
+        $guest = DB::table('n_active_streams')->insertGetId(['device_id' => 2, 'stream_token' => 'play-b', 'status' => 'active',
+            'content_type' => 'movie', 'content_key' => 'film-a', 'last_ping' => now()]);
+        $this->withHeaders(['X-Playback-Token' => 'play-b'])->postJson("/api/v4/chat/rooms/$room/watch-heartbeat", [
+            'auth_user_id' => 'bob', 'auth_device_id' => 'device-b', 'session_id' => $session,
+        ])->assertOk();
+        DB::table('n_active_streams')->where('id', $guest)->update(['stream_token' => 'new-independent-token']);
+        DB::table('n_active_streams')->where('stream_token', 'play-a')->update(['status' => 'stopped']);
+        app(\App\Support\Chat\PrivateWatchService::class)->streamChanged(\Illuminate\Http\Request::create('/', 'POST', ['auth_user_id' => 'alice']), 1);
+        $this->assertSame('active', DB::table('n_active_streams')->where('id', $guest)->value('status'));
+        $this->assertFalse((bool) DB::table('chat_watch_sessions')->where('id', $session)->value('active'));
+    }
+
+    public function test_muted_watch_guest_can_resync_but_cannot_publish_creator_position(): void
+    {
+        $this->privateWatchFixture();
+        $room = $this->withHeaders(['X-Playback-Token' => 'play-a'])->postJson('/api/v4/chat/invite-rooms', $this->identity([
+            'type' => 'movie', 'content_id' => 'film-a', 'room_name' => 'Watch room', 'invitee_ids' => ['bob'],
+        ]))->assertCreated()->json('data.room_id');
+        DB::table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
+        DB::table('chat_bans')->insert(['room_id' => $room, 'user_id' => 'bob', 'kind' => 'mute']);
+        $this->postJson("/api/v4/chat/invite-rooms/$room/position", ['auth_user_id' => 'bob'])->assertOk()
+            ->assertJsonPath('data.is_host', false);
+        $this->postJson("/api/v4/chat/invite-rooms/$room/position", ['auth_user_id' => 'bob', 'position_ms' => 0])->assertForbidden();
     }
 
     public function test_stream_stop_pushes_updated_counts_and_host_session_end(): void

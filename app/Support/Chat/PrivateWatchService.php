@@ -140,10 +140,35 @@ final class PrivateWatchService
     public function streamChanged(Request $r, int $stream): void
     {
         if (! \Illuminate\Support\Facades\Schema::hasTable('chat_watch_participants')) { return; }
+        $hosted = DB::table('chat_watch_sessions')->where('active', true)->where('host_stream_id', $stream)->get();
+        foreach ($hosted as $watch) {
+            if ($this->liveSession((int) $watch->room_id)?->id !== $watch->id) {
+                DB::transaction(function () use ($watch) {
+                    DB::table('chat_invite_rooms')->where('room_id', $watch->room_id)->lockForUpdate()->first();
+                    $session = DB::table('chat_watch_sessions')->where('id', $watch->id)->lockForUpdate()->first();
+                    if (! $session || ! $session->active) { return; }
+                    DB::table('chat_watch_sessions')->where('id', $watch->id)->update(['active' => false, 'updated_at' => now()]);
+                    foreach (DB::table('chat_watch_participants')->where('session_id', $watch->id)->get() as $member) {
+                        $guest = DB::table('n_active_streams as s')->join('n_devices as d', 'd.id', '=', 's.device_id')
+                            ->where('s.id', $member->stream_id)->where('d.user_id', $member->user_id)->where('s.status', 'active')
+                            ->where('s.content_type', $watch->content_type)->where('s.content_key', $watch->content_id)->first(['s.id', 's.stream_token']);
+                        if (! $guest || ! hash_equals($member->stream_token_hash ?? '', hash('sha256', $guest->stream_token))) { continue; }
+                        // A replaced player/token or a different active watch session must survive.
+                        $otherWatch = DB::table('chat_watch_participants as p')->join('chat_watch_sessions as w', 'w.id', '=', 'p.session_id')
+                            ->where('p.stream_id', $guest->id)->where('p.user_id', $member->user_id)
+                            ->where('p.stream_token_hash', $member->stream_token_hash)->where('w.active', true)->exists();
+                        if (! $otherWatch) {
+                            DB::table('n_active_streams')->where('id', $guest->id)->where('stream_token', $guest->stream_token)
+                                ->where('status', 'active')->update(['status' => 'stopped', 'last_ping' => now()]);
+                        }
+                    }
+                });
+            }
+        }
         $rooms = DB::table('chat_watch_sessions')->where('active', true)
             ->where(fn ($q) => $q->where('host_stream_id', $stream)->orWhereIn('id',
                 DB::table('chat_watch_participants')->select('session_id')->where('stream_id', $stream)))
-            ->pluck('room_id');
+            ->pluck('room_id')->merge($hosted->pluck('room_id'))->unique();
         $owner = DB::table('n_active_streams as s')->join('n_devices as d', 'd.id', '=', 's.device_id')
             ->where('s.id', $stream)->first(['d.user_id', 's.content_type', 's.content_key']);
         if ($owner) {
