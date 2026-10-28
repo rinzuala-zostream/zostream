@@ -32,6 +32,18 @@ final class ChatController extends Controller
         return V4Response::success(\App\Support\Chat\ChatChannels::authorization($v['socket_id'], $v['channel']));
     }
 
+    public function unreadAuthBatch(Request $r)
+    {
+        $v = $r->validate(['socket_id' => ['required', 'regex:/^[0-9]+\.[0-9]+$/'],
+            'channels' => 'required|array|min:1|max:64', 'channels.*' => 'required|string|max:120|distinct']);
+        $result = [];
+        foreach ($v['channels'] as $channel) {
+            app(\App\Support\Chat\ChatReadService::class)->authorizeChannel($r, $channel);
+            $result[$channel] = \App\Support\Chat\ChatChannels::authorization($v['socket_id'], $channel);
+        }
+        return V4Response::success(['authorizations' => $result]);
+    }
+
     public function markRead(Request $r, int $room, \App\Support\Chat\ChatReadService $reads)
     {
         $v = $r->validate(['message_id' => 'required|integer|min:1']);
@@ -502,7 +514,12 @@ final class ChatController extends Controller
     {
         $this->chat->room($r, $room);
         $v = $r->validate(['socket_id' => ['required', 'regex:/^[0-9]+\.[0-9]+$/']]);
-        return V4Response::success(\App\Support\Chat\ChatChannels::authorization($v['socket_id'], 'private-chat.'.$room));
+        $auth = \App\Support\Chat\ChatChannels::authorization($v['socket_id'], 'private-chat.'.$room);
+        if ($r->input('protocol') === 2) {
+            $r->validate(['messages' => 'sometimes|boolean']);
+            $auth = app(\App\Support\Chat\ChatLiveChannels::class)->issue($r, $room, $v['socket_id'], $auth);
+        }
+        return V4Response::success($auth);
     }
 
     public function messages(Request $r, int $room)

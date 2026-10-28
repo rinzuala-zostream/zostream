@@ -15,5 +15,6 @@ return [
     'slow_mode_seconds' => 2,
     'private_member_limit' => 10,
     'watch_member_limit' => 5,
+    'socket_protocol_enabled' => env('CHAT_SOCKET_PROTOCOL_ENABLED', true),
     'websocket_url' => env('CHAT_WEBSOCKET_URL', ''),
 ];

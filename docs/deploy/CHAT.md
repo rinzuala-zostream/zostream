@@ -142,6 +142,39 @@ stdout_logfile=/var/log/zostream-chat-delivery.log
 stopwaitsecs=20
 ```
 
+### Capacity update (October 2026)
+
+This release adds socket message feeds and routes visible-room presence through a per-socket private control channel. Reverb handles the presence event using Redis only; it does not run a database query per heartbeat. Message fan-out uses bounded batches and rechecks current sessions, room membership, blocks, and playback access before publishing. The legacy outbox event and HTTP transcript recovery remain enabled for older app builds.
+
+Apply the single new migration before starting the updated API and worker:
+
+```sh
+php artisan migrate --path=database/migrations/2026_10_28_000003_add_chat_delivery_claims.php --force
+```
+
+Keep `CHAT_CACHE_STORE=redis` for multi-server deployments. Install the updated API and mobile SDKs, rebuild Laravel config cache, then restart Reverb so its listener and Redis connections load the release. The Reverb app must continue to have client events disabled; presence uses an internal event on a socket-specific private channel.
+
+To keep analytics or push delays from holding up websocket fan-out, replace the single `zostream-chat-delivery` Supervisor program above with these three programs (same `directory`, `user`, restart, and log settings). Do not leave the old all-lane process enabled alongside these:
+
+```ini
+[program:zostream-chat-realtime]
+command=php /var/www/zostream/current/artisan chat:deliver --lane=realtime
+numprocs=1
+...
+
+[program:zostream-chat-push]
+command=php /var/www/zostream/current/artisan chat:deliver --lane=push
+numprocs=1
+...
+
+[program:zostream-chat-analytics]
+command=php /var/www/zostream/current/artisan chat:deliver --lane=analytics
+numprocs=1
+...
+```
+
+Run `supervisorctl reread`, `supervisorctl update`, and check all three workers plus `zostream-reverb` are `RUNNING`. Start with one process per lane; increase realtime workers only after checking database, Redis, Reverb, and outbox latency under representative load. This code change reduces work per idle socket and batches live delivery, but does not establish a production user capacity by itself; load-test the VPS before increasing advertised capacity.
+
 Nginx fragment inside the TLS virtual host for the public chat hostname:
 
 ```nginx

@@ -10,43 +10,60 @@ use Illuminate\Support\Facades\Http;
 
 final class DeliverChat extends Command
 {
-    protected $signature = 'chat:deliver {--once}';
+    protected $signature = 'chat:deliver {--once} {--lane=all : all, realtime, push, or analytics}';
 
     protected $description = 'Deliver durable chat change notifications and server analytics';
 
     public function handle(): int
     {
+        $lane = (string) $this->option('lane');
+        if (! in_array($lane, ['all', 'realtime', 'push', 'analytics'], true)) { return self::INVALID; }
         $lastWatchExpiry = 0;
         do {
             // Unclean player exits have no stop request. Expire their rooms after
             // the stream heartbeat deadline, even when no chat events are queued.
-            if (config('chat.enabled') && time() - $lastWatchExpiry >= 15) {
+            if (in_array($lane, ['all', 'realtime'], true) && config('chat.enabled') && time() - $lastWatchExpiry >= 15) {
                 app(\App\Support\Chat\InviteRoomLifecycle::class)->endInactiveWatchRooms(\Illuminate\Http\Request::create('/'));
                 app(\App\Support\Chat\RoomInvitationService::class)->expireSharedRooms(\Illuminate\Http\Request::create('/'));
                 $lastWatchExpiry = time();
             }
-            $rows = DB::table('chat_outbox')->whereNull('delivered_at')->where(fn ($q) => $q->whereNull('available_at')->orWhere('available_at', '<=', now()))->orderBy('id')->limit(100)->get();
+            $pending = DB::table('chat_outbox')->whereNull('delivered_at')
+                ->where(fn ($q) => $q->whereNull('claimed_until')->orWhere('claimed_until', '<=', now()))
+                ->where(fn ($q) => $q->whereNull('available_at')->orWhere('available_at', '<=', now()));
+            if ($lane === 'push') { $pending->where('kind', 'message_push'); }
+            if ($lane === 'realtime') { $pending->where('kind', '!=', 'message_push'); }
+            $rows = $lane === 'analytics' ? collect() : $pending->orderBy('id')->limit(100)->get();
             foreach ($rows as $row) {
+                $claim = (string) \Illuminate\Support\Str::uuid();
+                $owned = DB::table('chat_outbox')->where('id', $row->id)->whereNull('delivered_at')
+                    ->where(fn ($q) => $q->whereNull('claimed_until')->orWhere('claimed_until', '<=', now()))
+                    ->update(['claim_token' => $claim, 'claimed_until' => now()->addMinutes(2)]);
+                if (! $owned) { continue; }
+                $renew = function () use ($row, $claim): void {
+                    if (! DB::table('chat_outbox')->where('id', $row->id)->where('claim_token', $claim)
+                        ->update(['claimed_until' => now()->addMinutes(2)])) { throw new \RuntimeException('Chat delivery claim lost'); }
+                };
                 try {
                     if ($row->kind === 'message_push') {
                         app(\App\Support\Chat\ChatMessageNotifications::class)->deliver($row);
+                    } elseif (in_array($row->kind, ['feed_created', 'feed_deleted'], true)) {
+                        app(\App\Support\Chat\ChatLiveDelivery::class)->deliver($row, $renew);
                     } elseif ($row->kind !== 'reported') {
                         $this->publish($row);
                     }
-                    DB::table('chat_outbox')->where('id', $row->id)->update(['delivered_at' => now()]);
+                    DB::table('chat_outbox')->where('id', $row->id)->where('claim_token', $claim)
+                        ->update(['delivered_at' => now(), 'claim_token' => null, 'claimed_until' => null]);
                 } catch (\Throwable $e) {
-                    // Payloads and credentials must never enter worker logs.
-                    DB::table('chat_outbox')->where('id', $row->id)->update([
+                    DB::table('chat_outbox')->where('id', $row->id)->where('claim_token', $claim)->update([
+                        'claim_token' => null, 'claimed_until' => null,
                         'attempts' => min(1000, $row->attempts + 1),
                         'available_at' => now()->addSeconds(min(60, 2 ** min(6, $row->attempts + 1)) + random_int(0, 2)),
                     ]);
                     $this->warn('Chat delivery pending: '.$row->id);
-
-                    continue;
                 }
             }
             // Analytics outages cannot hold up realtime delivery for other rooms.
-            $telemetry = DB::table('chat_outbox')->whereNotNull('analytics')->whereNull('analytics_delivered_at')->where(fn ($q) => $q->whereNull('analytics_available_at')->orWhere('analytics_available_at', '<=', now()))->orderBy('id')->limit(100)->get();
+            $telemetry = DB::table('chat_outbox')->whereNotNull('analytics')->whereNull('analytics_delivered_at')->where(fn ($q) => $q->whereNull('analytics_available_at')->orWhere('analytics_available_at', '<=', now()))->orderBy('id')->limit(in_array($lane, ['all', 'analytics'], true) ? 100 : 0)->get();
             foreach ($telemetry as $row) {
                 try {
                     $this->analytics($row);

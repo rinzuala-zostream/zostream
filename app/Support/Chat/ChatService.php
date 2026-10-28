@@ -253,5 +253,9 @@ final class ChatService
         DB::table('chat_outbox')->insert(['room_id' => $room, 'kind' => $kind, 'message_id' => $message,
             'analytics' => $analytics, 'created_at' => now(), 'updated_at' => now()]
             + ($recipient !== null ? ['recipient_user_id' => $recipient] : []));
+        if ($message !== null && $recipient === null && in_array($kind, ['created', 'deleted'], true)) {
+            DB::table('chat_outbox')->insert(['room_id' => $room, 'kind' => 'feed_'.$kind, 'message_id' => $message,
+                'created_at' => now(), 'updated_at' => now()]);
+        }
     }
 }

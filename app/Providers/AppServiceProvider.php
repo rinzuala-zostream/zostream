@@ -20,7 +20,22 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // Reverb must not wait seconds on cache I/O. Keep the exact same data
+        // and lock databases/prefixes, using short-lived failures on its hot path.
+        $store = config('cache.stores.'.config('chat.cache_store'));
+        if (($store['driver'] ?? null) === 'redis') {
+            foreach (['chat_socket' => $store['connection'] ?? 'cache',
+                'chat_socket_lock' => $store['lock_connection'] ?? $store['connection'] ?? 'cache'] as $name => $source) {
+                $connection = config('database.redis.'.$source);
+                if (is_array($connection)) {
+                    config(['database.redis.'.$name => array_replace($connection, [
+                        'timeout' => 0.2, 'read_timeout' => 0.2, 'read_write_timeout' => 0.2,
+                        'max_retries' => 0, 'retry_interval' => 0,
+                    ])]);
+                }
+            }
+            config(['cache.stores.chat_socket' => array_replace($store, ['connection' => 'chat_socket', 'lock_connection' => 'chat_socket_lock'])]);
+        }
     }
 
     /**
@@ -28,6 +43,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        \Illuminate\Support\Facades\Event::listen(\Laravel\Reverb\Events\MessageReceived::class,
+            [\App\Support\Chat\ChatSocketPresence::class, 'handle']);
         IspCustomer::observe(IspCustomerObserver::class);
         IspPackage::observe(IspPackageObserver::class);
         IspRouter::observe(IspRouterObserver::class);

@@ -24,7 +24,28 @@ class ZoChatClient(
     private val main = Handler(Looper.getMainLooper())
     private val executor = Executors.newSingleThreadExecutor()
     var onBadgeEvent: ((JSONObject) -> Unit)? = null
+    var onMessage: ((JSONObject) -> Unit)? = null
+    private var controlToken: String? = null
+    private var controlChannel: String? = null
+    private var controlSubscribed = false
+    private var feedChannel: String? = null
+    private var feedSubscribed = false
+    private var visibilityAcknowledged = 0L
+    private var recoveryDelay = 5_000L
+    private val liveVersions = linkedMapOf<String, Long>()
+    private val liveKinds = linkedMapOf<String, String>()
+    private val pendingLive = linkedMapOf<String, String>()
+    private var liveRecoveryDelay = 2_500L
+    private val liveRecovery = Runnable {
+        if (pendingLive.isNotEmpty() && roomVisible != false && !closed) {
+            val deleted = pendingLive.values.any { it == "deleted" }
+            pendingLive.clear()
+            liveRecoveryDelay = (liveRecoveryDelay * 2).coerceAtMost(30_000)
+            onChanged(if (deleted) "reconcile" else "created", null)
+        }
+    }
     private var unreadChannels: Set<String>? = null
+    private var batchAuthorization = false
     private val unreadSent = mutableSetOf<String>()
     private val unreadSubscribed = mutableSetOf<String>()
     private val unreadPhysical = mutableMapOf<String, String>()
@@ -35,7 +56,7 @@ class ZoChatClient(
 
     private fun revokeRoom() {
         channel?.let { sendEvent("pusher:unsubscribe", JSONObject().put("channel", it)) }
-        roomRevision++; room = null; channel = null; isConnected = false
+        roomRevision++; room = null; channel = null; controlToken = null; controlChannel?.let { sendEvent("pusher:unsubscribe", JSONObject().put("channel", it)) }; controlChannel = null; clearFeed(); isConnected = false
         onConnection(false); onChanged("access_denied", null)
     }
 
@@ -66,28 +87,32 @@ class ZoChatClient(
         override fun run() {
             if (closed) return
             if (credentials()?.ownerKey != owner) { close(); return }
-            if (room != null && unreadChannels == null && !isConnected) onChanged("poll", null)
-            main.postDelayed(this, 5_000)
+            if (room != null && unreadChannels == null && roomVisible != false && !isConnected) {
+                onChanged("poll", null)
+                recoveryDelay = (recoveryDelay * 2).coerceAtMost(60_000)
+            } else recoveryDelay = 5_000
+            main.postDelayed(this, recoveryDelay + if (recoveryDelay > 5_000) (0..(recoveryDelay / 5).toInt()).random() else 0)
         }
     }
     private val reconcile = object : Runnable {
         override fun run() {
             if (closed) return
             if (credentials()?.ownerKey != owner) { close(); return }
-            room?.takeIf { unreadChannels == null }?.let { request("rooms/${it.getString("room_id")}/heartbeat", roomVisible?.let { visible -> visibilityBody(visible) } ?: JSONObject()) { _, _ -> } }
+            room?.takeIf { unreadChannels == null && roomVisible != false }?.let {
+                if (controlToken != null && isConnected) reportVisibility(it.getString("room_id"), roomVisible ?: false)
+                else request("rooms/${it.getString("room_id")}/heartbeat", roomVisible?.let { visible -> visibilityBody(visible) } ?: JSONObject()) { _, _ -> }
+            }
             val now = android.os.SystemClock.elapsedRealtime()
             if (room != null && (unreadChannels != null || !subscriptionPending) &&
                 (if (unreadChannels != null) unreadExpiry.values.any { it <= now } else subscriptionExpiry <= now)) subscribe()
             if (room != null && unreadChannels == null && isConnected && now - lastTranscriptReconcile >= 300_000) {
                 lastTranscriptReconcile = now; onChanged("reconcile", null)
-            } else if (room != null && unreadChannels == null && isConnected) {
-                onChanged("maintenance", null)
             }
             if (isConnected) {
                 if (now - lastSocketActivity > 90_000) reconnect(generation)
                 else sendEvent("pusher:ping", JSONObject())
             }
-            if (!isConnected && now - lastFallbackSync >= 60_000) {
+            if (unreadChannels != null && !isConnected && now - lastFallbackSync >= 60_000) {
                 lastFallbackSync = now; onChanged("sync", null)
             }
             main.postDelayed(this, 30_000)
@@ -168,13 +193,29 @@ class ZoChatClient(
         return JSONObject().put("visible", visible).put("visibility_sequence", visibilitySequence).put("visibility_id", visibilityId)
     }
     private fun reportVisibility(id: String, visible: Boolean) {
+        val body = visibilityBody(visible)
+        val token = controlToken
+        val currentChannel = controlChannel
+        if (isConnected && controlSubscribed && token != null && currentChannel != null) {
+            val sequence = body.getLong("visibility_sequence")
+            val sent = socket?.send(JSONObject().put("event", "chat:presence").put("channel", currentChannel).put("data", body).toString()) == true
+            if (sent) {
+                Handler(Looper.getMainLooper()).postDelayed({
+                    if (visibilityAcknowledged < sequence && credentials()?.ownerKey == owner) reportVisibilityHTTP(id, body)
+                }, 2_500)
+                return
+            }
+        }
+        reportVisibilityHTTP(id, body)
+    }
+    private fun reportVisibilityHTTP(id: String, body: JSONObject) {
         val c = credentials() ?: return
         if (owner != null && owner != c.ownerKey) return
         val request = Request.Builder().url(baseUrl.trimEnd('/') + "/api/v4/chat/rooms/$id/heartbeat")
             .header("Authorization", "Bearer " + c.accessToken.removePrefix("Bearer "))
             .header("Device-Token", c.deviceToken).header("Accept", "application/json")
             .header("X-Client-Platform", "android").header("X-Client-Version", version)
-            .post(visibilityBody(visible).toString().toRequestBody("application/json".toMediaType()))
+            .post(body.toString().toRequestBody("application/json".toMediaType()))
         playbackToken()?.takeIf { it.isNotBlank() }?.let { request.header("X-Playback-Token", it) }
         // Keep the final hidden-state request independent of the closing executor.
         val call = http.newCall(request.build())
@@ -186,6 +227,8 @@ class ZoChatClient(
     }
     fun setRoomVisible(visible: Boolean) {
         roomVisible = visible
+        if (!visible) clearFeed()
+        else if (onMessage != null && feedChannel == null && isConnected) subscribe()
         room?.takeIf { unreadChannels == null }?.let { reportVisibility(it.getString("room_id"), visible) }
     }
 
@@ -196,6 +239,7 @@ class ZoChatClient(
         owner = identity
         if (roomVisible != null) room?.let { reportVisibility(it.getString("room_id"), false) }
         val revision = ++roomRevision
+        clearFeed(); controlToken = null; controlChannel?.let { sendEvent("pusher:unsubscribe", JSONObject().put("channel", it)) }; controlChannel = null; liveVersions.clear(); liveKinds.clear(); pendingLive.clear()
         channel?.let { sendEvent("pusher:unsubscribe", JSONObject().put("channel", it)) }
         isConnected = false
         channel = null; room = null; subscriptionExpiry = 0; subscriptionPending = false
@@ -226,6 +270,7 @@ class ZoChatClient(
     /** One socket observes all authorized badge channels without joining room presence. */
     fun configureUnread(summary: JSONObject) {
         if (closed) return
+        batchAuthorization = summary.optBoolean("auth_batch")
         val identity = credentials()?.ownerKey ?: return
         if (owner != null && owner != identity) { close(); return }
         owner = identity
@@ -252,19 +297,18 @@ class ZoChatClient(
         val id = socketId ?: return // A handshake already in flight will subscribe to the latest room.
         unreadChannels?.let { wanted ->
             val current = generation
-            wanted.filter { it !in unreadSent && (it !in unreadSubscribed || (unreadExpiry[it] ?: 0) <= android.os.SystemClock.elapsedRealtime()) }.forEach { target ->
-                unreadSent.add(target)
-                request("unread/auth", JSONObject().put("socket_id", id).put("channel", target)) { auth, _ ->
-                    if (closed || current != generation || target !in unreadChannels.orEmpty()) return@request
+            val targets = wanted.filter { it !in unreadSent && (it !in unreadSubscribed || (unreadExpiry[it] ?: 0) <= android.os.SystemClock.elapsedRealtime()) }
+            fun apply(target: String, auth: JSONObject?) {
+                    if (closed || current != generation || target !in unreadChannels.orEmpty()) return
                     unreadSent.remove(target)
                     if (auth == null || !matchesChannel(auth.optString("channel"), target)) {
                         unreadPhysical.remove(target)?.let { sendEvent("pusher:unsubscribe", JSONObject().put("channel", it)) }
                         unreadSubscribed.remove(target); unreadExpiry[target] = 0; isConnected = false
-                        onChanged("sync", null); return@request
+                        onChanged("sync", null); return
                     }
                     val physical = auth.getString("channel")
                     val old = unreadPhysical.put(target, physical)
-                    unreadExpiry[target] = android.os.SystemClock.elapsedRealtime() + auth.optLong("expires_in", 300).coerceIn(1, 300) * 1000
+                    unreadExpiry[target] = android.os.SystemClock.elapsedRealtime() + auth.optLong("expires_in", 300).coerceIn(1, 300) * 1000 + (if (batchAuthorization || auth.has("control_token")) (0..5_000).random() else 0)
                     if (old != physical || target !in unreadSubscribed) {
                         isConnected = false
                         unreadSubscribed.remove(target)
@@ -272,7 +316,18 @@ class ZoChatClient(
                         if (!sendEvent("pusher:subscribe", JSONObject().put("channel", physical).put("auth", auth.getString("auth")))) reconnect(current)
                         if (old != null && old != physical) sendEvent("pusher:unsubscribe", JSONObject().put("channel", old))
                     }
+
+            }
+            unreadSent.addAll(targets)
+            if (batchAuthorization && targets.isNotEmpty()) {
+                targets.chunked(64).forEach { batch ->
+                    request("unread/auth-batch", JSONObject().put("socket_id", id).put("channels", org.json.JSONArray(batch))) { result, _ ->
+                        val authorizations = result?.optJSONObject("authorizations")
+                        batch.forEach { apply(it, authorizations?.optJSONObject(it)) }
+                    }
                 }
+            } else targets.forEach { target ->
+                request("unread/auth", JSONObject().put("socket_id", id).put("channel", target)) { auth, _ -> apply(target, auth) }
             }
             return
         }
@@ -281,20 +336,39 @@ class ZoChatClient(
         subscriptionPending = true
         val revision = roomRevision
         val current = generation
-        request("rooms/${info.getString("room_id")}/auth", JSONObject().put("socket_id", id)) { auth, _ ->
+        request("rooms/${info.getString("room_id")}/auth", JSONObject().put("socket_id", id).put("protocol", 2).put("messages", onMessage != null && roomVisible != false)) { auth, _ ->
             if (closed || current != generation || revision != roomRevision) return@request
             subscriptionPending = false
             if (auth == null || !matchesChannel(auth.optString("channel"), info.optString("channel"))) {
                 reconnect(current); return@request
             }
+            controlToken = auth.optString("control_token").takeIf { it.isNotBlank() && it != "null" }
+            val nextControl = auth.optString("control_channel").takeIf { it.isNotBlank() && it != "null" }
+            if (nextControl != null) {
+                controlSubscribed = false
+                controlChannel?.takeIf { it != nextControl }?.let { sendEvent("pusher:unsubscribe", JSONObject().put("channel", it)) }
+                controlChannel = nextControl
+                sendEvent("pusher:subscribe", JSONObject().put("channel", nextControl).put("auth", auth.optString("control_auth")))
+            }
+            val nextFeed = auth.optString("feed_channel").takeIf { it.isNotBlank() && it != "null" }
+            if (nextFeed != feedChannel) {
+                clearFeed()
+                feedChannel = nextFeed
+                if (nextFeed != null) sendEvent("pusher:subscribe", JSONObject().put("channel", nextFeed).put("auth", auth.optString("feed_auth")))
+            }
             val old = channel
             channel = auth.getString("channel")
-            subscriptionExpiry = android.os.SystemClock.elapsedRealtime() + auth.optLong("expires_in", 300).coerceIn(1, 300) * 1000
+            subscriptionExpiry = android.os.SystemClock.elapsedRealtime() + auth.optLong("expires_in", 300).coerceIn(1, 300) * 1000 + (if (batchAuthorization || auth.has("control_token")) (0..5_000).random() else 0)
             if (old == channel && isConnected) return@request
             isConnected = false
             if (old != null && old != channel) sendEvent("pusher:unsubscribe", JSONObject().put("channel", old))
             if (!sendEvent("pusher:subscribe", JSONObject().put("channel", channel).put("auth", auth.getString("auth")))) reconnect(current)
         }
+    }
+
+    private fun clearFeed() {
+        feedChannel?.let { sendEvent("pusher:unsubscribe", JSONObject().put("channel", it)) }
+        feedChannel = null; feedSubscribed = false
     }
 
     private fun connect() {
@@ -304,10 +378,10 @@ class ZoChatClient(
         if (!url.startsWith("wss://")) { onConnection(false); return }
         val current = ++generation
         hasSubscribedRoom = false
-        socketId = null; channel = null; socketUrl = url
+        socketId = null; channel = null; controlToken = null; controlChannel = null; controlSubscribed = false; clearFeed(); socketUrl = url
         unreadSent.clear(); unreadSubscribed.clear(); unreadPhysical.clear(); unreadExpiry.clear(); subscriptionPending = false; subscriptionExpiry = 0
         socket?.cancel()
-        socket = http.newWebSocket(Request.Builder().url(url).header("Origin", baseUrl.trimEnd('/')).build(), object : WebSocketListener() {
+        socket = ChatSocketPool.open(http, Request.Builder().url(url).header("Origin", baseUrl.trimEnd('/')).build(), owner.orEmpty(), object : WebSocketListener() {
             override fun onMessage(webSocket: WebSocket, text: String) {
                 main.post {
                     if (closed || current != generation) return@post
@@ -322,6 +396,16 @@ class ZoChatClient(
                                 subscribe()
                             }
                             "pusher_internal:subscription_succeeded" -> {
+                                if (controlChannel != null && event.optString("channel") == controlChannel) {
+                                    controlSubscribed = true
+                                    room?.let { currentRoom -> roomVisible?.let { reportVisibility(currentRoom.getString("room_id"), it) } }
+                                    return@post
+                                }
+                                if (feedChannel != null && event.optString("channel") == feedChannel) {
+                                    feedSubscribed = true
+                                    onChanged("sync", null)
+                                    return@post
+                                }
                                 val target = event.optString("channel")
                                 if (unreadChannels != null) {
                                     val logical = unreadPhysical.entries.firstOrNull { it.value == target }?.key
@@ -344,6 +428,26 @@ class ZoChatClient(
                             }
                             "pusher:ping" -> webSocket.send("{\"event\":\"pusher:pong\",\"data\":{}}")
                             "pusher:error" -> { webSocket.cancel(); reconnect(current) }
+                            "chat:presence_ack" -> {
+                                val ack = event.optJSONObject("data")
+                                if (event.optString("channel") == controlChannel && ack?.optString("visibility_id") == visibilityId) visibilityAcknowledged = maxOf(visibilityAcknowledged, ack.optLong("visibility_sequence"))
+                                Unit
+                            }
+                            "chat.message" -> {
+                                if (feedSubscribed && event.optString("channel") == feedChannel) {
+                                    val data = event.opt("data").let { if (it is JSONObject) it else JSONObject(it?.toString() ?: "{}") }
+                                    val message = data.optJSONObject("message") ?: return@post
+                                    val messageId = message.optString("id")
+                                    val version = data.optLong("event_id")
+                                    if (data.optString("room_id") != room?.optString("room_id") || version <= (liveVersions[messageId] ?: -1)
+                                        || liveKinds[messageId] == "deleted" && !message.optBoolean("deleted")) return@post
+                                    liveVersions[messageId] = version; liveKinds[messageId] = data.optString("kind")
+                                    pendingLive.remove(messageId); liveRecoveryDelay = 2_500
+                                    while (liveVersions.size > 500) { val first = liveVersions.keys.first(); liveVersions.remove(first); liveKinds.remove(first) }
+                                    onMessage?.invoke(message)
+                                }
+                                Unit
+                            }
                             "chat.changed", "chat.badge" -> {
                                 if (unreadChannels != null) {
                                     val target = event.optString("channel")
@@ -360,7 +464,17 @@ class ZoChatClient(
                                 val watch = data.optJSONObject("watch")
                                 if (watch != null) onWatchState?.invoke(watch)
                                 if (watch != null && onWatchState != null && kind in listOf("watch_control", "watch_status")) return@post
-                                onChanged(kind, data.optString("message_id").takeIf { it != "null" && it.isNotEmpty() })
+                                val messageId = data.optString("message_id").takeIf { it != "null" && it.isNotEmpty() }
+                                if (kind == "deleted" && messageId != null) liveKinds[messageId] = "deleted"
+                                if (feedSubscribed && kind == "created" && messageId != null) {
+                                    if (liveKinds[messageId] != kind && liveKinds[messageId] != "deleted") {
+                                        pendingLive[messageId] = kind
+                                        if (pendingLive.size == 1) { main.removeCallbacks(liveRecovery); main.postDelayed(liveRecovery, liveRecoveryDelay) }
+                                        while (pendingLive.size > 500) pendingLive.remove(pendingLive.keys.first())
+                                    }
+                                    return@post
+                                }
+                                onChanged(kind, messageId)
                             }
                             else -> Unit
                         }

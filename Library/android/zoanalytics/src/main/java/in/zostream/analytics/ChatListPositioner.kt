@@ -13,7 +13,7 @@ object ChatListPositioner {
             row.measure(View.MeasureSpec.makeMeasureSpec((list.width - list.paddingLeft - list.paddingRight).coerceAtLeast(1), View.MeasureSpec.EXACTLY),
                 View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
             // setSelectionFromTop already adds the ListView's top padding.
-            val offset = if (alignTop) 0 else list.height - list.paddingBottom - list.paddingTop - row.measuredHeight
+            fun offset(height: Int) = if (alignTop) 0 else list.height - list.paddingBottom - list.paddingTop - height
             val listener = object : ViewTreeObserver.OnPreDrawListener {
                 private var attempts = 0
                 override fun onPreDraw(): Boolean {
@@ -25,10 +25,16 @@ object ChatListPositioner {
                     val placed = child != null && if (alignTop) {
                         child.top >= list.paddingTop - 2 && child.top < list.height - list.paddingBottom
                     } else {
-                        list.lastVisiblePosition == target && child.bottom <= list.height - list.paddingBottom + 2
+                        list.lastVisiblePosition == target && kotlin.math.abs(child.bottom - (list.height - list.paddingBottom)) <= 2
                     }
                     if (!placed && ++attempts < 6) {
-                        list.setSelectionFromTop(target, offset)
+                        // Rich cards and tab/header layout can change height after
+                        // the preview measurement. Use the attached row and current viewport.
+                        if (!alignTop && child != null && list.lastVisiblePosition == target) {
+                            list.scrollListBy(child.bottom - (list.height - list.paddingBottom))
+                        } else {
+                            list.setSelectionFromTop(target, offset(child?.height ?: row.measuredHeight))
+                        }
                         return false
                     }
                     list.viewTreeObserver.removeOnPreDrawListener(this)
@@ -37,7 +43,7 @@ object ChatListPositioner {
                 }
             }
             list.viewTreeObserver.addOnPreDrawListener(listener)
-            list.setSelectionFromTop(target, offset)
+            list.setSelectionFromTop(target, offset(row.measuredHeight))
         }
     }
 }

@@ -138,7 +138,7 @@ class ChatRoomSwitchTest {
         } finally { client.close() }
     }
 
-    private class Socket(private val original: Request, val listener: WebSocketListener) : WebSocket {
+    private class Socket(private val original: Request, val listener: WebSocketListener, private val acknowledgePresence: Boolean = false) : WebSocket {
         val events = mutableListOf<JSONObject>()
         var cancellations = 0
         override fun request() = original
@@ -147,6 +147,9 @@ class ChatRoomSwitchTest {
         override fun send(text: String): Boolean {
             val event = JSONObject(text)
             events.add(event)
+            if (event.optString("event") == "chat:presence" && acknowledgePresence) {
+                listener.onMessage(this, JSONObject().put("event", "chat:presence_ack").put("data", event.getJSONObject("data")).toString())
+            }
             if (event.optString("event") == "pusher:subscribe") {
                 listener.onMessage(this, JSONObject().put("event", "pusher_internal:subscription_succeeded")
                     .put("channel", event.getJSONObject("data").getString("channel")).put("data", JSONObject()).toString())
@@ -163,17 +166,31 @@ class ChatRoomSwitchTest {
 
     private class Http : OkHttpClient() {
         var lease = ""
+        var protocolV2 = false
+        val paths = java.util.concurrent.CopyOnWriteArrayList<String>()
         var expiresIn = 300
         var denyPresence = false
         var establishConnections = true
         private val delegate = Builder().addInterceptor { chain ->
         val request = chain.request()
-        val data = if (request.url.encodedPath.endsWith("/unread/auth")) {
+        paths.add(request.url.encodedPath)
+        val data = if (request.url.encodedPath.endsWith("/unread/auth-batch")) {
+            val buffer = okio.Buffer(); request.body!!.writeTo(buffer)
+            val requested = JSONObject(buffer.readUtf8()).getJSONArray("channels")
+            val results = JSONObject()
+            for (i in 0 until requested.length()) {
+                val target = requested.getString(i)
+                results.put(target, JSONObject().put("auth", "signed").put("channel", target + lease).put("expires_in", expiresIn))
+            }
+            JSONObject().put("authorizations", results)
+        } else if (request.url.encodedPath.endsWith("/unread/auth")) {
             val buffer = okio.Buffer(); request.body!!.writeTo(buffer)
             JSONObject().put("auth", "signed").put("channel", JSONObject(buffer.readUtf8()).getString("channel") + lease).put("expires_in", expiresIn)
         } else if (request.url.encodedPath.endsWith("/auth")) {
             val id = request.url.pathSegments[4]
-            JSONObject().put("auth", "signed").put("channel", "private-chat.$id$lease").put("expires_in", expiresIn)
+            JSONObject().put("auth", "signed").put("channel", "private-chat.$id$lease").put("expires_in", expiresIn).apply {
+                if (protocolV2) put("control_token", "ticket").put("feed_channel", "private-chat-feed.$id.ticket$lease").put("feed_auth", "signed")
+            }
         } else {
             val buffer = okio.Buffer(); request.body!!.writeTo(buffer)
             val body = JSONObject(buffer.readUtf8())
@@ -187,10 +204,86 @@ class ChatRoomSwitchTest {
         override fun newCall(request: Request): Call = delegate.newCall(request)
         val sockets = mutableListOf<Socket>()
         override fun newWebSocket(request: Request, listener: WebSocketListener): WebSocket {
-            val socket = Socket(request, listener); sockets.add(socket)
+            val socket = Socket(request, listener, protocolV2); sockets.add(socket)
             if (establishConnections) listener.onMessage(socket, """{"event":"pusher:connection_established","data":{"socket_id":"1.2"}}""")
             return socket
         }
+    }
+
+    @Test fun badgeAndTranscriptShareOneSocketAndClosingOneKeepsTheOtherSubscribed() {
+        val http = Http()
+        var badges = 0
+        val badge = ZoChatClient("https://example.test", { AnalyticsCredentials("token", "device", "owner") }, "test",
+            onChanged = { _, _ -> }, onConnection = {}, http = http)
+        val chat = ZoChatClient("https://example.test", { AnalyticsCredentials("token", "device", "owner") }, "test",
+            onChanged = { _, _ -> }, onConnection = {}, http = http)
+        val other = ZoChatClient("https://example.test", { AnalyticsCredentials("other", "device", "another-owner") }, "test",
+            onChanged = { _, _ -> }, onConnection = {}, http = http)
+        try {
+            badge.onBadgeEvent = { badges++ }
+            badge.configureUnread(JSONObject().put("websocket_url", "wss://example.test/app/key").put("channels", org.json.JSONArray(listOf("private-chat.global"))))
+            await { badge.isConnected }
+            chat.join("global", null) { _, error -> assertNull(error) }
+            await { chat.isConnected }
+            assertEquals(1, http.sockets.size)
+            val socket = http.sockets.single()
+            assertEquals(1, socket.events.count { it.optString("event") == "pusher:subscribe" })
+            chat.close()
+            assertEquals(0, socket.cancellations)
+            socket.listener.onMessage(socket, JSONObject().put("event", "chat.changed").put("channel", "private-chat.global")
+                .put("data", JSONObject().put("badge", JSONObject().put("kind", "created"))).toString())
+            await { badges == 1 }
+            other.join("global", null) { _, error -> assertNull(error) }
+            await { other.isConnected }
+            assertEquals(2, http.sockets.size)
+            badge.close(); assertEquals(1, socket.cancellations)
+        } finally { badge.close(); chat.close(); other.close() }
+    }
+
+    @Test fun socketPresenceAndDirectMessagesAvoidSteadyHttpAndKeepMissedEventRecovery() {
+        val http = Http().apply { protocolV2 = true }
+        val changes = mutableListOf<String>(); val received = mutableListOf<JSONObject>()
+        val client = ZoChatClient("https://example.test", { AnalyticsCredentials("token", "device", "owner") }, "test",
+            onChanged = { kind, _ -> changes.add(kind) }, onConnection = {}, http = http)
+        try {
+            client.onMessage = { received.add(it) }
+            client.setRoomVisible(true)
+            client.join("global", null) { _, error -> assertNull(error) }
+            await { client.isConnected && changes.count { it == "sync" } >= 2 }
+            val initial = http.paths.count { it.endsWith("/heartbeat") }
+            val socket = http.sockets.single()
+            client.setRoomVisible(true)
+            shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(33))
+            assertEquals(initial, http.paths.count { it.endsWith("/heartbeat") })
+            assertTrue(socket.events.any { it.optString("event") == "chat:presence" })
+            changes.clear()
+            socket.emit("private-chat.global")
+            val message = JSONObject().put("id", "9").put("room_id", "global").put("body", "Live")
+            fun publish(version: String) = socket.listener.onMessage(socket, JSONObject().put("event", "chat.message")
+                .put("channel", "private-chat-feed.global.ticket").put("data", JSONObject().put("room_id", "global")
+                    .put("event_id", version).put("kind", "created").put("message", message)).toString())
+            publish("20"); publish("20"); publish("19")
+            shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(3))
+            assertEquals(1, received.size)
+            assertFalse(changes.contains("created"))
+            socket.listener.onMessage(socket, JSONObject().put("event", "chat.changed").put("channel", "private-chat.global")
+                .put("data", JSONObject().put("kind", "created").put("message_id", "10")).toString())
+            shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(3))
+            assertTrue(changes.contains("created"))
+        } finally { client.close() }
+    }
+
+    @Test fun badgeChannelsUseOneAuthorizationBatchWhenTheServerAdvertisesSupport() {
+        val http = Http()
+        val client = ZoChatClient("https://example.test", { AnalyticsCredentials("token", "device", "owner") }, "test",
+            onChanged = { _, _ -> }, onConnection = {}, http = http)
+        try {
+            client.configureUnread(JSONObject().put("auth_batch", true).put("websocket_url", "wss://example.test/app/key")
+                .put("channels", org.json.JSONArray(listOf("private-chat.global", "private-chat.movie", "private-chat.user"))))
+            await { client.isConnected }
+            assertEquals(1, http.paths.count { it.endsWith("/unread/auth-batch") })
+            assertEquals(0, http.paths.count { it.endsWith("/unread/auth") })
+        } finally { client.close() }
     }
 
     @Test fun reconnectingTranscriptRecoversWithoutReopeningAndStopsPollingWhenLive() {
@@ -206,6 +299,8 @@ class ChatRoomSwitchTest {
             shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(5))
             assertEquals(1, changes.count { it == "poll" })
             shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(5))
+            assertEquals(1, changes.count { it == "poll" })
+            shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(7))
             assertEquals(2, changes.count { it == "poll" })
             val socket = http.sockets.single()
             socket.listener.onMessage(socket, """{"event":"pusher:connection_established","data":{"socket_id":"1.2"}}""")
@@ -396,7 +491,7 @@ class ChatRoomSwitchTest {
         } finally { client.close() }
     }
 
-    @Test fun healthySocketKeepsMaintenanceSeparateFromFiveMinuteHistoryIntegrity() {
+    @Test fun healthySocketSkipsIdleMaintenanceAndKeepsFiveMinuteIntegrity() {
         val http = Http()
         val changes = mutableListOf<String>()
         val client = ZoChatClient("https://example.test", { AnalyticsCredentials("token", "device", "owner") }, "test",
@@ -412,7 +507,7 @@ class ChatRoomSwitchTest {
                 if (index < 9) assertFalse(changes.contains("reconcile"))
             }
             assertEquals(1, changes.count { it == "reconcile" })
-            assertEquals(9, changes.count { it == "maintenance" })
+            assertEquals(0, changes.count { it == "maintenance" })
             assertEquals(1, http.sockets.size)
         } finally { client.close() }
     }

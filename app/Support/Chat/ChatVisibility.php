@@ -12,21 +12,25 @@ final class ChatVisibility
         return 'chat:visible:'.$room.':'.hash('sha256', $user);
     }
 
-    public function update(Request $request, int $room, bool $visible): void
+    public function update(Request $request, int $room, bool $visible, bool $nonBlocking = false): bool
     {
         $key = $this->key($room, (string) $request->input('auth_user_id'));
         $device = hash('sha256', $request->input('auth_device_id').':'.$request->input('visibility_id', 'legacy'));
         $sequence = (int) $request->input('visibility_sequence');
         try {
-            $cache = Cache::store(config('chat.cache_store'));
-            $cache->lock($key.':lock', 3)->block(1, function () use ($cache, $key, $device, $visible, $sequence): void {
+            $cache = Cache::store($nonBlocking ? ChatLiveChannels::store() : config('chat.cache_store'));
+            $apply = function () use ($cache, $key, $device, $visible, $sequence): bool {
                 $devices = array_filter($cache->get($key, []), fn ($state) => $state['expires'] > now()->timestamp);
-                if (($devices[$device]['sequence'] ?? 0) >= $sequence) { return; }
+                if (($devices[$device]['sequence'] ?? 0) >= $sequence) { return false; }
                 $devices[$device] = ['expires' => now()->addSeconds(90)->timestamp, 'visible' => $visible, 'sequence' => $sequence];
                 $cache->put($key, $devices, 90);
-            });
+                return true;
+            };
+            $lock = $cache->lock($key.':lock', 3);
+            return $nonBlocking ? (bool) $lock->get($apply) : $lock->block(1, $apply);
         } catch (\Throwable) {
             // Presence is best effort; a cache outage must not hide messages.
+            return false;
         }
     }
 

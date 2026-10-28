@@ -29,6 +29,7 @@ public struct ChatMessage: Decodable, Identifiable, Sendable {
 public struct ChatPage: Decodable, Sendable {
     public let messages: [ChatMessage]
     public let has_more: Bool
+    public init(messages: [ChatMessage], has_more: Bool) { self.messages = messages; self.has_more = has_more }
 }
 public struct ChatRoom: Decodable, Sendable {
     public let room_id: String
@@ -57,7 +58,8 @@ public final class ZoChatClient {
     private let refreshCredentials: ((String) async throws -> Void)?
     private let version: String
     private let session: URLSession
-    private var socket: URLSessionWebSocketTask?
+    private let socketPoolNamespace: String
+    private var socket: ChatSocketLease?
     private var receiveTask: Task<Void, Never>?
     private var retryTask: Task<Void, Never>?
     private var syncTask: Task<Void, Never>?
@@ -77,7 +79,21 @@ public final class ZoChatClient {
     private var hasSubscribedRoom = false
     public private(set) var isConnected = false
     public var onBadgeEvent: (([String: Any]) -> Void)?
+    public var onMessage: ((ChatMessage) -> Void)?
+    private var controlToken: String?
+    private var controlChannel: String?
+    private var controlSubscribed = false
+    private var feedChannel: String?
+    private var feedSubscribed = false
+    private var visibilityAcknowledged: Int64 = 0
+    private var recoveryDelay: Double = 5
+    private var liveVersions: [String: UInt64] = [:]
+    private var liveKinds: [String: String] = [:]
+    private var pendingLive: [String: String] = [:]
+    private var liveRecoveryTask: Task<Void, Never>?
+    private var liveRecoveryDelay: Double = 2.5
     private var unreadChannels: Set<String>?
+    private var batchAuthorization = false
     private var unreadSubscribed: Set<String> = []
     private var unreadPhysical: [String: String] = [:]
     private var unreadExpiry: [String: TimeInterval] = [:]
@@ -107,6 +123,7 @@ public final class ZoChatClient {
         config.timeoutIntervalForRequest = 15
         config.timeoutIntervalForResource = 20
         self.session = session ?? URLSession(configuration: config)
+        socketPoolNamespace = session.map { "injected-\(ObjectIdentifier($0))" } ?? "default"
     }
 
     public func request<T: Decodable>(_ path: String, body: [String: Any]? = nil, as type: T.Type, retryUnauthorized: Bool = true) async throws -> T {
@@ -164,6 +181,21 @@ public final class ZoChatClient {
 
     // This final visibility request must survive closing the chat transport.
     private func reportVisibility(_ id: String, visible: Bool) {
+        let body = visibilityBody(visible)
+        if isConnected, controlSubscribed, controlToken != nil, let channel = controlChannel, let socket {
+            let frame: [String: Any] = ["event": "chat:presence", "channel": channel, "data": body]
+            let sequence = body["visibility_sequence"] as? Int64 ?? 0
+            Task { [weak self] in
+                do {
+                    let raw = try JSONSerialization.data(withJSONObject: frame)
+                    try await socket.send(.string(String(decoding: raw, as: UTF8.self)))
+                    try await Task.sleep(nanoseconds: 2_500_000_000)
+                    if let self, self.visibilityAcknowledged < sequence { self.reportVisibilityHTTP(id, body: body) }
+                } catch { self?.reportVisibilityHTTP(id, body: body) }
+            }
+        } else { reportVisibilityHTTP(id, body: body) }
+    }
+    private func reportVisibilityHTTP(_ id: String, body: [String: Any]) {
         guard let c = credentials(), owner == nil || owner == c.ownerKey,
               let url = URL(string: baseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/api/v4/chat/rooms/\(id)/heartbeat") else { return }
         var request = URLRequest(url: url, timeoutInterval: 5)
@@ -175,12 +207,14 @@ public final class ZoChatClient {
         request.setValue(playbackToken(), forHTTPHeaderField: "X-Playback-Token")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.httpBody = try? JSONSerialization.data(withJSONObject: visibilityBody(visible))
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
         URLSession.shared.dataTask(with: request).resume()
     }
 
     public func setRoomVisible(_ visible: Bool) {
         roomVisible = visible
+        if !visible { clearFeed() }
+        else if onMessage != nil, feedChannel == nil, isConnected { subscribe() }
         if let room, unreadChannels == nil { reportVisibility(room.room_id, visible: visible) }
     }
 
@@ -192,6 +226,7 @@ public final class ZoChatClient {
         owner = identity
         if let room, roomVisible != nil { reportVisibility(room.room_id, visible: false) }
         roomRevision += 1; let revision = roomRevision
+        clearFeed(); controlToken = nil; controlChannel = nil; liveVersions.removeAll(); liveKinds.removeAll(); pendingLive.removeAll()
         subscriptionTask?.cancel()
         let previousChannel = channel
         isConnected = false
@@ -218,7 +253,8 @@ public final class ZoChatClient {
         return info
     }
 
-    public func configureUnread(channels: [String], websocketURL: String) {
+    public func configureUnread(channels: [String], websocketURL: String, batchAuthorization: Bool = false) {
+        self.batchAuthorization = batchAuthorization
         guard !closed, let identity = credentials()?.ownerKey, owner == nil || owner == identity else { return }
         owner = identity
         let wanted = Set(channels)
@@ -240,10 +276,14 @@ public final class ZoChatClient {
         if unreadChannels == nil {
             recoveryTask = Task { [weak self] in
                 while !Task.isCancelled {
-                    do { try await Task.sleep(nanoseconds: 5_000_000_000) } catch { return }
+                    let delay = self?.recoveryDelay ?? 5
+                    let jitter = delay > 5 ? Double.random(in: 0...(delay / 5)) : 0
+                    do { try await Task.sleep(nanoseconds: UInt64((delay + jitter) * 1_000_000_000)) } catch { return }
                     guard let self, !self.closed else { return }
                     if self.credentials()?.ownerKey != self.owner { self.close(); return }
-                    if self.room != nil && !self.isConnected { self.onChanged?("poll", nil) }
+                    if self.room != nil && self.roomVisible != false && !self.isConnected {
+                        self.onChanged?("poll", nil); self.recoveryDelay = min(60, self.recoveryDelay * 2)
+                    } else { self.recoveryDelay = 5 }
                 }
             }
         }
@@ -256,11 +296,14 @@ public final class ZoChatClient {
                 self.socket?.sendPing { [weak self] error in
                     if error != nil { Task { @MainActor in self?.reconnect(socketGeneration) } }
                 }
-                if let room = self.room, self.unreadChannels == nil {
+                if let room = self.room, self.unreadChannels == nil, self.roomVisible != false {
                     struct Presence: Decodable { let online_count: Int }
                     let revision = self.roomRevision
                     do {
-                        let _: Presence = try await self.request("rooms/\(room.room_id)/heartbeat", body: self.roomVisible.map { self.visibilityBody($0) } ?? [:], as: Presence.self)
+                        if self.controlToken != nil && self.isConnected { self.reportVisibility(room.room_id, visible: self.roomVisible ?? false) }
+                        else {
+                            let _: Presence = try await self.request("rooms/\(room.room_id)/heartbeat", body: self.roomVisible.map { self.visibilityBody($0) } ?? [:], as: Presence.self)
+                        }
                     } catch let error as ChatFailure where [403, 404, 410].contains(error.statusCode ?? 0) {
                         if revision == self.roomRevision { await self.revokeRoom() }
                     } catch { /* Reconcile and retry transient failures. */ }
@@ -272,10 +315,8 @@ public final class ZoChatClient {
                 }
                 if self.room != nil && self.unreadChannels == nil && self.isConnected && now - self.lastTranscriptReconcile >= 300 {
                     self.lastTranscriptReconcile = now; self.onChanged?("reconcile", nil)
-                } else if self.room != nil && self.unreadChannels == nil && self.isConnected {
-                    self.onChanged?("maintenance", nil)
                 }
-                if !self.isConnected && now - self.lastFallbackSync >= 60 {
+                if self.unreadChannels != nil && !self.isConnected && now - self.lastFallbackSync >= 60 {
                     self.lastFallbackSync = now; self.onChanged?("sync", nil)
                 }
             }
@@ -296,13 +337,26 @@ public final class ZoChatClient {
             subscriptionTask = Task { [weak self] in
                 guard let self else { return }
                 do {
-                    struct Auth: Decodable { let auth: String; let channel: String; let expires_in: Int? }
-                    for target in targets where !self.unreadSubscribed.contains(target) || (self.unreadExpiry[target] ?? 0) <= ProcessInfo.processInfo.systemUptime {
-                        let auth = try await self.request("unread/auth", body: ["socket_id": socketId, "channel": target], as: Auth.self)
+                    struct Auth: Decodable { let auth: String; let channel: String; let expires_in: Int?; let control_token: String?; let control_channel: String?; let control_auth: String?; let feed_channel: String?; let feed_auth: String? }
+                    let due = targets.filter { !self.unreadSubscribed.contains($0) || (self.unreadExpiry[$0] ?? 0) <= ProcessInfo.processInfo.systemUptime }
+                    struct Batch: Decodable { let authorizations: [String: Auth] }
+                    var batch: [String: Auth] = [:]
+                    if self.batchAuthorization && !due.isEmpty {
+                        let requested = Array(due)
+                        for start in stride(from: 0, to: requested.count, by: 64) {
+                            let channels = Array(requested[start..<min(start + 64, requested.count)])
+                            let result = try await self.request("unread/auth-batch", body: ["socket_id": socketId, "channels": channels], as: Batch.self)
+                            batch.merge(result.authorizations) { _, new in new }
+                        }
+                    }
+                    for target in due {
+                        let auth: Auth
+                        if let cached = batch[target] { auth = cached }
+                        else { auth = try await self.request("unread/auth", body: ["socket_id": socketId, "channel": target], as: Auth.self) }
                         guard !self.closed, current == self.generation, self.unreadChannels?.contains(target) == true, !Task.isCancelled else { return }
                         guard self.matchesChannel(auth.channel, target) else { throw ChatFailure(message: "Badge channel mismatch") }
                         let old = self.unreadPhysical.updateValue(auth.channel, forKey: target)
-                        self.unreadExpiry[target] = ProcessInfo.processInfo.systemUptime + Double(min(300, max(1, auth.expires_in ?? 300)))
+                        self.unreadExpiry[target] = ProcessInfo.processInfo.systemUptime + Double(min(300, max(1, auth.expires_in ?? 300))) + ((self.batchAuthorization || auth.control_token != nil) ? Double.random(in: 0...5) : 0)
                         if old != auth.channel || !self.unreadSubscribed.contains(target) {
                             self.isConnected = false
                             self.unreadSubscribed.remove(target)
@@ -317,13 +371,26 @@ public final class ZoChatClient {
         subscriptionTask = Task { [weak self] in
             guard let self else { return }
             do {
-                struct Auth: Decodable { let auth: String; let channel: String; let expires_in: Int? }
-                let auth = try await self.request("rooms/\(room.room_id)/auth", body: ["socket_id": socketId], as: Auth.self)
+                struct Auth: Decodable { let auth: String; let channel: String; let expires_in: Int?; let control_token: String?; let control_channel: String?; let control_auth: String?; let feed_channel: String?; let feed_auth: String? }
+                let auth = try await self.request("rooms/\(room.room_id)/auth", body: ["socket_id": socketId, "protocol": 2, "messages": self.onMessage != nil && self.roomVisible != false], as: Auth.self)
                 guard !self.closed, current == self.generation, revision == self.roomRevision, !Task.isCancelled else { return }
                 guard self.matchesChannel(auth.channel, room.channel) else { throw ChatFailure(message: "Chat channel mismatch") }
+                self.controlToken = auth.control_token
+                if let next = auth.control_channel, let signature = auth.control_auth {
+                    if let old = self.controlChannel, old != next { try? await self.sendEvent("pusher:unsubscribe", data: ["channel": old]) }
+                    self.controlChannel = next
+                    self.controlSubscribed = false
+                    try await self.sendEvent("pusher:subscribe", data: ["channel": next, "auth": signature])
+                }
+                if self.feedChannel != auth.feed_channel {
+                    self.clearFeed(); self.feedChannel = auth.feed_channel
+                    if let feed = auth.feed_channel, let signature = auth.feed_auth {
+                        try await self.sendEvent("pusher:subscribe", data: ["channel": feed, "auth": signature])
+                    }
+                }
                 let old = self.channel
                 self.channel = auth.channel
-                self.subscriptionExpiry = ProcessInfo.processInfo.systemUptime + Double(min(300, max(1, auth.expires_in ?? 300)))
+                self.subscriptionExpiry = ProcessInfo.processInfo.systemUptime + Double(min(300, max(1, auth.expires_in ?? 300))) + ((self.batchAuthorization || auth.control_token != nil) ? Double.random(in: 0...5) : 0)
                 if old == auth.channel && self.isConnected { return }
                 self.isConnected = false
                 if let old, old != auth.channel { try? await self.sendEvent("pusher:unsubscribe", data: ["channel": old]) }
@@ -342,17 +409,40 @@ public final class ZoChatClient {
         return try await request("rooms/\(roomId)/messages\(query)", as: ChatPage.self)
     }
 
+    private func clearFeed() {
+        if let feedChannel { Task { try? await self.sendEvent("pusher:unsubscribe", data: ["channel": feedChannel]) } }
+        feedChannel = nil; feedSubscribed = false
+    }
+
+    private func recoverLiveMessage(_ id: String, kind: String) {
+        if liveKinds[id] == kind || liveKinds[id] == "deleted" { return }
+        pendingLive[id] = kind
+        while pendingLive.count > 500, let first = pendingLive.keys.first { pendingLive.removeValue(forKey: first) }
+        guard liveRecoveryTask == nil else { return }
+        let revision = roomRevision
+        let delay = liveRecoveryDelay
+        liveRecoveryTask = Task { [weak self] in
+            do { try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000)) } catch { return }
+            guard let self else { return }
+            self.liveRecoveryTask = nil
+            guard self.roomRevision == revision, !self.closed, self.roomVisible != false, !self.pendingLive.isEmpty else { return }
+            let deleted = self.pendingLive.values.contains("deleted")
+            self.pendingLive.removeAll(); self.liveRecoveryDelay = min(30, self.liveRecoveryDelay * 2)
+            self.onChanged?(deleted ? "reconcile" : "created", nil)
+        }
+    }
+
     private func connect() {
         guard !closed, let room, let url = URL(string: room.websocket_url), url.scheme == "wss" else { onConnection?(false); return }
         generation += 1; let current = generation
         hasSubscribedRoom = false
         retryTask?.cancel(); subscriptionTask?.cancel()
-        socketId = nil; channel = nil; socketURL = room.websocket_url
+        socketId = nil; channel = nil; controlToken = nil; controlChannel = nil; controlSubscribed = false; clearFeed(); socketURL = room.websocket_url
         unreadSubscribed.removeAll(); unreadPhysical.removeAll(); unreadExpiry.removeAll(); subscriptionExpiry = 0
         socket?.cancel(with: .goingAway, reason: nil); receiveTask?.cancel()
         var request = URLRequest(url: url)
         request.setValue(baseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/")), forHTTPHeaderField: "Origin")
-        let ws = session.webSocketTask(with: request); socket = ws; ws.resume()
+        let ws = ChatSocketPool.open(request: request, owner: owner ?? "", namespace: socketPoolNamespace, configuration: session.configuration); socket = ws; ws.resume()
         receiveTask = Task { [weak self] in
             do {
                 while !Task.isCancelled {
@@ -371,6 +461,14 @@ public final class ZoChatClient {
                         self.socketId = socketId
                         self.subscribe()
                     case "pusher_internal:subscription_succeeded":
+                        if let control = self.controlChannel, event["channel"] as? String == control {
+                            self.controlSubscribed = true
+                            if let room = self.room, let visible = self.roomVisible { self.reportVisibility(room.room_id, visible: visible) }
+                            continue
+                        }
+                        if let feed = self.feedChannel, event["channel"] as? String == feed {
+                            self.feedSubscribed = true; self.onChanged?("sync", nil); continue
+                        }
                         if let targets = self.unreadChannels {
                             guard let physical = event["channel"] as? String,
                                   let target = self.unreadPhysical.first(where: { $0.value == physical })?.key,
@@ -387,6 +485,27 @@ public final class ZoChatClient {
                         self.retry = 0; self.isConnected = true; self.onConnection?(true)
                         self.onChanged?(recovery ? "sync" : "subscribed", nil)
                     case "pusher:ping": try await ws.send(.string("{\"event\":\"pusher:pong\",\"data\":{}}"))
+                    case "chat:presence_ack":
+                        if event["channel"] as? String == self.controlChannel,
+                           payload["visibility_id"] as? String == self.visibilityID,
+                           let sequence = payload["visibility_sequence"] as? NSNumber {
+                            self.visibilityAcknowledged = max(self.visibilityAcknowledged, sequence.int64Value)
+                        }
+                    case "chat.message":
+                        guard self.feedSubscribed, event["channel"] as? String == self.feedChannel,
+                              payload["room_id"] as? String == self.room?.room_id,
+                              let raw = payload["message"] as? [String: Any],
+                              let version = (payload["event_id"] as? String).flatMap(UInt64.init),
+                              let data = try? JSONSerialization.data(withJSONObject: raw),
+                              let message = try? JSONDecoder().decode(ChatMessage.self, from: data),
+                              version > (self.liveVersions[message.id] ?? 0),
+                              self.liveKinds[message.id] != "deleted" || message.deleted else { continue }
+                        self.liveVersions[message.id] = version; self.liveKinds[message.id] = payload["kind"] as? String
+                        self.pendingLive.removeValue(forKey: message.id); self.liveRecoveryDelay = 2.5
+                        while self.liveVersions.count > 500, let first = self.liveVersions.keys.first {
+                            self.liveVersions.removeValue(forKey: first); self.liveKinds.removeValue(forKey: first)
+                        }
+                        self.onMessage?(message)
                     case "chat.changed", "chat.badge":
                         if let targets = self.unreadChannels {
                             guard let physical = event["channel"] as? String,
@@ -401,6 +520,10 @@ public final class ZoChatClient {
                         if let watch = payload["watch"] as? [String: Any] {
                             self.onWatchState?(watch)
                             if self.onWatchState != nil && ["watch_control", "watch_status"].contains(kind) { continue }
+                        }
+                        if kind == "deleted", let id = payload["message_id"] as? String { self.liveKinds[id] = "deleted" }
+                        if self.feedSubscribed, kind == "created", let id = payload["message_id"] as? String {
+                            self.recoverLiveMessage(id, kind: kind); continue
                         }
                         self.onChanged?(kind, payload["message_id"] as? String)
                     case "pusher:error": throw ChatFailure(message: "Chat connection failed")
@@ -438,7 +561,7 @@ public final class ZoChatClient {
         isConnected = false
         closed = true; generation += 1; roomRevision += 1
         subscriptionTask?.cancel(); channel = nil; socketId = nil; room = nil
-        receiveTask?.cancel(); retryTask?.cancel(); syncTask?.cancel(); recoveryTask?.cancel()
+        receiveTask?.cancel(); retryTask?.cancel(); syncTask?.cancel(); recoveryTask?.cancel(); liveRecoveryTask?.cancel(); liveRecoveryTask = nil
         socket?.cancel(with: .goingAway, reason: nil); socket = nil
         session.invalidateAndCancel()
         onChanged = nil; onConnection = nil

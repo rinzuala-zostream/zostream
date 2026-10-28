@@ -43,15 +43,15 @@ class ChatListPositionerTest {
         })
         try { layout(list); test(list) } finally { controller.pause().stop().destroy() }
     }
-    private fun layout(list: ListView) {
+    private fun layout(list: ListView, height: Int = 240) {
         list.measure(View.MeasureSpec.makeMeasureSpec(320, View.MeasureSpec.EXACTLY),
-            View.MeasureSpec.makeMeasureSpec(240, View.MeasureSpec.EXACTLY))
-        list.layout(0, 0, 320, 240)
+            View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY))
+        list.layout(0, 0, 320, height)
     }
-    private fun settle(list: ListView) {
+    private fun settle(list: ListView, height: Int = 240) {
         repeat(10) {
             shadowOf(Looper.getMainLooper()).idle()
-            layout(list)
+            layout(list, height)
             list.viewTreeObserver.dispatchOnPreDraw()
         }
     }
@@ -82,5 +82,23 @@ class ChatListPositionerTest {
         settle(list)
         assertFalse(callback)
         assertEquals(before, list.firstVisiblePosition)
+    }
+
+    @Test fun tallCardUsesTheCurrentViewportWhenHeightChangesBeforeFirstDraw() = withList { list ->
+        var positioned = false
+        list.viewTreeObserver.addOnPreDrawListener(object : android.view.ViewTreeObserver.OnPreDrawListener {
+            override fun onPreDraw(): Boolean {
+                list.viewTreeObserver.removeOnPreDrawListener(this)
+                list.layoutParams = list.layoutParams.apply { height = 180 }
+                layout(list, 180)
+                return false
+            }
+        })
+        ChatListPositioner.position(list, 99, false, { true }) { positioned = it }
+        settle(list, 180)
+        assertTrue(positioned)
+        assertEquals(99, list.lastVisiblePosition)
+        val bottom = list.getChildAt(list.childCount - 1).bottom
+        assertTrue(kotlin.math.abs(bottom - (list.height - list.paddingBottom)) <= 2)
     }
 }

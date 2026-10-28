@@ -216,6 +216,155 @@ class ChatApiTest extends TestCase
         $this->assertFalse($visible->visible((int) $room, 'bob'));
     }
 
+    private function socketSession(string $user, string $device = 'device-a'): int
+    {
+        if (! Schema::hasTable('session_tokens')) {
+            Schema::create('session_tokens', function (Blueprint $table) {
+                $table->id(); $table->string('user_id'); $table->string('device_id');
+                $table->string('access_token'); $table->timestamp('access_expires_at');
+            });
+        }
+        return DB::table('session_tokens')->insertGetId(['user_id' => $user, 'device_id' => $device,
+            'access_token' => 'stored-'.$user, 'access_expires_at' => now()->addHour()]);
+    }
+
+    private function socketAuth(string $room, string $user, int $session, string $socket = '1.2'): array
+    {
+        $request = new \Illuminate\Http\Request(['auth_user_id' => $user, 'auth_device_id' => 'device-a',
+            'socket_id' => $socket, 'protocol' => 2, 'messages' => true]);
+        $request->attributes->set('auth_session_token_id', $session);
+        return app(\App\Http\Controllers\Api\V4\ChatController::class)->auth($request, (int) $room)->getData(true)['data'];
+    }
+
+    public function test_socket_feed_is_private_and_rechecks_revocation_bans_blocks_and_membership(): void
+    {
+        $room = $this->createPrivateRoom();
+        DB::table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
+        $session = $this->socketSession('bob');
+        $auth = $this->socketAuth($room, 'bob', $session);
+        $this->assertArrayHasKey('control_token', $auth);
+        $this->assertStringStartsWith('private-chat-feed.', $auth['feed_channel']);
+        $this->send($room)->assertCreated();
+        $row = DB::table('chat_outbox')->where('kind', 'feed_created')->first();
+        $deliver = fn () => app(\App\Support\Chat\ChatLiveDelivery::class)->deliver($row, fn () => null);
+        Http::fake(); $deliver();
+        Http::assertSent(function ($request) use ($auth) {
+            $body = json_decode($request->body(), true);
+            return $body['name'] === 'chat.message' && $body['channels'] === [$auth['feed_channel']]
+                && json_decode($body['data'], true)['message']['body'] === 'Hello';
+        });
+        foreach (['revoked', 'banned', 'blocked', 'removed', 'closed'] as $state) {
+            Http::fake();
+            if ($state === 'revoked') DB::table('session_tokens')->where('id', $session)->update(['access_token' => 'rotated']);
+            if ($state === 'banned') DB::table('chat_bans')->insert(['room_id' => $room, 'user_id' => 'bob', 'kind' => 'ban']);
+            if ($state === 'blocked') DB::table('chat_blocks')->insert(['user_id' => 'bob', 'blocked_user_id' => 'alice']);
+            if ($state === 'removed') DB::table('chat_room_invites')->where('room_id', $room)->update(['status' => 'declined']);
+            if ($state === 'closed') DB::table('chat_rooms')->where('id', $room)->update(['closed' => true]);
+            $deliver(); Http::assertNothingSent();
+            DB::table('session_tokens')->where('id', $session)->update(['access_token' => 'stored-bob']);
+            DB::table('chat_bans')->delete(); DB::table('chat_blocks')->delete();
+            DB::table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
+        }
+    }
+
+    public function test_socket_presence_is_bound_to_authenticated_socket_and_performs_no_sql(): void
+    {
+        $room = $this->createPrivateRoom();
+        DB::table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
+        $auth = $this->socketAuth($room, 'bob', $this->socketSession('bob'));
+        $application = new \Laravel\Reverb\Application('chat', 'key', 'secret', 60, 30, [], 2048);
+        $connection = new class($application) extends \Laravel\Reverb\Contracts\Connection {
+            public array $sent = [];
+            public string $socket = '1.2';
+            public function __construct(private \Laravel\Reverb\Application $testApp) {}
+            public function identifier(): string { return $this->socket; }
+            public function id(): string { return $this->socket; }
+            public function app(): \Laravel\Reverb\Application { return $this->testApp; }
+            public function send(string $message): void { $this->sent[] = $message; }
+            public function control(string $type = "ping"): void {}
+            public function terminate(): void {}
+        };
+        $manager = \Mockery::mock(\Laravel\Reverb\Protocols\Pusher\Contracts\ChannelManager::class);
+        $manager->shouldReceive('for')->with($application)->andReturnSelf();
+        $channel = \Mockery::mock(\Laravel\Reverb\Protocols\Pusher\Channels\Channel::class);
+        $channel->shouldReceive('find')->with($connection)->andReturn(new \Laravel\Reverb\Protocols\Pusher\Channels\ChannelConnection($connection));
+        $manager->shouldReceive('find')->with($auth['control_channel'])->andReturn($channel);
+        $this->app->instance(\Laravel\Reverb\Protocols\Pusher\Contracts\ChannelManager::class, $manager);
+        $data = ['visible' => true, 'visibility_sequence' => 1,
+            'visibility_id' => (string) Str::uuid(), 'auth_user_id' => 'mallory'];
+        DB::connection()->enableQueryLog(); DB::connection()->flushQueryLog();
+        app(\App\Support\Chat\ChatSocketPresence::class)->handle(new \Laravel\Reverb\Events\MessageReceived($connection,
+            json_encode(['event' => 'chat:presence', 'channel' => $auth['control_channel'], 'data' => $data])));
+        $this->assertCount(0, DB::connection()->getQueryLog());
+        DB::connection()->disableQueryLog();
+        $visible = app(\App\Support\Chat\ChatVisibility::class);
+        $this->assertTrue($visible->visible((int) $room, 'bob'));
+        $this->assertFalse($visible->visible((int) $room, 'mallory'));
+        $this->assertCount(1, $connection->sent);
+        $connection->socket = '9.9';
+        app(\App\Support\Chat\ChatSocketPresence::class)->handle(new \Laravel\Reverb\Events\MessageReceived($connection,
+            json_encode(['event' => 'chat:presence', 'channel' => $auth['control_channel'], 'data' => $data])));
+        $this->assertCount(1, $connection->sent);
+
+    }
+
+    public function test_five_thousand_live_readers_use_batched_sql_and_bounded_publish_requests(): void
+    {
+        $room = $this->room();
+        $this->socketSession('reader-0');
+        $live = app(\App\Support\Chat\ChatLiveChannels::class);
+        for ($i = 0; $i < 5000; $i++) {
+            $session = $i === 0 ? 1 : $this->socketSession('reader-'.$i);
+            $request = new \Illuminate\Http\Request(['messages' => true]);
+            $request->attributes->set('auth_session_token_id', $session);
+            $live->issue($request, (int) $room, '1.'.$i, \App\Support\Chat\ChatChannels::authorization('1.'.$i, 'private-chat.'.$room));
+        }
+        $this->send($room)->assertCreated();
+        $row = DB::table('chat_outbox')->where('kind', 'feed_created')->first();
+        Http::fake();
+        DB::connection()->enableQueryLog(); DB::connection()->flushQueryLog();
+        app(\App\Support\Chat\ChatLiveDelivery::class)->deliver($row, fn () => null);
+        $queries = count(DB::connection()->getQueryLog());
+        DB::connection()->disableQueryLog();
+        $this->assertLessThanOrEqual(20, $queries, 'Live delivery must batch recipient authorization SQL.');
+        Http::assertSentCount(10);
+        $channels = [];
+        foreach (Http::recorded() as [$request]) {
+            $payload = json_decode($request->body(), true);
+            $this->assertLessThan(131072, strlen($request->body()));
+            array_push($channels, ...$payload['channels']);
+        }
+        $this->assertCount(5000, array_unique($channels));
+    }
+
+    public function test_worker_lanes_and_claims_keep_push_failure_off_the_realtime_lane(): void
+    {
+        $room = $this->createPrivateRoom();
+        DB::table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
+        DB::table('user')->where('uid', 'bob')->update(['token' => 'bob-token']);
+        $this->send($room)->assertCreated();
+        $fcm = \Mockery::mock(\App\Http\Controllers\FCMNotificationController::class);
+        $fcm->shouldNotReceive('sendToToken');
+        $this->app->instance(\App\Http\Controllers\FCMNotificationController::class, $fcm);
+        DB::table('chat_outbox')->where('kind', 'created')->update(['claim_token' => (string) Str::uuid(), 'claimed_until' => now()->addMinute()]);
+        Http::fake();
+        $this->artisan('chat:deliver', ['--once' => true, '--lane' => 'realtime'])->assertSuccessful();
+        $this->assertNull(DB::table('chat_outbox')->where('kind', 'created')->value('delivered_at'));
+        $this->assertNull(DB::table('chat_outbox')->where('kind', 'message_push')->value('delivered_at'));
+        $this->travel(61)->seconds();
+        $this->artisan('chat:deliver', ['--once' => true, '--lane' => 'realtime'])->assertSuccessful();
+        $this->assertNotNull(DB::table('chat_outbox')->where('kind', 'created')->value('delivered_at'));
+    }
+
+    public function test_badge_authorization_batch_rejects_another_accounts_channel(): void
+    {
+        $channel = \App\Support\Chat\ChatReadService::userChannel('alice');
+        $this->postJson('/api/v4/chat/unread/auth-batch', $this->identity(['socket_id' => '1.2', 'channels' => [$channel]]))
+            ->assertOk()->assertJsonPath('data.authorizations.'.$channel.'.expires_in', 300 - now()->timestamp % 300);
+        $this->postJson('/api/v4/chat/unread/auth-batch', $this->identity(['socket_id' => '1.2',
+            'channels' => [\App\Support\Chat\ChatReadService::userChannel('bob')]]))->assertForbidden();
+    }
+
     public function test_live_private_watch_survives_idle_deadline_in_discovery_links_and_notifications(): void
     {
         $room = $this->privateWatchFixture();
@@ -370,6 +519,7 @@ class ChatApiTest extends TestCase
         (require database_path('migrations/2026_10_27_000004_add_chat_badge_recipient.php'))->up();
         (require database_path('migrations/2026_10_28_000001_bind_dedicated_watch_rooms_to_host_stream.php'))->up();
         (require database_path('migrations/2026_10_28_000002_add_shared_room_invitation_messages.php'))->up();
+        (require database_path('migrations/2026_10_28_000003_add_chat_delivery_claims.php'))->up();
         Schema::create('user', function (Blueprint $t) {
             $t->id();
             $t->string('uid');
@@ -990,7 +1140,7 @@ class ChatApiTest extends TestCase
         $first = $this->send($room, 'Hello', $request)->assertCreated()->assertJsonPath('data.user_id', 'alice')->json('data.id');
         $this->send($room, 'Hello', $request)->assertOk()->assertJsonPath('data.id', $first);
         $this->assertSame(1, DB::table('chat_messages')->count());
-        $this->assertSame(1, DB::table('chat_outbox')->count());
+        $this->assertSame(1, DB::table('chat_outbox')->where('kind', 'created')->count());
         $this->send($room)->assertStatus(429);
     }
 

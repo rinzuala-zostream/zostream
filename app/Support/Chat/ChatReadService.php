@@ -127,6 +127,7 @@ final class ChatReadService
             }
         }
         return ['rooms' => $result, 'total_unread' => array_sum(array_column($result, 'unread_count')),
+            'auth_batch' => true,
             'event_cursor' => $cursor, 'user_id' => $uid, 'blocked_user_ids' => $this->chat->blocked($uid),
             'server_time_ms' => now()->getTimestampMs(),
             'channels' => $channels,
