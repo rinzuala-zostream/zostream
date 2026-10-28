@@ -250,6 +250,8 @@ final class ChatController extends Controller
     public function inviteRooms(Request $r)
     {
         abort_unless(config('chat.enabled'), 503, 'Chat is currently unavailable.');
+        $v = $r->validate(['recipient_user_id' => 'sometimes|string|max:191']);
+        $recipient = $v['recipient_user_id'] ?? null;
         $uid = (string) $r->input('auth_user_id');
         $rooms = DB::table('chat_invite_rooms as ir')
             ->join('chat_rooms as r', 'r.id', '=', 'ir.room_id')
@@ -265,9 +267,16 @@ final class ChatController extends Controller
             ->orderByDesc('ir.room_id')
             ->get(['ir.room_id', 'ir.room_name', 'ir.content_type', 'ir.content_id', 'ir.host_user_id', 'ir.idle_expires_at', 'ir.active'])
             ->filter(fn ($room) => app(InviteRoomLifecycle::class)->active($room))->values();
-        $rooms->transform(function ($room) use ($uid) {
+        $joined = $recipient === null ? [] : DB::table('chat_room_invites')
+            ->whereIn('room_id', $rooms->where('host_user_id', $uid)->pluck('room_id'))
+            ->where('invitee_user_id', $recipient)->where('status', 'accepted')->pluck('room_id')->map(fn ($id) => (string) $id)->all();
+        $rooms->transform(function ($room) use ($uid, $recipient, $joined) {
             $room->room_id = (string) $room->room_id;
             $room->is_host = $room->host_user_id === $uid;
+            if ($recipient !== null) {
+                // Only creators can inspect another viewer's membership in their own rooms.
+                $room->recipient_joined = $room->is_host && ($recipient === $uid || in_array($room->room_id, $joined, true));
+            }
             unset($room->host_user_id, $room->active);
             return $room;
         });

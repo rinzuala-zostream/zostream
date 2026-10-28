@@ -306,6 +306,22 @@ class ChatApiTest extends TestCase
         $this->getJson("/api/v4/chat/rooms/$room/messages?auth_user_id=charlie")->assertOk()->assertJsonPath('data.messages.0.id', (string) $message);
     }
 
+    public function test_room_picker_reports_recipient_membership_only_for_the_room_creator(): void
+    {
+        $room = $this->createPrivateRoom();
+        $url = '/api/v4/chat/invite-rooms?auth_user_id=alice&recipient_user_id=bob';
+        $this->getJson('/api/v4/chat/invite-rooms?auth_user_id=alice')->assertOk()->assertJsonMissingPath('data.rooms.0.recipient_joined');
+        $this->getJson($url)->assertOk()->assertJsonPath('data.rooms.0.room_id', $room)->assertJsonPath('data.rooms.0.recipient_joined', false);
+        DB::table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted', 'expires_at' => now()->subDay()]);
+        $this->getJson($url)->assertOk()->assertJsonPath('data.rooms.0.recipient_joined', true);
+        // Membership does not expire merely because the original invitation did.
+        $this->getJson('/api/v4/chat/invite-rooms?auth_user_id=bob&recipient_user_id=bob')->assertOk()
+            ->assertJsonPath('data.rooms.0.is_host', false)->assertJsonPath('data.rooms.0.recipient_joined', false);
+        $this->getJson('/api/v4/chat/invite-rooms?auth_user_id=alice&recipient_user_id=alice')->assertOk()
+            ->assertJsonPath('data.rooms.0.recipient_joined', true);
+        $this->getJson('/api/v4/chat/invite-rooms?auth_user_id=alice&recipient_user_id[]=bob')->assertUnprocessable();
+    }
+
     public function test_in_app_invite_sends_push_without_whatsapp_and_preserves_acceptance_flow(): void
     {
         $room = $this->createPrivateRoom();

@@ -507,3 +507,13 @@ accounts share a national number, enter the full international number in the sam
 phone field to disambiguate; no separate country selector is required.
 
 Deploy the backend lookup update and new app builds. This change adds no migration.
+
+For long-press invitations, the room picker now checks
+`GET chat/invite-rooms?recipient_user_id={user}`. The response includes
+`recipient_joined` for rooms owned by the caller; membership in rooms they do not
+own is not disclosed. An accepted invitation counts as joined even after its
+original invitation deadline. Both apps show joined rooms in grey with **Already
+joined**, disallow selecting them, and keep confirmation disabled until the
+membership check succeeds. Failed checks offer Retry. Disabled create-room type
+options also use explicit neutral grey styling. Deploy the API and app updates;
+this membership check adds no database migration.
