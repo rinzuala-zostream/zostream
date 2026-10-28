@@ -41,7 +41,11 @@ final class DeliverChat extends Command
                 if (! $owned) { continue; }
                 $renew = function () use ($row, $claim): void {
                     if (! DB::table('chat_outbox')->where('id', $row->id)->where('claim_token', $claim)
-                        ->update(['claimed_until' => now()->addMinutes(2)])) { throw new \RuntimeException('Chat delivery claim lost'); }
+                        // MySQL reports zero changed rows when this runs in the
+                        // same second as the initial claim and the timestamp is
+                        // unchanged. Advance past second precision so ownership
+                        // verification cannot fail spuriously on fast delivery.
+                        ->update(['claimed_until' => now()->addMinutes(2)->addSeconds(5)])) { throw new \RuntimeException('Chat delivery claim lost'); }
                 };
                 try {
                     if ($row->kind === 'message_push') {
@@ -67,6 +71,10 @@ final class DeliverChat extends Command
                         $reason .= ' HTTP '.$e->response->status();
                     } elseif ($e instanceof \Illuminate\Database\QueryException) {
                         $reason .= ' SQLSTATE '.($e->errorInfo[0] ?? $e->getCode());
+                    } elseif ($e instanceof \RuntimeException && in_array($e->getMessage(), [
+                        'Chat delivery claim lost', 'Chat is disabled', 'Missing Reverb settings',
+                    ], true)) {
+                        $reason .= ' '.$e->getMessage();
                     }
                     $this->warn('Chat delivery pending: '.$row->id.' ('.$reason.')');
                 }
