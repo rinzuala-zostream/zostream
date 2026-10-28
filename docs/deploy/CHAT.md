@@ -1,5 +1,53 @@
 # Deploy mobile chat
 
+## When both apps stay on Reconnecting
+
+Message history and sending use HTTPS independently of the live WebSocket. If
+messages appear only after reopening, verify the live transport and outbox on
+the deployed API release:
+
+```sh
+php artisan chat:realtime-status --probe --origin=https://zostream.in
+sudo supervisorctl status
+```
+
+Use the HTTPS API root actually returned by official-client verification as
+`--origin` if it differs. The diagnostic reads effective cached configuration
+and pending broadcasts, then optionally tests the public WebSocket Upgrade.
+It does not subscribe, publish messages, drain the outbox or print keys/secrets.
+Expect HTTP 101 with a valid upgrade signature. A successful upgrade alone does
+not verify private subscription authorization or worker delivery.
+
+Fix any reported WSS URL/public-key mismatch, disallowed API Origin, missing
+Reverb configuration or overdue outbox. Check DNS/TLS, the `/app/` Upgrade proxy
+and Reverb logs for a failed upgrade. Ensure both `reverb:start` and `chat:deliver`
+are supervised; `queue:work` alone does not deliver chat socket events. After
+changing deployment configuration, rebuild the config cache and restart both
+chat processes. Preserve the leased-channel API/worker/mobile compatibility
+described below. Do not switch off TLS or allow all origins as a workaround.
+
+The 28 October mobile SDK update requests transcript deltas every five seconds
+while a room is open and its socket is disconnected. The UI ignores these
+recovery ticks while hidden; room lists, presence and unread snapshots keep
+their existing cadence. Successful socket events still refresh immediately and
+disable this fast fallback. This recovery path requires updated Android and iOS
+builds; it does not repair a failing production WebSocket endpoint.
+
+Verify with two accounts: keep both transcripts open, send a message and confirm
+immediate receipt while Live. Then interrupt the WebSocket while keeping HTTPS
+available, confirm receipt on the next recovery tick without reopening, restore
+the socket and confirm Live resumes. Allow for HTTP request duration and existing
+server throttling; five seconds is the polling interval, not a latency guarantee.
+
+Source validation for this update: backend chat/queue/diagnostic tests passed
+(80 tests, 785 assertions), and Android app/SDK chat tests passed (37 tests).
+The Swift SDK builds and six chat test methods passed through a standalone
+assertion runner, including disconnected recovery and cancellation on close.
+Full XCTest is unavailable in the installed command-line toolchain; Apple chat
+UI syntax parsing passed, but an iOS app/device run is still required.
+
+## Deployment setup
+
 Deploy backend **before** releasing the updated apps. `CHAT_ENABLED` defaults to
 false so incomplete infrastructure cannot accidentally accept chat writes.
 No production migration or deployment is performed by adding this code.
@@ -276,7 +324,8 @@ when it is re-enabled. Admin review and moderation remain available.
 Verify room and badge renewal across an epoch boundary without extra sockets;
 ban/stop playback and check renewal denial; check no old-channel publication
 past the grace period. Leave Reverb connected while stopping the delivery worker:
-the open transcript must recover recent messages/deletions and room expiry through
-its 30-second reconciliation. Confirm reconciliation does not add watch-position
+the open transcript must recover recent messages/deletions through its five-minute
+integrity check; room authorization/presence maintenance remains thirty seconds.
+Confirm reconciliation does not add watch-position
 polls. Also verify live private rooms after an elapsed idle deadline, closed-room
 invitation rejection, disabled viewer endpoints, and account-deletion cleanup.

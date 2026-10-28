@@ -125,6 +125,7 @@ class ChatRoomSwitchTest {
         var lease = ""
         var expiresIn = 300
         var denyPresence = false
+        var establishConnections = true
         private val delegate = Builder().addInterceptor { chain ->
         val request = chain.request()
         val data = if (request.url.encodedPath.endsWith("/unread/auth")) {
@@ -147,9 +148,36 @@ class ChatRoomSwitchTest {
         val sockets = mutableListOf<Socket>()
         override fun newWebSocket(request: Request, listener: WebSocketListener): WebSocket {
             val socket = Socket(request, listener); sockets.add(socket)
-            listener.onMessage(socket, """{"event":"pusher:connection_established","data":{"socket_id":"1.2"}}""")
+            if (establishConnections) listener.onMessage(socket, """{"event":"pusher:connection_established","data":{"socket_id":"1.2"}}""")
             return socket
         }
+    }
+
+    @Test fun reconnectingTranscriptRecoversWithoutReopeningAndStopsPollingWhenLive() {
+        val http = Http().apply { establishConnections = false }
+        val changes = mutableListOf<String>()
+        val client = ZoChatClient("https://example.test", { AnalyticsCredentials("token", "device", "owner") }, "test",
+            onChanged = { kind, _ -> changes.add(kind) }, onConnection = {}, http = http)
+        try {
+            var joined = false
+            client.join("global", null) { _, error -> assertNull(error); joined = true }
+            await { joined && http.sockets.size == 1 }
+            assertFalse(client.isConnected)
+            shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(5))
+            assertEquals(1, changes.count { it == "poll" })
+            shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(5))
+            assertEquals(2, changes.count { it == "poll" })
+            val socket = http.sockets.single()
+            socket.listener.onMessage(socket, """{"event":"pusher:connection_established","data":{"socket_id":"1.2"}}""")
+            await { client.isConnected }
+            socket.emit("private-chat.global")
+            shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(5))
+            assertEquals(2, changes.count { it == "poll" })
+            assertTrue(changes.contains("created"))
+            client.close()
+            shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(5))
+            assertEquals(2, changes.count { it == "poll" })
+        } finally { client.close() }
     }
 
     private fun await(condition: () -> Boolean) {
@@ -165,8 +193,9 @@ class ChatRoomSwitchTest {
         val http = Http()
         var live = 0
         var changes = 0
+        val connectionEvents = mutableListOf<String>()
         val client = ZoChatClient("https://example.test", { AnalyticsCredentials("token", "device", "owner") }, "test",
-            onChanged = { kind, _ -> if (kind == "created") changes++ }, onConnection = { if (it) live++ }, http = http)
+            onChanged = { kind, _ -> connectionEvents.add(kind); if (kind == "created") changes++ }, onConnection = { if (it) live++ }, http = http)
         try {
             client.join("movie", "42") { _, error -> assertNull(error) }
             await { live == 1 }
@@ -183,6 +212,8 @@ class ChatRoomSwitchTest {
             client.join("movie", "42") { _, error -> assertNull(error) }
             await { live == 3 }
             assertEquals(1, http.sockets.size)
+            assertEquals(1, connectionEvents.count { it == "sync" })
+            assertEquals(2, connectionEvents.count { it == "subscribed" })
         } finally { client.close() }
         assertEquals(1, http.sockets.single().cancellations)
     }
@@ -261,8 +292,9 @@ class ChatRoomSwitchTest {
             await { client.isConnected }
             http.lease = ".lease.2"
             shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(30))
-            await { changes.count { it == "sync" } == 2 }
-            assertTrue(changes.contains("reconcile"))
+            await { changes.contains("subscribed") }
+            assertEquals(1, changes.count { it == "sync" })
+            assertFalse(changes.contains("reconcile"))
             assertEquals(1, http.sockets.size)
             val socket = http.sockets.single()
             assertTrue(socket.events.any { it.optString("event") == "pusher:unsubscribe" && it.getJSONObject("data").optString("channel") == "private-chat.global.lease.1" })
@@ -298,6 +330,27 @@ class ChatRoomSwitchTest {
             emit("private-chat-user-own.lease.2")
             shadowOf(Looper.getMainLooper()).idle()
             assertEquals(1, badges.size)
+            assertEquals(1, http.sockets.size)
+        } finally { client.close() }
+    }
+
+    @Test fun healthySocketKeepsMaintenanceSeparateFromFiveMinuteHistoryIntegrity() {
+        val http = Http()
+        val changes = mutableListOf<String>()
+        val client = ZoChatClient("https://example.test", { AnalyticsCredentials("token", "device", "owner") }, "test",
+            onChanged = { kind, _ -> changes.add(kind) }, onConnection = {}, http = http)
+        try {
+            client.join("global", null) { _, error -> assertNull(error) }
+            await { client.isConnected }
+            val socket = http.sockets.single()
+            repeat(10) { index ->
+                socket.listener.onMessage(socket, """{"event":"pusher:pong","data":{}}""")
+                shadowOf(Looper.getMainLooper()).idle()
+                shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(30))
+                if (index < 9) assertFalse(changes.contains("reconcile"))
+            }
+            assertEquals(1, changes.count { it == "reconcile" })
+            assertEquals(9, changes.count { it == "maintenance" })
             assertEquals(1, http.sockets.size)
         } finally { client.close() }
     }

@@ -54,6 +54,7 @@ public final class ZoChatClient {
     private var receiveTask: Task<Void, Never>?
     private var retryTask: Task<Void, Never>?
     private var syncTask: Task<Void, Never>?
+    private var recoveryTask: Task<Void, Never>?
     private var room: ChatRoom?
     private var roomRevision = 0
     private var socketId: String?
@@ -65,6 +66,8 @@ public final class ZoChatClient {
     private var owner: String?
     private var retry = 0
     private var lastFallbackSync: TimeInterval = 0
+    private var lastTranscriptReconcile = ProcessInfo.processInfo.systemUptime
+    private var hasSubscribedRoom = false
     public private(set) var isConnected = false
     public var onBadgeEvent: (([String: Any]) -> Void)?
     private var unreadChannels: Set<String>?
@@ -193,6 +196,17 @@ public final class ZoChatClient {
 
     private func startReconciliation() {
         syncTask?.cancel()
+        recoveryTask?.cancel()
+        if unreadChannels == nil {
+            recoveryTask = Task { [weak self] in
+                while !Task.isCancelled {
+                    do { try await Task.sleep(nanoseconds: 5_000_000_000) } catch { return }
+                    guard let self, !self.closed else { return }
+                    if self.credentials()?.ownerKey != self.owner { self.close(); return }
+                    if self.room != nil && !self.isConnected { self.onChanged?("poll", nil) }
+                }
+            }
+        }
         syncTask = Task { [weak self] in
             while !Task.isCancelled {
                 do { try await Task.sleep(nanoseconds: 30_000_000_000) } catch { return }
@@ -216,7 +230,11 @@ public final class ZoChatClient {
                     ? self.unreadExpiry.values.contains(where: { $0 <= now }) : self.subscriptionExpiry <= now) {
                     self.subscribe()
                 }
-                if self.room != nil && self.unreadChannels == nil && self.isConnected { self.onChanged?("reconcile", nil) }
+                if self.room != nil && self.unreadChannels == nil && self.isConnected && now - self.lastTranscriptReconcile >= 300 {
+                    self.lastTranscriptReconcile = now; self.onChanged?("reconcile", nil)
+                } else if self.room != nil && self.unreadChannels == nil && self.isConnected {
+                    self.onChanged?("maintenance", nil)
+                }
                 if !self.isConnected && now - self.lastFallbackSync >= 60 {
                     self.lastFallbackSync = now; self.onChanged?("sync", nil)
                 }
@@ -287,6 +305,7 @@ public final class ZoChatClient {
     private func connect() {
         guard !closed, let room, let url = URL(string: room.websocket_url), url.scheme == "wss" else { onConnection?(false); return }
         generation += 1; let current = generation
+        hasSubscribedRoom = false
         retryTask?.cancel(); subscriptionTask?.cancel()
         socketId = nil; channel = nil; socketURL = room.websocket_url
         unreadSubscribed.removeAll(); unreadPhysical.removeAll(); unreadExpiry.removeAll(); subscriptionExpiry = 0
@@ -323,7 +342,10 @@ public final class ZoChatClient {
                             continue
                         }
                         guard let channel = self.channel, event["channel"] as? String == channel else { continue }
-                        self.retry = 0; self.isConnected = true; self.onConnection?(true); self.onChanged?("sync", nil)
+                        let recovery = !self.hasSubscribedRoom
+                        self.hasSubscribedRoom = true
+                        self.retry = 0; self.isConnected = true; self.onConnection?(true)
+                        self.onChanged?(recovery ? "sync" : "subscribed", nil)
                     case "pusher:ping": try await ws.send(.string("{\"event\":\"pusher:pong\",\"data\":{}}"))
                     case "chat.changed", "chat.badge":
                         if let targets = self.unreadChannels {
@@ -374,7 +396,7 @@ public final class ZoChatClient {
         isConnected = false
         closed = true; generation += 1; roomRevision += 1
         subscriptionTask?.cancel(); channel = nil; socketId = nil; room = nil
-        receiveTask?.cancel(); retryTask?.cancel(); syncTask?.cancel()
+        receiveTask?.cancel(); retryTask?.cancel(); syncTask?.cancel(); recoveryTask?.cancel()
         socket?.cancel(with: .goingAway, reason: nil); socket = nil
         session.invalidateAndCancel()
         onChanged = nil; onConnection = nil

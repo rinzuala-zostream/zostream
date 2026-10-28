@@ -19,6 +19,30 @@ private final class ChatURLProtocol: URLProtocol {
 
 final class ChatClientTests: XCTestCase {
     @MainActor
+    func testDisconnectedTranscriptRecoversWithoutReopeningAndStopsOnClose() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [ChatURLProtocol.self]
+        ChatURLProtocol.handle = { _ in
+            (200, #"{"success":true,"data":{"room_id":"1","room_type":"global","channel":"private-chat.1","websocket_url":"","user_id":"alice"}}"#)
+        }
+        let client = ZoChatClient(baseURL: URL(string: "https://example.test")!, version: "test", credentials: {
+            AnalyticsCredentials(accessToken: "token", deviceToken: "device", ownerKey: "alice")
+        }, session: URLSession(configuration: configuration))
+        var polls = 0
+        client.onChanged = { kind, _ in if kind == "poll" { polls += 1 } }
+        defer { client.close() }
+        _ = try await client.join(type: "global", contentId: nil)
+        XCTAssertFalse(client.isConnected)
+        try await Task.sleep(nanoseconds: 5_200_000_000)
+        XCTAssertEqual(polls, 1)
+        client.close()
+        // Retain an observer to check that close cancels recovery, not just callbacks.
+        client.onChanged = { kind, _ in if kind == "poll" { polls += 1 } }
+        try await Task.sleep(nanoseconds: 5_200_000_000)
+        XCTAssertEqual(polls, 1)
+    }
+
+    @MainActor
     func testResponseFormatsMatchAndroidAndPreserveServerErrors() async throws {
         struct Rooms: Decodable { let rooms: [String] }
         let configuration = URLSessionConfiguration.ephemeral

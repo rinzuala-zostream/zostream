@@ -17,8 +17,9 @@ existing chat sheet. Tapping it expands a rounded panel from the
 button into the lower part of the screen. Tapping outside or Close reverses
 the animation back into the button (Android Back also closes it). The panel
 stays below full-screen height, adapts to the keyboard and safe areas, and leaves
-the underlying playback visible. Closing or leaving the screen releases the
-chat connection. Reduced-motion/system animation preferences are respected.
+the underlying playback visible. Closing the panel retains the screen's chat
+connection; leaving/backgrounding the screen or logging out releases it.
+Reduced-motion/system animation preferences are respected.
 
 ## Data and realtime flow
 
@@ -105,9 +106,11 @@ queued personal badge events.
    text crosses the broadcast channel. Existing subscriptions therefore cannot
    bypass a new ban, block, closed room or expired playback permission.
 8. Reconnect catches up new pages and reconciles the recent page
-   so deletions missed while offline are also removed. A 30-second foreground reconciliation also
-   recovers missed recent notifications, reloads room/block state and heartbeats the room even while the socket stays connected. Deleted events remove
-   or tombstone the displayed message. Backgrounding/logout/closing releases
+   so recent deletions missed while offline are also removed. A five-minute
+   foreground history integrity check recovers missed recent notifications.
+   The 30-second health timer separately reloads room/block state and heartbeats
+   the room without reloading history. Deleted events remove or tombstone the
+   displayed message, including while its panel is hidden. Backgrounding/logout/leaving the screen releases
    native connections. Redis expires abandoned presence in 90 seconds (connection
    counts can count the same account on multiple devices).
 
@@ -244,11 +247,40 @@ to be checked on every request. This is bounded metadata revocation, not an
 instantaneous eviction guarantee. Disabling chat suspends broadcasts as well as
 viewer endpoints; administrative review/moderation remains usable.
 
-Connected transcript reconciliation runs every 30 seconds, separately from
-watch-position recovery and five-minute unread integrity snapshots. It refreshes
-recent history, catches up new messages and reloads room/block state even when
-Reverb is healthy but the delivery worker has stalled. It does not issue a watch
-position request on each transcript reconciliation.
+Connected transcript integrity reconciliation runs every five minutes,
+separately from watch-position recovery, thirty-second room maintenance and
+five-minute unread integrity snapshots.
+
+28 October recovery update: while a transcript's socket is disconnected, the
+SDK emits `poll` every five seconds. Both mobile screens fetch message deltas
+on this event without refreshing room lists, blocks or unread snapshots each
+time. Hidden transcripts defer the work until reopened. Polling stops while
+the socket is live and on client close; ordinary socket changes still refresh
+immediately. This is foreground HTTP recovery, not a substitute for a working
+Reverb endpoint. See `docs/deploy/CHAT.md` for `chat:realtime-status --probe`.
+
+### Retained tabs — 28 October
+
+Launcher badges show the total unread count; room tabs show their own unread
+counts. Read acknowledgements still advance only through visible messages.
+Opening a room for the first time loads its unread history. Reopening the panel
+or returning to a cached tab displays its cached messages immediately and only
+requests newer messages using `after`. These actions do not reset the history
+or request the latest full page. Up to twenty recent room histories retain
+their latest 200 loaded messages per screen; older pages remain pageable.
+
+The same physical transcript WebSocket survives panel dismissal and tab
+switching. Switching rooms still joins/authorizes the new subscription, so a
+cached tab cannot bypass access checks. SDK `sync` now indicates the first room
+subscription on a physical connection, including reconnects. Later room changes
+and lease renewals emit `subscribed` and catch up deltas without triggering a
+reconnect snapshot. Badges keep their independent observer socket.
+
+The health/lease timer remains thirty seconds and emits `maintenance` for room
+and block refreshes. A `reconcile` history integrity snapshot runs every five
+minutes while connected, and on actual reconnect. Watch controls, invitations,
+moderation, pagination and disconnected five-second recovery retain their
+existing behavior. Connections/cache are released on logout or screen teardown.
 
 All private-room discovery, invite acceptance/link handling and WhatsApp jobs use
 the same lifecycle checks as joining: a live `/watch` session can keep a private

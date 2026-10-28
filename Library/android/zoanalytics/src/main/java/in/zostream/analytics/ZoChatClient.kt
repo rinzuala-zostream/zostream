@@ -57,6 +57,18 @@ class ZoChatClient(
     @Volatile private var pendingCall: Call? = null
     private var lastSocketActivity = 0L
     private var lastFallbackSync = 0L
+    private var lastTranscriptReconcile = android.os.SystemClock.elapsedRealtime()
+    private var hasSubscribedRoom = false
+    // Keep an open transcript current while the independent WebSocket transport
+    // is reconnecting. Presence, leases and room-list recovery retain their cadence.
+    private val recoverTranscript = object : Runnable {
+        override fun run() {
+            if (closed) return
+            if (credentials()?.ownerKey != owner) { close(); return }
+            if (room != null && unreadChannels == null && !isConnected) onChanged("poll", null)
+            main.postDelayed(this, 5_000)
+        }
+    }
     private val reconcile = object : Runnable {
         override fun run() {
             if (closed) return
@@ -65,7 +77,11 @@ class ZoChatClient(
             val now = android.os.SystemClock.elapsedRealtime()
             if (room != null && (unreadChannels != null || !subscriptionPending) &&
                 (if (unreadChannels != null) unreadExpiry.values.any { it <= now } else subscriptionExpiry <= now)) subscribe()
-            if (room != null && unreadChannels == null && isConnected) onChanged("reconcile", null)
+            if (room != null && unreadChannels == null && isConnected && now - lastTranscriptReconcile >= 300_000) {
+                lastTranscriptReconcile = now; onChanged("reconcile", null)
+            } else if (room != null && unreadChannels == null && isConnected) {
+                onChanged("maintenance", null)
+            }
             if (isConnected) {
                 if (now - lastSocketActivity > 90_000) reconnect(generation)
                 else sendEvent("pusher:ping", JSONObject())
@@ -170,6 +186,7 @@ class ZoChatClient(
                 if (socket != null && socketUrl == data.optString("websocket_url")) subscribe()
                 else connect()
                 main.removeCallbacks(reconcile); main.postDelayed(reconcile, 30_000)
+                main.removeCallbacks(recoverTranscript); main.postDelayed(recoverTranscript, 5_000)
             }
         }
     }
@@ -254,6 +271,7 @@ class ZoChatClient(
         val url = info.optString("websocket_url")
         if (!url.startsWith("wss://")) { onConnection(false); return }
         val current = ++generation
+        hasSubscribedRoom = false
         socketId = null; channel = null; socketUrl = url
         unreadSent.clear(); unreadSubscribed.clear(); unreadPhysical.clear(); unreadExpiry.clear(); subscriptionPending = false; subscriptionExpiry = 0
         socket?.cancel()
@@ -285,7 +303,10 @@ class ZoChatClient(
                                     return@post
                                 }
                                 if (channel != null && event.optString("channel") == channel) {
-                                    retry = 0; isConnected = true; onConnection(true); onChanged("sync", null)
+                                    val recovery = !hasSubscribedRoom
+                                    hasSubscribedRoom = true
+                                    retry = 0; isConnected = true; onConnection(true)
+                                    onChanged(if (recovery) "sync" else "subscribed", null)
                                 }
                                 Unit
                             }

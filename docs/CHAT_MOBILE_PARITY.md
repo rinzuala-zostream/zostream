@@ -22,7 +22,7 @@ with compiler and SDK checks; it does not replace testing both apps on devices.
 | Spoilers | Confirm marking, mask content and reveal on tap. Deleted messages cannot be reported or blocked. |
 | Report/block | Other viewers only; cap report reasons at 500 characters. Refresh recent history after unblocking so previously hidden messages can reappear. |
 | Timestamps | Respect explicit offsets; interpret unzoned database timestamps in Asia/Kolkata; handle epoch seconds/milliseconds. |
-| Connection lifecycle | Reuse the screen's connection across sheet dismissal; reconcile on reopening. Release on logout, background or screen destruction. |
+| Connection lifecycle | Reuse the screen's physical connection across sheet dismissal and tab changes; cached tabs catch up deltas without a full-page reload. Release on logout, background or screen destruction. |
 | Response compatibility | Both SDKs accept boolean/numeric/string success flags, supported legacy direct payloads and status/result envelopes. Explicit failures remain failures and preserve the server message. |
 
 Changes found during this review include the older Android invitation picker,
@@ -66,3 +66,11 @@ room and unread subscriptions renew signed five-minute channel leases. The
 server stops publishing to expired leases after a 60-second boundary grace,
 bounding metadata revocation to six minutes. The updated API/worker requires
 both mobile SDK updates; use the exact auth response channel for subscriptions.
+
+28 October retained-tab flow: twenty recent rooms keep up to 200 loaded messages
+each. First opening loads history; returning displays the cache immediately and
+fetches only newer pages. Room/lease subscription acknowledgements on the same
+socket no longer request a reconnect snapshot. Presence, access and room/block
+maintenance remain on the thirty-second timer; connected history integrity now
+runs every five minutes. Launcher totals and tab unread badges share the existing
+read state. See `CHAT_MOBILE.md` for the SDK event contract and cache boundaries.
