@@ -480,3 +480,22 @@ account. iOS distribution requires a Push Notifications-enabled provisioning
 profile and an APNs key/certificate configured for this app in Firebase. Verify
 push delivery and cold/foreground notification taps on physical devices; local
 unit checks cannot verify the production APNs/FCM provider setup.
+
+## Invitation sheet and phone entry — 28 October
+
+Android invitation links and push notifications now use a translucent activity
+hosting a native Material bottom sheet. The sheet has a drag handle, close button,
+scrolling room details and pinned accept/decline actions. Dismissing it closes the
+invitation host; sign-in preserves the invitation token, and accepted rooms keep
+the existing private-chat/watch-player routing. Secure-window protection also
+applies to the dialog itself.
+
+Android and iOS create-room/invite-more forms no longer ask for a country calling
+code or prepend +91. A local number is sent as a local number; a contact's explicit
++ / 00 international prefix is preserved/normalized. The server compares the full
+national number or canonical international number using the recipient's stored
+`auth_phone` and `country_code`. It rejects suffix-only matches. If multiple
+accounts share a national number, enter the full international number in the same
+phone field to disambiguate; no separate country selector is required.
+
+Deploy the backend lookup update and new app builds. This change adds no migration.

@@ -78,24 +78,8 @@ final class ChatController extends Controller
         $matches = DB::table('user')->where('uid', '!=', (string) $r->input('auth_user_id'))
             ->whereNotNull('auth_phone')->where('auth_phone', '!=', '')
             ->whereRaw("REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(auth_phone, '+', ''), ' ', ''), '-', ''), '(', ''), ')', '') LIKE ?", ['%'.substr($digits, -7)])
-            ->get(['uid', 'name', 'auth_phone', 'country_code'])->filter(function ($candidate) use ($digits) {
-                $local = preg_replace('/\D+/', '', $candidate->auth_phone);
-                $country = preg_replace('/\D+/', '', $candidate->country_code ?? '');
-                $international = str_starts_with(trim($candidate->auth_phone), '+');
-                if (str_starts_with(trim($candidate->auth_phone), '00')) {
-                    $local = substr($local, 2);
-                    $international = true;
-                }
-                // Older Indian accounts stored ten local digits without country_code.
-                // Keep that fallback explicit; never match an arbitrary phone suffix.
-                if ($country === '' && ! $international && strlen($local) === 10) {
-                    $country = '91';
-                }
-                if ($digits === $local) { return true; }
-                if ($country === '' || $international) { return false; }
-                $national = ltrim($local, '0');
-                return $digits === $country.$national;
-            });
+            ->get(['uid', 'name', 'auth_phone', 'country_code'])->filter(fn ($candidate) =>
+                \App\Support\Chat\InvitationPhone::matches($v['phone'], $candidate->auth_phone, $candidate->country_code));
         abort_if($matches->count() > 1, 422, 'More than one account matches this number. Enter the full number with country code.');
         $user = $matches->first();
         abort_unless($user, 404, 'No Zo Stream account was found for this phone number. Check the number and country code.');

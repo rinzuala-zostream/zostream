@@ -1199,6 +1199,30 @@ class ChatApiTest extends TestCase
         $this->postJson('/api/v4/chat/invitees/lookup', $this->identity(['phone' => '+447700900123']))->assertUnprocessable();
     }
 
+    public function test_country_selector_is_not_required_to_find_stored_national_or_international_phone(): void
+    {
+        DB::table('user')->insert(['uid' => 'bob', 'name' => 'Bob', 'auth_phone' => '+44 7700 900123', 'country_code' => '+44']);
+        foreach (['7700900123', '07700900123', '+447700900123', '00447700900123'] as $input) {
+            $this->postJson('/api/v4/chat/invitees/lookup', $this->identity(['phone' => $input]))
+                ->assertOk()->assertJsonPath('data.user_id', 'bob');
+        }
+        $this->postJson('/api/v4/chat/invitees/lookup', $this->identity(['phone' => '900123']))->assertUnprocessable();
+        $this->postJson('/api/v4/chat/invitees/lookup', $this->identity(['phone' => '+917700900123']))->assertNotFound();
+        DB::table('user')->where('uid', 'bob')->update(['auth_phone' => '07700900123']);
+        $this->postJson('/api/v4/chat/invitees/lookup', $this->identity(['phone' => '7700900123']))->assertOk()->assertJsonPath('data.user_id', 'bob');
+    }
+
+    public function test_national_phone_ambiguity_requires_explicit_full_number_instead_of_guessing_country(): void
+    {
+        DB::table('user')->insert([
+            ['uid' => 'bob', 'name' => 'Bob', 'auth_phone' => '+447700900123', 'country_code' => '+44'],
+            ['uid' => 'charlie', 'name' => 'Charlie', 'auth_phone' => '7700900123', 'country_code' => '+91'],
+        ]);
+        $this->postJson('/api/v4/chat/invitees/lookup', $this->identity(['phone' => '7700900123']))->assertUnprocessable();
+        $this->postJson('/api/v4/chat/invitees/lookup', $this->identity(['phone' => '+447700900123']))->assertOk()->assertJsonPath('data.user_id', 'bob');
+        $this->postJson('/api/v4/chat/invitees/lookup', $this->identity(['phone' => '+917700900123']))->assertOk()->assertJsonPath('data.user_id', 'charlie');
+    }
+
     private function privateWatchFixture(): string
     {
         $this->freezeTime();

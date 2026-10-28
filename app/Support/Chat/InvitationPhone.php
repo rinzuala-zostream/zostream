@@ -4,6 +4,23 @@ namespace App\Support\Chat;
 
 final class InvitationPhone
 {
+    public static function matches(string $input, ?string $number, ?string $countryCode): bool
+    {
+        $raw = trim($input);
+        $digits = preg_replace('/\D+/', '', $raw);
+        $explicit = str_starts_with($raw, '+') || str_starts_with($raw, '00');
+        if (str_starts_with($raw, '00')) { $digits = substr($digits, 2); }
+        $full = self::international($number, $countryCode);
+        if ($explicit) { return $full !== null && $digits === $full; }
+        $stored = preg_replace('/\D+/', '', $number ?? '');
+        if ($digits === $stored || ($full !== null && $digits === $full)) { return true; }
+        $country = ltrim(preg_replace('/\D+/', '', $countryCode ?? ''), '0');
+        if ($country === '' && strlen($stored) === 10) { $country = '91'; }
+        if ($country === '' || $full === null || ! str_starts_with($full, $country)) { return false; }
+        // Compare the complete national number, never an arbitrary suffix.
+        return ltrim($digits, '0') === ltrim(substr($full, strlen($country)), '0');
+    }
+
     public static function international(?string $number, ?string $countryCode): ?string
     {
         $raw = trim($number ?? '');
