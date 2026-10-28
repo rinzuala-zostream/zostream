@@ -35,7 +35,7 @@ final class AdminChatController extends Controller
     {
         $this->ready();
         $p = $this->paging($r);
-        $v = $r->validate(['q' => 'nullable|string|max:150', 'type' => ['nullable', Rule::in(['global', 'movie', 'episode'])], 'state' => ['nullable', Rule::in(['open', 'closed'])]]);
+        $v = $r->validate(['q' => 'nullable|string|max:150', 'type' => ['nullable', Rule::in(['global', 'movie', 'episode', 'invite'])], 'state' => ['nullable', Rule::in(['open', 'closed'])]]);
         $rooms = DB::table('chat_rooms as r')
             ->select('r.*')
             ->selectSub(DB::table('chat_messages as m')->selectRaw('COUNT(*)')->whereColumn('m.room_id', 'r.id'), 'message_count')
@@ -52,18 +52,15 @@ final class AdminChatController extends Controller
 
     private function titles($rooms): void
     {
-        foreach (['movie' => 'movie', 'episode' => 'episode'] as $type => $table) {
-            if (! Schema::hasTable($table)) {
-                continue;
-            }
-            $ids = $rooms->where('type', $type)->pluck('content_id')->filter()->all();
-            if (! $ids) {
-                continue;
-            }
-            $names = DB::table($table)->whereIn('id', $ids)->pluck('title', 'id');
-            foreach ($rooms as $room) {
-                if ($room->type === $type) {
-                    $room->title = $names[$room->content_id] ?? $room->room_key;
+        $inviteNames = DB::table('chat_invite_rooms')->whereIn('room_id', $rooms->where('type', 'invite')->pluck('id'))
+            ->pluck('room_name', 'room_id');
+        foreach ($rooms as $room) {
+            if ($room->type === 'invite') {
+                $room->title = $inviteNames[$room->id] ?? $room->room_key;
+            } elseif (in_array($room->type, ['movie', 'episode'], true)) {
+                $table = $room->type === 'episode' ? 'episodes' : 'movie';
+                if (Schema::hasTable($table)) {
+                    $room->title = \App\Support\Chat\ChatContent::find($room->type, $room->content_id)?->title ?? $room->room_key;
                 }
             }
         }
@@ -135,7 +132,7 @@ final class AdminChatController extends Controller
         $this->ready();
         $v = $r->validate(['from' => 'nullable|date_format:Y-m-d', 'to' => 'nullable|date_format:Y-m-d|after_or_equal:from', 'timezone' => 'nullable|timezone',
             'platform' => ['nullable', Rule::in(['ios', 'android', 'tvos', 'tv', 'web', 'tizen', 'webos'])], 'app_version' => 'nullable|string|max:64',
-            'room_type' => ['nullable', Rule::in(['global', 'movie', 'episode'])], 'content_type' => 'nullable|string|max:24',
+            'room_type' => ['nullable', Rule::in(['global', 'movie', 'episode', 'invite'])], 'content_type' => 'nullable|string|max:24',
             'content_id' => 'nullable|string|max:191', 'user_id' => 'nullable|string|max:191']);
         $tz = $v['timezone'] ?? 'UTC';
         $from = CarbonImmutable::parse($v['from'] ?? now($tz)->subDays(6)->toDateString(), $tz)->startOfDay()->utc();

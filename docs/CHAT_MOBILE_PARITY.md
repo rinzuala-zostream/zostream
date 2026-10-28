@@ -13,9 +13,9 @@ with compiler and SDK checks; it does not replace testing both apps on devices.
 | Private invite acceptance | Join the room, close invitations and restore its room tab. Decline removes only that invitation. |
 | Watch invite acceptance | Seek and join when content ID and type match the current player. Otherwise the player callback opens the invited title; Home tells the user to open that title. |
 | Private-room restore | Fetch active hosted/accepted rooms on sheet open and during 30-second reconciliation. |
-| Unread badges | Launcher/controller totals and per-room counts; foreground snapshot every ten seconds plus event/read refreshes. No new background push service. |
+| Unread badges | Launcher/controller totals and per-room counts; local socket deltas with five-minute connected integrity snapshots and one-minute disconnected recovery. No new background push service. |
 | Read position | Server cursor per user/room; advance through visible messages, exclude own/blocked/deleted messages from counts, reopen at first unread with a divider. Failed read acknowledgements retry from local account storage. |
-| Private-room expiry | Server denies access one hour after the last new message, or creation if empty. Opening or reading does not extend it. |
+| Private-room expiry | Server denies access one hour after the last new message, or creation if empty, unless a live watch session keeps the room available. Opening or reading does not extend it. |
 | End room | Creator only, private rooms only, confirmation required. Expired/ended rooms disappear and the selected room returns to Global. |
 | Send and retry | Retry keeps the request UUID; room changes clear pending state. Preserve text edited while the previous send is in flight. Show a retry affordance on failure. |
 | History | Prepend older messages; preserve the reader's position when newer messages arrive. Offer New messages to jump to the end. |
@@ -36,8 +36,7 @@ platforms; closing it restores the full player. Auxiliary dialogs retain their
 native platform presentation. Watch Together synchronizes playback position
 independently of the selected chat tab and continues while the chat panel is
 hidden on the player. Leaving the player/backgrounding releases that session.
-It does not synchronize pause/play commands. Neither Home launcher automatically
-starts an invited title.
+Host pause/play/seek controls synchronize through sequenced WebSocket state. Watch cards can route Home users into the invited player.
 
 Follow-up audit fixes cover failed/expired invite-room joins, an explicit iOS
 join retry, retry payloads that include spoiler state, reports pinned to their
@@ -60,3 +59,10 @@ invitations for movies and episodes (including identical IDs of different types)
 Unread verification adds first-open/reopen with more than one history page,
 visible-row acknowledgement, fast room switching, modal sheets covering the
 transcript, offline read retries, and badge agreement between Android and iOS.
+
+
+27 October follow-up: connected transcripts now reconcile every 30 seconds;
+room and unread subscriptions renew signed five-minute channel leases. The
+server stops publishing to expired leases after a 60-second boundary grace,
+bounding metadata revocation to six minutes. The updated API/worker requires
+both mobile SDK updates; use the exact auth response channel for subscriptions.

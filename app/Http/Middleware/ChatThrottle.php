@@ -12,6 +12,11 @@ final class ChatThrottle
 {
     public function handle(Request $request, Closure $next, int $maxAttempts = 60)
     {
+        // Keep administrative review/moderation usable while viewer chat is off.
+        $adminActions = ['reports', 'resolveReport', 'moderate'];
+        if (! config('chat.enabled') && ! in_array($request->route()->getActionMethod(), $adminActions, true)) {
+            return V4Response::error('CHAT_UNAVAILABLE', 'Chat is temporarily unavailable. Please try again later.', 503);
+        }
         $key = 'chat:http:'.hash('sha256', $request->input('auth_user_id').':'.$request->route()->getActionName());
         try {
             $limiter = new RateLimiter(Cache::store(config('chat.cache_store')));

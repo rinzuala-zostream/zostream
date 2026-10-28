@@ -59,6 +59,9 @@ final class DeliverChat extends Command
 
     private function publish(object $row): void
     {
+        if (! config('chat.enabled')) {
+            throw new \RuntimeException('Chat is disabled');
+        }
         $c = config('broadcasting.connections.reverb');
         if (empty($c['app_id']) || empty($c['key']) || empty($c['secret'])) {
             throw new \RuntimeException('Missing Reverb settings');
@@ -90,7 +93,7 @@ final class DeliverChat extends Command
                 $channels[] = \App\Support\Chat\ChatReadService::contextChannel($room->type, $room->content_id);
             }
         }
-        $body = json_encode(['name' => $recipient !== null ? 'chat.badge' : 'chat.changed', 'channels' => $channels,
+        $body = json_encode(['name' => $recipient !== null ? 'chat.badge' : 'chat.changed', 'channels' => \App\Support\Chat\ChatChannels::publishing($channels),
             'data' => json_encode($event)], JSON_THROW_ON_ERROR);
         $path = '/apps/'.rawurlencode($c['app_id']).'/events';
         $query = ['auth_key' => $c['key'], 'auth_timestamp' => (string) time(), 'auth_version' => '1.0', 'body_md5' => md5($body)];

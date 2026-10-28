@@ -254,3 +254,29 @@ message deletion, read acknowledgement from a second device, duplicate/reordered
 frames, and socket reconnect. Confirm there are no ten-second unread requests and
 no additional unread fetch for each ordinary message/read event. Check that another
 account cannot authorize your personal channel or an unaccepted private room.
+
+
+## Lifecycle/recovery and leased channels — 27 October 2026
+
+This release needs coordinated API, `chat:deliver`, Android SDK/app and Apple
+SDK/app updates. It needs no additional migration beyond those already listed.
+Restart the long-running delivery worker; it now publishes only to leased
+channels. Older SDKs that reject an auth channel different from the logical
+join channel must be updated for live chat. Do not retain a worker publishing
+to permanent channels, because that would bypass the metadata expiry guarantee.
+
+Authorization returns a physical `.lease.<epoch>` channel and `expires_in`.
+Updated SDKs renew with authenticated HTTP at expiry using their 30-second
+health timer; the server grants no new leases after access is revoked.
+Publication to the previous epoch stops after 60 seconds, giving a maximum
+six-minute metadata lease. Message bodies remain protected by per-request access
+checks. Chat disablement also suspends broadcast delivery; pending events retry
+when it is re-enabled. Admin review and moderation remain available.
+
+Verify room and badge renewal across an epoch boundary without extra sockets;
+ban/stop playback and check renewal denial; check no old-channel publication
+past the grace period. Leave Reverb connected while stopping the delivery worker:
+the open transcript must recover recent messages/deletions and room expiry through
+its 30-second reconciliation. Confirm reconciliation does not add watch-position
+polls. Also verify live private rooms after an elapsed idle deadline, closed-room
+invitation rejection, disabled viewer endpoints, and account-deletion cleanup.

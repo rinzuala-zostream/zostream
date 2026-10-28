@@ -58,7 +58,7 @@ final class ChatReadService
         $cursor = (string) (DB::table('chat_outbox')->max('id') ?? 0);
         $uid = (string) $request->input('auth_user_id');
         $invites = DB::table('chat_invite_rooms as ir')->select('ir.room_id')->where('ir.active', true)
-            ->where(fn ($q) => $q->whereNotNull('ir.content_type')->orWhere('ir.idle_expires_at', '>', now()))
+            ->tap(fn ($q) => app(InviteRoomLifecycle::class)->candidates($q))
             ->where(function ($q) use ($uid) {
                 $q->where('ir.host_user_id', $uid)->orWhereExists(function ($member) use ($uid) {
                     $member->selectRaw('1')->from('chat_room_invites as i')->whereColumn('i.room_id', 'ir.room_id')

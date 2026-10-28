@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Http\Middleware\AdminTokenMiddleware;
 use App\Http\Middleware\AuthTokenMiddleware;
 use App\Support\Analytics\AnalyticsCollectionSetting;
+use App\Support\Chat\ChatChannels;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -16,6 +17,139 @@ use Tests\TestCase;
 
 class ChatApiTest extends TestCase
 {
+    public function test_live_private_watch_survives_idle_deadline_in_discovery_links_and_notifications(): void
+    {
+        $room = $this->privateWatchFixture();
+        $this->sendPrivateWatch($room)->assertCreated();
+        DB::table('chat_invite_rooms')->where('room_id', $room)->update(['idle_expires_at' => now()->subMinute()]);
+        $this->getJson('/api/v4/chat/invite-rooms?auth_user_id=bob')->assertOk()
+            ->assertJsonPath('data.rooms.0.room_id', $room);
+        $this->getJson('/api/v4/chat/unread?auth_user_id=bob')->assertOk()
+            ->assertJsonPath('data.rooms.0.room_id', $room)->assertJsonPath('data.rooms.0.unread_count', 1);
+        $token = str_repeat('x', 64);
+        DB::table('chat_room_invites')->where('room_id', $room)->update([
+            'status' => 'pending', 'link_token_hash' => hash('sha256', $token),
+        ]);
+        $this->getJson('/api/v4/chat/invites?auth_user_id=bob')->assertOk()->assertJsonCount(1, 'data.invites');
+        $this->getJson("/api/v4/chat/invitation-links/$token?auth_user_id=bob")->assertOk();
+        $job = new \App\Jobs\SendChatInvitationWhatsApp(DB::table('chat_room_invites')->where('room_id', $room)->value('id'), $token);
+        config(['chat.whatsapp_enabled' => true]);
+        DB::table('user')->where('uid', 'bob')->update(['auth_phone' => '9876543210', 'country_code' => '91']);
+        $whatsapp = \Mockery::mock(\App\Services\WhatsAppCloudService::class);
+        $whatsapp->shouldReceive('sendTemplate')->once();
+        $job->handle($whatsapp);
+        $this->postJson("/api/v4/chat/invitation-links/$token/respond", ['auth_user_id' => 'bob', 'accept' => true])->assertOk();
+        DB::table('n_active_streams')->update(['stream_token' => 'replaced']);
+        $this->getJson('/api/v4/chat/invite-rooms?auth_user_id=bob')->assertOk()->assertJsonCount(0, 'data.rooms');
+        $this->getJson('/api/v4/chat/unread?auth_user_id=bob')->assertOk()->assertJsonCount(0, 'data.rooms');
+        $this->getJson("/api/v4/chat/invitation-links/$token?auth_user_id=bob")->assertStatus(410);
+    }
+
+    public function test_closed_room_cannot_accept_numeric_invite_and_responses_reflect_persisted_status(): void
+    {
+        $room = $this->createPrivateRoom();
+        $invite = DB::table('chat_room_invites')->where('room_id', $room)->value('id');
+        DB::table('chat_rooms')->where('id', $room)->update(['closed' => true]);
+        $this->postJson("/api/v4/chat/invites/$invite/respond", ['auth_user_id' => 'bob', 'accept' => true])->assertNotFound();
+        $this->assertSame('pending', DB::table('chat_room_invites')->where('id', $invite)->value('status'));
+        DB::table('chat_rooms')->where('id', $room)->update(['closed' => false]);
+        $this->postJson("/api/v4/chat/invites/$invite/respond", ['auth_user_id' => 'bob', 'accept' => false])->assertOk();
+        $this->postJson("/api/v4/chat/invites/$invite/respond", ['auth_user_id' => 'bob', 'accept' => true])->assertNotFound();
+        $this->assertSame('declined', DB::table('chat_room_invites')->where('id', $invite)->value('status'));
+    }
+
+    public function test_disabled_chat_rejects_all_viewer_endpoints_but_preserves_admin_review(): void
+    {
+        $room = $this->createPrivateRoom();
+        $invite = DB::table('chat_room_invites')->where('room_id', $room)->value('id');
+        config(['chat.enabled' => false]);
+        foreach (['blocks', 'invites', 'invite-rooms', 'unread'] as $path) {
+            $this->getJson('/api/v4/chat/'.$path.'?auth_user_id=alice')->assertStatus(503)->assertJsonPath('error.code', 'CHAT_UNAVAILABLE');
+        }
+        foreach (["invites/$invite/respond", 'blocks', 'invitees/lookup', "rooms/$room/leave", 'rooms/join'] as $path) {
+            $this->postJson('/api/v4/chat/'.$path, $this->identity())->assertStatus(503);
+        }
+        $this->assertSame('pending', DB::table('chat_room_invites')->where('id', $invite)->value('status'));
+        $this->getJson('/api/v4/admin/chat/rooms')->assertOk();
+        $this->postJson("/api/v4/chat/rooms/$room/moderate", $this->identity([
+            'action' => 'close', 'target' => $room, 'reason' => 'maintenance',
+        ]))->assertOk();
+    }
+
+    public function test_erasure_cleans_membership_watch_data_and_invalidates_other_block_caches(): void
+    {
+        $room = $this->privateWatchFixture();
+        $sent = $this->sendPrivateWatch($room)->assertCreated();
+        $session = $sent->json('data.watch_invite.session_id');
+        DB::table('chat_watch_participants')->insert(['session_id' => $session, 'user_id' => 'bob', 'joined_at' => now()]);
+        DB::table('chat_blocks')->insert(['user_id' => 'bob', 'blocked_user_id' => 'alice']);
+        $chat = app(\App\Support\Chat\ChatService::class);
+        $this->assertSame(['alice'], $chat->blocked('bob'));
+        $chat->eraseUser('alice');
+        $this->assertSame([], $chat->blocked('bob'));
+        $this->assertFalse((bool) DB::table('chat_invite_rooms')->where('room_id', $room)->value('active'));
+        $this->assertNotSame('alice', DB::table('chat_invite_rooms')->where('room_id', $room)->value('host_user_id'));
+        $this->assertSame(0, DB::table('chat_room_invites')->count());
+        $this->assertSame(0, DB::table('chat_watch_participants')->count());
+        $this->assertFalse((bool) DB::table('chat_watch_sessions')->value('active'));
+        $this->assertNotSame('alice', DB::table('chat_watch_sessions')->value('host_user_id'));
+        $this->assertSame('', DB::table('chat_watch_sessions')->value('stream_token_hash'));
+        $this->assertNull(DB::table('chat_messages')->where('id', $sent->json('data.id'))->value('watch_invite'));
+        $this->postJson("/api/v4/chat/invite-rooms/$room/join", ['auth_user_id' => 'bob'])->assertForbidden();
+        $this->assertTrue(DB::table('chat_outbox')->where('room_id', $room)->where('kind', 'ended')->exists());
+    }
+
+    public function test_admin_resolves_episode_numeric_fallback_and_private_room_names(): void
+    {
+        Schema::create('episodes', function (Blueprint $t) { $t->string('id'); $t->integer('num'); $t->string('title'); });
+        DB::table('episodes')->insert(['id' => 'ep-a', 'num' => 123, 'title' => 'Episode title']);
+        foreach (['ep-a', '123'] as $key) {
+            $id = DB::table('chat_rooms')->insertGetId(['type' => 'episode', 'room_key' => 'episode:'.$key, 'content_id' => $key]);
+            $this->getJson("/api/v4/admin/chat/rooms/$id/messages")->assertOk()->assertJsonPath('data.room.title', 'Episode title');
+        }
+        $room = $this->createPrivateRoom();
+        $this->getJson('/api/v4/admin/chat/rooms?type=invite')->assertOk()
+            ->assertJsonPath('data.data.0.title', 'Friends');
+    }
+
+    public function test_socket_leases_stop_metadata_for_old_subscriptions_and_deny_renewal_after_ban(): void
+    {
+        $this->travelTo(now()->startOfDay());
+        $room = $this->room();
+        $auth = $this->postJson("/api/v4/chat/rooms/$room/auth", $this->identity(['socket_id' => '1.2']))->assertOk();
+        $old = $auth->json('data.channel');
+        $this->assertSame(300, $auth->json('data.expires_in'));
+        $this->assertNotSame('private-chat.'.$room, $old);
+        $this->travel(301)->seconds();
+        $this->assertContains($old, ChatChannels::publishing(['private-chat.'.$room]));
+        $new = $this->postJson("/api/v4/chat/rooms/$room/auth", $this->identity(['socket_id' => '1.2']))->assertOk()->json('data.channel');
+        $this->assertNotSame($old, $new);
+        $this->travel(60)->seconds();
+        $this->assertNotContains($old, ChatChannels::publishing(['private-chat.'.$room]));
+        $this->postJson("/api/v4/chat/rooms/$room/moderate", $this->identity([
+            'action' => 'ban', 'target' => 'alice', 'reason' => 'restricted',
+        ]))->assertOk();
+        $this->postJson("/api/v4/chat/rooms/$room/auth", $this->identity(['socket_id' => '1.2']))->assertForbidden();
+        $this->postJson('/api/v4/chat/unread/auth', $this->identity(['socket_id' => '1.2', 'channel' => $old]))->assertForbidden();
+    }
+
+    public function test_disabled_chat_holds_broadcasts_for_retry_without_publishing(): void
+    {
+        $room = $this->room();
+        $this->send($room)->assertCreated();
+        config(['chat.enabled' => false]);
+        Http::fake();
+        $this->artisan('chat:deliver', ['--once' => true])->assertSuccessful();
+        Http::assertNothingSent();
+        $this->assertNull(DB::table('chat_outbox')->value('delivered_at'));
+        $this->assertSame(1, DB::table('chat_outbox')->value('attempts'));
+        config(['chat.enabled' => true]);
+        $this->travel(10)->seconds();
+        $this->artisan('chat:deliver', ['--once' => true])->assertSuccessful();
+        Http::assertSentCount(1);
+        $this->assertNotNull(DB::table('chat_outbox')->value('delivered_at'));
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -356,7 +490,7 @@ class ChatApiTest extends TestCase
             ->assertJsonPath('data.channels.1', 'private-chat.'.$room)->assertJsonStructure(['data' => ['event_cursor', 'blocked_user_ids']]);
         $url = '/api/v4/chat/unread/auth';
         $this->postJson($url, $this->identity(['socket_id' => '1.2', 'channel' => $channel]))->assertOk()
-            ->assertJsonPath('data.auth', 'test-key:'.hash_hmac('sha256', '1.2:'.$channel, 'test-secret'));
+            ->assertJsonPath('data.auth', 'test-key:'.hash_hmac('sha256', '1.2:'.ChatChannels::leased($channel), 'test-secret'));
         $this->postJson($url, ['auth_user_id' => 'bob', 'socket_id' => '1.2', 'channel' => $channel])->assertForbidden();
         $this->postJson($url, ['auth_user_id' => 'bob', 'socket_id' => '1.2', 'channel' => 'private-chat.'.$room])->assertForbidden();
         DB::table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
@@ -375,7 +509,7 @@ class ChatApiTest extends TestCase
         $this->send($room)->assertCreated();
         Http::fake(['*' => Http::response('{}', 200)]);
         $this->artisan('chat:deliver', ['--once' => true])->assertSuccessful();
-        Http::assertSent(fn ($request) => in_array($global, $request->data()['channels'] ?? [], true));
+        Http::assertSent(fn ($request) => in_array(ChatChannels::leased($global), $request->data()['channels'] ?? [], true));
     }
 
     public function test_badge_read_receipts_push_authoritative_counts_only_to_the_readers_private_channel(): void
@@ -393,7 +527,7 @@ class ChatApiTest extends TestCase
         Http::assertSent(function ($request) use ($first, $second) {
             $event = json_decode($request->data()['data'] ?? '{}', true);
             return ($request->data()['name'] ?? null) === 'chat.badge'
-                && $request->data()['channels'] === [\App\Support\Chat\ChatReadService::userChannel('alice')]
+                && $request->data()['channels'] === ChatChannels::publishing([\App\Support\Chat\ChatReadService::userChannel('alice')])
                 && $event['badge']['read_through'] === (string) $first && $event['badge']['unread_count'] === 1
                 && $event['badge']['first_unread_id'] === (string) $second && isset($event['badge']['snapshot_cursor']);
         });
@@ -564,7 +698,7 @@ class ChatApiTest extends TestCase
     {
         $room = $this->room();
         $this->postJson("/api/v4/chat/rooms/$room/auth", $this->identity(['socket_id' => '123.456']))->assertOk()
-            ->assertJsonPath('data.auth', 'test-key:'.hash_hmac('sha256', "123.456:private-chat.$room", 'test-secret'));
+            ->assertJsonPath('data.auth', 'test-key:'.hash_hmac('sha256', "123.456:".ChatChannels::leased("private-chat.$room"), 'test-secret'));
     }
 
     public function test_delete_tombstones_history_and_report_retries_do_not_duplicate(): void

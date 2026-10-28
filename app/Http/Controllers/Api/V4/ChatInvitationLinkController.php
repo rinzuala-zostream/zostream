@@ -32,7 +32,12 @@ class ChatInvitationLinkController extends Controller
     {
         if (! config('chat.enabled')) { return V4Response::error('CHAT_UNAVAILABLE', 'Chat is temporarily unavailable. Please try again later.', 503); }
         $query = DB::table('chat_room_invites')->where('link_token_hash', hash('sha256', $token));
-        $invite = ($respond ? $query->lockForUpdate() : $query)->first();
+        $invite = $query->first();
+        if ($respond && $invite) {
+            DB::table('chat_invite_rooms')->where('room_id', $invite->room_id)->lockForUpdate()->first();
+            DB::table('chat_rooms')->where('id', $invite->room_id)->lockForUpdate()->first();
+            $invite = $query->lockForUpdate()->first();
+        }
         if (! $invite) { return V4Response::error('INVITE_INVALID', 'This invitation link is invalid. Ask the sender for a new invitation.', 404); }
         // Check identity before exposing the room, sender, content or invitation state.
         if ($invite->invitee_user_id !== (string) $r->input('auth_user_id')) {
@@ -40,7 +45,7 @@ class ChatInvitationLinkController extends Controller
         }
         $room = DB::table('chat_invite_rooms as ir')->join('chat_rooms as r', 'r.id', '=', 'ir.room_id')
             ->where('ir.room_id', $invite->room_id)->first(['ir.*', 'r.closed']);
-        if (! $room || ! $room->active || $room->closed || ($room->content_type === null && (! $room->idle_expires_at || $room->idle_expires_at <= now()))) {
+        if (! app(\App\Support\Chat\InviteRoomLifecycle::class)->active($room)) {
             return V4Response::error('ROOM_ENDED', 'This room has ended. Ask the sender to create a new room.', 410);
         }
         if ($invite->status === 'declined') { return V4Response::error('INVITE_DECLINED', 'You declined this invitation. Ask the sender for a new invitation if you want to join.', 410); }

@@ -89,7 +89,8 @@ queued personal badge events.
    public WSS URL, slow-mode duration and approximate online connection count.
 4. Clients connect using the Pusher protocol, then POST `socket_id` to
    `/rooms/{room}/auth`. Only this server computes the HMAC; the app secret stays
-   server-side. Both clients supply their API origin and respond to ping frames.
+   server-side. Subscribe to the exact `channel` returned by authorization, which
+   can differ from the logical room channel. See subscription leases below. Both clients supply their API origin and respond to ping frames.
 5. `GET /rooms/{room}/messages` returns the newest 50 messages in ascending order.
    `?before=<oldest-id>` loads older pages; `?after=<newest-id>` catches up in
    ascending pages until `has_more` is false. Cursors are exclusive message IDs.
@@ -99,13 +100,13 @@ queued personal badge events.
    the message and durable outbox record in one transaction. Unique
    `(user_id, request_id)` makes retries idempotent. Preserve that UUID when
    retrying an uncertain send; the app shows an explicit retry action.
-7. `chat:deliver` publishes `chat.changed` with **only** `kind` and `message_id`.
+7. `chat:deliver` publishes `chat.changed` with `kind`/`message_id` plus lightweight badge and watch state where applicable.
    Clients fetch authorized history through the API and merge by ID. No message
    text crosses the broadcast channel. Existing subscriptions therefore cannot
    bypass a new ban, block, closed room or expired playback permission.
-8. Reconnect refreshes the recent page (discarding the previously loaded window)
+8. Reconnect catches up new pages and reconciles the recent page
    so deletions missed while offline are also removed. A 30-second foreground reconciliation also
-   recovers missed notifications and heartbeats the room. Deleted events remove
+   recovers missed recent notifications, reloads room/block state and heartbeats the room even while the socket stays connected. Deleted events remove
    or tombstone the displayed message. Backgrounding/logout/closing releases
    native connections. Redis expires abandoned presence in 90 seconds (connection
    counts can count the same account on multiple devices).
@@ -222,3 +223,40 @@ Deploy the updated API and both mobile builds. No database migration is needed.
 Verify a creator can invite another account to the same room, a member cannot,
 retries do not send duplicate invitations, and an accepted invite opens the
 existing transcript. Closed/ended/expired rooms reject new invitations.
+
+
+## Subscription leases and recovery (27 October 2026)
+
+Room joins and unread summaries return stable logical channel names. Both auth
+endpoints return a signed physical `channel` with a `.lease.<epoch>` suffix and
+`expires_in` seconds. SDKs subscribe to that exact returned channel and renew
+through authenticated HTTP after expiry, checked by the 30-second health timer.
+An authorization failure unsubscribes the room and clears its transcript; network
+failures retain normal reconnect/retry behavior. Badge sockets track logical to
+physical subscriptions independently of room presence.
+
+The delivery worker publishes only to current five-minute lease channels and,
+for the first 60 seconds of each epoch, the previous epoch. A modified client
+that refuses to unsubscribe consequently stops receiving metadata within at
+most six minutes after its last authorization. New authorization always checks
+current room membership, bans and playback. HTTP message-body access continues
+to be checked on every request. This is bounded metadata revocation, not an
+instantaneous eviction guarantee. Disabling chat suspends broadcasts as well as
+viewer endpoints; administrative review/moderation remains usable.
+
+Connected transcript reconciliation runs every 30 seconds, separately from
+watch-position recovery and five-minute unread integrity snapshots. It refreshes
+recent history, catches up new messages and reloads room/block state even when
+Reverb is healthy but the delivery worker has stalled. It does not issue a watch
+position request on each transcript reconciliation.
+
+All private-room discovery, invite acceptance/link handling and WhatsApp jobs use
+the same lifecycle checks as joining: a live `/watch` session can keep a private
+room available after its idle deadline, including when renewing after interruption.
+Account deletion ends hosted rooms and sessions, removes invitation/membership
+identities, clears stored watch cards and invalidates other viewers' block caches.
+
+Deploy the API, worker and both SDK/app updates together. Older SDKs that insist
+that auth channels equal logical channels cannot use the new broadcast protocol.
+There is intentionally no publication to permanent legacy channels, which would
+leave the metadata revocation issue open. No new database migration is needed.

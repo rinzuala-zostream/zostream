@@ -37,9 +37,9 @@ class SendChatInvitationWhatsApp implements ShouldQueue, ShouldBeEncrypted
         if (! hash_equals((string) $invite->link_token_hash, hash('sha256', $this->token))) { $this->skipped('link_replaced'); return; }
         $room = DB::table('chat_invite_rooms as ir')->join('chat_rooms as r', 'r.id', '=', 'ir.room_id')
             ->where('ir.room_id', $invite->room_id)->where('ir.active', true)->where('r.closed', false)
-            ->where(fn ($q) => $q->whereNotNull('ir.content_type')->orWhere('ir.idle_expires_at', '>', now()))
+            ->tap(fn ($q) => app(\App\Support\Chat\InviteRoomLifecycle::class)->candidates($q))
             ->first(['ir.*']);
-        if (! $room) { $this->skipped('room_unavailable_or_expired'); return; }
+        if (! app(\App\Support\Chat\InviteRoomLifecycle::class)->active($room)) { $this->skipped('room_unavailable_or_expired'); return; }
         $user = DB::table('user')->where('uid', $invite->invitee_user_id)->first();
         $phone = $user ? InvitationPhone::international($user->auth_phone, $user->country_code ?? null) : null;
         if ($phone === null) { $this->skipped('recipient_phone_unavailable'); return; }

@@ -30,7 +30,7 @@ onUnmounted(() => { sequence++; controller?.abort(); });
 <template>
     <section class="chat-analytics">
         <form class="chat-toolbar" @submit.prevent="load">
-            <label>Chat room type<select v-model="roomType"><option value="">All rooms</option><option value="global">Global</option><option value="movie">Movie</option><option value="episode">Episode</option></select></label>
+            <label>Chat room type<select v-model="roomType"><option value="">All rooms</option><option value="global">Global</option><option value="movie">Movie</option><option value="episode">Episode</option><option value="invite">Private / Watch room</option></select></label>
             <label>Content ID<input v-model.trim="contentId" placeholder="All content" maxlength="191"></label>
             <button class="admin-secondary" :disabled="loading">{{ loading ? 'Loading…' : 'Refresh chat metrics' }}</button>
             <button class="admin-secondary" type="button" :disabled="!report || loading" @click="download">Export JSON</button>

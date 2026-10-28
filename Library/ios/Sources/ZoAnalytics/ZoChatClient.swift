@@ -36,7 +36,8 @@ public struct ChatRoom: Decodable, Sendable {
 }
 public struct ChatFailure: LocalizedError {
     public let message: String
-    public init(message: String) { self.message = message }
+    public let statusCode: Int?
+    public init(message: String, statusCode: Int? = nil) { self.message = message; self.statusCode = statusCode }
     public var errorDescription: String? { message }
 }
 
@@ -68,6 +69,22 @@ public final class ZoChatClient {
     public var onBadgeEvent: (([String: Any]) -> Void)?
     private var unreadChannels: Set<String>?
     private var unreadSubscribed: Set<String> = []
+    private var unreadPhysical: [String: String] = [:]
+    private var unreadExpiry: [String: TimeInterval] = [:]
+    private var subscriptionExpiry: TimeInterval = 0
+
+    private func matchesChannel(_ actual: String, _ logical: String) -> Bool {
+        let prefix = logical + ".lease."
+        return actual == logical || (actual.hasPrefix(prefix) && UInt64(actual.dropFirst(prefix.count)) != nil)
+    }
+
+    private func revokeRoom() async {
+        let revision = roomRevision
+        if let channel { try? await sendEvent("pusher:unsubscribe", data: ["channel": channel]) }
+        guard !closed, roomRevision == revision else { return }
+        roomRevision += 1; room = nil; channel = nil; isConnected = false
+        onConnection?(false); onChanged?("access_denied", nil)
+    }
     public var onWatchState: (([String: Any]) -> Void)?
     public var onChanged: ((String, String?) -> Void)?
     public var onConnection: ((Bool) -> Void)?
@@ -120,7 +137,7 @@ public final class ZoChatClient {
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode), successfulEnvelope else {
             let message = (json["message"] as? String).flatMap { $0.isEmpty ? nil : $0 }
                 ?? ((json["error"] as? [String: Any])?["message"] as? String)
-            throw ChatFailure(message: message ?? "Chat request failed")
+            throw ChatFailure(message: message ?? "Chat request failed", statusCode: (response as? HTTPURLResponse)?.statusCode)
         }
         let payload = json["data"] as? [String: Any] ?? json["result"] as? [String: Any] ?? json
         return try JSONDecoder().decode(T.self, from: JSONSerialization.data(withJSONObject: payload))
@@ -136,7 +153,7 @@ public final class ZoChatClient {
         subscriptionTask?.cancel()
         let previousChannel = channel
         isConnected = false
-        channel = nil; room = nil
+        channel = nil; room = nil; subscriptionExpiry = 0
         if let previousChannel {
             do { try await sendEvent("pusher:unsubscribe", data: ["channel": previousChannel]) }
             catch { if !Task.isCancelled, revision == roomRevision { reconnect(generation) } }
@@ -167,7 +184,9 @@ public final class ZoChatClient {
         unreadChannels = wanted; unreadSubscribed.formIntersection(wanted)
         room = ChatRoom(room_id: "", room_type: "unread", channel: "", websocket_url: websocketURL,
                         user_id: "", is_host: nil, room_name: nil, content_type: nil, watch_session: nil)
-        Task { for channel in removed { try? await sendEvent("pusher:unsubscribe", data: ["channel": channel]) } }
+        let removedPhysical = removed.compactMap { unreadPhysical.removeValue(forKey: $0) }
+        for target in removed { unreadExpiry.removeValue(forKey: target) }
+        Task { for channel in removedPhysical { try? await sendEvent("pusher:unsubscribe", data: ["channel": channel]) } }
         if socket != nil && socketURL == websocketURL { subscribe() } else { connect() }
         startReconciliation()
     }
@@ -185,9 +204,19 @@ public final class ZoChatClient {
                 }
                 if let room = self.room, self.unreadChannels == nil {
                     struct Presence: Decodable { let online_count: Int }
-                    let _: Presence? = try? await self.request("rooms/\(room.room_id)/heartbeat", body: [:], as: Presence.self)
+                    let revision = self.roomRevision
+                    do {
+                        let _: Presence = try await self.request("rooms/\(room.room_id)/heartbeat", body: [:], as: Presence.self)
+                    } catch let error as ChatFailure where [403, 404, 410].contains(error.statusCode ?? 0) {
+                        if revision == self.roomRevision { await self.revokeRoom() }
+                    } catch { /* Reconcile and retry transient failures. */ }
                 }
                 let now = ProcessInfo.processInfo.systemUptime
+                if self.room != nil && (self.unreadChannels != nil
+                    ? self.unreadExpiry.values.contains(where: { $0 <= now }) : self.subscriptionExpiry <= now) {
+                    self.subscribe()
+                }
+                if self.room != nil && self.unreadChannels == nil && self.isConnected { self.onChanged?("reconcile", nil) }
                 if !self.isConnected && now - self.lastFallbackSync >= 60 {
                     self.lastFallbackSync = now; self.onChanged?("sync", nil)
                 }
@@ -209,12 +238,19 @@ public final class ZoChatClient {
             subscriptionTask = Task { [weak self] in
                 guard let self else { return }
                 do {
-                    struct Auth: Decodable { let auth: String; let channel: String }
-                    for target in targets.subtracting(self.unreadSubscribed) {
+                    struct Auth: Decodable { let auth: String; let channel: String; let expires_in: Int? }
+                    for target in targets where !self.unreadSubscribed.contains(target) || (self.unreadExpiry[target] ?? 0) <= ProcessInfo.processInfo.systemUptime {
                         let auth = try await self.request("unread/auth", body: ["socket_id": socketId, "channel": target], as: Auth.self)
                         guard !self.closed, current == self.generation, self.unreadChannels?.contains(target) == true, !Task.isCancelled else { return }
-                        guard auth.channel == target else { throw ChatFailure(message: "Badge channel mismatch") }
-                        try await self.sendEvent("pusher:subscribe", data: ["channel": target, "auth": auth.auth])
+                        guard self.matchesChannel(auth.channel, target) else { throw ChatFailure(message: "Badge channel mismatch") }
+                        let old = self.unreadPhysical.updateValue(auth.channel, forKey: target)
+                        self.unreadExpiry[target] = ProcessInfo.processInfo.systemUptime + Double(min(300, max(1, auth.expires_in ?? 300)))
+                        if old != auth.channel || !self.unreadSubscribed.contains(target) {
+                            self.isConnected = false
+                            self.unreadSubscribed.remove(target)
+                            try await self.sendEvent("pusher:subscribe", data: ["channel": auth.channel, "auth": auth.auth])
+                            if let old, old != auth.channel { try? await self.sendEvent("pusher:unsubscribe", data: ["channel": old]) }
+                        }
                     }
                 } catch { if !Task.isCancelled { self.reconnect(current) } }
             }
@@ -223,15 +259,22 @@ public final class ZoChatClient {
         subscriptionTask = Task { [weak self] in
             guard let self else { return }
             do {
-                struct Auth: Decodable { let auth: String; let channel: String }
+                struct Auth: Decodable { let auth: String; let channel: String; let expires_in: Int? }
                 let auth = try await self.request("rooms/\(room.room_id)/auth", body: ["socket_id": socketId], as: Auth.self)
                 guard !self.closed, current == self.generation, revision == self.roomRevision, !Task.isCancelled else { return }
-                guard auth.channel == room.channel else { throw ChatFailure(message: "Chat channel mismatch") }
+                guard self.matchesChannel(auth.channel, room.channel) else { throw ChatFailure(message: "Chat channel mismatch") }
+                let old = self.channel
                 self.channel = auth.channel
+                self.subscriptionExpiry = ProcessInfo.processInfo.systemUptime + Double(min(300, max(1, auth.expires_in ?? 300)))
+                if old == auth.channel && self.isConnected { return }
+                self.isConnected = false
+                if let old, old != auth.channel { try? await self.sendEvent("pusher:unsubscribe", data: ["channel": old]) }
                 try await self.sendEvent("pusher:subscribe", data: ["channel": auth.channel, "auth": auth.auth])
             } catch {
                 guard !Task.isCancelled, revision == self.roomRevision else { return }
-                self.reconnect(current)
+                if let failure = error as? ChatFailure, [403, 404, 410].contains(failure.statusCode ?? 0) {
+                    await self.revokeRoom()
+                } else { self.reconnect(current) }
             }
         }
     }
@@ -246,7 +289,7 @@ public final class ZoChatClient {
         generation += 1; let current = generation
         retryTask?.cancel(); subscriptionTask?.cancel()
         socketId = nil; channel = nil; socketURL = room.websocket_url
-        unreadSubscribed.removeAll()
+        unreadSubscribed.removeAll(); unreadPhysical.removeAll(); unreadExpiry.removeAll(); subscriptionExpiry = 0
         socket?.cancel(with: .goingAway, reason: nil); receiveTask?.cancel()
         var request = URLRequest(url: url)
         request.setValue(baseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/")), forHTTPHeaderField: "Origin")
@@ -270,7 +313,9 @@ public final class ZoChatClient {
                         self.subscribe()
                     case "pusher_internal:subscription_succeeded":
                         if let targets = self.unreadChannels {
-                            guard let target = event["channel"] as? String, targets.contains(target) else { continue }
+                            guard let physical = event["channel"] as? String,
+                                  let target = self.unreadPhysical.first(where: { $0.value == physical })?.key,
+                                  targets.contains(target) else { continue }
                             self.unreadSubscribed.insert(target)
                             if !self.isConnected && self.unreadSubscribed.isSuperset(of: targets) {
                                 self.retry = 0; self.isConnected = true; self.onConnection?(true); self.onChanged?("sync", nil)
@@ -282,7 +327,9 @@ public final class ZoChatClient {
                     case "pusher:ping": try await ws.send(.string("{\"event\":\"pusher:pong\",\"data\":{}}"))
                     case "chat.changed", "chat.badge":
                         if let targets = self.unreadChannels {
-                            guard let target = event["channel"] as? String, targets.contains(target), self.unreadSubscribed.contains(target) else { continue }
+                            guard let physical = event["channel"] as? String,
+                                  let target = self.unreadPhysical.first(where: { $0.value == physical })?.key,
+                                  targets.contains(target), self.unreadSubscribed.contains(target) else { continue }
                             if let badge = payload["badge"] as? [String: Any] { self.onBadgeEvent?(badge) }
                             continue
                         }
@@ -310,7 +357,7 @@ public final class ZoChatClient {
         subscriptionTask?.cancel(); receiveTask?.cancel()
         socket?.cancel(with: .goingAway, reason: nil); socket = nil
         socketId = nil; channel = nil
-        unreadSubscribed.removeAll()
+        unreadSubscribed.removeAll(); unreadPhysical.removeAll(); unreadExpiry.removeAll(); subscriptionExpiry = 0
         isConnected = false
         onConnection?(false)
         let delay = min(30.0, pow(2.0, Double(retry))) + Double.random(in: 0...0.5)

@@ -27,6 +27,20 @@ class ZoChatClient(
     private var unreadChannels: Set<String>? = null
     private val unreadSent = mutableSetOf<String>()
     private val unreadSubscribed = mutableSetOf<String>()
+    private val unreadPhysical = mutableMapOf<String, String>()
+    private val unreadExpiry = mutableMapOf<String, Long>()
+    private var subscriptionExpiry = 0L
+    private var subscriptionPending = false
+    private class HttpFailure(val status: Int, message: String) : IllegalStateException(message)
+
+    private fun revokeRoom() {
+        channel?.let { sendEvent("pusher:unsubscribe", JSONObject().put("channel", it)) }
+        roomRevision++; room = null; channel = null; isConnected = false
+        onConnection(false); onChanged("access_denied", null)
+    }
+
+    private fun matchesChannel(actual: String, logical: String) =
+        actual == logical || (actual.startsWith("$logical.lease.") && actual.removePrefix("$logical.lease.").toLongOrNull() != null)
     var onWatchState: ((JSONObject) -> Unit)? = null
     var isConnected = false
         private set
@@ -49,6 +63,9 @@ class ZoChatClient(
             if (credentials()?.ownerKey != owner) { close(); return }
             room?.takeIf { unreadChannels == null }?.let { request("rooms/${it.getString("room_id")}/heartbeat", JSONObject()) { _, _ -> } }
             val now = android.os.SystemClock.elapsedRealtime()
+            if (room != null && (unreadChannels != null || !subscriptionPending) &&
+                (if (unreadChannels != null) unreadExpiry.values.any { it <= now } else subscriptionExpiry <= now)) subscribe()
+            if (room != null && unreadChannels == null && isConnected) onChanged("reconcile", null)
             if (isConnected) {
                 if (now - lastSocketActivity > 90_000) reconnect(generation)
                 else sendEvent("pusher:ping", JSONObject())
@@ -64,11 +81,18 @@ class ZoChatClient(
         if (closed) return
         val requestOwner = credentials()?.ownerKey
         val requestPlaybackToken = playbackToken()
+        val requestRoomRevision = roomRevision
         executor.execute {
             val result = runCatching { perform(path, body, requestOwner, requestPlaybackToken) }
             main.post {
                 if (!closed && credentials()?.ownerKey == requestOwner)
-                    result.fold({ callback(it, null) }, { callback(null, it.message ?: "Chat unavailable") })
+                    result.fold({ callback(it, null) }, {
+                        if (unreadChannels == null && requestRoomRevision == roomRevision && it is HttpFailure &&
+                            it.status in listOf(403, 404, 410) && room?.optString("room_id")?.let { id ->
+                                path == "rooms/$id/heartbeat" || path == "rooms/$id/auth"
+                            } == true) revokeRoom()
+                        callback(null, it.message ?: "Chat unavailable")
+                    })
             }
         }
     }
@@ -113,7 +137,7 @@ class ZoChatClient(
                 val diagnosticPath = if (path.startsWith("invitation-links/")) "invitation-links/[redacted]" else path
                 val diagnostic = "Chat request failed (${response.code}) at $diagnosticPath (success=$successValue, status=${json.optString("status")}, fields=$keys)"
                 android.util.Log.e("ZoChatClient", diagnostic)
-                message ?: "Chat request failed. Please try again."
+                throw HttpFailure(response.code, message ?: "Chat request failed. Please try again.")
             }
             data ?: json.optJSONObject("result") ?: json
         }
@@ -127,7 +151,7 @@ class ZoChatClient(
         val revision = ++roomRevision
         channel?.let { sendEvent("pusher:unsubscribe", JSONObject().put("channel", it)) }
         isConnected = false
-        channel = null; room = null
+        channel = null; room = null; subscriptionExpiry = 0; subscriptionPending = false
         val path: String
         val body = JSONObject()
         if (type == "invite") {
@@ -160,7 +184,10 @@ class ZoChatClient(
         val wanted = (0 until list.length()).map { list.getString(it) }.toSet()
         val previous = unreadChannels.orEmpty()
         if ((wanted - previous).isNotEmpty()) isConnected = false
-        (previous - wanted).forEach { sendEvent("pusher:unsubscribe", JSONObject().put("channel", it)) }
+        (previous - wanted).forEach { target ->
+            unreadPhysical.remove(target)?.let { sendEvent("pusher:unsubscribe", JSONObject().put("channel", it)) }
+            unreadExpiry.remove(target)
+        }
         unreadSent.retainAll(wanted); unreadSubscribed.retainAll(wanted)
         unreadChannels = wanted
         room = summary
@@ -176,25 +203,47 @@ class ZoChatClient(
         val id = socketId ?: return // A handshake already in flight will subscribe to the latest room.
         unreadChannels?.let { wanted ->
             val current = generation
-            (wanted - unreadSent - unreadSubscribed).forEach { target ->
+            wanted.filter { it !in unreadSent && (it !in unreadSubscribed || (unreadExpiry[it] ?: 0) <= android.os.SystemClock.elapsedRealtime()) }.forEach { target ->
                 unreadSent.add(target)
                 request("unread/auth", JSONObject().put("socket_id", id).put("channel", target)) { auth, _ ->
                     if (closed || current != generation || target !in unreadChannels.orEmpty()) return@request
-                    if (auth == null || auth.optString("channel") != target) { reconnect(current); return@request }
-                    if (!sendEvent("pusher:subscribe", JSONObject().put("channel", target).put("auth", auth.getString("auth")))) reconnect(current)
+                    unreadSent.remove(target)
+                    if (auth == null || !matchesChannel(auth.optString("channel"), target)) {
+                        unreadPhysical.remove(target)?.let { sendEvent("pusher:unsubscribe", JSONObject().put("channel", it)) }
+                        unreadSubscribed.remove(target); unreadExpiry[target] = 0; isConnected = false
+                        onChanged("sync", null); return@request
+                    }
+                    val physical = auth.getString("channel")
+                    val old = unreadPhysical.put(target, physical)
+                    unreadExpiry[target] = android.os.SystemClock.elapsedRealtime() + auth.optLong("expires_in", 300).coerceIn(1, 300) * 1000
+                    if (old != physical || target !in unreadSubscribed) {
+                        isConnected = false
+                        unreadSubscribed.remove(target)
+                        unreadSent.add(target)
+                        if (!sendEvent("pusher:subscribe", JSONObject().put("channel", physical).put("auth", auth.getString("auth")))) reconnect(current)
+                        if (old != null && old != physical) sendEvent("pusher:unsubscribe", JSONObject().put("channel", old))
+                    }
                 }
             }
             return
         }
         val info = room ?: return
+        if (subscriptionPending) return
+        subscriptionPending = true
         val revision = roomRevision
         val current = generation
         request("rooms/${info.getString("room_id")}/auth", JSONObject().put("socket_id", id)) { auth, _ ->
             if (closed || current != generation || revision != roomRevision) return@request
-            if (auth == null || auth.optString("channel") != info.optString("channel")) {
+            subscriptionPending = false
+            if (auth == null || !matchesChannel(auth.optString("channel"), info.optString("channel"))) {
                 reconnect(current); return@request
             }
+            val old = channel
             channel = auth.getString("channel")
+            subscriptionExpiry = android.os.SystemClock.elapsedRealtime() + auth.optLong("expires_in", 300).coerceIn(1, 300) * 1000
+            if (old == channel && isConnected) return@request
+            isConnected = false
+            if (old != null && old != channel) sendEvent("pusher:unsubscribe", JSONObject().put("channel", old))
             if (!sendEvent("pusher:subscribe", JSONObject().put("channel", channel).put("auth", auth.getString("auth")))) reconnect(current)
         }
     }
@@ -206,7 +255,7 @@ class ZoChatClient(
         if (!url.startsWith("wss://")) { onConnection(false); return }
         val current = ++generation
         socketId = null; channel = null; socketUrl = url
-        unreadSent.clear(); unreadSubscribed.clear()
+        unreadSent.clear(); unreadSubscribed.clear(); unreadPhysical.clear(); unreadExpiry.clear(); subscriptionPending = false; subscriptionExpiry = 0
         socket?.cancel()
         socket = http.newWebSocket(Request.Builder().url(url).header("Origin", baseUrl.trimEnd('/')).build(), object : WebSocketListener() {
             override fun onMessage(webSocket: WebSocket, text: String) {
@@ -225,8 +274,10 @@ class ZoChatClient(
                             "pusher_internal:subscription_succeeded" -> {
                                 val target = event.optString("channel")
                                 if (unreadChannels != null) {
-                                    if (target in unreadSent && target in unreadChannels.orEmpty()) {
-                                        unreadSubscribed.add(target)
+                                    val logical = unreadPhysical.entries.firstOrNull { it.value == target }?.key
+                                    if (logical != null && logical in unreadSent && logical in unreadChannels.orEmpty()) {
+                                        unreadSent.remove(logical)
+                                        unreadSubscribed.add(logical)
                                         if (!isConnected && unreadSubscribed.containsAll(unreadChannels.orEmpty())) {
                                             retry = 0; isConnected = true; onConnection(true); onChanged("sync", null)
                                         }
@@ -243,7 +294,8 @@ class ZoChatClient(
                             "chat.changed", "chat.badge" -> {
                                 if (unreadChannels != null) {
                                     val target = event.optString("channel")
-                                    if (target !in unreadSubscribed || target !in unreadChannels.orEmpty()) return@post
+                                    val logical = unreadPhysical.entries.firstOrNull { it.value == target }?.key
+                                    if (logical !in unreadSubscribed || logical !in unreadChannels.orEmpty()) return@post
                                     val data = event.opt("data").let { if (it is JSONObject) it else JSONObject(it?.toString() ?: "{}") }
                                     data.optJSONObject("badge")?.let { onBadgeEvent?.invoke(it) }
                                     return@post
@@ -270,7 +322,7 @@ class ZoChatClient(
         if (closed || current != generation) return
         val waiting = ++generation
         socket?.cancel(); socket = null; socketId = null; channel = null
-        unreadSent.clear(); unreadSubscribed.clear()
+        unreadSent.clear(); unreadSubscribed.clear(); unreadPhysical.clear(); unreadExpiry.clear(); subscriptionPending = false; subscriptionExpiry = 0
         isConnected = false
         onConnection(false)
         val delay = (1000L shl retry.coerceAtMost(5)) + (0..500).random()
