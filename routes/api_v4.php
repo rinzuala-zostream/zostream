@@ -165,6 +165,7 @@ Route::prefix('v4')
             ->middleware('throttle:20,1');
 
         Route::middleware('auth.token')->group(function () {
+            Route::post('/account/push-token', [\App\Http\Controllers\Api\V4\ChatController::class, 'registerPushToken'])->middleware('throttle:30,1');
             Route::prefix('chat')->group(function () {
                 Route::get('/invitation-links/{token}', [\App\Http\Controllers\Api\V4\ChatInvitationLinkController::class, 'show'])->where('token', '[A-Za-z0-9]{64}')->middleware(\App\Http\Middleware\ChatThrottle::class.':30');
                 Route::post('/invitation-links/{token}/respond', [\App\Http\Controllers\Api\V4\ChatInvitationLinkController::class, 'respond'])->where('token', '[A-Za-z0-9]{64}')->middleware(\App\Http\Middleware\ChatThrottle::class.':20');
@@ -194,6 +195,8 @@ Route::prefix('v4')
                 Route::post('/rooms/{room}/auth', [\App\Http\Controllers\Api\V4\ChatController::class, 'auth'])->whereNumber(['room', 'message', 'report'])->middleware(\App\Http\Middleware\ChatThrottle::class.':60');
                 Route::get('/rooms/{room}/messages', [\App\Http\Controllers\Api\V4\ChatController::class, 'messages'])->whereNumber(['room', 'message', 'report'])->middleware(\App\Http\Middleware\ChatThrottle::class.':300');
                 Route::post('/rooms/{room}/messages', [\App\Http\Controllers\Api\V4\ChatController::class, 'send'])->whereNumber(['room', 'message', 'report'])->middleware(\App\Http\Middleware\ChatThrottle::class.':30');
+                Route::post('/rooms/{room}/messages/{message}/invitation', [\App\Http\Controllers\Api\V4\ChatController::class, 'claimRoomInvitation'])->whereNumber(['room', 'message'])->middleware(\App\Http\Middleware\ChatThrottle::class.':20');
+                Route::post('/rooms/{room}/room-invites/status', [\App\Http\Controllers\Api\V4\ChatController::class, 'roomInvitationStatuses'])->whereNumber('room')->middleware(\App\Http\Middleware\ChatThrottle::class.':60');
                 Route::post('/rooms/{room}/messages/{message}/report', [\App\Http\Controllers\Api\V4\ChatController::class, 'report'])->whereNumber(['room', 'message', 'report'])->middleware(\App\Http\Middleware\ChatThrottle::class.':10');
                 Route::post('/rooms/{room}/moderate', [\App\Http\Controllers\Api\V4\ChatController::class, 'moderate'])->whereNumber(['room', 'message', 'report'])->middleware(['admin.token',\App\Http\Middleware\ChatThrottle::class.':60']);
             });

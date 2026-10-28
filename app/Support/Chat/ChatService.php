@@ -164,6 +164,7 @@ final class ChatService
     {
         return ['id' => (string) $m->id, 'room_id' => (string) $m->room_id,
             'user_id' => $m->user_id, 'request_id' => $m->request_id, 'display_name' => $m->display_name,
+            'room_invite' => ! $m->deleted_at && ($m->invite_room_id ?? null) ? app(RoomInvitationService::class)->metadata((int) $m->invite_room_id) : null,
             'watch_invite' => $m->deleted_at ? null : json_decode($m->watch_invite ?? 'null', true),
             'body' => $m->deleted_at ? null : $m->body, 'spoiler' => (bool) $m->spoiler,
             'deleted' => $m->deleted_at !== null,
@@ -202,9 +203,11 @@ final class ChatService
             $hosted = DB::table('chat_invite_rooms')->where('host_user_id', $uid)->lockForUpdate()->pluck('room_id');
             DB::table('chat_invite_rooms')->whereIn('room_id', $hosted)->update([
                 'host_user_id' => $anonymous, 'room_name' => 'Ended room', 'active' => false, 'updated_at' => now(),
+                'host_stream_id' => null, 'stream_token_hash' => null,
             ]);
             DB::table('chat_rooms')->whereIn('id', $hosted)->update(['closed' => true, 'updated_at' => now()]);
             foreach ($hosted as $room) {
+                app(RoomInvitationService::class)->publishEnded(Request::create('/'), (int) $room);
                 DB::table('chat_outbox')->insert(['room_id' => $room, 'kind' => 'ended', 'created_at' => now(), 'updated_at' => now()]);
                 DB::afterCommit(fn () => $this->invalidate($room, true));
             }

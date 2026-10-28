@@ -86,10 +86,7 @@ final class PrivateWatchService
         if (! $invite) { return null; }
         $state = app(WatchPlaybackState::class);
         if ($invite->content_type !== null) {
-            $live = $invite->active && DB::table('n_active_streams as s')->join('n_devices as d', 'd.id', '=', 's.device_id')
-                ->where('d.user_id', $invite->host_user_id)->where('s.status', 'active')
-                ->where('s.content_type', $invite->content_type)->where('s.content_key', $invite->content_id)
-                ->where('s.last_ping', '>=', now()->subMinutes(3))->exists();
+            $live = app(InviteRoomLifecycle::class)->hostActive($invite);
             return ['room_id' => (string) $room, 'session_id' => null, 'active' => $live,
                 'playback' => $live ? $state->payload($invite, 'watch_position_ms', false) : null];
         }
@@ -139,6 +136,7 @@ final class PrivateWatchService
 
     public function streamChanged(Request $r, int $stream): void
     {
+        app(InviteRoomLifecycle::class)->endInactiveWatchRooms($r, $stream);
         if (! \Illuminate\Support\Facades\Schema::hasTable('chat_watch_participants')) { return; }
         $hosted = DB::table('chat_watch_sessions')->where('active', true)->where('host_stream_id', $stream)->get();
         foreach ($hosted as $watch) {

@@ -41,6 +41,7 @@ class ZoChatClient(
 
     private fun matchesChannel(actual: String, logical: String) =
         actual == logical || (actual.startsWith("$logical.lease.") && actual.removePrefix("$logical.lease.").toLongOrNull() != null)
+    var onRoomInviteState: ((JSONObject) -> Unit)? = null
     var onWatchState: ((JSONObject) -> Unit)? = null
     var isConnected = false
         private set
@@ -324,6 +325,7 @@ class ZoChatClient(
                                 if (channel == null || event.optString("channel") != channel) return@post
                                 val data = event.opt("data").let { if (it is JSONObject) it else JSONObject(it?.toString() ?: "{}") }
                                 val kind = data.getString("kind")
+                                data.optJSONObject("room_invite")?.let { onRoomInviteState?.invoke(it) }
                                 val watch = data.optJSONObject("watch")
                                 if (watch != null) onWatchState?.invoke(watch)
                                 if (watch != null && onWatchState != null && kind in listOf("watch_control", "watch_status")) return@post

@@ -7,6 +7,12 @@ public struct ChatWatchInvite: Decodable, Sendable {
     public let content_title: String
 }
 
+public struct ChatRoomInvitation: Decodable, Sendable, Equatable {
+    public let room_id: String
+    public let room_name: String
+    public let active: Bool
+}
+
 public struct ChatMessage: Decodable, Identifiable, Sendable {
     public let id: String
     public let room_id: String
@@ -17,6 +23,7 @@ public struct ChatMessage: Decodable, Identifiable, Sendable {
     public let spoiler: Bool
     public let deleted: Bool
     public let created_at: String
+    public let room_invite: ChatRoomInvitation?
     public let watch_invite: ChatWatchInvite?
 }
 public struct ChatPage: Decodable, Sendable {
@@ -88,6 +95,7 @@ public final class ZoChatClient {
         roomRevision += 1; room = nil; channel = nil; isConnected = false
         onConnection?(false); onChanged?("access_denied", nil)
     }
+    public var onRoomInviteState: (([String: Any]) -> Void)?
     public var onWatchState: (([String: Any]) -> Void)?
     public var onChanged: ((String, String?) -> Void)?
     public var onConnection: ((Bool) -> Void)?
@@ -357,6 +365,7 @@ public final class ZoChatClient {
                         }
                         guard let channel = self.channel, event["channel"] as? String == channel else { continue }
                         let kind = payload["kind"] as? String ?? "sync"
+                        if let invite = payload["room_invite"] as? [String: Any] { self.onRoomInviteState?(invite) }
                         if let watch = payload["watch"] as? [String: Any] {
                             self.onWatchState?(watch)
                             if self.onWatchState != nil && ["watch_control", "watch_status"].contains(kind) { continue }

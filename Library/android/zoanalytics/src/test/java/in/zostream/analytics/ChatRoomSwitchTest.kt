@@ -249,6 +249,28 @@ class ChatRoomSwitchTest {
         } finally { client.close() }
     }
 
+    @Test fun roomInvitationStateIsDeliveredOnlyFromTheSubscribedPublicChat() {
+        val http = Http()
+        val states = mutableListOf<JSONObject>()
+        val client = ZoChatClient("https://example.test", { AnalyticsCredentials("token", "device", "owner") }, "test",
+            onChanged = { _, _ -> }, onConnection = {}, http = http)
+        client.onRoomInviteState = { states.add(it) }
+        try {
+            client.join("global", null) { _, error -> assertNull(error) }
+            await { client.isConnected }
+            val socket = http.sockets.single()
+            fun emit(channel: String) = socket.listener.onMessage(socket, JSONObject().put("event", "chat.changed")
+                .put("channel", channel).put("data", JSONObject().put("kind", "room_invite_status")
+                    .put("room_invite", JSONObject().put("room_id", "9").put("active", false))).toString())
+            emit("private-chat.other")
+            emit("private-chat.global")
+            shadowOf(Looper.getMainLooper()).idle()
+            assertEquals(1, states.size)
+            assertEquals("9", states.single().getString("room_id"))
+            assertFalse(states.single().getBoolean("active"))
+        } finally { client.close() }
+    }
+
     @Test fun badgeSubscriptionsShareOneSocketAndRejectUnsubscribedChannels() {
         val http = Http()
         var syncs = 0

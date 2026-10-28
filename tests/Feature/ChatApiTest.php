@@ -169,6 +169,8 @@ class ChatApiTest extends TestCase
         (require database_path('migrations/2026_10_27_000002_add_watch_playback_controls.php'))->up();
         (require database_path('migrations/2026_10_27_000003_create_chat_watch_participants.php'))->up();
         (require database_path('migrations/2026_10_27_000004_add_chat_badge_recipient.php'))->up();
+        (require database_path('migrations/2026_10_28_000001_bind_dedicated_watch_rooms_to_host_stream.php'))->up();
+        (require database_path('migrations/2026_10_28_000002_add_shared_room_invitation_messages.php'))->up();
         Schema::create('user', function (Blueprint $t) {
             $t->id();
             $t->string('uid');
@@ -225,6 +227,13 @@ class ChatApiTest extends TestCase
         return DB::table('chat_messages')->insertGetId(['room_id' => $room, 'user_id' => $uid, 'request_id' => (string) Str::uuid(), 'display_name' => $uid, 'body' => $body, 'spoiler' => false, 'created_at' => now(), 'updated_at' => now()]);
     }
 
+    private function liveCreatorStream(string $type, string $content): int
+    {
+        $device = DB::table('n_devices')->insertGetId(['user_id' => 'alice', 'device_token' => 'device-a']);
+        return DB::table('n_active_streams')->insertGetId(['device_id' => $device, 'stream_token' => 'play-a',
+            'status' => 'active', 'content_type' => $type, 'content_key' => $content, 'last_ping' => now()]);
+    }
+
     public function test_room_tabs_include_only_active_hosted_and_accepted_rooms(): void
     {
         $create = function (string $host, string $name, ?string $status = null, bool $active = true, bool $closed = false, bool $watch = false): string {
@@ -249,6 +258,7 @@ class ChatApiTest extends TestCase
         $hosted = $create('alice', 'My room');
         $accepted = $create('bob', 'Joined room', 'accepted');
         $watch = $create('alice', 'Watch room', watch: true);
+        $this->liveCreatorStream('movie', '42');
         $create('bob', 'Pending room', 'pending');
         $create('bob', 'Declined room', 'declined');
         $create('bob', 'Someone else');
@@ -294,6 +304,126 @@ class ChatApiTest extends TestCase
         $this->postJson('/api/v4/chat/invitation-links/'.$job->token.'/respond', ['auth_user_id' => 'charlie', 'accept' => true])
             ->assertOk()->assertJsonPath('data.room_id', $room);
         $this->getJson("/api/v4/chat/rooms/$room/messages?auth_user_id=charlie")->assertOk()->assertJsonPath('data.messages.0.id', (string) $message);
+    }
+
+    public function test_in_app_invite_sends_push_without_whatsapp_and_preserves_acceptance_flow(): void
+    {
+        $room = $this->createPrivateRoom();
+        DB::table('user')->insert(['uid' => 'charlie', 'name' => 'Charlie', 'token' => 'push-token']);
+        config(['chat.whatsapp_enabled' => true]);
+        \Illuminate\Support\Facades\Queue::fake();
+        $push = \Mockery::mock(\App\Http\Controllers\FCMNotificationController::class);
+        $push->shouldReceive('sendToToken')->once()->withArgs(function ($token, $title, $body, $image, $key, $data) use ($room) {
+            return $token === 'push-token' && $key === 'chat_invite' && $data['room_id'] === $room && isset($data['invite_id']) && strlen($data['invitation_token'] ?? '') === 64;
+        })->andReturn([]);
+        $this->app->instance(\App\Http\Controllers\FCMNotificationController::class, $push);
+        $this->postJson("/api/v4/chat/invite-rooms/$room/invitees", $this->identity(['invitee_ids' => ['charlie'], 'delivery' => 'in_app']))
+            ->assertOk()->assertJsonPath('data.invite_count', 1);
+        \Illuminate\Support\Facades\Queue::assertNothingPushed();
+        $invite = (string) DB::table('chat_room_invites')->where('invitee_user_id', 'charlie')->value('id');
+        $this->getJson('/api/v4/chat/invites?auth_user_id=charlie')->assertOk()->assertJsonPath('data.invites.0.invite_id', $invite);
+        $this->postJson("/api/v4/chat/invites/$invite/respond", ['auth_user_id' => 'charlie', 'accept' => true])->assertOk();
+        $this->postJson("/api/v4/chat/invite-rooms/$room/join", ['auth_user_id' => 'charlie'])->assertOk();
+    }
+
+    public function test_push_registration_binds_token_to_authenticated_account_only(): void
+    {
+        $token = str_repeat('p', 64);
+        DB::table('user')->insert(['uid' => 'bob', 'name' => 'Bob', 'token' => $token]);
+        $this->postJson('/api/v4/account/push-token', $this->identity(['fcm_token' => $token, 'user_id' => 'bob']))
+            ->assertOk()->assertJsonPath('data.registered', true);
+        $this->assertSame($token, DB::table('user')->where('uid', 'alice')->value('token'));
+        $this->assertNull(DB::table('user')->where('uid', 'bob')->value('token'));
+        $this->postJson('/api/v4/account/push-token', $this->identity(['fcm_token' => '']))->assertUnprocessable();
+    }
+
+    private function sharePrivateRoom(string $source, string $target, array $identity = [], ?string $request = null)
+    {
+        return $this->postJson("/api/v4/chat/rooms/$source/messages", array_merge($this->identity(), $identity, [
+            'body' => '/invite', 'request_id' => $request ?? (string) Str::uuid(), 'room_invite' => ['room_id' => $target],
+        ]));
+    }
+
+    public function test_shared_room_card_creates_pending_invitation_then_uses_existing_accept_flow(): void
+    {
+        $room = $this->createPrivateRoom();
+        $source = $this->room();
+        DB::table('user')->insert(['uid' => 'charlie', 'name' => 'Charlie']);
+        $request = (string) Str::uuid();
+        $card = $this->sharePrivateRoom($source, $room, request: $request)->assertCreated()
+            ->assertJsonPath('data.room_invite.room_id', $room)->assertJsonPath('data.room_invite.active', true)
+            ->assertJsonPath('data.room_invite.room_name', 'Friends')->json('data.id');
+        $this->sharePrivateRoom($source, $room, request: $request)->assertOk()->assertJsonPath('data.id', $card);
+        $this->assertSame(1, DB::table('chat_messages')->where('invite_room_id', $room)->count());
+        $url = "/api/v4/chat/rooms/$source/messages/$card/invitation";
+        $this->postJson($url, ['auth_user_id' => 'charlie'])->assertOk()->assertJsonPath('data.accepted', false);
+        $this->postJson($url, ['auth_user_id' => 'charlie'])->assertOk();
+        $this->assertSame(1, DB::table('chat_room_invites')->where('invitee_user_id', 'charlie')->count());
+        $this->postJson("/api/v4/chat/invite-rooms/$room/join", ['auth_user_id' => 'charlie'])->assertForbidden();
+        $invite = (string) DB::table('chat_room_invites')->where('invitee_user_id', 'charlie')->value('id');
+        $this->getJson('/api/v4/chat/invites?auth_user_id=charlie')->assertOk()->assertJsonPath('data.invites.0.invite_id', $invite);
+        $this->postJson("/api/v4/chat/invites/$invite/respond", ['auth_user_id' => 'charlie', 'accept' => true])->assertOk();
+        $this->postJson($url, ['auth_user_id' => 'charlie'])->assertOk()->assertJsonPath('data.accepted', true);
+        $this->postJson("/api/v4/chat/invite-rooms/$room/join", ['auth_user_id' => 'charlie'])->assertOk();
+    }
+
+    public function test_room_cards_reflect_closure_in_cached_history_status_and_realtime_event(): void
+    {
+        $room = $this->createPrivateRoom(); $source = $this->room();
+        $card = $this->sharePrivateRoom($source, $room)->assertCreated()->json('data.id');
+        $history = "/api/v4/chat/rooms/$source/messages?auth_user_id=bob";
+        $this->getJson($history)->assertOk()->assertJsonPath('data.messages.0.room_invite.active', true);
+        $this->postJson("/api/v4/chat/invite-rooms/$room/end", $this->identity())->assertOk();
+        $this->getJson($history)->assertOk()->assertJsonPath('data.messages.0.room_invite.active', false);
+        $this->postJson("/api/v4/chat/rooms/$source/room-invites/status", ['auth_user_id' => 'bob', 'room_ids' => [$room]])
+            ->assertOk()->assertJsonPath('data.rooms.0.active', false);
+        $this->postJson("/api/v4/chat/rooms/$source/messages/$card/invitation", ['auth_user_id' => 'bob'])->assertStatus(410);
+        Http::fake(['*' => Http::response('{}', 200)]);
+        $this->artisan('chat:deliver', ['--once' => true])->assertSuccessful();
+        Http::assertSent(function ($request) use ($room) {
+            $event = json_decode($request->data()['data'] ?? '{}', true);
+            return ($event['kind'] ?? null) === 'room_invite_status' && ($event['room_invite']['room_id'] ?? null) === $room && $event['room_invite']['active'] === false;
+        });
+    }
+
+    public function test_room_share_and_claim_enforce_ownership_visibility_and_source_context(): void
+    {
+        $room = $this->createPrivateRoom(); $source = $this->room();
+        $this->sharePrivateRoom($source, $room, ['auth_user_id' => 'bob'])->assertForbidden();
+        Cache::flush();
+        $this->sharePrivateRoom($room, $room)->assertUnprocessable();
+        Cache::flush();
+        $card = $this->sharePrivateRoom($source, $room)->assertCreated()->json('data.id');
+        $this->postJson("/api/v4/chat/rooms/$source/messages/$card/invitation", ['auth_user_id' => 'alice'])->assertUnprocessable();
+        DB::table('chat_blocks')->insert(['user_id' => 'bob', 'blocked_user_id' => 'alice']);
+        $this->postJson("/api/v4/chat/rooms/$source/messages/$card/invitation", ['auth_user_id' => 'bob'])->assertNotFound();
+        DB::table('chat_messages')->where('id', $card)->update(['deleted_at' => now()]);
+        $this->postJson("/api/v4/chat/rooms/$source/messages/$card/invitation", ['auth_user_id' => 'charlie'])->assertNotFound();
+        $this->getJson("/api/v4/chat/rooms/$source/messages?auth_user_id=alice")->assertOk()->assertJsonPath('data.messages.0.room_invite', null);
+        $this->postJson("/api/v4/chat/rooms/$source/room-invites/status", $this->identity(['room_ids' => ['not-a-room']]))->assertUnprocessable();
+    }
+
+    public function test_movie_chat_supports_room_cards_but_requires_its_playback_access(): void
+    {
+        $room = $this->privateWatchFixture();
+        $source = $this->withHeaders(['X-Playback-Token' => 'play-a'])->postJson('/api/v4/chat/rooms/join', $this->identity(['type' => 'movie', 'content_id' => 'film-a']))
+            ->assertOk()->json('data.room_id');
+        $card = $this->sharePrivateRoom($source, $room)->assertCreated()->json('data.id');
+        $this->postJson("/api/v4/chat/rooms/$source/messages/$card/invitation", ['auth_user_id' => 'bob'])->assertForbidden();
+        DB::table('chat_invite_rooms')->where('room_id', $room)->update(['active' => false]);
+        Cache::flush();
+        $this->sharePrivateRoom($source, $room)->assertForbidden();
+    }
+
+    public function test_worker_expires_idle_shared_room_and_updates_public_cards_without_chat_messages(): void
+    {
+        $this->freezeTime(); $room = $this->createPrivateRoom(); $source = $this->room();
+        $this->sharePrivateRoom($source, $room)->assertCreated();
+        $this->travel(61)->minutes();
+        Http::fake(['*' => Http::response('{}', 200)]);
+        $this->artisan('chat:deliver', ['--once' => true])->assertSuccessful();
+        $this->assertFalse((bool) DB::table('chat_invite_rooms')->where('room_id', $room)->value('active'));
+        $this->getJson("/api/v4/chat/rooms/$source/messages?auth_user_id=bob")->assertOk()->assertJsonPath('data.messages.0.room_invite.active', false);
     }
 
     public function test_only_creator_can_add_invitees_and_inactive_rooms_reject_invitations(): void
@@ -409,6 +539,7 @@ class ChatApiTest extends TestCase
         });
         DB::table('seasons')->insert(['id' => 7, 'season_number' => '2']);
         DB::table('episodes')->insert(['num' => '42', 'title' => 'Episode', 'season_id' => 7, 'episode_number' => '3']);
+        $this->liveCreatorStream('episode', '42');
         DB::table('chat_invite_rooms')->where('room_id', $room)->update([
             'content_type' => 'episode', 'content_id' => '42', 'idle_expires_at' => null,
         ]);
@@ -471,6 +602,7 @@ class ChatApiTest extends TestCase
             'content_type' => 'movie', 'content_id' => '42', 'idle_expires_at' => null,
         ]);
         $this->travel(2)->hours();
+        $this->liveCreatorStream('movie', '42');
         $this->getJson('/api/v4/chat/invite-rooms?'.http_build_query($this->identity()))
             ->assertOk()->assertJsonPath('data.rooms.0.room_id', $room);
         $this->postJson("/api/v4/chat/invite-rooms/$room/end", $this->identity())->assertStatus(422);
@@ -1419,9 +1551,101 @@ class ChatApiTest extends TestCase
         $this->artisan('chat:deliver', ['--once' => true])->assertSuccessful();
         Http::assertSent(function ($request) use ($room) {
             $event = json_decode($request->data()['data'] ?? '{}', true);
-            return ($event['kind'] ?? null) === 'watch_status' && ($event['watch']['room_id'] ?? null) === $room
+            return ($event['kind'] ?? null) === 'ended' && ($event['watch']['room_id'] ?? null) === $room
                 && $event['watch']['active'] === false && $event['watch']['playback'] === null;
         });
+    }
+
+    public function test_dedicated_room_ends_permanently_with_creator_stream_and_revokes_all_chat_access(): void
+    {
+        $private = $this->privateWatchFixture();
+        $room = $this->withHeaders(['X-Playback-Token' => 'play-a'])->postJson('/api/v4/chat/invite-rooms', $this->identity([
+            'type' => 'movie', 'content_id' => 'film-a', 'room_name' => 'Watch', 'invitee_ids' => ['bob'],
+        ]))->assertCreated()->json('data.room_id');
+        $invite = DB::table('chat_room_invites')->where('room_id', $room)->value('id');
+        $token = str_repeat('w', 64);
+        DB::table('chat_room_invites')->where('id', $invite)->update(['status' => 'accepted', 'link_token_hash' => hash('sha256', $token)]);
+        $this->assertSame(1, (int) DB::table('chat_invite_rooms')->where('room_id', $room)->value('host_stream_id'));
+        $this->getJson('/api/v4/chat/invite-rooms?auth_user_id=bob')->assertOk()->assertJsonCount(2, 'data.rooms');
+        $this->postJson("/api/v4/chat/invite-rooms/$room/join", ['auth_user_id' => 'bob'])->assertOk();
+        $other = $this->liveCreatorStream('movie', 'film-a');
+        DB::table('n_active_streams')->where('id', $other)->update(['stream_token' => 'other-device-play']);
+        DB::table('n_active_streams')->where('id', 1)->update(['status' => 'stopped']);
+        $service = app(\App\Support\Chat\PrivateWatchService::class);
+        $service->streamChanged(\Illuminate\Http\Request::create('/'), 1);
+        $service->streamChanged(\Illuminate\Http\Request::create('/'), 1);
+        $this->assertFalse((bool) DB::table('chat_invite_rooms')->where('room_id', $room)->value('active'));
+        $this->assertTrue((bool) DB::table('chat_invite_rooms')->where('room_id', $private)->value('active'));
+        $this->assertSame(1, DB::table('chat_outbox')->where('room_id', $room)->where('kind', 'ended')->count());
+        // Another player watching the same title cannot revive or authorize the old room.
+        $this->liveCreatorStream('movie', 'film-a');
+        $this->getJson('/api/v4/chat/invite-rooms?auth_user_id=bob')->assertOk()->assertJsonCount(1, 'data.rooms')
+            ->assertJsonPath('data.rooms.0.room_id', $private);
+        foreach (["invite-rooms/$room/join", "invite-rooms/$room/position", "rooms/$room/auth", "rooms/$room/watch-heartbeat"] as $path) {
+            $this->postJson('/api/v4/chat/'.$path, ['auth_user_id' => 'bob'])->assertForbidden();
+        }
+        $this->getJson("/api/v4/chat/rooms/$room/messages?auth_user_id=bob")->assertForbidden();
+        $this->postJson("/api/v4/chat/rooms/$room/messages", ['auth_user_id' => 'bob', 'body' => 'hello', 'request_id' => (string) Str::uuid()])->assertForbidden();
+        $this->getJson("/api/v4/chat/invitation-links/$token?auth_user_id=bob")->assertStatus(410);
+        DB::table('chat_room_invites')->where('id', $invite)->update(['status' => 'pending']);
+        $this->getJson('/api/v4/chat/invites?auth_user_id=bob')->assertOk()->assertJsonCount(0, 'data.invites');
+        $this->postJson("/api/v4/chat/invites/$invite/respond", ['auth_user_id' => 'bob', 'accept' => true])->assertNotFound();
+    }
+
+    public function test_dedicated_room_hides_on_heartbeat_expiry_and_worker_closes_it_without_chat_traffic(): void
+    {
+        $private = $this->privateWatchFixture();
+        $room = $this->withHeaders(['X-Playback-Token' => 'play-a'])->postJson('/api/v4/chat/invite-rooms', $this->identity([
+            'type' => 'movie', 'content_id' => 'film-a', 'room_name' => 'Watch', 'invitee_ids' => ['bob'],
+        ]))->assertCreated()->json('data.room_id');
+        DB::table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
+        DB::table('chat_outbox')->delete();
+        $this->travel(181)->seconds();
+        $this->getJson('/api/v4/chat/invite-rooms?auth_user_id=bob')->assertOk()->assertJsonCount(1, 'data.rooms');
+        $this->postJson("/api/v4/chat/invite-rooms/$room/join", ['auth_user_id' => 'bob'])->assertForbidden();
+        Http::fake(['*' => Http::response('{}', 200)]);
+        $this->artisan('chat:deliver', ['--once' => true])->assertSuccessful();
+        $this->assertFalse((bool) DB::table('chat_invite_rooms')->where('room_id', $room)->value('active'));
+        Http::assertSent(function ($request) use ($room) {
+            $event = json_decode($request->data()['data'] ?? '{}', true);
+            return ($event['kind'] ?? null) === 'ended' && ($event['watch']['room_id'] ?? null) === $room
+                && $event['watch']['active'] === false;
+        });
+    }
+
+    public function test_dedicated_room_binding_rejects_replaced_token_even_if_title_is_unchanged(): void
+    {
+        $this->privateWatchFixture();
+        $room = $this->withHeaders(['X-Playback-Token' => 'play-a'])->postJson('/api/v4/chat/invite-rooms', $this->identity([
+            'type' => 'movie', 'content_id' => 'film-a', 'room_name' => 'Watch', 'invitee_ids' => ['bob'],
+        ]))->assertCreated()->json('data.room_id');
+        DB::table('n_active_streams')->update(['stream_token' => 'replacement']);
+        $this->getJson('/api/v4/chat/invite-rooms?auth_user_id=alice')->assertOk()->assertJsonCount(1, 'data.rooms');
+        $this->postJson("/api/v4/chat/invite-rooms/$room/join", $this->identity())->assertForbidden();
+        app(\App\Support\Chat\PrivateWatchService::class)->streamChanged(\Illuminate\Http\Request::create('/'), 1);
+        $this->assertFalse((bool) DB::table('chat_invite_rooms')->where('room_id', $room)->value('active'));
+    }
+
+    public function test_dedicated_room_migration_binds_live_legacy_rooms_and_ends_abandoned_ones(): void
+    {
+        $private = $this->privateWatchFixture();
+        $create = fn () => $this->withHeaders(['X-Playback-Token' => 'play-a'])->postJson('/api/v4/chat/invite-rooms', $this->identity([
+            'type' => 'movie', 'content_id' => 'film-a', 'room_name' => 'Watch', 'invitee_ids' => ['bob'],
+        ]))->assertCreated()->json('data.room_id');
+        $live = $create();
+        $stale = $create();
+        DB::table('chat_invite_rooms')->where('room_id', $stale)->update(['content_id' => 'old-title']);
+        $migration = require database_path('migrations/2026_10_28_000001_bind_dedicated_watch_rooms_to_host_stream.php');
+        $migration->down();
+        $migration->up();
+        $bound = DB::table('chat_invite_rooms')->where('room_id', $live)->first();
+        $this->assertSame(1, (int) $bound->host_stream_id);
+        $this->assertSame(hash('sha256', 'play-a'), $bound->stream_token_hash);
+        $this->assertTrue((bool) $bound->active);
+        $this->assertFalse((bool) DB::table('chat_invite_rooms')->where('room_id', $stale)->value('active'));
+        $this->assertTrue(DB::table('chat_outbox')->where('room_id', $stale)->where('kind', 'ended')->exists());
+        $this->assertTrue((bool) DB::table('chat_invite_rooms')->where('room_id', $private)->value('active'));
+        $this->assertNull(DB::table('chat_invite_rooms')->where('room_id', $private)->value('host_stream_id'));
     }
 
     public function test_public_invitation_page_never_exposes_private_room_data(): void
@@ -1445,6 +1669,7 @@ class ChatApiTest extends TestCase
         });
         DB::table('seasons')->insert(['id' => 9, 'season_number' => 2]);
         DB::table('episodes')->insert(['num' => '42', 'title' => 'Episode', 'season_id' => 9, 'episode_number' => 3, 'isPremium' => true]);
+        $this->liveCreatorStream('episode', '42');
         DB::table('chat_invite_rooms')->where('room_id', $invite->room_id)->update([
             'content_type' => 'episode', 'content_id' => '42', 'idle_expires_at' => null, 'watch_position_ms' => 123000,
         ]);

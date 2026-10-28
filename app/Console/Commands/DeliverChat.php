@@ -16,7 +16,15 @@ final class DeliverChat extends Command
 
     public function handle(): int
     {
+        $lastWatchExpiry = 0;
         do {
+            // Unclean player exits have no stop request. Expire their rooms after
+            // the stream heartbeat deadline, even when no chat events are queued.
+            if (config('chat.enabled') && time() - $lastWatchExpiry >= 15) {
+                app(\App\Support\Chat\InviteRoomLifecycle::class)->endInactiveWatchRooms(\Illuminate\Http\Request::create('/'));
+                app(\App\Support\Chat\RoomInvitationService::class)->expireSharedRooms(\Illuminate\Http\Request::create('/'));
+                $lastWatchExpiry = time();
+            }
             $rows = DB::table('chat_outbox')->whereNull('delivered_at')->where(fn ($q) => $q->whereNull('available_at')->orWhere('available_at', '<=', now()))->orderBy('id')->limit(100)->get();
             foreach ($rows as $row) {
                 try {
@@ -85,6 +93,10 @@ final class DeliverChat extends Command
                     'sender_id' => $message?->user_id, 'retained' => $message && \Illuminate\Support\Carbon::parse($message->created_at)->gte(now()->subDays(config('chat.retention_days'))), 'eligible' => $message && ! $message->deleted_at
                         && \Illuminate\Support\Carbon::parse($message->created_at)->gte(now()->subDays(config('chat.retention_days')))];
             }
+        }
+        if ($row->kind === 'room_invite_status' && $row->message_id) {
+            $target = DB::table('chat_messages')->where('id', $row->message_id)->value('invite_room_id');
+            if ($target) { $event['room_invite'] = app(\App\Support\Chat\RoomInvitationService::class)->metadata((int) $target); }
         }
         $channels = [$channel];
         if ($recipient === null && isset($event['badge'])) {

@@ -404,3 +404,79 @@ behavior checks and five state-ordering checks run using standalone Swift
 harnesses; screen syntax parsing passes. Full iOS app compilation, XCTest,
 device rendering, two-device latency and live provider delivery are not verified
 by those harnesses.
+
+## Dedicated Watch Together room expiry — 28 October
+
+Deploy `2026_10_28_000001_bind_dedicated_watch_rooms_to_host_stream` before
+restarting `zostream-chat-delivery`. New dedicated rooms bind to the creator's
+stream ID and token hash. The migration binds currently live legacy rooms and
+ends abandoned ones. A different device/session playing the same title cannot
+keep a bound room alive or reopen it after it ends.
+
+A successful creator playback stop permanently sets the room inactive and queues
+an `ended` event. Discovery, pending invites, invitation links, history, sends,
+position reads and channel authorization reject the ended room. Android and iOS
+remove its tab and cached transcript for both the creator and invitees, and return
+a selected room to Global chat. This also works after a missed socket event when
+the API or room list confirms closure. Guest Watch Together playback stops,
+including when another chat tab is selected.
+Plain private chat rooms keep their existing lifecycle.
+
+An unclean exit cannot send a stop request: access expires with the existing
+three-minute stream heartbeat deadline. The delivery worker checks for abandoned
+rooms every 15 seconds even with an empty outbox, then publishes their ended
+state. Keep the delivery worker running; socket disconnection alone is not used
+to infer playback termination.
+
+Deployment commands, from the production backend directory:
+
+```sh
+php artisan migrate --force
+sudo supervisorctl restart zostream-chat-delivery
+```
+
+Ship the updated Android and iOS apps for immediate tab/cache retirement. Verify
+with two accounts: stop the creator, confirm the guest player stops and its room
+tab disappears, then restart the same title and confirm the old room/link still
+cannot be opened. Also test with the guest on Global chat and with an unclean
+creator exit beyond three minutes.
+
+## Global chat invitations and `/invite` cards — 28 October
+
+Run `php artisan migrate --force` for
+`2026_10_28_000002_add_shared_room_invitation_messages`, deploy the Library SDKs
+and both mobile apps, and restart `zostream-chat-delivery`.
+
+In Global chat, long press another viewer's username/message and choose **Invite
+to private room**. The creator chooses one of their active plain private rooms.
+The client posts the existing invitees endpoint with `delivery: in_app`; this
+creates a normal pending invitation and sends ZoStream push, without queuing a
+WhatsApp job. Invited users see the same Invitations list and accept/decline flow.
+Phone-number invitations retain their existing WhatsApp and push behavior.
+
+In Global, Movie and Episode chat, typing `/` offers `/invite` when the viewer
+owns an active private room. Sending `/invite` opens a room picker and publishes
+a purple private-room invitation card. This public card grants no room access by
+itself: **View invitation** creates/reuses a pending invitation for the signed-in
+viewer, then opens Invitations. An accepted member can reopen their room. The
+server checks source-chat access, message visibility/deletion/retention, creator
+ownership and target-room lifecycle. Card sharing is unavailable inside private
+rooms and cannot share another creator's room or a dedicated watch room.
+
+Ending a room publishes `room_invite_status` to each public source chat containing
+one of its cards. Both SDKs surface the state without reloading history. Every
+loaded card for that target renders **Room ended** and loses its join action.
+History reads and bounded status reconciliation compute current state even from
+cached transcripts; reconnect also checks older loaded cards. The delivery
+worker detects idle expired shared rooms every 15 seconds while preserving a
+live `/watch` session's existing room lifetime.
+
+Push notifications carry a recipient-bound invitation token and open the existing
+invitation screen when tapped. Android now displays chat invitation notifications
+in the foreground as well as FCM's background handling. iOS registers APNs/FCM
+after sign-in/notification permission and updates its token through authenticated
+`POST /api/v4/account/push-token`; the backend binds that token to the current
+account. iOS distribution requires a Push Notifications-enabled provisioning
+profile and an APNs key/certificate configured for this app in Firebase. Verify
+push delivery and cold/foreground notification taps on physical devices; local
+unit checks cannot verify the production APNs/FCM provider setup.
