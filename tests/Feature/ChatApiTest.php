@@ -1404,6 +1404,10 @@ class ChatApiTest extends TestCase
         ]))->assertCreated()->json('data.room_id');
         DB::table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
         $url = "/api/v4/chat/invite-rooms/$room/position";
+        $statusUrl = "/api/v4/chat/rooms/$room/watch-status?auth_user_id=bob";
+        $this->getJson($statusUrl)->assertOk()->assertJsonPath('data.active', true)->assertJsonPath('data.session_id', null);
+        $this->postJson("/api/v4/chat/invite-rooms/$room/join", ['auth_user_id' => 'bob'])->assertOk()
+            ->assertJsonPath('data.content_type', 'movie')->assertJsonPath('data.is_host', false)->assertJsonPath('data.watch_session', null);
         $this->postJson($url, $this->identity(['position_ms' => 8000, 'paused' => true, 'control_sequence' => 3]))->assertOk();
         $this->travel(5)->seconds();
         $this->postJson($url, ['auth_user_id' => 'bob'])->assertOk()->assertJsonPath('data.position_ms', 8000)->assertJsonPath('data.paused', true);

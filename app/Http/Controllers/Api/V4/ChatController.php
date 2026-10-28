@@ -399,9 +399,13 @@ final class ChatController extends Controller
     public function privateWatchStatus(Request $r, int $room)
     {
         $this->chat->room($r, $room);
-        $watch = app(\App\Support\Chat\PrivateWatchService::class)->liveSession($room);
-        return V4Response::success(['session_id' => $watch ? (string) $watch->id : null]
-            + ($watch ? app(\App\Support\Chat\PrivateWatchService::class)->counts($watch) : ['joined_count' => 0, 'streaming_count' => 0]));
+        $snapshot = app(\App\Support\Chat\PrivateWatchService::class)->snapshot($room);
+        // Dedicated content rooms have no /watch session row. A null session ID
+        // must not be interpreted as ended when their creator is still playing.
+        return V4Response::success(['session_id' => $snapshot['session_id'] ?? null,
+            'active' => (bool) ($snapshot['active'] ?? false),
+            'joined_count' => (int) ($snapshot['joined_count'] ?? 0),
+            'streaming_count' => (int) ($snapshot['streaming_count'] ?? 0)]);
     }
 
     public function privateWatchHeartbeat(Request $r, int $room)

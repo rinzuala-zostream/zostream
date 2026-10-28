@@ -267,6 +267,10 @@ server time). Dedicated content watch rooms have a null session ID and no invite
 counts. A null playback signals an ended/unavailable session. The worker builds
 snapshots from current authoritative state, so a delayed/retried event cannot
 restore an older session. Clients reject older event IDs and playback revisions.
+The HTTP `rooms/{room}/watch-status` response also includes `active` for both
+dedicated rooms and `/watch` sessions. Clients must use this flag: a dedicated
+room's null `session_id` does not mean that playback ended. Apple clients clear
+the previous ended state when joining a dedicated room again.
 Guests apply incoming state without another HTTP request. They retain their watch
 subscription when switching chat tabs. Socket ping/pong detects broken links.
 
