@@ -85,53 +85,7 @@ class FCMNotificationController extends Controller
                 throw new \RuntimeException('Firebase credentials are not configured.');
             }
 
-            $messageData = [];
-            foreach ($data as $dataKey => $dataValue) {
-                if (
-                    $dataValue !== null
-                    && ! is_array($dataValue)
-                    && ! is_object($dataValue)
-                ) {
-                    $messageData[(string) $dataKey] = (string) $dataValue;
-                }
-            }
-
-            if ($key !== null && $key !== '') {
-                $messageData['key'] = $key;
-            }
-
-            $notification = Notification::create($title, $body);
-            if ($image !== null && $image !== '') {
-                $notification = $notification->withImageUrl($image);
-            }
-
-            $message = CloudMessage::new()
-                ->withNotification($notification)
-                ->withAndroidConfig([
-                    'priority' => 'high',
-                    'notification' => [
-                        'sound' => 'default',
-                        'color' => '#f45342',
-                    ],
-                ])
-                ->withApnsConfig([
-                    'headers' => ['apns-priority' => '10'],
-                    'payload' => [
-                        'aps' => [
-                            'sound' => 'default',
-                            'badge' => 1,
-                            'content-available' => 1,
-                        ],
-                    ],
-                ]);
-
-            if ($messageData !== []) {
-                $message = $message->withData($messageData);
-            }
-
-            $message = $token !== null && $token !== ''
-                ? $message->withToken($token)
-                : $message->withTopic($topic ?: 'all');
+            $message = $this->buildMessage($token, $topic, $title, $body, $image, $key, $data);
 
             $result = (new Factory)
                 ->withServiceAccount($credentials)
@@ -152,5 +106,67 @@ class FCMNotificationController extends Controller
                 'error' => 'Notification delivery failed.',
             ];
         }
+    }
+
+    private function buildMessage(
+        ?string $token,
+        ?string $topic,
+        string $title,
+        string $body,
+        ?string $image,
+        ?string $key,
+        array $data,
+    ): CloudMessage {
+        $messageData = [];
+        foreach ($data as $dataKey => $dataValue) {
+            if (
+                $dataValue !== null
+                && ! is_array($dataValue)
+                && ! is_object($dataValue)
+            ) {
+                $messageData[(string) $dataKey] = (string) $dataValue;
+            }
+        }
+
+        if ($key !== null && $key !== '') {
+            $messageData['key'] = $key;
+        }
+
+        $apns = [
+            'headers' => ['apns-priority' => '10'],
+            'payload' => [
+                'aps' => [
+                    'sound' => 'default',
+                    'badge' => 1,
+                    'content-available' => 1,
+                ],
+            ],
+        ];
+
+        $notification = Notification::create($title, $body);
+        if ($image !== null && $image !== '') {
+            $notification = $notification->withImageUrl($image);
+            $apns['payload']['aps']['mutable-content'] = 1;
+            $apns['fcm_options']['image'] = $image;
+        }
+
+        $message = CloudMessage::new()
+            ->withNotification($notification)
+            ->withAndroidConfig([
+                'priority' => 'high',
+                'notification' => [
+                    'sound' => 'default',
+                    'color' => '#f45342',
+                ],
+            ])
+            ->withApnsConfig($apns);
+
+        if ($messageData !== []) {
+            $message = $message->withData($messageData);
+        }
+
+        return $token !== null && $token !== ''
+            ? $message->withToken($token)
+            : $message->withTopic($topic ?: 'all');
     }
 }
