@@ -455,8 +455,13 @@ WhatsApp job. Invited users see the same Invitations list and accept/decline flo
 Phone-number invitations retain their existing WhatsApp and push behavior.
 
 In Global, Movie and Episode chat, typing `/` offers `/invite` when the viewer
-owns an active private room. Sending `/invite` opens a room picker and publishes
-a purple private-room invitation card. This public card grants no room access by
+owns an active private room. Sending `/invite` opens a room picker with selectable room cards and an explicit
+Share invitation button. Both apps dismiss the picker before sending; Cancel
+preserves the draft and sends nothing. iOS snapshots the source chat and draft,
+rechecks that the selected room is active after dismissal, and ignores a repeated
+dismissal or a changed source chat. Its transcript also skips redundant bottom
+scroll requests and ignores subpixel/width-only size changes during presentation.
+A successful share publishes a purple private-room invitation card. This public card grants no room access by
 itself: **View invitation** creates/reuses a pending invitation for the signed-in
 viewer, then opens Invitations. An accepted member can reopen their room. The
 server checks source-chat access, message visibility/deletion/retention, creator
@@ -487,7 +492,10 @@ Android invitation links and push notifications now use a translucent activity
 hosting a native Material bottom sheet. The sheet has a drag handle, close button,
 scrolling room details and pinned accept/decline actions. Dismissing it closes the
 invitation host; sign-in preserves the invitation token, and accepted rooms keep
-the existing private-chat/watch-player routing. Secure-window protection also
+the existing private-chat/watch-player routing. A successful decline dismisses the
+sheet. Accepting a private room dismisses the invitation before opening chat;
+closing that chat finishes the transparent host instead of revealing the old
+invitation. Failed requests retain their retry/error UI. Secure-window protection also
 applies to the dialog itself.
 
 Android and iOS create-room/invite-more forms no longer ask for a country calling
