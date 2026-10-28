@@ -59,7 +59,16 @@ final class DeliverChat extends Command
                         'attempts' => min(1000, $row->attempts + 1),
                         'available_at' => now()->addSeconds(min(60, 2 ** min(6, $row->attempts + 1)) + random_int(0, 2)),
                     ]);
-                    $this->warn('Chat delivery pending: '.$row->id);
+                    // Keep payloads, auth signatures, query bindings and message
+                    // content out of logs; the exception class/status is enough
+                    // to distinguish Redis/DB failures from rejected Reverb posts.
+                    $reason = class_basename($e);
+                    if ($e instanceof \Illuminate\Http\Client\RequestException) {
+                        $reason .= ' HTTP '.$e->response->status();
+                    } elseif ($e instanceof \Illuminate\Database\QueryException) {
+                        $reason .= ' SQLSTATE '.($e->errorInfo[0] ?? $e->getCode());
+                    }
+                    $this->warn('Chat delivery pending: '.$row->id.' ('.$reason.')');
                 }
             }
             // Analytics outages cannot hold up realtime delivery for other rooms.
