@@ -56,7 +56,7 @@ class AdminMovieApiTest extends TestCase
 
         Schema::create('trailers', function (Blueprint $table) {
             $table->id();
-            $table->unsignedInteger('movie_id')->unique();
+            $table->unsignedInteger('movie_id')->index();
             $table->text('url');
             $table->timestamps();
         });
@@ -192,7 +192,7 @@ class AdminMovieApiTest extends TestCase
         ]);
 
         $this->withHeaders($this->adminHeaders())
-            ->getJson('/api/v4/admin/catalog/items/editable-movie?type=movie')
+            ->getJson('/api/v4/admin/catalog/items/editable-movie')
             ->assertOk()
             ->assertJsonPath('success', true)
             ->assertJsonPath('data.id', 'editable-movie')
@@ -219,11 +219,46 @@ class AdminMovieApiTest extends TestCase
             'isSeason' => false,
         ]);
 
+        DB::table('trailers')->insert([
+            ['movie_id' => 1, 'url' => $encrypted],
+            ['movie_id' => 1, 'url' => 'https://cdn.zostream.in/trailers/second.m3u8'],
+        ]);
+
         $this->withHeaders($this->adminHeaders())
             ->getJson('/api/v4/admin/catalog/items/encrypted-link-movie/links?type=movie')
             ->assertOk()
             ->assertJsonPath('data.links.url', $url)
-            ->assertJsonPath('data.links.dash_url', $url);
+            ->assertJsonPath('data.links.dash_url', $url)
+            ->assertJsonPath('data.links.trailer', $url)
+            ->assertJsonPath('data.links.trailers', [$url, 'https://cdn.zostream.in/trailers/second.m3u8']);
+    }
+
+    public function test_movie_without_trailers_can_load_links_for_editing(): void
+    {
+        DB::table('movie')->insert([
+            'id' => 'no-trailer-movie',
+            'title' => 'No Trailer Movie',
+            'url' => 'https://cdn.zostream.in/movies/video.mpd',
+            'status' => 'Draft',
+        ]);
+
+        $this->withHeaders($this->adminHeaders())
+            ->getJson('/api/v4/admin/catalog/items/no-trailer-movie/links?type=movie')
+            ->assertOk()
+            ->assertJsonPath('data.links.url', 'https://cdn.zostream.in/movies/video.mpd');
+    }
+
+    public function test_movie_without_playback_or_trailer_links_returns_not_found(): void
+    {
+        DB::table('movie')->insert([
+            'id' => 'no-links-movie',
+            'title' => 'No Links Movie',
+            'status' => 'Draft',
+        ]);
+
+        $this->withHeaders($this->adminHeaders())
+            ->getJson('/api/v4/admin/catalog/items/no-links-movie/links?type=movie')
+            ->assertNotFound();
     }
 
     public function test_admin_can_add_a_trailer_without_changing_other_movie_fields(): void

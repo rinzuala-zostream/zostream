@@ -752,7 +752,7 @@ class MovieController extends Controller
     public function getById(Request $request, $id)
     {
         try {
-            $type = strtolower($request->query('type'));
+            $type = strtolower($request->query('type', 'movie') ?? 'movie');
 
             if ($type === 'episode') {
                 $movie = Episode::with('season')
@@ -1326,12 +1326,21 @@ class MovieController extends Controller
                 'dash_url' => $movie->dash_url,
                 'hls_url' => $movie->hls_url,
                 'trailer' => $movie->trailerRecords->first()?->url,
-                'trailers' => $movie->trailerRecords->pluck('url')->values()->all(),
                 'subtitle' => $movie->subtitle,
             ])
                 ->filter(fn($value) => $value !== null && $value !== '')
                 ->map(fn($value) => $this->decryptAdminLink($value))
                 ->all();
+
+            $trailers = $movie->trailerRecords->pluck('url')
+                ->filter(fn($value) => $value !== null && $value !== '')
+                ->map(fn($value) => $this->decryptAdminLink($value))
+                ->values()
+                ->all();
+
+            if ($trailers !== []) {
+                $links['trailers'] = $trailers;
+            }
 
             if (empty($links)) {
                 return response()->json([
