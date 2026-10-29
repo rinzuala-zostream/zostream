@@ -692,6 +692,30 @@ class ChatApiTest extends TestCase
         $this->postJson("/api/v4/chat/invite-rooms/$room/join", ['auth_user_id' => 'charlie'])->assertOk();
     }
 
+    public function test_create_room_for_selected_chat_user_sends_in_app_invitation_and_requires_acceptance(): void
+    {
+        DB::table('user')->insert(['uid' => 'charlie', 'name' => 'Charlie', 'token' => 'push-token']);
+        config(['chat.whatsapp_enabled' => true]);
+        \Illuminate\Support\Facades\Queue::fake();
+        $invitationToken = null;
+        $push = \Mockery::mock(\App\Http\Controllers\FCMNotificationController::class);
+        $push->shouldReceive('sendToToken')->once()->withArgs(function ($token, $title, $body, $image, $key, $data) use (&$invitationToken) {
+            $invitationToken = $data['invitation_token'] ?? null;
+            return $token === 'push-token' && $key === 'chat_invite' && strlen($invitationToken ?? '') === 64;
+        })->andReturn([]);
+        $this->app->instance(\App\Http\Controllers\FCMNotificationController::class, $push);
+        $created = $this->postJson('/api/v4/chat/invite-rooms', $this->identity([
+            'type' => 'global', 'room_name' => 'Chat with Charlie', 'invitee_ids' => ['charlie'], 'delivery' => 'in_app',
+        ]))->assertCreated()->assertJsonPath('data.invite_count', 1);
+        $room = $created->json('data.room_id');
+        \Illuminate\Support\Facades\Queue::assertNothingPushed();
+        $this->assertSame('pending', DB::table('chat_room_invites')->where('room_id', $room)->value('status'));
+        $this->postJson("/api/v4/chat/invite-rooms/$room/join", ['auth_user_id' => 'charlie'])->assertForbidden();
+        $this->getJson('/api/v4/chat/invites?auth_user_id=charlie')->assertOk()->assertJsonPath('data.invites.0.room_id', $room);
+        $this->postJson('/api/v4/chat/invitation-links/'.$invitationToken.'/respond', ['auth_user_id' => 'charlie', 'accept' => true])->assertOk();
+        $this->postJson("/api/v4/chat/invite-rooms/$room/join", ['auth_user_id' => 'charlie'])->assertOk();
+    }
+
     public function test_push_registration_binds_token_to_authenticated_account_only(): void
     {
         $token = str_repeat('p', 64);

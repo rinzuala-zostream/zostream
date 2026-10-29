@@ -109,6 +109,7 @@ final class ChatController extends Controller
             'watch_position_ms' => 'nullable|integer|min:0|max:86400000',
             'invitee_ids' => 'required|array|min:1|max:20',
             'invitee_ids.*' => 'required|string|max:191|distinct',
+            'delivery' => ['sometimes', Rule::in(['default', 'in_app'])],
         ]);
         $host = (string) $r->input('auth_user_id');
         $type = $v['type'];
@@ -168,7 +169,7 @@ final class ChatController extends Controller
             return $room;
         });
         $this->chat->outbox($r, $roomId, 'badge_sync', null, null, $host);
-        $this->notifyRoomInvitees($r, $roomId, $invitees, $links, $content);
+        $this->notifyRoomInvitees($r, $roomId, $invitees, $links, $content, ($v['delivery'] ?? 'default') !== 'in_app');
 
         return V4Response::success(['room_id' => (string) $roomId, 'room_type' => 'invite', 'room_name' => trim($v['room_name']), 'content_type' => $type === 'global' ? null : $type,
             'content_id' => $v['content_id'] ?? null, 'content_title' => $content->title ?? null, 'invite_count' => $invitees->count()], status: 201);

@@ -626,3 +626,17 @@ Verify with two devices: creator stop, app termination without a stop request,
 session replacement, reopening an old tab, and delayed invitation delivery.
 Ended cards must stay ended and a stopped guest must not keep streaming. A fresh
 `/watch` must still be usable in the same private chat.
+
+## Create a room from a chat participant — 29 October
+
+Android and iOS offer **Create private room** when long-pressing another user's
+message in Global or Movie/Episode Chat. The create-room form shows that account
+as the selected invitee and starts with Private chat selected. No phone lookup
+is needed. The existing **Invite to private room** action is also available in
+both public chat contexts when the creator has an active private room.
+
+Selected-user creation uses `POST /api/v4/chat/invite-rooms` with
+`delivery=in_app`. Push, the Invitations list, links and Accept/Decline use the
+existing invitation flow; creating the room does not grant the invitee access.
+Phone/contact creation retains default delivery. Deploy the backend support for
+this field before releasing updated apps. No new migration is required.
