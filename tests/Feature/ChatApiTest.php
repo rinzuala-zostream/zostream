@@ -1642,6 +1642,64 @@ class ChatApiTest extends TestCase
         }
     }
 
+    public function test_cached_watch_history_and_send_retry_reflect_stopped_host_before_worker_runs(): void
+    {
+        $room = $this->privateWatchFixture();
+        $request = (string) Str::uuid();
+        $sent = $this->sendPrivateWatch($room, $request)->assertCreated();
+        $session = $sent->json('data.watch_invite.session_id');
+        $this->getJson("/api/v4/chat/rooms/$room/messages?auth_user_id=bob")
+            ->assertOk()->assertJsonPath('data.messages.0.watch_invite.active', true);
+        DB::table('n_active_streams')->update(['status' => 'stopped']);
+        // The cached message body is still present and no stop callback ran.
+        $this->getJson("/api/v4/chat/rooms/$room/messages?auth_user_id=bob")
+            ->assertOk()->assertJsonPath('data.messages.0.watch_invite.active', false);
+        $this->sendPrivateWatch($room, $request)->assertOk()->assertJsonPath('data.watch_invite.active', false);
+        $this->getJson("/api/v4/chat/rooms/$room/watch-status?auth_user_id=bob")
+            ->assertOk()->assertJsonPath('data.active', false)->assertJsonPath('data.latest_session_id', $session);
+        $this->postJson("/api/v4/chat/invite-rooms/$room/join", ['auth_user_id' => 'bob'])
+            ->assertOk()->assertJsonPath('data.watch_session', null);
+    }
+
+    public function test_worker_ends_abandoned_private_watch_once_and_stops_bound_guest_without_closing_chat(): void
+    {
+        $room = $this->privateWatchFixture();
+        $session = $this->sendPrivateWatch($room)->assertCreated()->json('data.watch_invite.session_id');
+        DB::table('n_devices')->insert(['id' => 2, 'user_id' => 'bob', 'device_token' => 'device-b']);
+        $guest = DB::table('n_active_streams')->insertGetId(['device_id' => 2, 'stream_token' => 'play-b', 'status' => 'active',
+            'content_type' => 'movie', 'content_key' => 'film-a', 'last_ping' => now()]);
+        $this->withHeaders(['X-Playback-Token' => 'play-b'])->postJson("/api/v4/chat/rooms/$room/watch-heartbeat", [
+            'auth_user_id' => 'bob', 'auth_device_id' => 'device-b', 'session_id' => $session,
+        ])->assertOk();
+        DB::table('chat_outbox')->delete();
+        Http::fake();
+        $this->artisan('chat:deliver', ['--once' => true])->assertSuccessful();
+        $this->assertTrue((bool) DB::table('chat_watch_sessions')->where('id', $session)->value('active'));
+        DB::table('n_active_streams')->where('stream_token', 'play-a')->update(['last_ping' => now()->subMinutes(4)]);
+        $this->artisan('chat:deliver', ['--once' => true])->assertSuccessful();
+        $this->assertFalse((bool) DB::table('chat_watch_sessions')->where('id', $session)->value('active'));
+        $this->assertSame('stopped', DB::table('n_active_streams')->where('id', $guest)->value('status'));
+        $this->assertTrue((bool) DB::table('chat_invite_rooms')->where('room_id', $room)->value('active'));
+        $this->assertSame(1, DB::table('chat_outbox')->where('kind', 'watch_status')->whereNotNull('delivered_at')->count());
+        $this->artisan('chat:deliver', ['--once' => true])->assertSuccessful();
+        $this->assertSame(1, DB::table('chat_outbox')->where('kind', 'watch_status')->count());
+        $this->postJson("/api/v4/chat/rooms/$room/watch-sessions/$session/join", ['auth_user_id' => 'bob'])->assertStatus(410);
+        $this->getJson("/api/v4/chat/rooms/$room/messages?auth_user_id=bob")
+            ->assertOk()->assertJsonPath('data.messages.0.watch_invite.active', false);
+    }
+
+    public function test_worker_ends_replaced_watch_token_and_late_host_ping_cannot_revive_session(): void
+    {
+        $room = $this->privateWatchFixture();
+        $session = $this->sendPrivateWatch($room)->assertCreated()->json('data.watch_invite.session_id');
+        DB::table('n_active_streams')->update(['stream_token' => 'replacement']);
+        app(\App\Support\Chat\PrivateWatchService::class)->endInactiveSessions(\Illuminate\Http\Request::create('/'));
+        $this->assertFalse((bool) DB::table('chat_watch_sessions')->where('id', $session)->value('active'));
+        DB::table('n_active_streams')->update(['stream_token' => 'play-a', 'last_ping' => now()]);
+        $this->getJson("/api/v4/chat/rooms/$room/watch-status?auth_user_id=bob")
+            ->assertOk()->assertJsonPath('data.active', false)->assertJsonPath('data.latest_session_id', $session);
+    }
+
     public function test_new_watch_rooms_resolve_public_playback_ids_instead_of_database_row_numbers(): void
     {
         $this->privateWatchFixture();
@@ -1699,6 +1757,9 @@ class ChatApiTest extends TestCase
         Cache::flush();
         $next = $this->sendPrivateWatch($room)->assertCreated()->json('data.watch_invite.session_id');
         $bob = ['auth_user_id' => 'bob'];
+        $this->getJson("/api/v4/chat/rooms/$room/messages?auth_user_id=bob")->assertOk()
+            ->assertJsonPath('data.messages.0.watch_invite.active', false)
+            ->assertJsonPath('data.messages.1.watch_invite.active', true);
         $this->postJson("/api/v4/chat/rooms/$room/watch-sessions/$session/join", $bob)->assertStatus(410);
         DB::table('n_active_streams')->update(['stream_token' => 'replacement']);
         $this->postJson("/api/v4/chat/rooms/$room/watch-sessions/$next/join", $bob)->assertStatus(410);

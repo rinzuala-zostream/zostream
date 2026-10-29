@@ -51,12 +51,55 @@ final class PrivateWatchService
 
     public function liveSession(int $room): ?object
     {
-        $watch = DB::table('chat_watch_sessions')->where('room_id', $room)->where('active', true)->first();
+        $watch = DB::table('chat_watch_sessions as w')->join('chat_invite_rooms as ir', 'ir.room_id', '=', 'w.room_id')
+            ->join('chat_rooms as r', 'r.id', '=', 'w.room_id')->where('w.room_id', $room)->where('w.active', true)
+            ->where('ir.active', true)->where('r.closed', false)->first(['w.*']);
         if (! $watch || ! DB::table('chat_messages')->where('id', $watch->message_id)->whereNull('deleted_at')->exists()) { return null; }
-        $stream = DB::table('n_active_streams')->where('id', $watch->host_stream_id)->where('status', 'active')
-            ->where('content_type', $watch->content_type)->where('content_key', $watch->content_id)
-            ->where('last_ping', '>=', now()->subMinutes(3))->first();
+        $stream = DB::table('n_active_streams as s')->join('n_devices as d', 'd.id', '=', 's.device_id')
+            ->where('s.id', $watch->host_stream_id)->where('d.user_id', $watch->host_user_id)->where('s.status', 'active')
+            ->where('s.content_type', $watch->content_type)->where('s.content_key', $watch->content_id)
+            ->where('s.last_ping', '>=', now()->subMinutes(3))->first(['s.stream_token']);
         return $stream && hash_equals($watch->stream_token_hash, hash('sha256', $stream->stream_token)) ? $watch : null;
+    }
+
+    /** One liveness read per room, including when recent messages are cached. */
+    public function hydrate(array $messages): array
+    {
+        $live = [];
+        foreach ($messages as &$message) {
+            if (empty($message['watch_invite'])) { continue; }
+            $room = (int) $message['room_id'];
+            if (! array_key_exists($room, $live)) { $live[$room] = $this->liveSession($room)?->id; }
+            $message['watch_invite']['active'] = $live[$room] !== null
+                && (string) $live[$room] === (string) $message['watch_invite']['session_id'];
+        }
+        return $messages;
+    }
+
+    /** Recover missed stops and heartbeat expiry without polling per viewer. */
+    public function endInactiveSessions(Request $request): void
+    {
+        DB::table('chat_watch_sessions as w')->leftJoin('n_active_streams as s', 's.id', '=', 'w.host_stream_id')
+            ->leftJoin('n_devices as d', 'd.id', '=', 's.device_id')
+            ->leftJoin('chat_invite_rooms as ir', 'ir.room_id', '=', 'w.room_id')->leftJoin('chat_rooms as r', 'r.id', '=', 'w.room_id')
+            ->leftJoin('chat_messages as m', 'm.id', '=', 'w.message_id')->where('w.active', true)
+            ->select(['w.*', 's.status as stream_status', 's.last_ping as stream_ping', 's.stream_token as stream_token',
+                's.content_type as stream_type', 's.content_key as stream_content', 'd.user_id as stream_owner',
+                'ir.active as room_active', 'r.closed as room_closed', 'm.id as existing_message', 'm.deleted_at as message_deleted_at'])
+            ->chunkById(200, function ($sessions) use ($request): void {
+                $streams = [];
+                foreach ($sessions as $watch) {
+                    if (! $watch->room_active || $watch->room_closed || $watch->stream_owner !== $watch->host_user_id
+                        || $watch->stream_status !== 'active' || $watch->stream_ping === null
+                        || \Illuminate\Support\Carbon::parse($watch->stream_ping)->lt(now()->subMinutes(3))
+                        || $watch->stream_type !== $watch->content_type || $watch->stream_content !== $watch->content_id
+                        || ! hash_equals($watch->stream_token_hash, hash('sha256', (string) $watch->stream_token))
+                        || ! $watch->existing_message || $watch->message_deleted_at !== null) {
+                        $streams[(int) $watch->host_stream_id] = true;
+                    }
+                }
+                foreach (array_keys($streams) as $stream) { $this->streamChanged($request, $stream); }
+            }, 'w.id', 'id');
     }
 
     public function resolve(Request $r, int $room, int $session): object
@@ -91,7 +134,9 @@ final class PrivateWatchService
                 'playback' => $live ? $state->payload($invite, 'watch_position_ms', false) : null];
         }
         $watch = $invite->active ? $this->liveSession($room) : null;
+        $latest = DB::table('chat_watch_sessions')->where('room_id', $room)->max('id');
         return ['room_id' => (string) $room, 'active' => $watch !== null, 'session_id' => $watch ? (string) $watch->id : null,
+            'latest_session_id' => $latest !== null ? (string) $latest : null,
             'playback' => $watch ? $state->payload($watch, 'position_ms', false) : null]
             + ($watch ? $this->counts($watch) : ['joined_count' => 0, 'streaming_count' => 0]);
     }
@@ -139,12 +184,13 @@ final class PrivateWatchService
         app(InviteRoomLifecycle::class)->endInactiveWatchRooms($r, $stream);
         if (! \Illuminate\Support\Facades\Schema::hasTable('chat_watch_participants')) { return; }
         $hosted = DB::table('chat_watch_sessions')->where('active', true)->where('host_stream_id', $stream)->get();
+        $endedRooms = [];
         foreach ($hosted as $watch) {
             if ($this->liveSession((int) $watch->room_id)?->id !== $watch->id) {
-                DB::transaction(function () use ($watch) {
+                $ended = DB::transaction(function () use ($watch, $r) {
                     DB::table('chat_invite_rooms')->where('room_id', $watch->room_id)->lockForUpdate()->first();
                     $session = DB::table('chat_watch_sessions')->where('id', $watch->id)->lockForUpdate()->first();
-                    if (! $session || ! $session->active) { return; }
+                    if (! $session || ! $session->active || $this->liveSession((int) $watch->room_id)?->id === $session->id) { return false; }
                     DB::table('chat_watch_sessions')->where('id', $watch->id)->update(['active' => false, 'updated_at' => now()]);
                     foreach (DB::table('chat_watch_participants')->where('session_id', $watch->id)->get() as $member) {
                         $guest = DB::table('n_active_streams as s')->join('n_devices as d', 'd.id', '=', 's.device_id')
@@ -160,7 +206,12 @@ final class PrivateWatchService
                                 ->where('status', 'active')->update(['status' => 'stopped', 'last_ping' => now()]);
                         }
                     }
+                    // Commit terminal state and its event together so a failed
+                    // publish/stop callback cannot leave viewers stale forever.
+                    $this->chat->outbox($r, (int) $watch->room_id, 'watch_status', null, null);
+                    return true;
                 });
+                if ($ended) { $endedRooms[(int) $watch->room_id] = true; }
             }
         }
         $rooms = DB::table('chat_watch_sessions')->where('active', true)
@@ -173,7 +224,9 @@ final class PrivateWatchService
             $rooms = $rooms->merge(DB::table('chat_invite_rooms')->where('active', true)->where('host_user_id', $owner->user_id)
                 ->whereNotNull('content_type')->pluck('room_id'))->unique();
         }
-        foreach ($rooms as $room) { $this->publishStatus($r, (int) $room, true); }
+        foreach ($rooms as $room) {
+            if (! isset($endedRooms[(int) $room])) { $this->publishStatus($r, (int) $room, true); }
+        }
     }
 
     private function recordJoin(Request $r, object $watch): void

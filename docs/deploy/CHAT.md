@@ -598,3 +598,31 @@ sudo supervisorctl restart zostream-chat-delivery
 Verify on physical Android/iOS devices: full-room rejection, rejoin at capacity,
 push while a different room is open or the app is in the background, no push in
 the visible target room/foreground watch player, and correct cold/warm tap routing.
+
+## Private `/watch` session termination — 29 October
+
+The delivery worker now checks private `/watch` sessions as well as dedicated
+watch rooms every 15 seconds. It reads active sessions and their bound streams
+in batches of 200. A missed stop callback, replaced token, deleted invitation,
+closed room or expired host heartbeat ends the session and stops its matching
+guest streams. Session termination and its `watch_status` outbox row commit in
+one transaction. The private chat remains available under its existing idle rule.
+
+An orderly creator stop publishes ended status immediately through the outbox.
+An unclean exit is detected after the existing three-minute heartbeat deadline,
+plus up to one worker sweep and event delivery time. No per-viewer polling is added.
+
+History and send/retry responses include `watch_invite.active`, recomputed even
+when message bodies came from the recent-history cache. Private watch snapshots
+also include `latest_session_id` when inactive. Updated apps remember that ended
+session boundary even if the event arrives before its message or while another
+tab is selected. Older sessions cannot regain a Watch button when history loads.
+
+Deploy backend and the iOS SDK change, release both updated apps, then restart
+`zostream-chat-delivery` (or all configured chat delivery lanes). No new migration
+or Reverb restart is required for this update.
+
+Verify with two devices: creator stop, app termination without a stop request,
+session replacement, reopening an old tab, and delayed invitation delivery.
+Ended cards must stay ended and a stopped guest must not keep streaming. A fresh
+`/watch` must still be usable in the same private chat.

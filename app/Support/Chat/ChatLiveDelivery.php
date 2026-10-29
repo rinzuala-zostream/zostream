@@ -74,7 +74,11 @@ final class ChatLiveDelivery
         // channel may arrive earlier/later or be recovering its subscription.
         if ($data['message']['watch_invite'] !== null) {
             $watch = app(PrivateWatchService::class)->snapshot((int) $room->id);
-            if ($watch !== null) { $data['watch'] = $watch + ['event_id' => (string) $row->id]; }
+            if ($watch !== null) {
+                $data['watch'] = $watch + ['event_id' => (string) $row->id];
+                $data['message']['watch_invite']['active'] = $watch['active']
+                    && $watch['session_id'] === $data['message']['watch_invite']['session_id'];
+            }
         }
         foreach (array_chunk(array_unique($channels), 500) as $chunk) {
             $renew();

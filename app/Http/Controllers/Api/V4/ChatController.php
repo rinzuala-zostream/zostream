@@ -419,7 +419,7 @@ final class ChatController extends Controller
             ? \App\Support\Chat\ChatContent::find($inviteRoom->content_type, $inviteRoom->content_id) : null;
         $seasonId = $inviteRoom->content_type === 'episode' ? ($content->season_id ?? null) : null;
         $this->chat->room($r, $room);
-        $watch = DB::table('chat_watch_sessions')->where('room_id', $room)->where('active', true)->first();
+        $watch = app(\App\Support\Chat\PrivateWatchService::class)->liveSession($room);
         return V4Response::success(['watch_session' => $watch ? app(\App\Support\Chat\PrivateWatchService::class)->metadata($watch) : null, 'room_id' => (string) $room, 'room_type' => 'invite', 'channel' => 'private-chat.'.$room,
             'websocket_url' => config('chat.websocket_url'), 'online_count' => $this->chat->presence($r, $room),
             'user_id' => (string) $r->input('auth_user_id'), 'room_name' => $inviteRoom->room_name, 'content_type' => $inviteRoom->content_type,
@@ -438,6 +438,7 @@ final class ChatController extends Controller
         // Dedicated content rooms have no /watch session row. A null session ID
         // must not be interpreted as ended when their creator is still playing.
         return V4Response::success(['session_id' => $snapshot['session_id'] ?? null,
+            'latest_session_id' => $snapshot['latest_session_id'] ?? null,
             'active' => (bool) ($snapshot['active'] ?? false),
             'joined_count' => (int) ($snapshot['joined_count'] ?? 0),
             'streaming_count' => (int) ($snapshot['streaming_count'] ?? 0)]);
@@ -551,6 +552,7 @@ final class ChatController extends Controller
             $rows = array_reverse($rows);
         }
 
+        $rows = app(\App\Support\Chat\PrivateWatchService::class)->hydrate($rows);
         return V4Response::success(['messages' => app(\App\Support\Chat\RoomInvitationService::class)->hydrate($rows), 'has_more' => $hasMore]);
     }
 
@@ -572,7 +574,7 @@ final class ChatController extends Controller
         if ($old) {
             abort_unless((int) $old->room_id === $room, 409);
 
-            return V4Response::success($this->chat->message($old));
+            return V4Response::success(app(\App\Support\Chat\PrivateWatchService::class)->hydrate([$this->chat->message($old)])[0]);
         }
         // Atomic Redis add also serializes sends from multiple app servers.
         try {
@@ -613,7 +615,7 @@ final class ChatController extends Controller
         });
         $this->chat->invalidate($room);
 
-        return V4Response::success($this->chat->message($m), status: 201);
+        return V4Response::success(app(\App\Support\Chat\PrivateWatchService::class)->hydrate([$this->chat->message($m)])[0], status: 201);
     }
 
     public function claimRoomInvitation(Request $r, int $room, int $message)

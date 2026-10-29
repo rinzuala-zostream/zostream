@@ -5,6 +5,7 @@ public struct ChatWatchInvite: Decodable, Sendable {
     public let content_type: String
     public let content_id: String
     public let content_title: String
+    public let active: Bool?
 }
 
 public struct ChatRoomInvitation: Decodable, Sendable, Equatable {

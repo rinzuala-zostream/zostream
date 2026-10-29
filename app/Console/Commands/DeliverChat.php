@@ -24,6 +24,7 @@ final class DeliverChat extends Command
             // the stream heartbeat deadline, even when no chat events are queued.
             if (in_array($lane, ['all', 'realtime'], true) && config('chat.enabled') && time() - $lastWatchExpiry >= 15) {
                 app(\App\Support\Chat\InviteRoomLifecycle::class)->endInactiveWatchRooms(\Illuminate\Http\Request::create('/'));
+                app(\App\Support\Chat\PrivateWatchService::class)->endInactiveSessions(\Illuminate\Http\Request::create('/'));
                 app(\App\Support\Chat\RoomInvitationService::class)->expireSharedRooms(\Illuminate\Http\Request::create('/'));
                 $lastWatchExpiry = time();
             }
