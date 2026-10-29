@@ -505,6 +505,9 @@ public final class ZoChatClient {
                         while self.liveVersions.count > 500, let first = self.liveVersions.keys.first {
                             self.liveVersions.removeValue(forKey: first); self.liveKinds.removeValue(forKey: first)
                         }
+                        // Apply state before rendering the card so its action
+                        // does not wait for the separate metadata event.
+                        if let watch = payload["watch"] as? [String: Any] { self.onWatchState?(watch) }
                         self.onMessage?(message)
                     case "chat.changed", "chat.badge":
                         if let targets = self.unreadChannels {

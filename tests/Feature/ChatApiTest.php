@@ -1615,6 +1615,33 @@ class ChatApiTest extends TestCase
         ]));
     }
 
+    public function test_watch_feed_delivers_card_and_current_session_state_together(): void
+    {
+        $room = $this->privateWatchFixture();
+        $auth = $this->socketAuth($room, 'bob', $this->socketSession('bob'));
+        $sent = $this->sendPrivateWatch($room)->assertCreated();
+        $session = $sent->json('data.watch_invite.session_id');
+        $row = DB::table('chat_outbox')->where('kind', 'feed_created')->first();
+
+        foreach ([true, false] as $active) {
+            // A retry after the host leaves must carry ended state, even though
+            // the original message was created while the session was active.
+            if (! $active) { DB::table('n_active_streams')->update(['status' => 'stopped']); }
+            Http::fake();
+            app(\App\Support\Chat\ChatLiveDelivery::class)->deliver($row, fn () => null);
+            Http::assertSent(function ($request) use ($auth, $row, $room, $session, $active) {
+                $body = json_decode($request->body(), true);
+                $data = json_decode($body['data'], true);
+                return $body['name'] === 'chat.message' && $body['channels'] === [$auth['feed_channel']]
+                    && $data['message']['watch_invite']['session_id'] === $session
+                    && $data['watch']['room_id'] === $room
+                    && $data['watch']['event_id'] === (string) $row->id
+                    && $data['watch']['active'] === $active
+                    && $data['watch']['session_id'] === ($active ? $session : null);
+            });
+        }
+    }
+
     public function test_new_watch_rooms_resolve_public_playback_ids_instead_of_database_row_numbers(): void
     {
         $this->privateWatchFixture();

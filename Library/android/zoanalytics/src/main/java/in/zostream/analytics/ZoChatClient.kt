@@ -444,6 +444,8 @@ class ZoChatClient(
                                     liveVersions[messageId] = version; liveKinds[messageId] = data.optString("kind")
                                     pendingLive.remove(messageId); liveRecoveryDelay = 2_500
                                     while (liveVersions.size > 500) { val first = liveVersions.keys.first(); liveVersions.remove(first); liveKinds.remove(first) }
+                                    // The card and its action become available together.
+                                    data.optJSONObject("watch")?.let { onWatchState?.invoke(it) }
                                     onMessage?.invoke(message)
                                 }
                                 Unit
