@@ -29,6 +29,7 @@ class IspPaymentCollectionsTest extends TestCase
         Schema::create('routers', function (Blueprint $table): void {
             $table->id();
             $table->string('name');
+            $table->boolean('is_active')->default(true);
             $table->timestamps();
         });
         Schema::create('isp_users', function (Blueprint $table): void {
@@ -151,6 +152,49 @@ class IspPaymentCollectionsTest extends TestCase
             )
             ->assertViewHas('revenueDifference', 120.0)
             ->assertViewHas('revenuePercentage', 150.0);
+    }
+
+    public function test_overview_monthly_revenue_matches_collections_and_respects_branch_scope(): void
+    {
+        CarbonImmutable::setTestNow('2026-10-15 12:00:00');
+        $branchId = DB::table('branches')->insertGetId(['name' => 'Aizawl']);
+        $otherBranchId = DB::table('branches')->insertGetId(['name' => 'Lunglei']);
+        $operator = User::create([
+            'name' => 'Operator', 'email' => 'overview-operator@example.test',
+            'password' => 'secret-password', 'role' => 'branch_operator',
+            'branch_id' => $branchId, 'is_active' => true,
+        ]);
+        $admin = User::create([
+            'name' => 'Admin', 'email' => 'overview-admin@example.test',
+            'password' => 'secret-password', 'role' => 'admin', 'is_active' => true,
+        ]);
+        $customerId = DB::table('customers')->insertGetId([
+            'name' => 'Local', 'username' => 'local', 'branch_id' => $branchId,
+        ]);
+        $otherCustomerId = DB::table('customers')->insertGetId([
+            'name' => 'Other', 'username' => 'other', 'branch_id' => $otherBranchId,
+        ]);
+        foreach ([
+            [$customerId, '2026-09-30 23:59:59', 800],
+            [$customerId, '2026-10-01 00:00:00', 100],
+            [$customerId, '2026-10-31 23:59:59', 200],
+            [$customerId, '2026-11-01 00:00:00', 900],
+            [$otherCustomerId, '2026-10-10 12:00:00', 700],
+        ] as [$id, $paidAt, $amount]) {
+            DB::table('payments')->insert([
+                'customer_id' => $id, 'paid_at' => $paidAt, 'amount' => $amount,
+            ]);
+        }
+
+        foreach ([[$operator, 300.0], [$admin, 1000.0]] as [$user, $expected]) {
+            $this->actingAs($user, 'isp')->get(route('isp.dashboard'))
+                ->assertOk()
+                ->assertViewHas('stats', fn (array $stats): bool => (float) $stats['revenue'] === $expected)
+                ->assertSee(route('isp.payments.index', ['view' => 'collections', 'month' => '2026-10']));
+            $this->get(route('isp.payments.index', ['month' => '2026-10']))
+                ->assertOk()
+                ->assertViewHas('collectionSummary', fn (object $summary): bool => (float) $summary->revenue === $expected);
+        }
     }
 
     public function test_collect_payment_is_a_separate_view_and_customer_links_open_it(): void

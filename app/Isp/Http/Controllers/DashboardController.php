@@ -6,6 +6,7 @@ use App\Isp\Models\Customer;
 use App\Isp\Models\Payment;
 use App\Isp\Models\Router;
 use App\Isp\Services\MikroTikService;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\View\View;
@@ -16,6 +17,14 @@ class DashboardController extends Controller
     public function __invoke(Request $request, MikroTikService $mikrotik): View
     {
         $branchId = $request->user()->isBranchOperator() ? $request->user()->branch_id : null;
+        $monthStart = CarbonImmutable::now()->startOfMonth();
+        $revenue = Payment::query()
+            ->when($branchId, fn ($query) => $query->whereHas(
+                'customer', fn ($query) => $query->where('branch_id', $branchId)
+            ))
+            ->where('paid_at', '>=', $monthStart)
+            ->where('paid_at', '<', $monthStart->addMonth())
+            ->sum('amount');
         $customers = Customer::with(['package', 'router'])
             ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))->get();
         $routers = Router::where('is_active', true)
@@ -95,8 +104,9 @@ class DashboardController extends Controller
                 'suspended' => $suspended->count(),
                 'routers' => $routers->count(),
                 'reachable_routers' => $routerHealth->where('reachable', true)->count(),
-                'revenue' => Payment::whereBetween('paid_at', [now()->startOfMonth(), now()->endOfMonth()])->sum('amount'),
+                'revenue' => $revenue,
             ],
+            'revenueMonth' => $monthStart->format('Y-m'),
             'statusChart' => [
                 'online' => $onlineIds->count(),
                 'offline' => $offlineIds->count(),

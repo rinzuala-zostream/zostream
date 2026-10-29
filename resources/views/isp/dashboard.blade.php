@@ -76,7 +76,7 @@
         <span>Unknown status</span><strong>{{ number_format($stats['unknown']) }}</strong>
         <small>Router inactive or unreachable</small><i>→</i>
     </a>
-    <a class="stat-card blue" href="{{ route('isp.payments.index') }}">
+    <a class="stat-card blue" href="{{ route('isp.payments.index', ['view' => 'collections', 'month' => $revenueMonth]) }}">
         <span>This month</span><strong>₹{{ number_format($stats['revenue'], 0) }}</strong>
         <small>Payments collected</small><i>→</i>
     </a>
