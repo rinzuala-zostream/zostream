@@ -148,7 +148,7 @@ class ChatRoomSwitchTest {
             val event = JSONObject(text)
             events.add(event)
             if (event.optString("event") == "chat:presence" && acknowledgePresence) {
-                listener.onMessage(this, JSONObject().put("event", "chat:presence_ack").put("data", event.getJSONObject("data")).toString())
+                listener.onMessage(this, JSONObject().put("event", "chat:presence_ack").put("channel", event.optString("channel")).put("data", event.getJSONObject("data")).toString())
             }
             if (event.optString("event") == "pusher:subscribe") {
                 listener.onMessage(this, JSONObject().put("event", "pusher_internal:subscription_succeeded")
@@ -189,7 +189,7 @@ class ChatRoomSwitchTest {
         } else if (request.url.encodedPath.endsWith("/auth")) {
             val id = request.url.pathSegments[4]
             JSONObject().put("auth", "signed").put("channel", "private-chat.$id$lease").put("expires_in", expiresIn).apply {
-                if (protocolV2) put("control_token", "ticket").put("feed_channel", "private-chat-feed.$id.ticket$lease").put("feed_auth", "signed")
+                if (protocolV2) put("control_token", "ticket").put("control_channel", "private-chat-control.$id.ticket$lease").put("control_auth", "signed").put("feed_channel", "private-chat-feed.$id.ticket$lease").put("feed_auth", "signed")
             }
         } else {
             val buffer = okio.Buffer(); request.body!!.writeTo(buffer)
@@ -242,11 +242,12 @@ class ChatRoomSwitchTest {
 
     @Test fun socketPresenceAndDirectMessagesAvoidSteadyHttpAndKeepMissedEventRecovery() {
         val http = Http().apply { protocolV2 = true }
-        val changes = mutableListOf<String>(); val received = mutableListOf<JSONObject>()
+        val changes = mutableListOf<String>(); val received = mutableListOf<JSONObject>(); val overlays = mutableListOf<JSONObject>()
         val client = ZoChatClient("https://example.test", { AnalyticsCredentials("token", "device", "owner") }, "test",
             onChanged = { kind, _ -> changes.add(kind) }, onConnection = {}, http = http)
         try {
             client.onMessage = { received.add(it) }
+            client.onOverlayMessage = { overlays.add(it) }
             client.setRoomVisible(true)
             client.join("global", null) { _, error -> assertNull(error) }
             await { client.isConnected && changes.count { it == "sync" } >= 2 }
@@ -259,12 +260,16 @@ class ChatRoomSwitchTest {
             changes.clear()
             socket.emit("private-chat.global")
             val message = JSONObject().put("id", "9").put("room_id", "global").put("body", "Live")
-            fun publish(version: String) = socket.listener.onMessage(socket, JSONObject().put("event", "chat.message")
+            fun publish(version: String, overlay: Boolean = false) = socket.listener.onMessage(socket, JSONObject().put("event", "chat.message")
                 .put("channel", "private-chat-feed.global.ticket").put("data", JSONObject().put("room_id", "global")
-                    .put("event_id", version).put("kind", "created").put("message", message)).toString())
+                    .put("event_id", version).put("kind", "created").put("overlay_live", overlay).put("message", message)).toString())
             publish("20"); publish("20"); publish("19")
             shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(3))
             assertEquals(1, received.size)
+            assertTrue(overlays.isEmpty())
+            publish("21", true); publish("21", true)
+            shadowOf(Looper.getMainLooper()).idle()
+            assertEquals(1, overlays.size)
             assertFalse(changes.contains("created"))
             socket.listener.onMessage(socket, JSONObject().put("event", "chat.changed").put("channel", "private-chat.global")
                 .put("data", JSONObject().put("kind", "created").put("message_id", "10")).toString())

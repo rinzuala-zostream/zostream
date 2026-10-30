@@ -57,7 +57,7 @@ final class ChatLiveDelivery
                 }
             }
         }
-        $channels = [];
+        $channels = []; $freshChannels = [];
         foreach ($viewers as $viewer) {
             $session = $sessions->get($viewer['session_id']);
             if (! $session || $session->user_id !== $viewer['user_id'] || (string) $session->device_id !== $viewer['device_id']
@@ -66,9 +66,13 @@ final class ChatLiveDelivery
                 || ($members !== null && ! $members->has($viewer['user_id']))) { continue; }
             if (in_array($room->type, ['movie', 'episode'], true)
                 && ! isset($streams[$viewer['user_id'].':'.$viewer['device_id'].':'.$viewer['playback_hash']])) { continue; }
-            if ($viewer['feed_channel']) { $channels[] = $viewer['feed_channel']; }
+            if ($viewer['feed_channel']) {
+                $channels[] = $viewer['feed_channel'];
+                if (isset($viewer['message_cursor']) && (int) $message->id > (int) $viewer['message_cursor']) { $freshChannels[] = $viewer['feed_channel']; }
+            }
         }
-        $data = ['kind' => $message->deleted_at ? 'deleted' : 'created', 'event_id' => (string) $row->id,
+        $data = ['overlay_live' => ! $message->deleted_at && Carbon::parse($message->created_at)->gte(now()->subSeconds(10)),
+            'kind' => $message->deleted_at ? 'deleted' : 'created', 'event_id' => (string) $row->id,
             'room_id' => (string) $room->id, 'message' => app(ChatService::class)->message($message)];
         // Deliver a watch card with its current state. The separate metadata
         // channel may arrive earlier/later or be recovering its subscription.
@@ -80,9 +84,13 @@ final class ChatLiveDelivery
                     && $watch['session_id'] === $data['message']['watch_invite']['session_id'];
             }
         }
-        foreach (array_chunk(array_unique($channels), 500) as $chunk) {
-            $renew();
-            $this->publish($chunk, $data);
+        $freshChannels = $data['overlay_live'] ? array_unique($freshChannels) : [];
+        $historyChannels = array_values(array_diff(array_unique($channels), $freshChannels));
+        foreach ([$freshChannels, $historyChannels] as $index => $group) {
+            foreach (array_chunk(array_values($group), 500) as $chunk) {
+                $renew();
+                $this->publish($chunk, array_replace($data, ['overlay_live' => $index === 0]));
+            }
         }
     }
 

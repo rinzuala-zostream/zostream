@@ -49,7 +49,7 @@ php artisan migrate:status --database=chat --path=database/migrations/chat
 php artisan config:cache
 ```
 
-`chat:migrate` runs all 13 chat migrations and records their history in
+`chat:migrate` runs all chat migrations and records their history in
 PostgreSQL. Ordinary `php artisan migrate` no longer discovers chat migrations;
 they live in `database/migrations/chat`. Do not run `migrate:fresh` on the main
 database. This setup does not require altering main MySQL tables or copying data.

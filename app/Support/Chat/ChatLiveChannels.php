@@ -31,6 +31,8 @@ final class ChatLiveChannels
         $feed = $request->boolean('messages') ? ChatChannels::authorization($socket, 'private-chat-feed.'.$room.'.'.substr(hash('sha256', $token), 0, 32)) : null;
         $claim = ['room_id' => $room, 'socket_id' => $socket, 'channel' => $auth['channel'], 'control_channel' => $control['channel'], 'ticket_key' => $key,
             'feed_channel' => $feed['channel'] ?? null, 'expires' => $expires,
+            // A reconnect/overlay toggle must never replay messages already present at authorization.
+            'message_cursor' => $feed ? (int) (ChatDatabase::connection()->table('chat_messages')->where('room_id', $room)->max('id') ?? 0) : 0,
             'user_id' => (string) $session->user_id, 'device_id' => (string) $session->device_id,
             'session_id' => $session->getKey(), 'session_hash' => hash('sha256', $session->access_token),
             'playback_hash' => hash('sha256', (string) $request->header('X-Playback-Token'))];

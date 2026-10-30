@@ -25,6 +25,7 @@ class ZoChatClient(
     private val executor = Executors.newSingleThreadExecutor()
     var onBadgeEvent: ((JSONObject) -> Unit)? = null
     var onMessage: ((JSONObject) -> Unit)? = null
+    var onOverlayMessage: ((JSONObject) -> Unit)? = null
     private var controlToken: String? = null
     private var controlChannel: String? = null
     private var controlSubscribed = false
@@ -447,6 +448,7 @@ class ZoChatClient(
                                     // The card and its action become available together.
                                     data.optJSONObject("watch")?.let { onWatchState?.invoke(it) }
                                     onMessage?.invoke(message)
+                                    if (data.optBoolean("overlay_live") && !message.optBoolean("deleted")) onOverlayMessage?.invoke(message)
                                 }
                                 Unit
                             }

@@ -14,6 +14,17 @@ public struct ChatRoomInvitation: Decodable, Sendable, Equatable {
     public let active: Bool
 }
 
+public struct ChatReaction: Decodable, Sendable, Equatable { public let emoji: String; public let count: Int }
+public struct ChatReply: Decodable, Sendable, Equatable {
+    public let id: String; public let user_id: String?; public let display_name: String; public let body: String?; public let spoiler: Bool; public let deleted: Bool
+}
+public struct ChatMoment: Codable, Sendable, Equatable {
+    public let seconds: Int; public let content_type: String; public let content_id: String
+    public init(seconds: Int, content_type: String, content_id: String) {
+        self.seconds = seconds; self.content_type = content_type; self.content_id = content_id
+    }
+}
+
 public struct ChatMessage: Decodable, Identifiable, Sendable {
     public let id: String
     public let room_id: String
@@ -26,6 +37,11 @@ public struct ChatMessage: Decodable, Identifiable, Sendable {
     public let created_at: String
     public let room_invite: ChatRoomInvitation?
     public let watch_invite: ChatWatchInvite?
+    public let reply_to_id: String?
+    public let reply: ChatReply?
+    public let reactions: [ChatReaction]?
+    public let my_reactions: [String]?
+    public let moment: ChatMoment?
 }
 public struct ChatPage: Decodable, Sendable {
     public let messages: [ChatMessage]
@@ -86,6 +102,7 @@ public final class ZoChatClient {
     public private(set) var isConnected = false
     public var onBadgeEvent: (([String: Any]) -> Void)?
     public var onMessage: ((ChatMessage) -> Void)?
+    public var onOverlayMessage: ((ChatMessage) -> Void)?
     private var controlToken: String?
     private var controlChannel: String?
     private var controlSubscribed = false
@@ -515,6 +532,7 @@ public final class ZoChatClient {
                         // does not wait for the separate metadata event.
                         if let watch = payload["watch"] as? [String: Any] { self.onWatchState?(watch) }
                         self.onMessage?(message)
+                        if payload["overlay_live"] as? Bool == true, !message.deleted { self.onOverlayMessage?(message) }
                     case "chat.changed", "chat.badge":
                         if let targets = self.unreadChannels {
                             guard let physical = event["channel"] as? String,

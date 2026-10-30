@@ -18,6 +18,16 @@ private final class ChatURLProtocol: URLProtocol {
 }
 
 final class ChatClientTests: XCTestCase {
+    func testInteractionMetadataDecodesWithoutRevealingSpoilerQuotes() throws {
+        let message = try JSONDecoder().decode(ChatMessage.self, from: Data(#"{"id":"1","room_id":"2","user_id":"alice","request_id":"request","display_name":"Alice","body":"Reply","spoiler":false,"deleted":false,"created_at":"2026-10-30T10:00:00Z","reply_to_id":"9","reply":{"id":"9","user_id":"bob","display_name":"Bob","body":null,"spoiler":true,"deleted":false},"reactions":[{"emoji":"😂","count":2}],"my_reactions":["😂"],"moment":{"seconds":755,"content_type":"movie","content_id":"film-a"}}"#.utf8))
+        XCTAssertEqual(message.reply_to_id, "9")
+        XCTAssertTrue(message.reply?.spoiler == true)
+        XCTAssertNil(message.reply?.body)
+        XCTAssertEqual(message.reactions?.first?.count, 2)
+        XCTAssertEqual(message.my_reactions, ["😂"])
+        XCTAssertEqual(message.moment?.seconds, 755)
+    }
+
     @MainActor
     func testInitialHistoryRequestsUnreadPositionAndMessagesTogether() async throws {
         let configuration = URLSessionConfiguration.ephemeral

@@ -163,6 +163,8 @@ final class ChatService
     public function message(object $m): array
     {
         return ['id' => (string) $m->id, 'room_id' => (string) $m->room_id,
+            'reply_to_id' => ! $m->deleted_at && ($m->reply_to_id ?? null) ? (string) $m->reply_to_id : null,
+            'moment' => $m->deleted_at ? null : json_decode($m->moment ?? 'null', true),
             'user_id' => $m->user_id, 'request_id' => $m->request_id, 'display_name' => $m->display_name,
             'room_invite' => ! $m->deleted_at && ($m->invite_room_id ?? null) ? app(RoomInvitationService::class)->metadata((int) $m->invite_room_id) : null,
             'watch_invite' => $m->deleted_at ? null : json_decode($m->watch_invite ?? 'null', true),
@@ -194,6 +196,7 @@ final class ChatService
                 ChatDatabase::connection()->afterCommit(fn () => $this->invalidate($room));
             }
         });
+        ChatDatabase::connection()->table('chat_reactions')->where('user_id', $uid)->delete();
         $blockers = ChatDatabase::connection()->table('chat_blocks')->where('blocked_user_id', $uid)->pluck('user_id');
         ChatDatabase::connection()->table('chat_blocks')->where('user_id', $uid)->orWhere('blocked_user_id', $uid)->delete();
         foreach ($blockers as $blocker) {

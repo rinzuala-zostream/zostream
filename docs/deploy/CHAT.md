@@ -1,5 +1,9 @@
 # Deploy mobile chat
 
+Reactions, replies, typing, movie moments and the transient player overlay are
+documented in [CHAT_INTERACTIONS.md](CHAT_INTERACTIONS.md), including the new
+PostgreSQL migration and rollout order.
+
 ## Chat action error dialogs — 30 October
 
 Rebuild Android and iOS for the updated error presentation. Failed sends, room

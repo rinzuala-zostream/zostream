@@ -575,7 +575,7 @@ final class ChatController extends Controller
         }
 
         $rows = app(\App\Support\Chat\PrivateWatchService::class)->hydrate($rows);
-        return V4Response::success(['messages' => app(\App\Support\Chat\RoomInvitationService::class)->hydrate($rows), 'has_more' => $hasMore] + $initial);
+        return V4Response::success(['messages' => app(\App\Support\Chat\ChatInteractions::class)->decorate(app(\App\Support\Chat\RoomInvitationService::class)->hydrate($rows), (string) $r->input('auth_user_id')), 'has_more' => $hasMore] + $initial);
     }
 
     public function send(Request $r, int $room)
@@ -585,6 +585,9 @@ final class ChatController extends Controller
             'room_invite' => 'sometimes|array:room_id', 'room_invite.room_id' => 'required_with:room_invite|integer|min:1',
             'watch' => 'sometimes|array', 'watch.content_type' => ['required_with:watch', Rule::in(['movie', 'episode'])],
             'watch.content_id' => 'required_with:watch|string|max:191', 'watch.position_ms' => 'nullable|integer|min:0|max:86400000',
+            'reply_to_id' => 'nullable|integer|min:1',
+            'moment' => 'sometimes|array:seconds,content_type,content_id', 'moment.seconds' => 'required_with:moment|integer|min:0|max:86400',
+            'moment.content_type' => ['required_with:moment', Rule::in(['movie', 'episode'])], 'moment.content_id' => 'required_with:moment|string|max:191',
             'spoiler' => 'sometimes|boolean', 'app_session_id' => 'nullable|uuid', 'playback_session_id' => 'nullable|uuid']);
         $uid = (string) $r->input('auth_user_id');
         $body = trim($v['body']);
@@ -596,8 +599,10 @@ final class ChatController extends Controller
         if ($old) {
             abort_unless((int) $old->room_id === $room, 409);
 
-            return V4Response::success(app(\App\Support\Chat\PrivateWatchService::class)->hydrate([$this->chat->message($old)])[0]);
+            return V4Response::success(app(\App\Support\Chat\ChatInteractions::class)->decorate(app(\App\Support\Chat\PrivateWatchService::class)->hydrate([$this->chat->message($old)]), $uid)[0]);
         }
+        if (! empty($v['reply_to_id'])) { app(\App\Support\Chat\ChatInteractions::class)->target($r, $room, (int) $v['reply_to_id']); }
+        if (isset($v['moment'])) { app(\App\Support\Chat\ChatInteractions::class)->validateMoment($r, $roomInfo, $v['moment']); }
         // Atomic Redis add also serializes sends from multiple app servers.
         try {
             $allowed = Cache::store(config('chat.cache_store'))->add('chat:send:'.hash('sha256', $uid), true, config('chat.slow_mode_seconds'));
@@ -615,7 +620,8 @@ final class ChatController extends Controller
             $name = DB::table('user')->where('uid', $uid)->value('name');
             $inserted = ChatDatabase::connection()->table('chat_messages')->insertOrIgnore(['room_id' => $room, 'user_id' => $uid, 'request_id' => $v['request_id'],
                 'display_name' => mb_substr(trim((string) $name) ?: 'Viewer', 0, 100), 'body' => $sharedRoom ? 'Invitation to '.$sharedRoom->room_name : $body,
-                'invite_room_id' => $sharedRoom?->room_id,
+                'invite_room_id' => $sharedRoom?->room_id, 'reply_to_id' => $v['reply_to_id'] ?? null,
+                'moment' => isset($v['moment']) ? json_encode($v['moment']) : null,
                 'spoiler' => $v['spoiler'] ?? false, 'created_at' => now(), 'updated_at' => now()]);
             $m = ChatDatabase::connection()->table('chat_messages')->where('user_id', $uid)->where('request_id', $v['request_id'])->first();
             abort_unless((int) $m->room_id === $room, 409);
@@ -637,7 +643,7 @@ final class ChatController extends Controller
         });
         $this->chat->invalidate($room);
 
-        return V4Response::success(app(\App\Support\Chat\PrivateWatchService::class)->hydrate([$this->chat->message($m)])[0], status: 201);
+        return V4Response::success(app(\App\Support\Chat\ChatInteractions::class)->decorate(app(\App\Support\Chat\PrivateWatchService::class)->hydrate([$this->chat->message($m)]), $uid)[0], status: 201);
     }
 
     public function claimRoomInvitation(Request $r, int $room, int $message)

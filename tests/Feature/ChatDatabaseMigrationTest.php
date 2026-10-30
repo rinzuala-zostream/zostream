@@ -29,9 +29,9 @@ final class ChatDatabaseMigrationTest extends TestCase
             $this->assertFalse(ChatDatabase::schema()->hasTable('jobs'));
             $this->assertSame([], Schema::getTableListing());
             $this->assertSame('primary_migration_test', DB::getDefaultConnection());
-            $this->assertSame(13, ChatDatabase::connection()->table('migrations')->count());
+            $this->assertSame(14, ChatDatabase::connection()->table('migrations')->count());
             $this->assertSame(0, Artisan::call('chat:migrate', ['--force' => true]));
-            $this->assertSame(13, ChatDatabase::connection()->table('migrations')->count());
+            $this->assertSame(14, ChatDatabase::connection()->table('migrations')->count());
         } finally {
             DB::purge('primary_migration_test');
             DB::purge('chat_migration_test');
