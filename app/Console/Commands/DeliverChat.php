@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Support\Chat\ChatDatabase;
 use App\Support\Analytics\AnalyticsCollectionSetting;
 use App\Support\Chat\ChatService;
 use Illuminate\Console\Command;
@@ -28,7 +29,7 @@ final class DeliverChat extends Command
                 app(\App\Support\Chat\RoomInvitationService::class)->expireSharedRooms(\Illuminate\Http\Request::create('/'));
                 $lastWatchExpiry = time();
             }
-            $pending = DB::table('chat_outbox')->whereNull('delivered_at')
+            $pending = ChatDatabase::connection()->table('chat_outbox')->whereNull('delivered_at')
                 ->where(fn ($q) => $q->whereNull('claimed_until')->orWhere('claimed_until', '<=', now()))
                 ->where(fn ($q) => $q->whereNull('available_at')->orWhere('available_at', '<=', now()));
             if ($lane === 'push') { $pending->where('kind', 'message_push'); }
@@ -36,12 +37,12 @@ final class DeliverChat extends Command
             $rows = $lane === 'analytics' ? collect() : $pending->orderBy('id')->limit(100)->get();
             foreach ($rows as $row) {
                 $claim = (string) \Illuminate\Support\Str::uuid();
-                $owned = DB::table('chat_outbox')->where('id', $row->id)->whereNull('delivered_at')
+                $owned = ChatDatabase::connection()->table('chat_outbox')->where('id', $row->id)->whereNull('delivered_at')
                     ->where(fn ($q) => $q->whereNull('claimed_until')->orWhere('claimed_until', '<=', now()))
                     ->update(['claim_token' => $claim, 'claimed_until' => now()->addMinutes(2)]);
                 if (! $owned) { continue; }
                 $renew = function () use ($row, $claim): void {
-                    if (! DB::table('chat_outbox')->where('id', $row->id)->where('claim_token', $claim)
+                    if (! ChatDatabase::connection()->table('chat_outbox')->where('id', $row->id)->where('claim_token', $claim)
                         // MySQL reports zero changed rows when this runs in the
                         // same second as the initial claim and the timestamp is
                         // unchanged. Advance past second precision so ownership
@@ -56,10 +57,10 @@ final class DeliverChat extends Command
                     } elseif ($row->kind !== 'reported') {
                         $this->publish($row);
                     }
-                    DB::table('chat_outbox')->where('id', $row->id)->where('claim_token', $claim)
+                    ChatDatabase::connection()->table('chat_outbox')->where('id', $row->id)->where('claim_token', $claim)
                         ->update(['delivered_at' => now(), 'claim_token' => null, 'claimed_until' => null]);
                 } catch (\Throwable $e) {
-                    DB::table('chat_outbox')->where('id', $row->id)->where('claim_token', $claim)->update([
+                    ChatDatabase::connection()->table('chat_outbox')->where('id', $row->id)->where('claim_token', $claim)->update([
                         'claim_token' => null, 'claimed_until' => null,
                         'attempts' => min(1000, $row->attempts + 1),
                         'available_at' => now()->addSeconds(min(60, 2 ** min(6, $row->attempts + 1)) + random_int(0, 2)),
@@ -81,13 +82,13 @@ final class DeliverChat extends Command
                 }
             }
             // Analytics outages cannot hold up realtime delivery for other rooms.
-            $telemetry = DB::table('chat_outbox')->whereNotNull('analytics')->whereNull('analytics_delivered_at')->where(fn ($q) => $q->whereNull('analytics_available_at')->orWhere('analytics_available_at', '<=', now()))->orderBy('id')->limit(in_array($lane, ['all', 'analytics'], true) ? 100 : 0)->get();
+            $telemetry = ChatDatabase::connection()->table('chat_outbox')->whereNotNull('analytics')->whereNull('analytics_delivered_at')->where(fn ($q) => $q->whereNull('analytics_available_at')->orWhere('analytics_available_at', '<=', now()))->orderBy('id')->limit(in_array($lane, ['all', 'analytics'], true) ? 100 : 0)->get();
             foreach ($telemetry as $row) {
                 try {
                     $this->analytics($row);
-                    DB::table('chat_outbox')->where('id', $row->id)->update(['analytics_delivered_at' => now()]);
+                    ChatDatabase::connection()->table('chat_outbox')->where('id', $row->id)->update(['analytics_delivered_at' => now()]);
                 } catch (\Throwable $e) {
-                    DB::table('chat_outbox')->where('id', $row->id)->update([
+                    ChatDatabase::connection()->table('chat_outbox')->where('id', $row->id)->update([
                         'analytics_attempts' => min(1000, $row->analytics_attempts + 1),
                         'analytics_available_at' => now()->addSeconds(min(60, 2 ** min(6, $row->analytics_attempts + 1)) + random_int(0, 2)),
                     ]);
@@ -124,7 +125,7 @@ final class DeliverChat extends Command
             $watch = app(\App\Support\Chat\PrivateWatchService::class)->snapshot((int) $row->room_id);
             if ($watch !== null) { $event['watch'] = $watch + ['event_id' => (string) $row->id]; }
             if (in_array($row->kind, ['created', 'deleted', 'ended'], true)) {
-                $message = $row->message_id ? DB::table('chat_messages')->find($row->message_id) : null;
+                $message = $row->message_id ? ChatDatabase::connection()->table('chat_messages')->find($row->message_id) : null;
                 $event['badge'] = ['kind' => $message && str_starts_with($message->user_id, 'deleted:') ? 'sync' : $row->kind, 'room_id' => (string) $row->room_id,
                     'event_id' => (string) $row->id, 'message_id' => $row->message_id ? (string) $row->message_id : null,
                     'sender_id' => $message?->user_id, 'retained' => $message && \Illuminate\Support\Carbon::parse($message->created_at)->gte(now()->subDays(config('chat.retention_days'))), 'eligible' => $message && ! $message->deleted_at
@@ -132,12 +133,12 @@ final class DeliverChat extends Command
             }
         }
         if ($row->kind === 'room_invite_status' && $row->message_id) {
-            $target = DB::table('chat_messages')->where('id', $row->message_id)->value('invite_room_id');
+            $target = ChatDatabase::connection()->table('chat_messages')->where('id', $row->message_id)->value('invite_room_id');
             if ($target) { $event['room_invite'] = app(\App\Support\Chat\RoomInvitationService::class)->metadata((int) $target); }
         }
         $channels = [$channel];
         if ($recipient === null && isset($event['badge'])) {
-            $room = DB::table('chat_rooms')->find($row->room_id);
+            $room = ChatDatabase::connection()->table('chat_rooms')->find($row->room_id);
             if ($room && in_array($room->type, ['global', 'movie', 'episode'], true)) {
                 $channels[] = \App\Support\Chat\ChatReadService::contextChannel($room->type, $room->content_id);
             }
@@ -163,7 +164,7 @@ final class DeliverChat extends Command
             return;
         }
         $a = json_decode($row->analytics, true, flags: JSON_THROW_ON_ERROR);
-        $room = DB::table('chat_rooms')->find($row->room_id);
+        $room = ChatDatabase::connection()->table('chat_rooms')->find($row->room_id);
         DB::connection('analytics')->table('analytics_events')->insertOrIgnore([
             'event_id' => $a['event_id'], 'name' => $a['name'], 'user_id' => $a['user_id'],
             'device_id' => $a['device_id'], 'app_session_id' => $a['app_session_id'],

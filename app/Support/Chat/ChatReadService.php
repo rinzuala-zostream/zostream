@@ -33,7 +33,7 @@ final class ChatReadService
         if ($stream && in_array($stream->content_type, ['movie', 'episode'], true)) { $contexts[] = [$stream->content_type, $stream->content_key]; }
         foreach ($contexts as [$type, $id]) {
             if ($channel === self::contextChannel($type, $id)) {
-                $room = DB::table('chat_rooms')->where('room_key', $type === 'global' ? 'global' : $type.':'.$id)->first();
+                $room = ChatDatabase::connection()->table('chat_rooms')->where('room_key', $type === 'global' ? 'global' : $type.':'.$id)->first();
                 if ($room) { $this->chat->room($r, $room->id); }
                 else { abort_if($this->rootBanned($uid), 403); }
                 return;
@@ -44,20 +44,20 @@ final class ChatReadService
 
     private function rootBanned(string $uid): bool
     {
-        return DB::table('chat_bans')->where('user_id', $uid)->where('room_id', 0)->where('kind', 'ban')
+        return ChatDatabase::connection()->table('chat_bans')->where('user_id', $uid)->where('room_id', 0)->where('kind', 'ban')
             ->where(fn ($q) => $q->whereNull('expires_at')->orWhere('expires_at', '>', now()))->exists();
     }
 
     public function summary(Request $request, string $type, ?string $contentId): array
     {
-        return DB::transaction(fn () => $this->snapshot($request, $type, $contentId));
+        return ChatDatabase::connection()->transaction(fn () => $this->snapshot($request, $type, $contentId));
     }
 
     private function snapshot(Request $request, string $type, ?string $contentId): array
     {
-        $cursor = (string) (DB::table('chat_outbox')->max('id') ?? 0);
+        $cursor = (string) (ChatDatabase::connection()->table('chat_outbox')->max('id') ?? 0);
         $uid = (string) $request->input('auth_user_id');
-        $invites = DB::table('chat_invite_rooms as ir')->select('ir.room_id')->where('ir.active', true)
+        $invites = ChatDatabase::connection()->table('chat_invite_rooms as ir')->select('ir.room_id')->where('ir.active', true)
             ->tap(fn ($q) => app(InviteRoomLifecycle::class)->candidates($q))
             ->where(function ($q) use ($uid) {
                 $q->where('ir.host_user_id', $uid)->orWhereExists(function ($member) use ($uid) {
@@ -70,7 +70,7 @@ final class ChatReadService
                     $q->orWhere(fn ($watch) => $watch->where('ir.content_type', $type)->where('ir.content_id', $contentId));
                 }
             });
-        $candidates = DB::table('chat_rooms')->where('closed', false)->where(function ($q) use ($invites, $type, $contentId) {
+        $candidates = ChatDatabase::connection()->table('chat_rooms')->where('closed', false)->where(function ($q) use ($invites, $type, $contentId) {
             $q->where('type', 'global')->orWhereIn('id', $invites);
             if ($type !== 'global') {
                 $q->orWhere(fn ($movie) => $movie->where('type', $type)->where('content_id', $contentId));
@@ -88,10 +88,10 @@ final class ChatReadService
             }
         }
         $ids = array_column($rooms, 'id');
-        $reads = DB::table('chat_room_reads')->where('user_id', $uid)->whereIn('room_id', $ids)->pluck('last_read_message_id', 'room_id');
+        $reads = ChatDatabase::connection()->table('chat_room_reads')->where('user_id', $uid)->whereIn('room_id', $ids)->pluck('last_read_message_id', 'room_id');
         // Constant ranges use the existing (room_id, id) index instead of scanning
         // already-read history through a per-message read-state join.
-        $unread = DB::table('chat_messages as m')->where(function ($query) use ($ids, $reads) {
+        $unread = ChatDatabase::connection()->table('chat_messages as m')->where(function ($query) use ($ids, $reads) {
             if ($ids === []) {
                 $query->whereRaw('1 = 0');
             }
@@ -102,7 +102,7 @@ final class ChatReadService
             ->whereNotIn('m.user_id', $this->chat->blocked($uid))
             ->where('m.created_at', '>=', now()->subDays(config('chat.retention_days')))
             ->groupBy('m.room_id')->selectRaw('m.room_id, COUNT(*) as unread_count, MIN(m.id) as first_unread_id')->get()->keyBy('room_id');
-        $latest = DB::table('chat_messages')->whereIn('room_id', $ids)->groupBy('room_id')->selectRaw('room_id, MAX(id) as last_id')->pluck('last_id', 'room_id');
+        $latest = ChatDatabase::connection()->table('chat_messages')->whereIn('room_id', $ids)->groupBy('room_id')->selectRaw('room_id, MAX(id) as last_id')->pluck('last_id', 'room_id');
         $result = array_map(function ($room) use ($reads, $unread, $latest) {
             $state = $unread[$room->id] ?? null;
             return ['room_id' => (string) $room->id,
@@ -122,7 +122,7 @@ final class ChatReadService
         if ($type !== 'global' && $contentId !== null && $this->chat->playbackAllowed($request, $type, $contentId)) { $contexts[] = [$type, $contentId]; }
         if (! $this->rootBanned($uid)) {
             foreach ($contexts as [$context, $id]) {
-                $existing = DB::table('chat_rooms')->where('room_key', $context === 'global' ? 'global' : $context.':'.$id)->value('id');
+                $existing = ChatDatabase::connection()->table('chat_rooms')->where('room_key', $context === 'global' ? 'global' : $context.':'.$id)->value('id');
                 if (! $existing || in_array($existing, $ids)) { $channels[] = self::contextChannel($context, $id); }
             }
         }
@@ -136,35 +136,35 @@ final class ChatReadService
 
     public function readState(string $uid, int $room): array
     {
-        return DB::transaction(function () use ($uid, $room) {
-            $cursor = (string) (DB::table('chat_outbox')->max('id') ?? 0);
-            $through = (int) (DB::table('chat_room_reads')->where('user_id', $uid)->where('room_id', $room)->value('last_read_message_id') ?? 0);
-            $unread = DB::table('chat_messages')->where('room_id', $room)->where('id', '>', $through)
+        return ChatDatabase::connection()->transaction(function () use ($uid, $room) {
+            $cursor = (string) (ChatDatabase::connection()->table('chat_outbox')->max('id') ?? 0);
+            $through = (int) (ChatDatabase::connection()->table('chat_room_reads')->where('user_id', $uid)->where('room_id', $room)->value('last_read_message_id') ?? 0);
+            $unread = ChatDatabase::connection()->table('chat_messages')->where('room_id', $room)->where('id', '>', $through)
                 ->where('user_id', '!=', $uid)->whereNull('deleted_at')->whereNotIn('user_id', $this->chat->blocked($uid))
                 ->where('created_at', '>=', now()->subDays(config('chat.retention_days')))
                 ->selectRaw('COUNT(*) as total, MIN(id) as first_id')->first();
             return ['kind' => 'read', 'room_id' => (string) $room, 'snapshot_cursor' => $cursor,
                 'read_through' => (string) $through, 'unread_count' => (int) $unread->total,
                 'first_unread_id' => $unread->first_id === null ? null : (string) $unread->first_id,
-                'last_message_id' => (string) (DB::table('chat_messages')->where('room_id', $room)->max('id') ?? 0)];
+                'last_message_id' => (string) (ChatDatabase::connection()->table('chat_messages')->where('room_id', $room)->max('id') ?? 0)];
         });
     }
 
     public function mark(Request $request, int $room, int $message): array
     {
         $this->chat->room($request, $room);
-        abort_unless(DB::table('chat_messages')->where('room_id', $room)->where('id', $message)->exists(), 422, 'Message does not belong to this room.');
+        abort_unless(ChatDatabase::connection()->table('chat_messages')->where('room_id', $room)->where('id', $message)->exists(), 422, 'Message does not belong to this room.');
         $uid = (string) $request->input('auth_user_id');
-        DB::transaction(function () use ($request, $uid, $room, $message): void {
-            DB::table('chat_room_reads')->insertOrIgnore(['user_id' => $uid, 'room_id' => $room, 'last_read_message_id' => 0,
+        ChatDatabase::connection()->transaction(function () use ($request, $uid, $room, $message): void {
+            ChatDatabase::connection()->table('chat_room_reads')->insertOrIgnore(['user_id' => $uid, 'room_id' => $room, 'last_read_message_id' => 0,
                 'created_at' => now(), 'updated_at' => now()]);
             // Conditional updates are monotonic even when two devices report out of order.
-            $changed = DB::table('chat_room_reads')->where('user_id', $uid)->where('room_id', $room)
+            $changed = ChatDatabase::connection()->table('chat_room_reads')->where('user_id', $uid)->where('room_id', $room)
                 ->where('last_read_message_id', '<', $message)->update(['last_read_message_id' => $message, 'updated_at' => now()]);
             if ($changed) { $this->chat->outbox($request, $room, 'read', $message, null, $uid); }
         });
 
-        return ['room_id' => (string) $room, 'last_read_message_id' => (string) DB::table('chat_room_reads')
+        return ['room_id' => (string) $room, 'last_read_message_id' => (string) ChatDatabase::connection()->table('chat_room_reads')
             ->where('user_id', $uid)->where('room_id', $room)->value('last_read_message_id'),
             'badge' => $this->readState($uid, $room)];
     }

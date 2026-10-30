@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Support\Chat\ChatDatabase;
 use App\Services\WhatsAppCloudService;
 use App\Support\Chat\InvitationPhone;
 use Illuminate\Contracts\Queue\ShouldBeEncrypted;
@@ -29,13 +30,13 @@ class SendChatInvitationWhatsApp implements ShouldQueue, ShouldBeEncrypted
     public function handle(WhatsAppCloudService $whatsapp): void
     {
         if (! config('chat.whatsapp_enabled')) { $this->skipped('disabled'); return; }
-        $invite = DB::table('chat_room_invites')->where('id', $this->inviteId)->first();
+        $invite = ChatDatabase::connection()->table('chat_room_invites')->where('id', $this->inviteId)->first();
         if (! $invite) { $this->skipped('invitation_missing'); return; }
         if ($invite->whatsapp_sent_at) { return; }
         if ($invite->status !== 'pending') { $this->skipped('invitation_already_responded'); return; }
         if ($invite->expires_at <= now()) { $this->skipped('invitation_expired'); return; }
         if (! hash_equals((string) $invite->link_token_hash, hash('sha256', $this->token))) { $this->skipped('link_replaced'); return; }
-        $room = DB::table('chat_invite_rooms as ir')->join('chat_rooms as r', 'r.id', '=', 'ir.room_id')
+        $room = ChatDatabase::connection()->table('chat_invite_rooms as ir')->join('chat_rooms as r', 'r.id', '=', 'ir.room_id')
             ->where('ir.room_id', $invite->room_id)->where('ir.active', true)->where('r.closed', false)
             ->tap(fn ($q) => app(\App\Support\Chat\InviteRoomLifecycle::class)->candidates($q))
             ->first(['ir.*']);
@@ -61,7 +62,7 @@ class SendChatInvitationWhatsApp implements ShouldQueue, ShouldBeEncrypted
                 'template' => config('chat.whatsapp_template'), 'language' => config('chat.whatsapp_language')]);
             throw $e;
         }
-        DB::table('chat_room_invites')->where('id', $invite->id)->update(['whatsapp_sent_at' => now()]);
+        ChatDatabase::connection()->table('chat_room_invites')->where('id', $invite->id)->update(['whatsapp_sent_at' => now()]);
     }
 
     private function skipped(string $reason): void

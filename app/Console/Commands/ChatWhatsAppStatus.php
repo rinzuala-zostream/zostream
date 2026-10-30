@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Support\Chat\ChatDatabase;
 use App\Support\Chat\InvitationPhone;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -33,12 +34,13 @@ final class ChatWhatsAppStatus extends Command
             $ready = false;
         }
         foreach (['chat_room_invites', 'chat_invite_rooms', 'whatsapp_messages'] as $table) {
-            $present = Schema::hasTable($table);
+            $present = str_starts_with($table, 'chat_')
+                ? ChatDatabase::schema()->hasTable($table) : Schema::hasTable($table);
             $this->line($table.': '.($present ? 'present' : 'MISSING - run migrations'));
             $ready = $ready && $present;
         }
-        if (Schema::hasTable('chat_room_invites') && (! Schema::hasColumn('chat_room_invites', 'link_token_hash')
-            || ! Schema::hasColumn('chat_room_invites', 'whatsapp_sent_at'))) {
+        if (ChatDatabase::schema()->hasTable('chat_room_invites') && (! ChatDatabase::schema()->hasColumn('chat_room_invites', 'link_token_hash')
+            || ! ChatDatabase::schema()->hasColumn('chat_room_invites', 'whatsapp_sent_at'))) {
             $this->error('Invitation link columns missing: run the chat invitation links migration.');
             $ready = false;
         }
@@ -55,13 +57,13 @@ final class ChatWhatsAppStatus extends Command
                 $ready = false;
             }
         }
-        if (Schema::hasTable('chat_room_invites') && Schema::hasColumn('chat_room_invites', 'whatsapp_sent_at')) {
+        if (ChatDatabase::schema()->hasTable('chat_room_invites') && ChatDatabase::schema()->hasColumn('chat_room_invites', 'whatsapp_sent_at')) {
             $id = $this->option('invite');
             if ($id !== null && (! ctype_digit((string) $id) || (int) $id < 1)) {
                 $this->error('--invite must be a positive invitation ID.');
                 return self::FAILURE;
             }
-            $invite = DB::table('chat_room_invites')->when($id, fn ($q) => $q->where('id', $id))->latest('id')->first();
+            $invite = ChatDatabase::connection()->table('chat_room_invites')->when($id, fn ($q) => $q->where('id', $id))->latest('id')->first();
             if ($invite) {
                 $user = DB::table('user')->where('uid', $invite->invitee_user_id)->first();
                 $phone = $user ? InvitationPhone::international($user->auth_phone, $user->country_code ?? null) : null;

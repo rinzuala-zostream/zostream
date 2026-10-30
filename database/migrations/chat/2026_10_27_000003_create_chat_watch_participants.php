@@ -1,14 +1,14 @@
 <?php
 
+use App\Support\Chat\ChatDatabase;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('chat_watch_participants', function (Blueprint $t): void {
+        ChatDatabase::schema()->create('chat_watch_participants', function (Blueprint $t): void {
             $t->unsignedBigInteger('session_id');
             $t->string('user_id', 191);
             $t->timestamp('joined_at');
@@ -21,6 +21,6 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::dropIfExists('chat_watch_participants');
+        ChatDatabase::schema()->dropIfExists('chat_watch_participants');
     }
 };

@@ -1,14 +1,14 @@
 <?php
 
+use App\Support\Chat\ChatDatabase;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('chat_rooms', function (Blueprint $t) {
+        ChatDatabase::schema()->create('chat_rooms', function (Blueprint $t) {
             $t->id();
             $t->string('room_key', 191)->unique();
             $t->string('type', 16);
@@ -16,7 +16,7 @@ return new class extends Migration
             $t->boolean('closed')->default(false);
             $t->timestamps();
         });
-        Schema::create('chat_messages', function (Blueprint $t) {
+        ChatDatabase::schema()->create('chat_messages', function (Blueprint $t) {
             $t->id();
             $t->unsignedBigInteger('room_id');
             $t->string('user_id', 191);
@@ -30,7 +30,7 @@ return new class extends Migration
             $t->index(['room_id', 'id']);
             $t->index('created_at');
         });
-        Schema::create('chat_bans', function (Blueprint $t) {
+        ChatDatabase::schema()->create('chat_bans', function (Blueprint $t) {
             $t->id();
             $t->unsignedBigInteger('room_id');
             $t->string('user_id', 191);
@@ -38,13 +38,13 @@ return new class extends Migration
             $t->timestamp('expires_at')->nullable();
             $t->unique(['room_id', 'user_id']);
         });
-        Schema::create('chat_blocks', function (Blueprint $t) {
+        ChatDatabase::schema()->create('chat_blocks', function (Blueprint $t) {
             $t->id();
             $t->string('user_id', 191);
             $t->string('blocked_user_id', 191);
             $t->unique(['user_id', 'blocked_user_id']);
         });
-        Schema::create('chat_reports', function (Blueprint $t) {
+        ChatDatabase::schema()->create('chat_reports', function (Blueprint $t) {
             $t->id();
             $t->unsignedBigInteger('message_id');
             $t->string('user_id', 191);
@@ -53,7 +53,7 @@ return new class extends Migration
             $t->timestamps();
             $t->unique(['message_id', 'user_id']);
         });
-        Schema::create('chat_moderation_actions', function (Blueprint $t) {
+        ChatDatabase::schema()->create('chat_moderation_actions', function (Blueprint $t) {
             $t->id();
             $t->string('admin_id', 191);
             $t->unsignedBigInteger('room_id');
@@ -62,7 +62,7 @@ return new class extends Migration
             $t->string('reason', 500);
             $t->timestamps();
         });
-        Schema::create('chat_outbox', function (Blueprint $t) {
+        ChatDatabase::schema()->create('chat_outbox', function (Blueprint $t) {
             $t->id();
             $t->unsignedBigInteger('room_id');
             $t->string('kind', 32);
@@ -82,7 +82,7 @@ return new class extends Migration
     public function down(): void
     {
         foreach (['chat_outbox', 'chat_moderation_actions', 'chat_reports', 'chat_blocks', 'chat_bans', 'chat_messages', 'chat_rooms'] as $table) {
-            Schema::dropIfExists($table);
+            ChatDatabase::schema()->dropIfExists($table);
         }
     }
 };

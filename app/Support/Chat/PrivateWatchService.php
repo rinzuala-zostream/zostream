@@ -22,14 +22,14 @@ final class PrivateWatchService
             ->where('s.content_type', $watch['content_type'])->where('s.content_key', $watch['content_id'])
             ->where('s.last_ping', '>=', now()->subMinutes(3))->first(['s.id']);
         abort_unless($stream, 403, 'Start online playback before sending /watch.');
-        DB::table('chat_watch_sessions')->where('room_id', $inviteRoom->room_id)->update(['active' => false]);
-        $session = DB::table('chat_watch_sessions')->insertGetId([
+        ChatDatabase::connection()->table('chat_watch_sessions')->where('room_id', $inviteRoom->room_id)->update(['active' => false]);
+        $session = ChatDatabase::connection()->table('chat_watch_sessions')->insertGetId([
             'room_id' => $inviteRoom->room_id, 'message_id' => $message, 'host_user_id' => $inviteRoom->host_user_id,
             'host_stream_id' => $stream->id, 'stream_token_hash' => hash('sha256', $r->header('X-Playback-Token')),
             'content_type' => $watch['content_type'], 'content_id' => $watch['content_id'],
             'position_ms' => $watch['position_ms'] ?? 0, 'sampled_at_ms' => now()->getTimestampMs(), 'active' => true, 'created_at' => now(), 'updated_at' => now(),
         ]);
-        DB::table('chat_messages')->where('id', $message)->update(['body' => 'Watch '.$content->title.' together', 'spoiler' => false,
+        ChatDatabase::connection()->table('chat_messages')->where('id', $message)->update(['body' => 'Watch '.$content->title.' together', 'spoiler' => false,
             'watch_invite' => json_encode(['session_id' => (string) $session, 'content_type' => $watch['content_type'],
                 'content_id' => $watch['content_id'], 'content_title' => $content->title])]);
     }
@@ -51,10 +51,10 @@ final class PrivateWatchService
 
     public function liveSession(int $room): ?object
     {
-        $watch = DB::table('chat_watch_sessions as w')->join('chat_invite_rooms as ir', 'ir.room_id', '=', 'w.room_id')
+        $watch = ChatDatabase::connection()->table('chat_watch_sessions as w')->join('chat_invite_rooms as ir', 'ir.room_id', '=', 'w.room_id')
             ->join('chat_rooms as r', 'r.id', '=', 'w.room_id')->where('w.room_id', $room)->where('w.active', true)
             ->where('ir.active', true)->where('r.closed', false)->first(['w.*']);
-        if (! $watch || ! DB::table('chat_messages')->where('id', $watch->message_id)->whereNull('deleted_at')->exists()) { return null; }
+        if (! $watch || ! ChatDatabase::connection()->table('chat_messages')->where('id', $watch->message_id)->whereNull('deleted_at')->exists()) { return null; }
         $stream = DB::table('n_active_streams as s')->join('n_devices as d', 'd.id', '=', 's.device_id')
             ->where('s.id', $watch->host_stream_id)->where('d.user_id', $watch->host_user_id)->where('s.status', 'active')
             ->where('s.content_type', $watch->content_type)->where('s.content_key', $watch->content_id)
@@ -79,14 +79,24 @@ final class PrivateWatchService
     /** Recover missed stops and heartbeat expiry without polling per viewer. */
     public function endInactiveSessions(Request $request): void
     {
-        DB::table('chat_watch_sessions as w')->leftJoin('n_active_streams as s', 's.id', '=', 'w.host_stream_id')
-            ->leftJoin('n_devices as d', 'd.id', '=', 's.device_id')
+        ChatDatabase::connection()->table('chat_watch_sessions as w')
             ->leftJoin('chat_invite_rooms as ir', 'ir.room_id', '=', 'w.room_id')->leftJoin('chat_rooms as r', 'r.id', '=', 'w.room_id')
             ->leftJoin('chat_messages as m', 'm.id', '=', 'w.message_id')->where('w.active', true)
-            ->select(['w.*', 's.status as stream_status', 's.last_ping as stream_ping', 's.stream_token as stream_token',
-                's.content_type as stream_type', 's.content_key as stream_content', 'd.user_id as stream_owner',
-                'ir.active as room_active', 'r.closed as room_closed', 'm.id as existing_message', 'm.deleted_at as message_deleted_at'])
+            ->select(['w.*', 'ir.active as room_active', 'r.closed as room_closed',
+                'm.id as existing_message', 'm.deleted_at as message_deleted_at'])
             ->chunkById(200, function ($sessions) use ($request): void {
+                // Fetch main-DB state once per batch; PostgreSQL cannot join MySQL tables.
+                $mainStreams = DB::table('n_active_streams as s')->leftJoin('n_devices as d', 'd.id', '=', 's.device_id')
+                    ->whereIn('s.id', $sessions->pluck('host_stream_id'))->get(['s.*', 'd.user_id as stream_owner'])->keyBy('id');
+                foreach ($sessions as $watch) {
+                    $stream = $mainStreams->get($watch->host_stream_id);
+                    $watch->stream_owner = $stream->stream_owner ?? null;
+                    $watch->stream_status = $stream->status ?? null;
+                    $watch->stream_ping = $stream->last_ping ?? null;
+                    $watch->stream_type = $stream->content_type ?? null;
+                    $watch->stream_content = $stream->content_key ?? null;
+                    $watch->stream_token = $stream->stream_token ?? null;
+                }
                 $streams = [];
                 foreach ($sessions as $watch) {
                     if (! $watch->room_active || $watch->room_closed || $watch->stream_owner !== $watch->host_user_id
@@ -105,9 +115,9 @@ final class PrivateWatchService
     public function resolve(Request $r, int $room, int $session): object
     {
         $this->chat->room($r, $room);
-        $watch = DB::table('chat_watch_sessions')->where('room_id', $room)->where('id', $session)->first();
+        $watch = ChatDatabase::connection()->table('chat_watch_sessions')->where('room_id', $room)->where('id', $session)->first();
         abort_unless($watch, 404);
-        abort_unless($watch->active && DB::table('chat_messages')->where('id', $watch->message_id)->whereNull('deleted_at')->exists(), 410, 'This watch session has ended. Ask the creator to send /watch again.');
+        abort_unless($watch->active && ChatDatabase::connection()->table('chat_messages')->where('id', $watch->message_id)->whereNull('deleted_at')->exists(), 410, 'This watch session has ended. Ask the creator to send /watch again.');
         $stream = DB::table('n_active_streams as s')->join('n_devices as d', 'd.id', '=', 's.device_id')
             ->where('s.id', $watch->host_stream_id)->where('d.user_id', $watch->host_user_id)
             ->where('s.status', 'active')->where('s.content_type', $watch->content_type)->where('s.content_key', $watch->content_id)
@@ -125,7 +135,7 @@ final class PrivateWatchService
 
     public function snapshot(int $room): ?array
     {
-        $invite = DB::table('chat_invite_rooms')->where('room_id', $room)->first();
+        $invite = ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $room)->first();
         if (! $invite) { return null; }
         $state = app(WatchPlaybackState::class);
         if ($invite->content_type !== null) {
@@ -134,7 +144,7 @@ final class PrivateWatchService
                 'playback' => $live ? $state->payload($invite, 'watch_position_ms', false) : null];
         }
         $watch = $invite->active ? $this->liveSession($room) : null;
-        $latest = DB::table('chat_watch_sessions')->where('room_id', $room)->max('id');
+        $latest = ChatDatabase::connection()->table('chat_watch_sessions')->where('room_id', $room)->max('id');
         return ['room_id' => (string) $room, 'active' => $watch !== null, 'session_id' => $watch ? (string) $watch->id : null,
             'latest_session_id' => $latest !== null ? (string) $latest : null,
             'playback' => $watch ? $state->payload($watch, 'position_ms', false) : null]
@@ -172,7 +182,7 @@ final class PrivateWatchService
             $watch = $this->resolve($r, $room, $session);
             $this->touchParticipant($r, $watch);
             if ($watch->host_user_id === (string) $r->input('auth_user_id')) {
-                DB::table('chat_invite_rooms')->where('room_id', $room)->where('idle_expires_at', '<=', now()->addMinutes(30))
+                ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $room)->where('idle_expires_at', '<=', now()->addMinutes(30))
                     ->update(['idle_expires_at' => now()->addHour()]);
             }
         }
@@ -181,24 +191,25 @@ final class PrivateWatchService
 
     public function streamChanged(Request $r, int $stream): void
     {
+        if (! config('chat.enabled')) { return; }
         app(InviteRoomLifecycle::class)->endInactiveWatchRooms($r, $stream);
-        if (! \Illuminate\Support\Facades\Schema::hasTable('chat_watch_participants')) { return; }
-        $hosted = DB::table('chat_watch_sessions')->where('active', true)->where('host_stream_id', $stream)->get();
+        if (! ChatDatabase::schema()->hasTable('chat_watch_participants')) { return; }
+        $hosted = ChatDatabase::connection()->table('chat_watch_sessions')->where('active', true)->where('host_stream_id', $stream)->get();
         $endedRooms = [];
         foreach ($hosted as $watch) {
             if ($this->liveSession((int) $watch->room_id)?->id !== $watch->id) {
-                $ended = DB::transaction(function () use ($watch, $r) {
-                    DB::table('chat_invite_rooms')->where('room_id', $watch->room_id)->lockForUpdate()->first();
-                    $session = DB::table('chat_watch_sessions')->where('id', $watch->id)->lockForUpdate()->first();
+                $ended = ChatDatabase::connection()->transaction(function () use ($watch, $r) {
+                    ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $watch->room_id)->lockForUpdate()->first();
+                    $session = ChatDatabase::connection()->table('chat_watch_sessions')->where('id', $watch->id)->lockForUpdate()->first();
                     if (! $session || ! $session->active || $this->liveSession((int) $watch->room_id)?->id === $session->id) { return false; }
-                    DB::table('chat_watch_sessions')->where('id', $watch->id)->update(['active' => false, 'updated_at' => now()]);
-                    foreach (DB::table('chat_watch_participants')->where('session_id', $watch->id)->get() as $member) {
+                    ChatDatabase::connection()->table('chat_watch_sessions')->where('id', $watch->id)->update(['active' => false, 'updated_at' => now()]);
+                    foreach (ChatDatabase::connection()->table('chat_watch_participants')->where('session_id', $watch->id)->get() as $member) {
                         $guest = DB::table('n_active_streams as s')->join('n_devices as d', 'd.id', '=', 's.device_id')
                             ->where('s.id', $member->stream_id)->where('d.user_id', $member->user_id)->where('s.status', 'active')
                             ->where('s.content_type', $watch->content_type)->where('s.content_key', $watch->content_id)->first(['s.id', 's.stream_token']);
                         if (! $guest || ! hash_equals($member->stream_token_hash ?? '', hash('sha256', $guest->stream_token))) { continue; }
                         // A replaced player/token or a different active watch session must survive.
-                        $otherWatch = DB::table('chat_watch_participants as p')->join('chat_watch_sessions as w', 'w.id', '=', 'p.session_id')
+                        $otherWatch = ChatDatabase::connection()->table('chat_watch_participants as p')->join('chat_watch_sessions as w', 'w.id', '=', 'p.session_id')
                             ->where('p.stream_id', $guest->id)->where('p.user_id', $member->user_id)
                             ->where('p.stream_token_hash', $member->stream_token_hash)->where('w.active', true)->exists();
                         if (! $otherWatch) {
@@ -214,14 +225,14 @@ final class PrivateWatchService
                 if ($ended) { $endedRooms[(int) $watch->room_id] = true; }
             }
         }
-        $rooms = DB::table('chat_watch_sessions')->where('active', true)
+        $rooms = ChatDatabase::connection()->table('chat_watch_sessions')->where('active', true)
             ->where(fn ($q) => $q->where('host_stream_id', $stream)->orWhereIn('id',
-                DB::table('chat_watch_participants')->select('session_id')->where('stream_id', $stream)))
+                ChatDatabase::connection()->table('chat_watch_participants')->select('session_id')->where('stream_id', $stream)))
             ->pluck('room_id')->merge($hosted->pluck('room_id'))->unique();
         $owner = DB::table('n_active_streams as s')->join('n_devices as d', 'd.id', '=', 's.device_id')
             ->where('s.id', $stream)->first(['d.user_id', 's.content_type', 's.content_key']);
         if ($owner) {
-            $rooms = $rooms->merge(DB::table('chat_invite_rooms')->where('active', true)->where('host_user_id', $owner->user_id)
+            $rooms = $rooms->merge(ChatDatabase::connection()->table('chat_invite_rooms')->where('active', true)->where('host_user_id', $owner->user_id)
                 ->whereNotNull('content_type')->pluck('room_id'))->unique();
         }
         foreach ($rooms as $room) {
@@ -233,15 +244,15 @@ final class PrivateWatchService
     {
         $uid = (string) $r->input('auth_user_id');
         if ($uid === $watch->host_user_id) { return; }
-        DB::transaction(function () use ($watch, $uid): void {
-            $current = DB::table('chat_watch_sessions')->where('id', $watch->id)->lockForUpdate()->first();
+        ChatDatabase::connection()->transaction(function () use ($watch, $uid): void {
+            $current = ChatDatabase::connection()->table('chat_watch_sessions')->where('id', $watch->id)->lockForUpdate()->first();
             abort_unless($current?->active, 410, 'This watch session has ended.');
-            $members = DB::table('chat_watch_participants')->where('session_id', $watch->id)->lockForUpdate()->pluck('user_id');
+            $members = ChatDatabase::connection()->table('chat_watch_participants')->where('session_id', $watch->id)->lockForUpdate()->pluck('user_id');
             if ($members->contains($uid)) { return; }
             $limit = (int) config('chat.watch_member_limit');
             abort_if($members->count() + 1 >= $limit,
                 409, "This watch session is full (maximum {$limit} members including the creator).");
-            DB::table('chat_watch_participants')->insert([
+            ChatDatabase::connection()->table('chat_watch_participants')->insert([
                 'session_id' => $watch->id, 'user_id' => $uid, 'joined_at' => now(),
             ]);
         });
@@ -256,12 +267,12 @@ final class PrivateWatchService
             ->where('s.stream_token', (string) $r->header('X-Playback-Token'))->where('s.status', 'active')
             ->where('s.content_type', $watch->content_type)->where('s.content_key', $watch->content_id)->first(['s.id']);
         if (! $stream) { return; }
-        $previous = DB::table('chat_watch_participants')->where('session_id', $watch->id)->where('user_id', $uid)->first();
+        $previous = ChatDatabase::connection()->table('chat_watch_participants')->where('session_id', $watch->id)->where('user_id', $uid)->first();
         $changed = ! $previous || (int) $previous->stream_id !== (int) $stream->id || ! $previous->last_seen_at
             || \Illuminate\Support\Carbon::parse($previous->last_seen_at)->lt(now()->subSeconds(150))
             || $previous->stream_token_hash !== hash('sha256', $r->header('X-Playback-Token'));
         $this->recordJoin($r, $watch);
-        DB::table('chat_watch_participants')->where('session_id', $watch->id)->where('user_id', $uid)
+        ChatDatabase::connection()->table('chat_watch_participants')->where('session_id', $watch->id)->where('user_id', $uid)
             ->update(['stream_id' => $stream->id, 'stream_token_hash' => hash('sha256', $r->header('X-Playback-Token')), 'last_seen_at' => now()]);
         if ($changed) { $this->publishStatus($r, (int) $watch->room_id, true); }
     }
@@ -269,7 +280,7 @@ final class PrivateWatchService
     // Counts are distinct invitees; the creator is excluded from both totals.
     public function counts(object $watch): array
     {
-        $members = DB::table('chat_watch_participants')->where('session_id', $watch->id)->get();
+        $members = ChatDatabase::connection()->table('chat_watch_participants')->where('session_id', $watch->id)->get();
         $streams = DB::table('n_active_streams')->whereIn('id', $members->pluck('stream_id')->filter())
             ->where('status', 'active')->where('content_type', $watch->content_type)->where('content_key', $watch->content_id)
             ->get()->keyBy('id');
@@ -287,7 +298,7 @@ final class PrivateWatchService
         $this->publishStatus($r, $room, true);
         $content = $this->content($watch->content_type, $watch->content_id);
         $season = $watch->content_type === 'episode' ? ($content->season_id ?? null) : null;
-        return ['room_id' => (string) $room, 'room_name' => DB::table('chat_invite_rooms')->where('room_id', $room)->value('room_name'),
+        return ['room_id' => (string) $room, 'room_name' => ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $room)->value('room_name'),
             'watch_session_id' => (string) $session,
             'is_host' => $watch->host_user_id === (string) $r->input('auth_user_id'),
             'subscription_id' => (int) (DB::table('n_subscriptions')->where('user_id', (string) $r->input('auth_user_id'))

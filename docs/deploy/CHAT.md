@@ -85,17 +85,10 @@ No production migration or deployment is performed by adding this code.
    Composer platform pin keeps local PHP 8.5 from upgrading beyond that target.
    Enable the Redis PHP extension and use the existing Redis authentication,
    private networking and memory monitoring. Reverb is included in this lockfile.
-2. Run `php artisan migrate --force
-   --path=database/migrations/2026_10_24_000001_create_chat_tables.php`.
-   Also run these chat migrations in order with `php artisan migrate --force --path=<path>`:
-   `database/migrations/2026_10_25_000001_create_invite_chat_rooms.php`,
-   `database/migrations/2026_10_26_000001_add_room_name_to_chat_invite_rooms.php`,
-   `database/migrations/2026_10_26_000002_add_idle_expiry_to_private_chat_rooms.php`.
-   For unread badges/read-position restore, also run
-   `php artisan migrate --force --path=database/migrations/2026_10_26_000003_create_chat_room_reads.php`.
-   Existing private rooms receive a one-hour deadline from their latest message
-   or creation time. Rooms already idle for an hour become unavailable. Deploy
-   this backend and apply the migrations before releasing apps with End room.
+2. Configure the dedicated PostgreSQL database using [CHAT_POSTGRESQL.md](CHAT_POSTGRESQL.md),
+   then run `php artisan chat:migrate --force`. Chat migrations live under
+   `database/migrations/chat`; ordinary `php artisan migrate` does not run them.
+   Main MySQL user, subscription and playback tables remain on the existing connection.
 3. Generate private Reverb credentials and configure the `.env.example` chat
    entries. `REVERB_APP_KEY` is public; `REVERB_APP_SECRET` is private. The public
    URL must include that public key:
@@ -149,7 +142,7 @@ This release adds socket message feeds and routes visible-room presence through 
 Apply the single new migration before starting the updated API and worker:
 
 ```sh
-php artisan migrate --path=database/migrations/2026_10_28_000003_add_chat_delivery_claims.php --force
+php artisan chat:migrate --force
 ```
 
 Keep `CHAT_CACHE_STORE=redis` for multi-server deployments. Install the updated API and mobile SDKs, rebuild Laravel config cache, then restart Reverb so its listener and Redis connections load the release. The Reverb app must continue to have client events disabled; presence uses an internal event on a socket-specific private channel.
@@ -208,7 +201,7 @@ worker so they load the updated config and code.
 Apply the new migration before deploying the updated API/workers or releasing mobile builds:
 
 ```sh
-php artisan migrate --force --path=database/migrations/2026_10_27_000001_create_chat_watch_sessions.php
+php artisan chat:migrate --force
 ```
 
 Android and iOS still support creating a watch room from the player. To use an
@@ -236,7 +229,7 @@ playback ends. Restart chat workers after deploying the API changes.
 Before deploying this API or the updated mobile builds, apply:
 
 ```sh
-php artisan migrate --force --path=database/migrations/2026_10_27_000002_add_watch_playback_controls.php
+php artisan chat:migrate --force
 ```
 
 Restart the `chat:deliver` worker to deliver `watch_control` and `watch_status`
@@ -262,7 +255,7 @@ room available while the creator is streaming.
 Apply this migration before the API update:
 
 ```sh
-php artisan migrate --force --path=database/migrations/2026_10_27_000003_create_chat_watch_participants.php
+php artisan chat:migrate --force
 ```
 
 Watch position requests now refresh only the authenticated device's matching active
@@ -337,7 +330,7 @@ or replace the creator's stream, and confirm the original card loses LIVE status
 Deploy this migration before the API release that writes personal badge events:
 
 ```sh
-php artisan migrate --force --path=database/migrations/2026_10_27_000004_add_chat_badge_recipient.php
+php artisan chat:migrate --force
 ```
 
 Restart `chat:deliver` with the new release before updating the mobile builds.
@@ -464,7 +457,7 @@ to infer playback termination.
 Deployment commands, from the production backend directory:
 
 ```sh
-php artisan migrate --force
+php artisan chat:migrate --force
 sudo supervisorctl restart zostream-chat-delivery
 ```
 
@@ -476,7 +469,7 @@ creator exit beyond three minutes.
 
 ## Global chat invitations and `/invite` cards — 28 October
 
-Run `php artisan migrate --force` for
+Run `php artisan chat:migrate --force` for
 `2026_10_28_000002_add_shared_room_invitation_messages`, deploy the Library SDKs
 and both mobile apps, and restart `zostream-chat-delivery`.
 

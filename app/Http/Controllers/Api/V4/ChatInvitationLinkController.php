@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V4;
 
+use App\Support\Chat\ChatDatabase;
 use App\Http\Controllers\Controller;
 use App\Support\Api\V4Response;
 use Illuminate\Http\Request;
@@ -17,7 +18,7 @@ class ChatInvitationLinkController extends Controller
     public function respond(Request $r, string $token)
     {
         $r->validate(['accept' => 'required|boolean']);
-        return DB::transaction(fn () => $this->resolve($r, $token, true));
+        return ChatDatabase::connection()->transaction(fn () => $this->resolve($r, $token, true));
     }
 
     private function subscriptionId(string $user): ?int
@@ -31,11 +32,11 @@ class ChatInvitationLinkController extends Controller
     private function resolve(Request $r, string $token, bool $respond)
     {
         if (! config('chat.enabled')) { return V4Response::error('CHAT_UNAVAILABLE', 'Chat is temporarily unavailable. Please try again later.', 503); }
-        $query = DB::table('chat_room_invites')->where('link_token_hash', hash('sha256', $token));
+        $query = ChatDatabase::connection()->table('chat_room_invites')->where('link_token_hash', hash('sha256', $token));
         $invite = $query->first();
         if ($respond && $invite) {
-            DB::table('chat_invite_rooms')->where('room_id', $invite->room_id)->lockForUpdate()->first();
-            DB::table('chat_rooms')->where('id', $invite->room_id)->lockForUpdate()->first();
+            ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $invite->room_id)->lockForUpdate()->first();
+            ChatDatabase::connection()->table('chat_rooms')->where('id', $invite->room_id)->lockForUpdate()->first();
             $invite = $query->lockForUpdate()->first();
         }
         if (! $invite) { return V4Response::error('INVITE_INVALID', 'This invitation link is invalid. Ask the sender for a new invitation.', 404); }
@@ -43,7 +44,7 @@ class ChatInvitationLinkController extends Controller
         if ($invite->invitee_user_id !== (string) $r->input('auth_user_id')) {
             return V4Response::error('INVITE_WRONG_ACCOUNT', 'This invitation is for another Zo Stream account. Sign in with the phone number that received it.', 403);
         }
-        $room = DB::table('chat_invite_rooms as ir')->join('chat_rooms as r', 'r.id', '=', 'ir.room_id')
+        $room = ChatDatabase::connection()->table('chat_invite_rooms as ir')->join('chat_rooms as r', 'r.id', '=', 'ir.room_id')
             ->where('ir.room_id', $invite->room_id)->first(['ir.*', 'r.closed']);
         if (! app(\App\Support\Chat\InviteRoomLifecycle::class)->active($room)) {
             return V4Response::error('ROOM_ENDED', 'This room has ended. Ask the sender to create a new room.', 410);

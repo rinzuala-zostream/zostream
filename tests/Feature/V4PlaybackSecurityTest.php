@@ -671,6 +671,7 @@ class V4PlaybackSecurityTest extends TestCase
             Mockery::mock(HlsFolderController::class),
             Mockery::mock(MovieController::class),
             $watchPositions ?? Mockery::mock(WatchPositionController::class),
+            Mockery::mock(\App\Http\Controllers\Api\V4\AdServingController::class),
         );
     }
 

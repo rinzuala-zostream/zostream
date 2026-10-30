@@ -7,7 +7,7 @@ Invitation URLs use `https://app.zostream.in/invite/{token}`. Tokens contain 64 
 Run the new migration after the previous chat migrations:
 
 ```sh
-php artisan migrate --force --path=database/migrations/2026_10_26_000004_add_chat_invitation_links.php
+php artisan chat:migrate --force
 php artisan migrate --force --path=database/migrations/2026_10_26_000005_ensure_chat_delivery_queue_tables.php
 ```
 

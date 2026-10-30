@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Support\Chat\ChatDatabase;
+
 use App\Http\Middleware\AdminTokenMiddleware;
 use App\Http\Middleware\AuthTokenMiddleware;
 use App\Support\Analytics\AnalyticsCollectionSetting;
@@ -19,7 +21,7 @@ class ChatApiTest extends TestCase
 {
     private function addMembership(string $room, string $user, string $status = 'accepted'): int
     {
-        return DB::table('chat_room_invites')->insertGetId(['room_id' => $room, 'inviter_user_id' => 'alice',
+        return ChatDatabase::connection()->table('chat_room_invites')->insertGetId(['room_id' => $room, 'inviter_user_id' => 'alice',
             'invitee_user_id' => $user, 'status' => $status, 'expires_at' => now()->addDay(), 'created_at' => now(), 'updated_at' => now()]);
     }
 
@@ -27,11 +29,11 @@ class ChatApiTest extends TestCase
     {
         $room = $this->createPrivateRoom();
         foreach (range(1, 8) as $n) { $this->addMembership($room, 'member-'.$n); }
-        $bob = DB::table('chat_room_invites')->where('room_id', $room)->where('invitee_user_id', 'bob')->value('id');
+        $bob = ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $room)->where('invitee_user_id', 'bob')->value('id');
         $this->postJson("/api/v4/chat/invites/$bob/respond", ['auth_user_id' => 'bob', 'accept' => true])->assertOk();
         $next = $this->addMembership($room, 'next-member', 'pending');
         $this->postJson("/api/v4/chat/invites/$next/respond", ['auth_user_id' => 'next-member', 'accept' => true])->assertStatus(409);
-        $this->assertSame('pending', DB::table('chat_room_invites')->where('id', $next)->value('status'));
+        $this->assertSame('pending', ChatDatabase::connection()->table('chat_room_invites')->where('id', $next)->value('status'));
         $this->postJson("/api/v4/chat/invites/$next/respond", ['auth_user_id' => 'next-member', 'accept' => false])->assertOk();
         $this->postJson("/api/v4/chat/invite-rooms/$room/join", ['auth_user_id' => 'bob'])->assertOk();
     }
@@ -43,7 +45,7 @@ class ChatApiTest extends TestCase
             'type' => 'movie', 'content_id' => 'film-a', 'room_name' => 'Watch five', 'invitee_ids' => ['bob'],
         ]))->assertCreated()->json('data.room_id');
         foreach (range(1, 3) as $n) { $this->addMembership($room, 'watch-member-'.$n); }
-        $bob = DB::table('chat_room_invites')->where('room_id', $room)->where('invitee_user_id', 'bob')->value('id');
+        $bob = ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $room)->where('invitee_user_id', 'bob')->value('id');
         $this->postJson("/api/v4/chat/invites/$bob/respond", ['auth_user_id' => 'bob', 'accept' => true])->assertOk();
         $next = $this->addMembership($room, 'sixth', 'pending');
         $this->postJson("/api/v4/chat/invites/$next/respond", ['auth_user_id' => 'sixth', 'accept' => true])->assertStatus(409);
@@ -67,18 +69,18 @@ class ChatApiTest extends TestCase
         $this->withHeaders(['X-Playback-Token' => 'sixth-stream'])->postJson("/api/v4/chat/rooms/$room/watch-heartbeat", [
             'auth_user_id' => 'sixth', 'auth_device_id' => 'sixth-device', 'session_id' => $session,
         ])->assertStatus(409);
-        $this->assertSame(4, DB::table('chat_watch_participants')->where('session_id', $session)->count());
+        $this->assertSame(4, ChatDatabase::connection()->table('chat_watch_participants')->where('session_id', $session)->count());
     }
 
     public function test_private_message_push_is_durable_and_request_retries_do_not_duplicate_it(): void
     {
         $room = $this->createPrivateRoom();
-        DB::table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
+        ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
         DB::table('user')->where('uid', 'bob')->update(['token' => 'bob-push-token']);
         $request = (string) Str::uuid();
         $sent = $this->send($room, 'Hello Bob', $request)->assertCreated();
         $this->send($room, 'Hello Bob', $request)->assertOk();
-        $this->assertSame(1, DB::table('chat_outbox')->where('kind', 'message_push')->count());
+        $this->assertSame(1, ChatDatabase::connection()->table('chat_outbox')->where('kind', 'message_push')->count());
         $fcm = \Mockery::mock(\App\Http\Controllers\FCMNotificationController::class);
         $fcm->shouldReceive('sendToToken')->once()->with('bob-push-token', 'Friends', 'Alice: Hello Bob', '', 'chat_message', [
             'room_id' => $room, 'message_id' => $sent->json('data.id'),
@@ -86,13 +88,13 @@ class ChatApiTest extends TestCase
         $this->app->instance(\App\Http\Controllers\FCMNotificationController::class, $fcm);
         Http::fake();
         $this->artisan('chat:deliver', ['--once' => true])->assertSuccessful();
-        $this->assertNotNull(DB::table('chat_outbox')->where('kind', 'message_push')->value('delivered_at'));
+        $this->assertNotNull(ChatDatabase::connection()->table('chat_outbox')->where('kind', 'message_push')->value('delivered_at'));
     }
 
     public function test_visible_room_suppresses_push_but_socket_presence_alone_does_not(): void
     {
         $room = $this->createPrivateRoom();
-        DB::table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
+        ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
         DB::table('user')->where('uid', 'bob')->update(['token' => 'bob-push-token']);
         $identity = ['auth_user_id' => 'bob', 'auth_device_id' => 'bob-device'];
         $this->postJson("/api/v4/chat/rooms/$room/heartbeat", $identity + ['visible' => true, 'visibility_sequence' => 100])->assertOk();
@@ -101,7 +103,7 @@ class ChatApiTest extends TestCase
         $fcm = \Mockery::mock(\App\Http\Controllers\FCMNotificationController::class);
         $fcm->shouldNotReceive('sendToToken');
         $this->app->instance(\App\Http\Controllers\FCMNotificationController::class, $fcm);
-        $row = DB::table('chat_outbox')->where('kind', 'message_push')->first();
+        $row = ChatDatabase::connection()->table('chat_outbox')->where('kind', 'message_push')->first();
         app(\App\Support\Chat\ChatMessageNotifications::class)->deliver($row);
         $this->postJson("/api/v4/chat/rooms/$room/heartbeat", $identity + ['visible' => false, 'visibility_sequence' => 102])->assertOk();
         $this->postJson("/api/v4/chat/rooms/$room/heartbeat", $identity + ['visible' => true, 'visibility_sequence' => 101])->assertOk();
@@ -115,7 +117,7 @@ class ChatApiTest extends TestCase
     public function test_visibility_is_scoped_to_room_and_device_and_expires_after_unclean_exit(): void
     {
         $room = $this->createPrivateRoom();
-        DB::table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
+        ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
         foreach (['first', 'second'] as $device) {
             $this->postJson("/api/v4/chat/rooms/$room/heartbeat", ['auth_user_id' => 'bob', 'auth_device_id' => $device,
                 'visible' => true, 'visibility_sequence' => 10])->assertOk();
@@ -133,12 +135,12 @@ class ChatApiTest extends TestCase
     {
         $room = $this->createPrivateRoom();
         $this->send($room)->assertCreated(); // Bob has not accepted yet.
-        $this->assertSame(0, DB::table('chat_outbox')->where('kind', 'message_push')->count());
+        $this->assertSame(0, ChatDatabase::connection()->table('chat_outbox')->where('kind', 'message_push')->count());
         $this->travel(3)->seconds();
         $this->send($this->room())->assertCreated();
-        $this->assertSame(0, DB::table('chat_outbox')->where('kind', 'message_push')->count());
+        $this->assertSame(0, ChatDatabase::connection()->table('chat_outbox')->where('kind', 'message_push')->count());
         $this->travel(3)->seconds();
-        DB::table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
+        ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
         DB::table('user')->where('uid', 'bob')->update(['token' => 'bob-push-token']);
         $this->postJson("/api/v4/chat/rooms/$room/messages", $this->identity([
             'body' => 'Secret ending', 'spoiler' => true, 'request_id' => (string) Str::uuid(),
@@ -147,40 +149,40 @@ class ChatApiTest extends TestCase
         $fcm->shouldReceive('sendToToken')->once()->with('bob-push-token', 'Friends', 'Alice: Sent a spoiler message.', '', 'chat_message', \Mockery::type('array'))
             ->andReturn(['success' => true]);
         $this->app->instance(\App\Http\Controllers\FCMNotificationController::class, $fcm);
-        app(\App\Support\Chat\ChatMessageNotifications::class)->deliver(DB::table('chat_outbox')->where('kind', 'message_push')->first());
+        app(\App\Support\Chat\ChatMessageNotifications::class)->deliver(ChatDatabase::connection()->table('chat_outbox')->where('kind', 'message_push')->first());
     }
 
     public function test_push_delivery_rechecks_read_membership_block_and_room_state(): void
     {
         $room = $this->createPrivateRoom();
-        DB::table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
+        ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
         DB::table('user')->where('uid', 'bob')->update(['token' => 'bob-push-token']);
         $id = $this->send($room)->assertCreated()->json('data.id');
-        $row = DB::table('chat_outbox')->where('kind', 'message_push')->first();
+        $row = ChatDatabase::connection()->table('chat_outbox')->where('kind', 'message_push')->first();
         $service = app(\App\Support\Chat\ChatMessageNotifications::class);
         $fcm = \Mockery::mock(\App\Http\Controllers\FCMNotificationController::class);
         $fcm->shouldNotReceive('sendToToken');
         $this->app->instance(\App\Http\Controllers\FCMNotificationController::class, $fcm);
-        DB::table('chat_blocks')->insert(['user_id' => 'bob', 'blocked_user_id' => 'alice']);
+        ChatDatabase::connection()->table('chat_blocks')->insert(['user_id' => 'bob', 'blocked_user_id' => 'alice']);
         $service->deliver($row);
-        DB::table('chat_blocks')->delete();
-        DB::table('chat_room_reads')->insert(['room_id' => $room, 'user_id' => 'bob', 'last_read_message_id' => $id]);
+        ChatDatabase::connection()->table('chat_blocks')->delete();
+        ChatDatabase::connection()->table('chat_room_reads')->insert(['room_id' => $room, 'user_id' => 'bob', 'last_read_message_id' => $id]);
         $service->deliver($row);
-        DB::table('chat_room_reads')->delete();
-        DB::table('chat_room_invites')->where('room_id', $room)->update(['status' => 'declined']);
+        ChatDatabase::connection()->table('chat_room_reads')->delete();
+        ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $room)->update(['status' => 'declined']);
         $service->deliver($row);
-        DB::table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
-        DB::table('chat_messages')->where('id', $id)->update(['deleted_at' => now()]);
+        ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
+        ChatDatabase::connection()->table('chat_messages')->where('id', $id)->update(['deleted_at' => now()]);
         $service->deliver($row);
-        DB::table('chat_messages')->where('id', $id)->update(['deleted_at' => null]);
-        DB::table('chat_invite_rooms')->where('room_id', $room)->update(['active' => false]);
+        ChatDatabase::connection()->table('chat_messages')->where('id', $id)->update(['deleted_at' => null]);
+        ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $room)->update(['active' => false]);
         $service->deliver($row);
     }
 
     public function test_push_failures_retry_without_rebroadcasting_the_message(): void
     {
         $room = $this->createPrivateRoom();
-        DB::table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
+        ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
         DB::table('user')->where('uid', 'bob')->update(['token' => 'bob-push-token']);
         $this->send($room)->assertCreated();
         $fcm = \Mockery::mock(\App\Http\Controllers\FCMNotificationController::class);
@@ -188,19 +190,19 @@ class ChatApiTest extends TestCase
         $this->app->instance(\App\Http\Controllers\FCMNotificationController::class, $fcm);
         Http::fake();
         $this->artisan('chat:deliver', ['--once' => true])->assertSuccessful();
-        $this->assertNull(DB::table('chat_outbox')->where('kind', 'message_push')->value('delivered_at'));
-        $this->assertSame(1, DB::table('chat_outbox')->where('kind', 'message_push')->value('attempts'));
+        $this->assertNull(ChatDatabase::connection()->table('chat_outbox')->where('kind', 'message_push')->value('delivered_at'));
+        $this->assertSame(1, ChatDatabase::connection()->table('chat_outbox')->where('kind', 'message_push')->value('attempts'));
         $broadcasts = count(Http::recorded());
         $this->travel(10)->seconds();
         $this->artisan('chat:deliver', ['--once' => true])->assertSuccessful();
         $this->assertSame($broadcasts, count(Http::recorded()));
-        $this->assertNotNull(DB::table('chat_outbox')->where('kind', 'message_push')->value('delivered_at'));
+        $this->assertNotNull(ChatDatabase::connection()->table('chat_outbox')->where('kind', 'message_push')->value('delivered_at'));
     }
 
     public function test_foreground_watch_presence_survives_closing_chat_on_the_same_device(): void
     {
         $room = $this->createPrivateRoom();
-        DB::table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
+        ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
         $chat = (string) Str::uuid(); $watch = (string) Str::uuid();
         $identity = ['auth_user_id' => 'bob', 'auth_device_id' => 'bob-device'];
         foreach ([$chat, $watch] as $source) {
@@ -239,13 +241,13 @@ class ChatApiTest extends TestCase
     public function test_socket_feed_is_private_and_rechecks_revocation_bans_blocks_and_membership(): void
     {
         $room = $this->createPrivateRoom();
-        DB::table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
+        ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
         $session = $this->socketSession('bob');
         $auth = $this->socketAuth($room, 'bob', $session);
         $this->assertArrayHasKey('control_token', $auth);
         $this->assertStringStartsWith('private-chat-feed.', $auth['feed_channel']);
         $this->send($room)->assertCreated();
-        $row = DB::table('chat_outbox')->where('kind', 'feed_created')->first();
+        $row = ChatDatabase::connection()->table('chat_outbox')->where('kind', 'feed_created')->first();
         $deliver = fn () => app(\App\Support\Chat\ChatLiveDelivery::class)->deliver($row, fn () => null);
         Http::fake(); $deliver();
         Http::assertSent(function ($request) use ($auth) {
@@ -256,21 +258,21 @@ class ChatApiTest extends TestCase
         foreach (['revoked', 'banned', 'blocked', 'removed', 'closed'] as $state) {
             Http::fake();
             if ($state === 'revoked') DB::table('session_tokens')->where('id', $session)->update(['access_token' => 'rotated']);
-            if ($state === 'banned') DB::table('chat_bans')->insert(['room_id' => $room, 'user_id' => 'bob', 'kind' => 'ban']);
-            if ($state === 'blocked') DB::table('chat_blocks')->insert(['user_id' => 'bob', 'blocked_user_id' => 'alice']);
-            if ($state === 'removed') DB::table('chat_room_invites')->where('room_id', $room)->update(['status' => 'declined']);
-            if ($state === 'closed') DB::table('chat_rooms')->where('id', $room)->update(['closed' => true]);
+            if ($state === 'banned') ChatDatabase::connection()->table('chat_bans')->insert(['room_id' => $room, 'user_id' => 'bob', 'kind' => 'ban']);
+            if ($state === 'blocked') ChatDatabase::connection()->table('chat_blocks')->insert(['user_id' => 'bob', 'blocked_user_id' => 'alice']);
+            if ($state === 'removed') ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $room)->update(['status' => 'declined']);
+            if ($state === 'closed') ChatDatabase::connection()->table('chat_rooms')->where('id', $room)->update(['closed' => true]);
             $deliver(); Http::assertNothingSent();
             DB::table('session_tokens')->where('id', $session)->update(['access_token' => 'stored-bob']);
-            DB::table('chat_bans')->delete(); DB::table('chat_blocks')->delete();
-            DB::table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
+            ChatDatabase::connection()->table('chat_bans')->delete(); ChatDatabase::connection()->table('chat_blocks')->delete();
+            ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
         }
     }
 
     public function test_socket_presence_is_bound_to_authenticated_socket_and_performs_no_sql(): void
     {
         $room = $this->createPrivateRoom();
-        DB::table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
+        ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
         $auth = $this->socketAuth($room, 'bob', $this->socketSession('bob'));
         $application = new \Laravel\Reverb\Application('chat', 'key', 'secret', 60, 30, [], 2048);
         $this->assertMatchesRegularExpression('/^private-chat-control\.'.preg_quote((string) $room, '/').'\.[a-f0-9]{32}\.lease\.\d+$/', $auth['control_channel']);
@@ -321,7 +323,7 @@ class ChatApiTest extends TestCase
             $live->issue($request, (int) $room, '1.'.$i, \App\Support\Chat\ChatChannels::authorization('1.'.$i, 'private-chat.'.$room));
         }
         $this->send($room)->assertCreated();
-        $row = DB::table('chat_outbox')->where('kind', 'feed_created')->first();
+        $row = ChatDatabase::connection()->table('chat_outbox')->where('kind', 'feed_created')->first();
         Http::fake();
         DB::connection()->enableQueryLog(); DB::connection()->flushQueryLog();
         app(\App\Support\Chat\ChatLiveDelivery::class)->deliver($row, fn () => null);
@@ -341,20 +343,20 @@ class ChatApiTest extends TestCase
     public function test_worker_lanes_and_claims_keep_push_failure_off_the_realtime_lane(): void
     {
         $room = $this->createPrivateRoom();
-        DB::table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
+        ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
         DB::table('user')->where('uid', 'bob')->update(['token' => 'bob-token']);
         $this->send($room)->assertCreated();
         $fcm = \Mockery::mock(\App\Http\Controllers\FCMNotificationController::class);
         $fcm->shouldNotReceive('sendToToken');
         $this->app->instance(\App\Http\Controllers\FCMNotificationController::class, $fcm);
-        DB::table('chat_outbox')->where('kind', 'created')->update(['claim_token' => (string) Str::uuid(), 'claimed_until' => now()->addMinute()]);
+        ChatDatabase::connection()->table('chat_outbox')->where('kind', 'created')->update(['claim_token' => (string) Str::uuid(), 'claimed_until' => now()->addMinute()]);
         Http::fake();
         $this->artisan('chat:deliver', ['--once' => true, '--lane' => 'realtime'])->assertSuccessful();
-        $this->assertNull(DB::table('chat_outbox')->where('kind', 'created')->value('delivered_at'));
-        $this->assertNull(DB::table('chat_outbox')->where('kind', 'message_push')->value('delivered_at'));
+        $this->assertNull(ChatDatabase::connection()->table('chat_outbox')->where('kind', 'created')->value('delivered_at'));
+        $this->assertNull(ChatDatabase::connection()->table('chat_outbox')->where('kind', 'message_push')->value('delivered_at'));
         $this->travel(61)->seconds();
         $this->artisan('chat:deliver', ['--once' => true, '--lane' => 'realtime'])->assertSuccessful();
-        $this->assertNotNull(DB::table('chat_outbox')->where('kind', 'created')->value('delivered_at'));
+        $this->assertNotNull(ChatDatabase::connection()->table('chat_outbox')->where('kind', 'created')->value('delivered_at'));
     }
 
     public function test_badge_authorization_batch_rejects_another_accounts_channel(): void
@@ -370,18 +372,18 @@ class ChatApiTest extends TestCase
     {
         $room = $this->privateWatchFixture();
         $this->sendPrivateWatch($room)->assertCreated();
-        DB::table('chat_invite_rooms')->where('room_id', $room)->update(['idle_expires_at' => now()->subMinute()]);
+        ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $room)->update(['idle_expires_at' => now()->subMinute()]);
         $this->getJson('/api/v4/chat/invite-rooms?auth_user_id=bob')->assertOk()
             ->assertJsonPath('data.rooms.0.room_id', $room);
         $this->getJson('/api/v4/chat/unread?auth_user_id=bob')->assertOk()
             ->assertJsonPath('data.rooms.0.room_id', $room)->assertJsonPath('data.rooms.0.unread_count', 1);
         $token = str_repeat('x', 64);
-        DB::table('chat_room_invites')->where('room_id', $room)->update([
+        ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $room)->update([
             'status' => 'pending', 'link_token_hash' => hash('sha256', $token),
         ]);
         $this->getJson('/api/v4/chat/invites?auth_user_id=bob')->assertOk()->assertJsonCount(1, 'data.invites');
         $this->getJson("/api/v4/chat/invitation-links/$token?auth_user_id=bob")->assertOk();
-        $job = new \App\Jobs\SendChatInvitationWhatsApp(DB::table('chat_room_invites')->where('room_id', $room)->value('id'), $token);
+        $job = new \App\Jobs\SendChatInvitationWhatsApp(ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $room)->value('id'), $token);
         config(['chat.whatsapp_enabled' => true]);
         DB::table('user')->where('uid', 'bob')->update(['auth_phone' => '9876543210', 'country_code' => '91']);
         $whatsapp = \Mockery::mock(\App\Services\WhatsAppCloudService::class);
@@ -397,20 +399,20 @@ class ChatApiTest extends TestCase
     public function test_closed_room_cannot_accept_numeric_invite_and_responses_reflect_persisted_status(): void
     {
         $room = $this->createPrivateRoom();
-        $invite = DB::table('chat_room_invites')->where('room_id', $room)->value('id');
-        DB::table('chat_rooms')->where('id', $room)->update(['closed' => true]);
+        $invite = ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $room)->value('id');
+        ChatDatabase::connection()->table('chat_rooms')->where('id', $room)->update(['closed' => true]);
         $this->postJson("/api/v4/chat/invites/$invite/respond", ['auth_user_id' => 'bob', 'accept' => true])->assertNotFound();
-        $this->assertSame('pending', DB::table('chat_room_invites')->where('id', $invite)->value('status'));
-        DB::table('chat_rooms')->where('id', $room)->update(['closed' => false]);
+        $this->assertSame('pending', ChatDatabase::connection()->table('chat_room_invites')->where('id', $invite)->value('status'));
+        ChatDatabase::connection()->table('chat_rooms')->where('id', $room)->update(['closed' => false]);
         $this->postJson("/api/v4/chat/invites/$invite/respond", ['auth_user_id' => 'bob', 'accept' => false])->assertOk();
         $this->postJson("/api/v4/chat/invites/$invite/respond", ['auth_user_id' => 'bob', 'accept' => true])->assertNotFound();
-        $this->assertSame('declined', DB::table('chat_room_invites')->where('id', $invite)->value('status'));
+        $this->assertSame('declined', ChatDatabase::connection()->table('chat_room_invites')->where('id', $invite)->value('status'));
     }
 
     public function test_disabled_chat_rejects_all_viewer_endpoints_but_preserves_admin_review(): void
     {
         $room = $this->createPrivateRoom();
-        $invite = DB::table('chat_room_invites')->where('room_id', $room)->value('id');
+        $invite = ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $room)->value('id');
         config(['chat.enabled' => false]);
         foreach (['blocks', 'invites', 'invite-rooms', 'unread'] as $path) {
             $this->getJson('/api/v4/chat/'.$path.'?auth_user_id=alice')->assertStatus(503)->assertJsonPath('error.code', 'CHAT_UNAVAILABLE');
@@ -418,7 +420,7 @@ class ChatApiTest extends TestCase
         foreach (["invites/$invite/respond", 'blocks', 'invitees/lookup', "rooms/$room/leave", 'rooms/join'] as $path) {
             $this->postJson('/api/v4/chat/'.$path, $this->identity())->assertStatus(503);
         }
-        $this->assertSame('pending', DB::table('chat_room_invites')->where('id', $invite)->value('status'));
+        $this->assertSame('pending', ChatDatabase::connection()->table('chat_room_invites')->where('id', $invite)->value('status'));
         $this->getJson('/api/v4/admin/chat/rooms')->assertOk();
         $this->postJson("/api/v4/chat/rooms/$room/moderate", $this->identity([
             'action' => 'close', 'target' => $room, 'reason' => 'maintenance',
@@ -430,22 +432,22 @@ class ChatApiTest extends TestCase
         $room = $this->privateWatchFixture();
         $sent = $this->sendPrivateWatch($room)->assertCreated();
         $session = $sent->json('data.watch_invite.session_id');
-        DB::table('chat_watch_participants')->insert(['session_id' => $session, 'user_id' => 'bob', 'joined_at' => now()]);
-        DB::table('chat_blocks')->insert(['user_id' => 'bob', 'blocked_user_id' => 'alice']);
+        ChatDatabase::connection()->table('chat_watch_participants')->insert(['session_id' => $session, 'user_id' => 'bob', 'joined_at' => now()]);
+        ChatDatabase::connection()->table('chat_blocks')->insert(['user_id' => 'bob', 'blocked_user_id' => 'alice']);
         $chat = app(\App\Support\Chat\ChatService::class);
         $this->assertSame(['alice'], $chat->blocked('bob'));
         $chat->eraseUser('alice');
         $this->assertSame([], $chat->blocked('bob'));
-        $this->assertFalse((bool) DB::table('chat_invite_rooms')->where('room_id', $room)->value('active'));
-        $this->assertNotSame('alice', DB::table('chat_invite_rooms')->where('room_id', $room)->value('host_user_id'));
-        $this->assertSame(0, DB::table('chat_room_invites')->count());
-        $this->assertSame(0, DB::table('chat_watch_participants')->count());
-        $this->assertFalse((bool) DB::table('chat_watch_sessions')->value('active'));
-        $this->assertNotSame('alice', DB::table('chat_watch_sessions')->value('host_user_id'));
-        $this->assertSame('', DB::table('chat_watch_sessions')->value('stream_token_hash'));
-        $this->assertNull(DB::table('chat_messages')->where('id', $sent->json('data.id'))->value('watch_invite'));
+        $this->assertFalse((bool) ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $room)->value('active'));
+        $this->assertNotSame('alice', ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $room)->value('host_user_id'));
+        $this->assertSame(0, ChatDatabase::connection()->table('chat_room_invites')->count());
+        $this->assertSame(0, ChatDatabase::connection()->table('chat_watch_participants')->count());
+        $this->assertFalse((bool) ChatDatabase::connection()->table('chat_watch_sessions')->value('active'));
+        $this->assertNotSame('alice', ChatDatabase::connection()->table('chat_watch_sessions')->value('host_user_id'));
+        $this->assertSame('', ChatDatabase::connection()->table('chat_watch_sessions')->value('stream_token_hash'));
+        $this->assertNull(ChatDatabase::connection()->table('chat_messages')->where('id', $sent->json('data.id'))->value('watch_invite'));
         $this->postJson("/api/v4/chat/invite-rooms/$room/join", ['auth_user_id' => 'bob'])->assertForbidden();
-        $this->assertTrue(DB::table('chat_outbox')->where('room_id', $room)->where('kind', 'ended')->exists());
+        $this->assertTrue(ChatDatabase::connection()->table('chat_outbox')->where('room_id', $room)->where('kind', 'ended')->exists());
     }
 
     public function test_admin_resolves_episode_numeric_fallback_and_private_room_names(): void
@@ -453,7 +455,7 @@ class ChatApiTest extends TestCase
         Schema::create('episodes', function (Blueprint $t) { $t->string('id'); $t->integer('num'); $t->string('title'); });
         DB::table('episodes')->insert(['id' => 'ep-a', 'num' => 123, 'title' => 'Episode title']);
         foreach (['ep-a', '123'] as $key) {
-            $id = DB::table('chat_rooms')->insertGetId(['type' => 'episode', 'room_key' => 'episode:'.$key, 'content_id' => $key]);
+            $id = ChatDatabase::connection()->table('chat_rooms')->insertGetId(['type' => 'episode', 'room_key' => 'episode:'.$key, 'content_id' => $key]);
             $this->getJson("/api/v4/admin/chat/rooms/$id/messages")->assertOk()->assertJsonPath('data.room.title', 'Episode title');
         }
         $room = $this->createPrivateRoom();
@@ -490,13 +492,13 @@ class ChatApiTest extends TestCase
         Http::fake();
         $this->artisan('chat:deliver', ['--once' => true])->assertSuccessful();
         Http::assertNothingSent();
-        $this->assertNull(DB::table('chat_outbox')->value('delivered_at'));
-        $this->assertSame(1, DB::table('chat_outbox')->value('attempts'));
+        $this->assertNull(ChatDatabase::connection()->table('chat_outbox')->value('delivered_at'));
+        $this->assertSame(1, ChatDatabase::connection()->table('chat_outbox')->value('attempts'));
         config(['chat.enabled' => true]);
         $this->travel(10)->seconds();
         $this->artisan('chat:deliver', ['--once' => true])->assertSuccessful();
         Http::assertSentCount(1);
-        $this->assertNotNull(DB::table('chat_outbox')->value('delivered_at'));
+        $this->assertNotNull(ChatDatabase::connection()->table('chat_outbox')->value('delivered_at'));
     }
 
     protected function setUp(): void
@@ -504,23 +506,42 @@ class ChatApiTest extends TestCase
         parent::setUp();
         config(['database.default' => 'chat_testing', 'database.connections.chat_testing' => [
             'driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '', 'foreign_key_constraints' => false],
+            'chat.primary_connection' => 'chat_testing', 'chat.connection' => 'chat_storage_testing', 'database.connections.chat_storage_testing' => [
+                'driver' => 'sqlite', 'database' => ':memory:', 'prefix' => ''],
             'chat.enabled' => true, 'chat.cache_store' => 'array', 'chat.slow_mode_seconds' => 2,
             'broadcasting.connections.reverb.key' => 'test-key', 'broadcasting.connections.reverb.secret' => 'test-secret',
             'broadcasting.connections.reverb.app_id' => 'chat', 'broadcasting.connections.reverb.options' => ['host' => 'localhost', 'port' => 8080, 'scheme' => 'http']]);
         DB::purge('chat_testing');
-        (require database_path('migrations/2026_10_24_000001_create_chat_tables.php'))->up();
-        (require database_path('migrations/2026_10_25_000001_create_invite_chat_rooms.php'))->up();
-        (require database_path('migrations/2026_10_26_000001_add_room_name_to_chat_invite_rooms.php'))->up();
-        (require database_path('migrations/2026_10_26_000002_add_idle_expiry_to_private_chat_rooms.php'))->up();
-        (require database_path('migrations/2026_10_26_000003_create_chat_room_reads.php'))->up();
-        (require database_path('migrations/2026_10_26_000004_add_chat_invitation_links.php'))->up();
-        (require database_path('migrations/2026_10_27_000001_create_chat_watch_sessions.php'))->up();
-        (require database_path('migrations/2026_10_27_000002_add_watch_playback_controls.php'))->up();
-        (require database_path('migrations/2026_10_27_000003_create_chat_watch_participants.php'))->up();
-        (require database_path('migrations/2026_10_27_000004_add_chat_badge_recipient.php'))->up();
-        (require database_path('migrations/2026_10_28_000001_bind_dedicated_watch_rooms_to_host_stream.php'))->up();
-        (require database_path('migrations/2026_10_28_000002_add_shared_room_invitation_messages.php'))->up();
-        (require database_path('migrations/2026_10_28_000003_add_chat_delivery_claims.php'))->up();
+        DB::purge('chat_storage_testing');
+        if ($postgres = getenv('CHAT_TEST_PG_DATABASE')) {
+            // Opt-in integration run against a disposable PostgreSQL database only.
+            if (! str_ends_with($postgres, '_test')) {
+                throw new \RuntimeException('CHAT_TEST_PG_DATABASE must end in _test; its chat tables are reset.');
+            }
+            config(['database.connections.chat_storage_testing' => [
+                'driver' => 'pgsql', 'database' => $postgres,
+                'host' => getenv('CHAT_TEST_PG_HOST') ?: '127.0.0.1',
+                'port' => getenv('CHAT_TEST_PG_PORT') ?: '5432',
+                'username' => getenv('CHAT_TEST_PG_USERNAME') ?: 'postgres',
+                'password' => getenv('CHAT_TEST_PG_PASSWORD') ?: '',
+                'charset' => 'utf8', 'prefix' => '', 'search_path' => 'public', 'sslmode' => 'prefer',
+            ]]);
+            ChatDatabase::schema()->dropAllTables();
+        }
+
+        (require database_path('migrations/chat/2026_10_24_000001_create_chat_tables.php'))->up();
+        (require database_path('migrations/chat/2026_10_25_000001_create_invite_chat_rooms.php'))->up();
+        (require database_path('migrations/chat/2026_10_26_000001_add_room_name_to_chat_invite_rooms.php'))->up();
+        (require database_path('migrations/chat/2026_10_26_000002_add_idle_expiry_to_private_chat_rooms.php'))->up();
+        (require database_path('migrations/chat/2026_10_26_000003_create_chat_room_reads.php'))->up();
+        (require database_path('migrations/chat/2026_10_26_000004_add_chat_invitation_links.php'))->up();
+        (require database_path('migrations/chat/2026_10_27_000001_create_chat_watch_sessions.php'))->up();
+        (require database_path('migrations/chat/2026_10_27_000002_add_watch_playback_controls.php'))->up();
+        (require database_path('migrations/chat/2026_10_27_000003_create_chat_watch_participants.php'))->up();
+        (require database_path('migrations/chat/2026_10_27_000004_add_chat_badge_recipient.php'))->up();
+        (require database_path('migrations/chat/2026_10_28_000001_bind_dedicated_watch_rooms_to_host_stream.php'))->up();
+        (require database_path('migrations/chat/2026_10_28_000002_add_shared_room_invitation_messages.php'))->up();
+        (require database_path('migrations/chat/2026_10_28_000003_add_chat_delivery_claims.php'))->up();
         Schema::create('user', function (Blueprint $t) {
             $t->id();
             $t->string('uid');
@@ -554,7 +575,54 @@ class ChatApiTest extends TestCase
     protected function tearDown(): void
     {
         DB::purge('chat_testing');
+        DB::purge('chat_storage_testing');
         parent::tearDown();
+    }
+
+    public function test_chat_writes_leave_the_primary_database_without_chat_tables(): void
+    {
+        $room = $this->room();
+        $this->send($room)->assertCreated();
+        $this->assertFalse(Schema::hasTable('chat_rooms'));
+        $this->assertFalse(Schema::hasTable('chat_messages'));
+        $this->assertFalse(ChatDatabase::schema()->hasTable('user'));
+        $this->assertSame(1, ChatDatabase::connection()->table('chat_messages')->count());
+        $this->assertGreaterThan(0, ChatDatabase::connection()->table('chat_outbox')->count());
+        $this->assertSame('Alice', DB::table('user')->where('uid', 'alice')->value('name'));
+    }
+
+    public function test_chat_migrate_runs_all_migrations_on_the_selected_chat_connection(): void
+    {
+        ChatDatabase::schema()->dropAllTables();
+        $this->artisan('chat:migrate', ['--force' => true])->assertSuccessful();
+        $this->assertSame(13, ChatDatabase::connection()->table('migrations')->count());
+        $this->assertFalse(Schema::hasTable('migrations'));
+        $this->assertSame('chat_testing', DB::getDefaultConnection());
+        $this->send($this->room())->assertCreated();
+    }
+
+    public function test_chat_transaction_rolls_back_message_and_delivery_records_together(): void
+    {
+        $room = $this->room();
+        try {
+            ChatDatabase::connection()->transaction(function () use ($room): void {
+                $message = $this->message($room);
+                app(\App\Support\Chat\ChatService::class)->outbox(\Illuminate\Http\Request::create('/'), (int) $room, 'created', $message, null);
+                throw new \RuntimeException('Abort this fixture transaction');
+            });
+            $this->fail('The transaction should have thrown.');
+        } catch (\RuntimeException $error) {
+            $this->assertSame('Abort this fixture transaction', $error->getMessage());
+        }
+        $this->assertSame(0, ChatDatabase::connection()->table('chat_messages')->count());
+        $this->assertSame(0, ChatDatabase::connection()->table('chat_outbox')->count());
+    }
+
+    public function test_disabled_chat_does_not_access_chat_storage_during_playback_cleanup(): void
+    {
+        config(['chat.enabled' => false, 'chat.connection' => 'unconfigured_chat_database']);
+        app(\App\Support\Chat\PrivateWatchService::class)->streamChanged(\Illuminate\Http\Request::create('/'), 1);
+        $this->assertSame('chat_testing', DB::getDefaultConnection());
     }
 
     private function identity(array $data = []): array
@@ -574,7 +642,7 @@ class ChatApiTest extends TestCase
 
     private function message(string $room, string $uid = 'alice', string $body = 'hello'): int
     {
-        return DB::table('chat_messages')->insertGetId(['room_id' => $room, 'user_id' => $uid, 'request_id' => (string) Str::uuid(), 'display_name' => $uid, 'body' => $body, 'spoiler' => false, 'created_at' => now(), 'updated_at' => now()]);
+        return ChatDatabase::connection()->table('chat_messages')->insertGetId(['room_id' => $room, 'user_id' => $uid, 'request_id' => (string) Str::uuid(), 'display_name' => $uid, 'body' => $body, 'spoiler' => false, 'created_at' => now(), 'updated_at' => now()]);
     }
 
     private function liveCreatorStream(string $type, string $content): int
@@ -587,18 +655,18 @@ class ChatApiTest extends TestCase
     public function test_room_tabs_include_only_active_hosted_and_accepted_rooms(): void
     {
         $create = function (string $host, string $name, ?string $status = null, bool $active = true, bool $closed = false, bool $watch = false): string {
-            $id = DB::table('chat_rooms')->insertGetId([
+            $id = ChatDatabase::connection()->table('chat_rooms')->insertGetId([
                 'room_key' => 'invite:'.Str::uuid(), 'type' => 'invite', 'closed' => $closed,
                 'created_at' => now(), 'updated_at' => now(),
             ]);
-            DB::table('chat_invite_rooms')->insert([
+            ChatDatabase::connection()->table('chat_invite_rooms')->insert([
                 'room_id' => $id, 'host_user_id' => $host, 'room_name' => $name, 'active' => $active,
                 'content_type' => $watch ? 'movie' : null, 'content_id' => $watch ? '42' : null,
                 'idle_expires_at' => $watch ? null : now()->addHour(),
                 'created_at' => now(), 'updated_at' => now(),
             ]);
             if ($status) {
-                DB::table('chat_room_invites')->insert([
+                ChatDatabase::connection()->table('chat_room_invites')->insert([
                     'room_id' => $id, 'inviter_user_id' => $host, 'invitee_user_id' => 'alice', 'status' => $status,
                     'expires_at' => now()->subDay(), 'created_at' => now(), 'updated_at' => now(),
                 ]);
@@ -648,7 +716,7 @@ class ChatApiTest extends TestCase
         \Illuminate\Support\Facades\Queue::fake();
         $response = $this->postJson("/api/v4/chat/invite-rooms/$room/invitees", $this->identity(['invitee_ids' => ['charlie']]))
             ->assertOk()->assertJsonPath('data.room_id', $room)->assertJsonPath('data.invite_count', 1);
-        $this->assertSame(1, DB::table('chat_invite_rooms')->count());
+        $this->assertSame(1, ChatDatabase::connection()->table('chat_invite_rooms')->count());
         $job = \Illuminate\Support\Facades\Queue::pushed(\App\Jobs\SendChatInvitationWhatsApp::class)->sole();
         $this->assertStringNotContainsString($job->token, $response->getContent());
         $this->postJson('/api/v4/chat/invitation-links/'.$job->token.'/respond', ['auth_user_id' => 'charlie', 'accept' => true])
@@ -662,7 +730,7 @@ class ChatApiTest extends TestCase
         $url = '/api/v4/chat/invite-rooms?auth_user_id=alice&recipient_user_id=bob';
         $this->getJson('/api/v4/chat/invite-rooms?auth_user_id=alice')->assertOk()->assertJsonMissingPath('data.rooms.0.recipient_joined');
         $this->getJson($url)->assertOk()->assertJsonPath('data.rooms.0.room_id', $room)->assertJsonPath('data.rooms.0.recipient_joined', false);
-        DB::table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted', 'expires_at' => now()->subDay()]);
+        ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted', 'expires_at' => now()->subDay()]);
         $this->getJson($url)->assertOk()->assertJsonPath('data.rooms.0.recipient_joined', true);
         // Membership does not expire merely because the original invitation did.
         $this->getJson('/api/v4/chat/invite-rooms?auth_user_id=bob&recipient_user_id=bob')->assertOk()
@@ -686,7 +754,7 @@ class ChatApiTest extends TestCase
         $this->postJson("/api/v4/chat/invite-rooms/$room/invitees", $this->identity(['invitee_ids' => ['charlie'], 'delivery' => 'in_app']))
             ->assertOk()->assertJsonPath('data.invite_count', 1);
         \Illuminate\Support\Facades\Queue::assertNothingPushed();
-        $invite = (string) DB::table('chat_room_invites')->where('invitee_user_id', 'charlie')->value('id');
+        $invite = (string) ChatDatabase::connection()->table('chat_room_invites')->where('invitee_user_id', 'charlie')->value('id');
         $this->getJson('/api/v4/chat/invites?auth_user_id=charlie')->assertOk()->assertJsonPath('data.invites.0.invite_id', $invite);
         $this->postJson("/api/v4/chat/invites/$invite/respond", ['auth_user_id' => 'charlie', 'accept' => true])->assertOk();
         $this->postJson("/api/v4/chat/invite-rooms/$room/join", ['auth_user_id' => 'charlie'])->assertOk();
@@ -709,7 +777,7 @@ class ChatApiTest extends TestCase
         ]))->assertCreated()->assertJsonPath('data.invite_count', 1);
         $room = $created->json('data.room_id');
         \Illuminate\Support\Facades\Queue::assertNothingPushed();
-        $this->assertSame('pending', DB::table('chat_room_invites')->where('room_id', $room)->value('status'));
+        $this->assertSame('pending', ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $room)->value('status'));
         $this->postJson("/api/v4/chat/invite-rooms/$room/join", ['auth_user_id' => 'charlie'])->assertForbidden();
         $this->getJson('/api/v4/chat/invites?auth_user_id=charlie')->assertOk()->assertJsonPath('data.invites.0.room_id', $room);
         $this->postJson('/api/v4/chat/invitation-links/'.$invitationToken.'/respond', ['auth_user_id' => 'charlie', 'accept' => true])->assertOk();
@@ -744,13 +812,13 @@ class ChatApiTest extends TestCase
             ->assertJsonPath('data.room_invite.room_id', $room)->assertJsonPath('data.room_invite.active', true)
             ->assertJsonPath('data.room_invite.room_name', 'Friends')->json('data.id');
         $this->sharePrivateRoom($source, $room, request: $request)->assertOk()->assertJsonPath('data.id', $card);
-        $this->assertSame(1, DB::table('chat_messages')->where('invite_room_id', $room)->count());
+        $this->assertSame(1, ChatDatabase::connection()->table('chat_messages')->where('invite_room_id', $room)->count());
         $url = "/api/v4/chat/rooms/$source/messages/$card/invitation";
         $this->postJson($url, ['auth_user_id' => 'charlie'])->assertOk()->assertJsonPath('data.accepted', false);
         $this->postJson($url, ['auth_user_id' => 'charlie'])->assertOk();
-        $this->assertSame(1, DB::table('chat_room_invites')->where('invitee_user_id', 'charlie')->count());
+        $this->assertSame(1, ChatDatabase::connection()->table('chat_room_invites')->where('invitee_user_id', 'charlie')->count());
         $this->postJson("/api/v4/chat/invite-rooms/$room/join", ['auth_user_id' => 'charlie'])->assertForbidden();
-        $invite = (string) DB::table('chat_room_invites')->where('invitee_user_id', 'charlie')->value('id');
+        $invite = (string) ChatDatabase::connection()->table('chat_room_invites')->where('invitee_user_id', 'charlie')->value('id');
         $this->getJson('/api/v4/chat/invites?auth_user_id=charlie')->assertOk()->assertJsonPath('data.invites.0.invite_id', $invite);
         $this->postJson("/api/v4/chat/invites/$invite/respond", ['auth_user_id' => 'charlie', 'accept' => true])->assertOk();
         $this->postJson($url, ['auth_user_id' => 'charlie'])->assertOk()->assertJsonPath('data.accepted', true);
@@ -785,9 +853,9 @@ class ChatApiTest extends TestCase
         Cache::flush();
         $card = $this->sharePrivateRoom($source, $room)->assertCreated()->json('data.id');
         $this->postJson("/api/v4/chat/rooms/$source/messages/$card/invitation", ['auth_user_id' => 'alice'])->assertUnprocessable();
-        DB::table('chat_blocks')->insert(['user_id' => 'bob', 'blocked_user_id' => 'alice']);
+        ChatDatabase::connection()->table('chat_blocks')->insert(['user_id' => 'bob', 'blocked_user_id' => 'alice']);
         $this->postJson("/api/v4/chat/rooms/$source/messages/$card/invitation", ['auth_user_id' => 'bob'])->assertNotFound();
-        DB::table('chat_messages')->where('id', $card)->update(['deleted_at' => now()]);
+        ChatDatabase::connection()->table('chat_messages')->where('id', $card)->update(['deleted_at' => now()]);
         $this->postJson("/api/v4/chat/rooms/$source/messages/$card/invitation", ['auth_user_id' => 'charlie'])->assertNotFound();
         $this->getJson("/api/v4/chat/rooms/$source/messages?auth_user_id=alice")->assertOk()->assertJsonPath('data.messages.0.room_invite', null);
         $this->postJson("/api/v4/chat/rooms/$source/room-invites/status", $this->identity(['room_ids' => ['not-a-room']]))->assertUnprocessable();
@@ -800,7 +868,7 @@ class ChatApiTest extends TestCase
             ->assertOk()->json('data.room_id');
         $card = $this->sharePrivateRoom($source, $room)->assertCreated()->json('data.id');
         $this->postJson("/api/v4/chat/rooms/$source/messages/$card/invitation", ['auth_user_id' => 'bob'])->assertForbidden();
-        DB::table('chat_invite_rooms')->where('room_id', $room)->update(['active' => false]);
+        ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $room)->update(['active' => false]);
         Cache::flush();
         $this->sharePrivateRoom($source, $room)->assertForbidden();
     }
@@ -812,23 +880,23 @@ class ChatApiTest extends TestCase
         $this->travel(61)->minutes();
         Http::fake(['*' => Http::response('{}', 200)]);
         $this->artisan('chat:deliver', ['--once' => true])->assertSuccessful();
-        $this->assertFalse((bool) DB::table('chat_invite_rooms')->where('room_id', $room)->value('active'));
+        $this->assertFalse((bool) ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $room)->value('active'));
         $this->getJson("/api/v4/chat/rooms/$source/messages?auth_user_id=bob")->assertOk()->assertJsonPath('data.messages.0.room_invite.active', false);
     }
 
     public function test_only_creator_can_add_invitees_and_inactive_rooms_reject_invitations(): void
     {
         $room = $this->createPrivateRoom();
-        DB::table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
+        ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
         DB::table('user')->insert(['uid' => 'charlie', 'name' => 'Charlie']);
         $url = "/api/v4/chat/invite-rooms/$room/invitees";
         $this->postJson($url, ['auth_user_id' => 'bob', 'invitee_ids' => ['charlie']])->assertForbidden();
         $this->postJson($url, ['auth_user_id' => 'stranger', 'invitee_ids' => ['charlie']])->assertForbidden();
         $this->postJson($url, $this->identity(['invitee_ids' => ['alice']]))->assertUnprocessable();
         $this->postJson($url, $this->identity(['invitee_ids' => ['missing']]))->assertUnprocessable();
-        DB::table('chat_invite_rooms')->where('room_id', $room)->update(['active' => false]);
+        ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $room)->update(['active' => false]);
         $this->postJson($url, $this->identity(['invitee_ids' => ['charlie']]))->assertForbidden();
-        $this->assertSame(1, DB::table('chat_room_invites')->count());
+        $this->assertSame(1, ChatDatabase::connection()->table('chat_room_invites')->count());
     }
 
     public function test_repeated_add_invites_preserve_members_and_pending_links_but_refresh_declined_invites(): void
@@ -837,18 +905,18 @@ class ChatApiTest extends TestCase
         config(['chat.whatsapp_enabled' => true]);
         \Illuminate\Support\Facades\Queue::fake();
         $url = "/api/v4/chat/invite-rooms/$room/invitees";
-        $hash = DB::table('chat_room_invites')->value('link_token_hash');
+        $hash = ChatDatabase::connection()->table('chat_room_invites')->value('link_token_hash');
         $this->postJson($url, $this->identity(['invitee_ids' => ['bob']]))->assertOk()->assertJsonPath('data.invite_count', 0);
-        $this->assertSame($hash, DB::table('chat_room_invites')->value('link_token_hash'));
-        DB::table('chat_room_invites')->update(['status' => 'accepted']);
+        $this->assertSame($hash, ChatDatabase::connection()->table('chat_room_invites')->value('link_token_hash'));
+        ChatDatabase::connection()->table('chat_room_invites')->update(['status' => 'accepted']);
         $this->postJson($url, $this->identity(['invitee_ids' => ['bob']]))->assertOk()->assertJsonPath('data.already_invited_count', 1);
         \Illuminate\Support\Facades\Queue::assertNothingPushed();
-        DB::table('chat_room_invites')->update(['status' => 'declined', 'whatsapp_sent_at' => now(), 'responded_at' => now()]);
+        ChatDatabase::connection()->table('chat_room_invites')->update(['status' => 'declined', 'whatsapp_sent_at' => now(), 'responded_at' => now()]);
         $this->postJson($url, $this->identity(['invitee_ids' => ['bob']]))->assertOk()->assertJsonPath('data.invite_count', 1);
-        $this->assertSame(1, DB::table('chat_room_invites')->count());
-        $this->assertNotSame($hash, DB::table('chat_room_invites')->value('link_token_hash'));
-        $this->assertNull(DB::table('chat_room_invites')->value('whatsapp_sent_at'));
-        $this->assertNull(DB::table('chat_room_invites')->value('responded_at'));
+        $this->assertSame(1, ChatDatabase::connection()->table('chat_room_invites')->count());
+        $this->assertNotSame($hash, ChatDatabase::connection()->table('chat_room_invites')->value('link_token_hash'));
+        $this->assertNull(ChatDatabase::connection()->table('chat_room_invites')->value('whatsapp_sent_at'));
+        $this->assertNull(ChatDatabase::connection()->table('chat_room_invites')->value('responded_at'));
         \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\SendChatInvitationWhatsApp::class, 1);
     }
 
@@ -875,19 +943,19 @@ class ChatApiTest extends TestCase
     {
         $this->freezeTime();
         $room = $this->createPrivateRoom();
-        $createdDeadline = DB::table('chat_invite_rooms')->where('room_id', $room)->value('idle_expires_at');
+        $createdDeadline = ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $room)->value('idle_expires_at');
         $this->assertSame(now()->addHour()->toDateTimeString(), $createdDeadline);
         $this->travel(59)->minutes();
         $this->postJson("/api/v4/chat/invite-rooms/$room/join", $this->identity())->assertOk();
         $this->postJson("/api/v4/chat/rooms/$room/heartbeat", $this->identity())->assertOk();
-        $this->assertSame($createdDeadline, DB::table('chat_invite_rooms')->where('room_id', $room)->value('idle_expires_at'));
+        $this->assertSame($createdDeadline, ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $room)->value('idle_expires_at'));
         $request = (string) Str::uuid();
         $this->send($room, 'Still here', $request)->assertCreated();
-        $messageDeadline = DB::table('chat_invite_rooms')->where('room_id', $room)->value('idle_expires_at');
+        $messageDeadline = ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $room)->value('idle_expires_at');
         $this->assertSame(now()->addHour()->toDateTimeString(), $messageDeadline);
         $this->travel(30)->minutes();
         $this->send($room, 'Still here', $request)->assertOk();
-        $this->assertSame($messageDeadline, DB::table('chat_invite_rooms')->where('room_id', $room)->value('idle_expires_at'));
+        $this->assertSame($messageDeadline, ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $room)->value('idle_expires_at'));
         $this->travel(30)->minutes();
         $this->postJson("/api/v4/chat/invite-rooms/$room/join", $this->identity())->assertForbidden();
         $this->send($room)->assertForbidden();
@@ -899,7 +967,7 @@ class ChatApiTest extends TestCase
     {
         $this->freezeTime();
         $room = $this->createPrivateRoom();
-        $invite = DB::table('chat_room_invites')->where('room_id', $room)->value('id');
+        $invite = ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $room)->value('id');
         $bob = ['auth_user_id' => 'bob', 'auth_device_id' => 'device-b'];
         $this->getJson('/api/v4/chat/invites?'.http_build_query($bob))->assertJsonCount(1, 'data.invites');
         $this->travel(60)->minutes();
@@ -910,7 +978,7 @@ class ChatApiTest extends TestCase
     public function test_invitation_list_and_episode_accept_use_ios_compatible_json_types(): void
     {
         $room = $this->createPrivateRoom();
-        $invite = (string) DB::table('chat_room_invites')->where('room_id', $room)->value('id');
+        $invite = (string) ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $room)->value('id');
         $bob = ['auth_user_id' => 'bob', 'auth_device_id' => 'device-b'];
         $this->getJson('/api/v4/chat/invites?'.http_build_query($bob))->assertOk()
             ->assertJsonPath('data.invites.0.invite_id', $invite)
@@ -930,7 +998,7 @@ class ChatApiTest extends TestCase
         DB::table('seasons')->insert(['id' => 7, 'season_number' => '2']);
         DB::table('episodes')->insert(['num' => '42', 'title' => 'Episode', 'season_id' => 7, 'episode_number' => '3']);
         $this->liveCreatorStream('episode', '42');
-        DB::table('chat_invite_rooms')->where('room_id', $room)->update([
+        ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $room)->update([
             'content_type' => 'episode', 'content_id' => '42', 'idle_expires_at' => null,
         ]);
         $this->getJson('/api/v4/chat/invites?'.http_build_query($bob))->assertOk()
@@ -948,7 +1016,7 @@ class ChatApiTest extends TestCase
     public function test_only_creator_can_end_private_room_and_both_members_lose_access(): void
     {
         $room = $this->createPrivateRoom();
-        $invite = DB::table('chat_room_invites')->where('room_id', $room)->value('id');
+        $invite = ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $room)->value('id');
         $bob = ['auth_user_id' => 'bob', 'auth_device_id' => 'device-b'];
         $this->postJson("/api/v4/chat/invites/$invite/respond", $bob + ['accept' => true])->assertOk();
         foreach ([$this->identity(), $bob] as $member) {
@@ -960,7 +1028,7 @@ class ChatApiTest extends TestCase
         $this->send($room)->assertCreated();
         $this->postJson("/api/v4/chat/invite-rooms/$room/end", $this->identity())->assertOk()->assertJsonPath('data.ended', true);
         $this->postJson("/api/v4/chat/invite-rooms/$room/end", $this->identity())->assertOk();
-        $this->assertSame(1, DB::table('chat_outbox')->where('kind', 'ended')->count());
+        $this->assertSame(1, ChatDatabase::connection()->table('chat_outbox')->where('kind', 'ended')->count());
         foreach ([$this->identity(), $bob] as $member) {
             $this->getJson('/api/v4/chat/invite-rooms?'.http_build_query($member))->assertJsonCount(0, 'data.rooms');
             $this->postJson("/api/v4/chat/invite-rooms/$room/join", $member)->assertForbidden();
@@ -976,11 +1044,11 @@ class ChatApiTest extends TestCase
         $this->travel(10)->minutes();
         $second = $this->createPrivateRoom();
         $this->message($first);
-        $migration = require database_path('migrations/2026_10_26_000002_add_idle_expiry_to_private_chat_rooms.php');
+        $migration = require database_path('migrations/chat/2026_10_26_000002_add_idle_expiry_to_private_chat_rooms.php');
         $migration->down();
         $migration->up();
         foreach ([$first, $second] as $room) {
-            $this->assertSame(now()->addHour()->toDateTimeString(), DB::table('chat_invite_rooms')->where('room_id', $room)->value('idle_expires_at'));
+            $this->assertSame(now()->addHour()->toDateTimeString(), ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $room)->value('idle_expires_at'));
         }
     }
 
@@ -988,7 +1056,7 @@ class ChatApiTest extends TestCase
     {
         $this->freezeTime();
         $room = $this->createPrivateRoom();
-        DB::table('chat_invite_rooms')->where('room_id', $room)->update([
+        ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $room)->update([
             'content_type' => 'movie', 'content_id' => '42', 'idle_expires_at' => null,
         ]);
         $this->travel(2)->hours();
@@ -996,7 +1064,7 @@ class ChatApiTest extends TestCase
         $this->getJson('/api/v4/chat/invite-rooms?'.http_build_query($this->identity()))
             ->assertOk()->assertJsonPath('data.rooms.0.room_id', $room);
         $this->postJson("/api/v4/chat/invite-rooms/$room/end", $this->identity())->assertStatus(422);
-        $this->assertTrue((bool) DB::table('chat_invite_rooms')->where('room_id', $room)->value('active'));
+        $this->assertTrue((bool) ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $room)->value('active'));
     }
 
     private function unread(array $identity = [], array $headers = [])
@@ -1015,7 +1083,7 @@ class ChatApiTest extends TestCase
             ->assertJsonPath('data.auth', 'test-key:'.hash_hmac('sha256', '1.2:'.ChatChannels::leased($channel), 'test-secret'));
         $this->postJson($url, ['auth_user_id' => 'bob', 'socket_id' => '1.2', 'channel' => $channel])->assertForbidden();
         $this->postJson($url, ['auth_user_id' => 'bob', 'socket_id' => '1.2', 'channel' => 'private-chat.'.$room])->assertForbidden();
-        DB::table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
+        ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
         $this->postJson($url, ['auth_user_id' => 'bob', 'socket_id' => '1.2', 'channel' => 'private-chat.'.$room])->assertOk();
         $this->postJson($url, $this->identity(['socket_id' => '1.2', 'channel' => 'private-chat-user-anyone']))->assertForbidden();
     }
@@ -1043,7 +1111,7 @@ class ChatApiTest extends TestCase
             ->assertJsonPath('data.badge.unread_count', 1)->assertJsonPath('data.badge.first_unread_id', (string) $second)
             ->assertJsonPath('data.badge.last_message_id', (string) $second);
         $this->postJson("/api/v4/chat/rooms/$room/read", $this->identity(['message_id' => $first]))->assertOk();
-        $this->assertSame(1, DB::table('chat_outbox')->where('kind', 'read')->count());
+        $this->assertSame(1, ChatDatabase::connection()->table('chat_outbox')->where('kind', 'read')->count());
         Http::fake(['*' => Http::response('{}', 200)]);
         $this->artisan('chat:deliver', ['--once' => true])->assertSuccessful();
         Http::assertSent(function ($request) use ($first, $second) {
@@ -1076,11 +1144,11 @@ class ChatApiTest extends TestCase
         $last = $this->message($room, 'bob');
         $this->message($room, 'alice');
         $deleted = $this->message($room, 'bob');
-        DB::table('chat_messages')->where('id', $deleted)->update(['deleted_at' => now()]);
+        ChatDatabase::connection()->table('chat_messages')->where('id', $deleted)->update(['deleted_at' => now()]);
         $this->message($room, 'blocked');
-        DB::table('chat_blocks')->insert(['user_id' => 'alice', 'blocked_user_id' => 'blocked']);
+        ChatDatabase::connection()->table('chat_blocks')->insert(['user_id' => 'alice', 'blocked_user_id' => 'blocked']);
         $old = $this->message($room, 'bob');
-        DB::table('chat_messages')->where('id', $old)->update(['created_at' => now()->subDays(31)]);
+        ChatDatabase::connection()->table('chat_messages')->where('id', $old)->update(['created_at' => now()->subDays(31)]);
         $this->unread()->assertOk()->assertJsonPath('data.total_unread', 2)
             ->assertJsonPath('data.rooms.0.key', 'global')
             ->assertJsonPath('data.rooms.0.first_unread_id', (string) $first);
@@ -1111,12 +1179,12 @@ class ChatApiTest extends TestCase
         $bob = ['auth_user_id' => 'bob', 'auth_device_id' => 'device-b'];
         $this->unread($bob)->assertOk()->assertJsonCount(0, 'data.rooms');
         $this->postJson("/api/v4/chat/rooms/$room/read", $bob + ['message_id' => $first])->assertForbidden();
-        $invite = DB::table('chat_room_invites')->where('room_id', $room)->value('id');
+        $invite = ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $room)->value('id');
         $this->postJson("/api/v4/chat/invites/$invite/respond", $bob + ['accept' => true])->assertOk();
         $this->unread($bob)->assertJsonPath('data.total_unread', 1)->assertJsonPath('data.rooms.0.key', 'invite:'.$room);
-        $deadline = DB::table('chat_invite_rooms')->where('room_id', $room)->value('idle_expires_at');
+        $deadline = ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $room)->value('idle_expires_at');
         $this->postJson("/api/v4/chat/rooms/$room/read", $bob + ['message_id' => $first])->assertOk();
-        $this->assertSame($deadline, DB::table('chat_invite_rooms')->where('room_id', $room)->value('idle_expires_at'));
+        $this->assertSame($deadline, ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $room)->value('idle_expires_at'));
         $this->postJson("/api/v4/chat/invite-rooms/$room/end", $this->identity())->assertOk();
         $this->unread($bob)->assertJsonCount(0, 'data.rooms')->assertJsonPath('data.total_unread', 0);
         $this->postJson("/api/v4/chat/rooms/$room/read", $bob + ['message_id' => $first])->assertForbidden();
@@ -1152,7 +1220,7 @@ class ChatApiTest extends TestCase
     {
         $room = $this->room();
         $message = $this->message($room, 'bob');
-        DB::table('chat_bans')->insert(['room_id' => 0, 'user_id' => 'alice', 'kind' => 'ban']);
+        ChatDatabase::connection()->table('chat_bans')->insert(['room_id' => 0, 'user_id' => 'alice', 'kind' => 'ban']);
         app(\App\Support\Chat\ChatService::class)->invalidateBan('alice', 0);
         $this->unread()->assertOk()->assertJsonCount(0, 'data.rooms')->assertJsonPath('data.total_unread', 0);
         $this->postJson("/api/v4/chat/rooms/$room/read", $this->identity(['message_id' => $message]))->assertForbidden();
@@ -1164,8 +1232,8 @@ class ChatApiTest extends TestCase
         $request = (string) Str::uuid();
         $first = $this->send($room, 'Hello', $request)->assertCreated()->assertJsonPath('data.user_id', 'alice')->json('data.id');
         $this->send($room, 'Hello', $request)->assertOk()->assertJsonPath('data.id', $first);
-        $this->assertSame(1, DB::table('chat_messages')->count());
-        $this->assertSame(1, DB::table('chat_outbox')->where('kind', 'created')->count());
+        $this->assertSame(1, ChatDatabase::connection()->table('chat_messages')->count());
+        $this->assertSame(1, ChatDatabase::connection()->table('chat_outbox')->where('kind', 'created')->count());
         $this->send($room)->assertStatus(429);
     }
 
@@ -1218,7 +1286,7 @@ class ChatApiTest extends TestCase
         $this->assertIsArray($seenDuringPublish);
         $this->assertCount(1, $seenDuringPublish);
         $this->assertSame($message, $seenDuringPublish[0]['id']);
-        $this->assertNotNull(DB::table('chat_outbox')->value('delivered_at'));
+        $this->assertNotNull(ChatDatabase::connection()->table('chat_outbox')->value('delivered_at'));
     }
 
     public function test_movie_room_requires_current_owned_playback_on_every_read_and_send(): void
@@ -1263,12 +1331,12 @@ class ChatApiTest extends TestCase
         for ($i = 0; $i < 2; $i++) {
             $this->postJson("/api/v4/chat/rooms/$room/messages/$id/report", $this->identity(['reason' => 'spam']))->assertOk();
         }
-        $this->assertSame(1, DB::table('chat_reports')->count());
+        $this->assertSame(1, ChatDatabase::connection()->table('chat_reports')->count());
         $this->postJson("/api/v4/chat/rooms/$room/moderate", $this->identity(['action' => 'delete', 'target' => (string) $id, 'reason' => 'spam']))->assertOk();
         $this->getJson("/api/v4/chat/rooms/$room/messages?".http_build_query($this->identity()))->assertOk()->assertJsonPath('data.messages.0.deleted', true)->assertJsonPath('data.messages.0.body', null);
         $this->postJson("/api/v4/chat/rooms/$room/moderate", $this->identity(['action' => 'delete', 'target' => (string) $id, 'reason' => 'retry']))->assertOk();
-        $this->assertSame(1, DB::table('chat_outbox')->where('kind', 'deleted')->count());
-        $this->assertSame(1, DB::table('chat_moderation_actions')->where('action', 'delete')->count());
+        $this->assertSame(1, ChatDatabase::connection()->table('chat_outbox')->where('kind', 'deleted')->count());
+        $this->assertSame(1, ChatDatabase::connection()->table('chat_moderation_actions')->where('action', 'delete')->count());
 
     }
 
@@ -1278,10 +1346,10 @@ class ChatApiTest extends TestCase
         $this->send($room, 'secret text')->assertCreated();
         Http::fakeSequence()->push('', 500)->push('{}', 200);
         $this->artisan('chat:deliver --once')->assertSuccessful();
-        $this->assertNull(DB::table('chat_outbox')->value('delivered_at'));
+        $this->assertNull(ChatDatabase::connection()->table('chat_outbox')->value('delivered_at'));
         $this->travel(5)->seconds();
         $this->artisan('chat:deliver --once')->assertSuccessful();
-        $this->assertNotNull(DB::table('chat_outbox')->value('delivered_at'));
+        $this->assertNotNull(ChatDatabase::connection()->table('chat_outbox')->value('delivered_at'));
         Http::assertSent(fn ($request) => str_contains($request->body(), 'chat.changed') && ! str_contains($request->body(), 'secret text'));
     }
 
@@ -1315,20 +1383,20 @@ class ChatApiTest extends TestCase
         $room = $this->room();
         $id = $this->message($room, 'alice', 'remove me');
         $this->postJson("/api/v4/chat/rooms/$room/read", $this->identity(['message_id' => $id]))->assertOk();
-        DB::table('chat_blocks')->insert(['user_id' => 'alice', 'blocked_user_id' => 'bob']);
+        ChatDatabase::connection()->table('chat_blocks')->insert(['user_id' => 'alice', 'blocked_user_id' => 'bob']);
         DB::transaction(fn () => app(\App\Support\Chat\ChatService::class)->eraseUser('alice'));
-        $m = DB::table('chat_messages')->first();
+        $m = ChatDatabase::connection()->table('chat_messages')->first();
         $this->assertSame('', $m->body);
         $this->assertStringStartsWith('deleted:', $m->user_id);
         $this->assertSame('Deleted viewer', $m->display_name);
-        $this->assertSame(0, DB::table('chat_blocks')->count());
-        $this->assertSame(0, DB::table('chat_room_reads')->count());
-        $this->assertSame('deleted', DB::table('chat_outbox')->value('kind'));
+        $this->assertSame(0, ChatDatabase::connection()->table('chat_blocks')->count());
+        $this->assertSame(0, ChatDatabase::connection()->table('chat_room_reads')->count());
+        $this->assertSame('deleted', ChatDatabase::connection()->table('chat_outbox')->value('kind'));
     }
 
     public function test_admin_can_review_closed_movie_rooms_without_viewer_playback(): void
     {
-        $room = DB::table('chat_rooms')->insertGetId(['room_key' => 'movie:film-a', 'type' => 'movie', 'content_id' => 'film-a', 'closed' => true, 'created_at' => now(), 'updated_at' => now()]);
+        $room = ChatDatabase::connection()->table('chat_rooms')->insertGetId(['room_key' => 'movie:film-a', 'type' => 'movie', 'content_id' => 'film-a', 'closed' => true, 'created_at' => now(), 'updated_at' => now()]);
         $first = $this->message((string) $room, 'bob', '<script>alert(1)</script>');
         for ($i = 0; $i < 54; $i++) {
             $this->message((string) $room);
@@ -1367,7 +1435,7 @@ class ChatApiTest extends TestCase
         DB::purge('analytics');
         (require database_path('migrations/2026_10_06_000001_create_analytics_tables.php'))->up();
         $room = $this->room();
-        $other = DB::table('chat_rooms')->insertGetId(['room_key' => 'movie:film', 'type' => 'movie', 'content_id' => 'film', 'created_at' => now(), 'updated_at' => now()]);
+        $other = ChatDatabase::connection()->table('chat_rooms')->insertGetId(['room_key' => 'movie:film', 'type' => 'movie', 'content_id' => 'film', 'created_at' => now(), 'updated_at' => now()]);
         foreach ([['chat_opened', 'ios', $room, 'global'], ['chat_message_sent', 'ios', $room, 'global'], ['chat_message_sent', 'android', $other, 'movie'], ['app_opened', 'ios', $room, 'global']] as [$name,$platform,$id,$type]) {
             DB::connection('analytics')->table('analytics_events')->insert(['event_id' => (string) Str::uuid(), 'user_id' => 'alice', 'device_id' => 'device-a', 'app_session_id' => (string) Str::uuid(), 'name' => $name, 'platform' => $platform, 'app_version' => 'test', 'occurred_at' => now(), 'properties_json' => json_encode(['room_id' => (string) $id, 'room_type' => $type]), 'created_at' => now(), 'updated_at' => now()]);
         }
@@ -1434,14 +1502,14 @@ class ChatApiTest extends TestCase
     {
         $room = $this->room();
         $id = $this->message($room);
-        DB::table('chat_messages')->where('id', $id)->update(['created_at' => now()->subDays(31)]);
+        ChatDatabase::connection()->table('chat_messages')->where('id', $id)->update(['created_at' => now()->subDays(31)]);
         $this->postJson("/api/v4/chat/rooms/$room/messages/$id/report", $this->identity(['reason' => 'spam']))->assertOk();
         $this->artisan('chat:prune')->assertSuccessful();
-        $this->assertSame(1, DB::table('chat_messages')->count());
+        $this->assertSame(1, ChatDatabase::connection()->table('chat_messages')->count());
         $this->getJson("/api/v4/chat/rooms/$room/messages?".http_build_query($this->identity()))->assertOk()->assertJsonCount(0, 'data.messages');
-        DB::table('chat_messages')->update(['created_at' => now()->subDays(91)]);
+        ChatDatabase::connection()->table('chat_messages')->update(['created_at' => now()->subDays(91)]);
         $this->artisan('chat:prune')->assertSuccessful();
-        $this->assertSame(0, DB::table('chat_messages')->count());
+        $this->assertSame(0, ChatDatabase::connection()->table('chat_messages')->count());
     }
     private function linkedInvitation(): array
     {
@@ -1454,7 +1522,7 @@ class ChatApiTest extends TestCase
         $job = \Illuminate\Support\Facades\Queue::pushed(\App\Jobs\SendChatInvitationWhatsApp::class)->first();
         $this->assertNotNull($job);
         $this->assertStringNotContainsString($job->token, $response->getContent());
-        return [$job, DB::table('chat_room_invites')->where('id', $job->inviteId)->first()];
+        return [$job, ChatDatabase::connection()->table('chat_room_invites')->where('id', $job->inviteId)->first()];
     }
 
     public function test_invitation_link_checks_account_before_revealing_details(): void
@@ -1476,9 +1544,9 @@ class ChatApiTest extends TestCase
         $this->postJson($url.'/respond', ['auth_user_id' => 'alice', 'accept' => true])->assertForbidden();
         $this->postJson($url.'/respond', ['auth_user_id' => 'bob', 'accept' => true])->assertOk()->assertJsonPath('data.accepted', true);
         $this->postJson($url.'/respond', ['auth_user_id' => 'bob', 'accept' => true])->assertOk()->assertJsonPath('data.accepted', true);
-        DB::table('chat_room_invites')->where('id', $invite->id)->update(['expires_at' => now()->subDay()]);
+        ChatDatabase::connection()->table('chat_room_invites')->where('id', $invite->id)->update(['expires_at' => now()->subDay()]);
         $this->getJson($url.'?auth_user_id=bob')->assertOk()->assertJsonPath('data.accepted', true);
-        DB::table('chat_rooms')->where('id', $invite->room_id)->update(['closed' => true]);
+        ChatDatabase::connection()->table('chat_rooms')->where('id', $invite->room_id)->update(['closed' => true]);
         $this->getJson($url.'?auth_user_id=bob')->assertStatus(410)->assertJsonPath('error.code', 'ROOM_ENDED');
     }
 
@@ -1486,9 +1554,9 @@ class ChatApiTest extends TestCase
     {
         [$job, $invite] = $this->linkedInvitation();
         $url = '/api/v4/chat/invitation-links/'.$job->token;
-        DB::table('chat_room_invites')->where('id', $invite->id)->update(['expires_at' => now()->subMinute()]);
+        ChatDatabase::connection()->table('chat_room_invites')->where('id', $invite->id)->update(['expires_at' => now()->subMinute()]);
         $this->getJson($url.'?auth_user_id=bob')->assertStatus(410)->assertJsonPath('error.code', 'INVITE_EXPIRED');
-        DB::table('chat_room_invites')->where('id', $invite->id)->update(['expires_at' => now()->addDay()]);
+        ChatDatabase::connection()->table('chat_room_invites')->where('id', $invite->id)->update(['expires_at' => now()->addDay()]);
         $this->postJson($url.'/respond', ['auth_user_id' => 'bob', 'accept' => false])->assertOk()->assertJsonPath('data.accepted', false);
         $this->getJson($url.'?auth_user_id=bob')->assertStatus(410)->assertJsonPath('error.code', 'INVITE_DECLINED');
         $this->postJson($url.'/respond', ['auth_user_id' => 'bob', 'accept' => true])->assertStatus(410);
@@ -1503,7 +1571,7 @@ class ChatApiTest extends TestCase
             ->andReturn(new \App\Models\WhatsAppMessage());
         $job->handle($service);
         $job->handle($service);
-        $this->assertNotNull(DB::table('chat_room_invites')->where('id', $invite->id)->value('whatsapp_sent_at'));
+        $this->assertNotNull(ChatDatabase::connection()->table('chat_room_invites')->where('id', $invite->id)->value('whatsapp_sent_at'));
     }
 
     public function test_whatsapp_invitation_normalizes_the_same_legacy_and_international_accounts_as_lookup(): void
@@ -1519,13 +1587,13 @@ class ChatApiTest extends TestCase
         ];
         foreach ($cases as [$number, $country, $expected]) {
             DB::table('user')->where('uid', 'bob')->update(['auth_phone' => $number, 'country_code' => $country]);
-            DB::table('chat_room_invites')->where('id', $invite->id)->update(['whatsapp_sent_at' => null]);
+            ChatDatabase::connection()->table('chat_room_invites')->where('id', $invite->id)->update(['whatsapp_sent_at' => null]);
             $service = \Mockery::mock(\App\Services\WhatsAppCloudService::class);
             $service->shouldReceive('sendTemplate')->once()->with($expected, 'zostream_room_invitation',
                 ['Bob', 'Alice', 'Friends Room', 'Join the conversation in a private chat room.'], $job->token, 'en_US')
                 ->andReturn(new \App\Models\WhatsAppMessage());
             $job->handle($service);
-            $this->assertNotNull(DB::table('chat_room_invites')->where('id', $invite->id)->value('whatsapp_sent_at'));
+            $this->assertNotNull(ChatDatabase::connection()->table('chat_room_invites')->where('id', $invite->id)->value('whatsapp_sent_at'));
         }
     }
 
@@ -1538,7 +1606,7 @@ class ChatApiTest extends TestCase
         $service = \Mockery::mock(\App\Services\WhatsAppCloudService::class);
         $service->shouldNotReceive('sendTemplate');
         $job->handle($service);
-        $this->assertNull(DB::table('chat_room_invites')->where('id', $invite->id)->value('whatsapp_sent_at'));
+        $this->assertNull(ChatDatabase::connection()->table('chat_room_invites')->where('id', $invite->id)->value('whatsapp_sent_at'));
     }
 
     public function test_whatsapp_diagnostics_report_disabled_delivery_without_sending_a_message(): void
@@ -1617,7 +1685,7 @@ class ChatApiTest extends TestCase
     {
         $this->freezeTime();
         $room = $this->createPrivateRoom();
-        DB::table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
+        ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
         Schema::create('movie', function (Blueprint $t) {
             $t->string('num'); $t->string('id')->nullable(); $t->string('title'); $t->boolean('isPremium')->default(false); $t->boolean('isPayPerView')->default(false);
         });
@@ -1645,7 +1713,7 @@ class ChatApiTest extends TestCase
         $auth = $this->socketAuth($room, 'bob', $this->socketSession('bob'));
         $sent = $this->sendPrivateWatch($room)->assertCreated();
         $session = $sent->json('data.watch_invite.session_id');
-        $row = DB::table('chat_outbox')->where('kind', 'feed_created')->first();
+        $row = ChatDatabase::connection()->table('chat_outbox')->where('kind', 'feed_created')->first();
 
         foreach ([true, false] as $active) {
             // A retry after the host leaves must carry ended state, even though
@@ -1695,18 +1763,18 @@ class ChatApiTest extends TestCase
         $this->withHeaders(['X-Playback-Token' => 'play-b'])->postJson("/api/v4/chat/rooms/$room/watch-heartbeat", [
             'auth_user_id' => 'bob', 'auth_device_id' => 'device-b', 'session_id' => $session,
         ])->assertOk();
-        DB::table('chat_outbox')->delete();
+        ChatDatabase::connection()->table('chat_outbox')->delete();
         Http::fake();
         $this->artisan('chat:deliver', ['--once' => true])->assertSuccessful();
-        $this->assertTrue((bool) DB::table('chat_watch_sessions')->where('id', $session)->value('active'));
+        $this->assertTrue((bool) ChatDatabase::connection()->table('chat_watch_sessions')->where('id', $session)->value('active'));
         DB::table('n_active_streams')->where('stream_token', 'play-a')->update(['last_ping' => now()->subMinutes(4)]);
         $this->artisan('chat:deliver', ['--once' => true])->assertSuccessful();
-        $this->assertFalse((bool) DB::table('chat_watch_sessions')->where('id', $session)->value('active'));
+        $this->assertFalse((bool) ChatDatabase::connection()->table('chat_watch_sessions')->where('id', $session)->value('active'));
         $this->assertSame('stopped', DB::table('n_active_streams')->where('id', $guest)->value('status'));
-        $this->assertTrue((bool) DB::table('chat_invite_rooms')->where('room_id', $room)->value('active'));
-        $this->assertSame(1, DB::table('chat_outbox')->where('kind', 'watch_status')->whereNotNull('delivered_at')->count());
+        $this->assertTrue((bool) ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $room)->value('active'));
+        $this->assertSame(1, ChatDatabase::connection()->table('chat_outbox')->where('kind', 'watch_status')->whereNotNull('delivered_at')->count());
         $this->artisan('chat:deliver', ['--once' => true])->assertSuccessful();
-        $this->assertSame(1, DB::table('chat_outbox')->where('kind', 'watch_status')->count());
+        $this->assertSame(1, ChatDatabase::connection()->table('chat_outbox')->where('kind', 'watch_status')->count());
         $this->postJson("/api/v4/chat/rooms/$room/watch-sessions/$session/join", ['auth_user_id' => 'bob'])->assertStatus(410);
         $this->getJson("/api/v4/chat/rooms/$room/messages?auth_user_id=bob")
             ->assertOk()->assertJsonPath('data.messages.0.watch_invite.active', false);
@@ -1718,7 +1786,7 @@ class ChatApiTest extends TestCase
         $session = $this->sendPrivateWatch($room)->assertCreated()->json('data.watch_invite.session_id');
         DB::table('n_active_streams')->update(['stream_token' => 'replacement']);
         app(\App\Support\Chat\PrivateWatchService::class)->endInactiveSessions(\Illuminate\Http\Request::create('/'));
-        $this->assertFalse((bool) DB::table('chat_watch_sessions')->where('id', $session)->value('active'));
+        $this->assertFalse((bool) ChatDatabase::connection()->table('chat_watch_sessions')->where('id', $session)->value('active'));
         DB::table('n_active_streams')->update(['stream_token' => 'play-a', 'last_ping' => now()]);
         $this->getJson("/api/v4/chat/rooms/$room/watch-status?auth_user_id=bob")
             ->assertOk()->assertJsonPath('data.active', false)->assertJsonPath('data.latest_session_id', $session);
@@ -1733,7 +1801,7 @@ class ChatApiTest extends TestCase
         $this->postJson("/api/v4/chat/invite-rooms/$room/join", $this->identity())->assertOk()
             ->assertJsonPath('data.content_title', 'Film A')->assertJsonPath('data.content_id', 'film-a');
         $this->getJson('/api/v4/chat/invites?auth_user_id=bob')->assertOk()->assertJsonPath('data.invites.0.content_title', 'Film A');
-        $invite = DB::table('chat_room_invites')->where('room_id', $room)->value('id');
+        $invite = ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $room)->value('id');
         $this->postJson("/api/v4/chat/invites/$invite/respond", ['auth_user_id' => 'bob', 'accept' => true])->assertOk()
             ->assertJsonPath('data.content_id', 'film-a');
         $this->postJson("/api/v4/chat/invite-rooms/$room/join", ['auth_user_id' => 'bob'])->assertOk()
@@ -1747,8 +1815,8 @@ class ChatApiTest extends TestCase
         $sent = $this->sendPrivateWatch($room, $id)->assertCreated()->assertJsonPath('data.watch_invite.content_title', 'Film A');
         $session = $sent->json('data.watch_invite.session_id');
         $this->sendPrivateWatch($room, $id)->assertOk()->assertJsonPath('data.watch_invite.session_id', $session);
-        $this->assertSame(1, DB::table('chat_watch_sessions')->count());
-        $this->assertNull(DB::table('chat_invite_rooms')->where('room_id', $room)->value('content_type'));
+        $this->assertSame(1, ChatDatabase::connection()->table('chat_watch_sessions')->count());
+        $this->assertNull(ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $room)->value('content_type'));
         $this->postJson("/api/v4/chat/rooms/$room/watch-sessions/$session/position", $this->identity(['position_ms' => 45000]))
             ->assertOk()->assertJsonPath('data.position_ms', 45000);
         $bob = ['auth_user_id' => 'bob', 'auth_device_id' => 'device-b'];
@@ -1770,8 +1838,8 @@ class ChatApiTest extends TestCase
         Cache::flush();
         DB::table('movie')->update(['isPayPerView' => true]);
         $this->sendPrivateWatch($room)->assertForbidden();
-        $this->assertSame(0, DB::table('chat_watch_sessions')->count());
-        $this->assertSame(0, DB::table('chat_messages')->count());
+        $this->assertSame(0, ChatDatabase::connection()->table('chat_watch_sessions')->count());
+        $this->assertSame(0, ChatDatabase::connection()->table('chat_messages')->count());
     }
 
     public function test_stale_watch_cards_fail_but_private_chat_remains_available(): void
@@ -1821,9 +1889,9 @@ class ChatApiTest extends TestCase
         $url = "/api/v4/chat/rooms/$room/watch-sessions/$session/join";
         $this->postJson($url, ['auth_user_id' => 'bob'])->assertOk()->assertJsonPath('data.season_id', 7)
             ->assertJsonPath('data.season_number', 2)->assertJsonPath('data.episode_number', 3);
-        DB::table('chat_messages')->where('id', $card->json('data.id'))->update(['deleted_at' => now()]);
+        ChatDatabase::connection()->table('chat_messages')->where('id', $card->json('data.id'))->update(['deleted_at' => now()]);
         $this->postJson($url, ['auth_user_id' => 'bob'])->assertStatus(410);
-        DB::table('chat_messages')->where('id', $card->json('data.id'))->update(['deleted_at' => null]);
+        ChatDatabase::connection()->table('chat_messages')->where('id', $card->json('data.id'))->update(['deleted_at' => null]);
         DB::table('n_active_streams')->update(['last_ping' => now()->subMinutes(4)]);
         $this->postJson($url, ['auth_user_id' => 'bob'])->assertStatus(410);
         $this->postJson("/api/v4/chat/invite-rooms/$room/join", ['auth_user_id' => 'bob'])->assertOk();
@@ -1897,7 +1965,7 @@ class ChatApiTest extends TestCase
         $this->travel(2)->seconds();
         $this->postJson($url, ['auth_user_id' => 'bob'])->assertOk()->assertJsonPath('data.position_ms', 12000)->assertJsonPath('data.paused', true);
         $this->postJson($url, ['auth_user_id' => 'bob', 'position_ms' => 0, 'paused' => false, 'control_sequence' => 99])->assertForbidden();
-        $this->assertSame(2, DB::table('chat_outbox')->where('kind', 'watch_control')->count());
+        $this->assertSame(2, ChatDatabase::connection()->table('chat_outbox')->where('kind', 'watch_control')->count());
         Http::fake(['*' => Http::response('{}', 200)]);
         $this->artisan('chat:deliver', ['--once' => true])->assertSuccessful();
         Http::assertSent(fn ($request) => ($request->data()['name'] ?? null) === 'chat.changed'
@@ -1921,7 +1989,7 @@ class ChatApiTest extends TestCase
                 ->assertOk()->assertJsonPath('data.active', true)->assertJsonMissingPath('data.position_ms');
             $this->withHeaders(['X-Playback-Token' => 'play-b'])->postJson("$base/watch-heartbeat", $bob + ['session_id' => $session])->assertOk();
         }
-        $this->assertSame(1, DB::table('chat_outbox')->where('kind', 'watch_control')->count());
+        $this->assertSame(1, ChatDatabase::connection()->table('chat_outbox')->where('kind', 'watch_control')->count());
         $this->getJson("$base/watch-status?auth_user_id=alice")->assertOk()->assertJsonPath('data.streaming_count', 1);
         $this->postJson("$base/watch-sessions/$session/position", $bob)->assertOk()->assertJsonPath('data.position_ms', 310000);
         Http::fake(['*' => Http::response('{}', 200)]);
@@ -1948,7 +2016,7 @@ class ChatApiTest extends TestCase
         $this->postJson($url, $this->identity(['session_id' => $session, 'position_ms' => 1, 'paused' => false, 'control_sequence' => 19]))->assertOk();
         $this->postJson("/api/v4/chat/rooms/$room/watch-sessions/$session/position", ['auth_user_id' => 'bob'])->assertOk()
             ->assertJsonPath('data.position_ms', 10000)->assertJsonPath('data.paused', true)->assertJsonPath('data.revision', '20');
-        $this->assertSame(1, DB::table('chat_outbox')->where('kind', 'watch_control')->count());
+        $this->assertSame(1, ChatDatabase::connection()->table('chat_outbox')->where('kind', 'watch_control')->count());
     }
 
     public function test_creator_stream_end_stops_only_the_bound_guest_watch_stream(): void
@@ -1964,7 +2032,7 @@ class ChatApiTest extends TestCase
         DB::table('n_active_streams')->where('stream_token', 'play-a')->update(['status' => 'stopped']);
         app(\App\Support\Chat\PrivateWatchService::class)->streamChanged(\Illuminate\Http\Request::create('/', 'POST', ['auth_user_id' => 'alice']), 1);
         $this->assertSame('stopped', DB::table('n_active_streams')->where('id', $guest)->value('status'));
-        $this->assertFalse((bool) DB::table('chat_watch_sessions')->where('id', $session)->value('active'));
+        $this->assertFalse((bool) ChatDatabase::connection()->table('chat_watch_sessions')->where('id', $session)->value('active'));
         $this->assertFalse(app(\App\Support\Chat\PrivateWatchService::class)->snapshot((int) $room)['active']);
         $this->postJson("/api/v4/chat/rooms/$room/watch-sessions/$session/join", ['auth_user_id' => 'bob'])->assertStatus(410);
         $this->getJson("/api/v4/chat/rooms/$room/messages?auth_user_id=bob")->assertOk();
@@ -1984,7 +2052,7 @@ class ChatApiTest extends TestCase
         DB::table('n_active_streams')->where('stream_token', 'play-a')->update(['status' => 'stopped']);
         app(\App\Support\Chat\PrivateWatchService::class)->streamChanged(\Illuminate\Http\Request::create('/', 'POST', ['auth_user_id' => 'alice']), 1);
         $this->assertSame('active', DB::table('n_active_streams')->where('id', $guest)->value('status'));
-        $this->assertFalse((bool) DB::table('chat_watch_sessions')->where('id', $session)->value('active'));
+        $this->assertFalse((bool) ChatDatabase::connection()->table('chat_watch_sessions')->where('id', $session)->value('active'));
     }
 
     public function test_muted_watch_guest_can_resync_but_cannot_publish_creator_position(): void
@@ -1993,8 +2061,8 @@ class ChatApiTest extends TestCase
         $room = $this->withHeaders(['X-Playback-Token' => 'play-a'])->postJson('/api/v4/chat/invite-rooms', $this->identity([
             'type' => 'movie', 'content_id' => 'film-a', 'room_name' => 'Watch room', 'invitee_ids' => ['bob'],
         ]))->assertCreated()->json('data.room_id');
-        DB::table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
-        DB::table('chat_bans')->insert(['room_id' => $room, 'user_id' => 'bob', 'kind' => 'mute']);
+        ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
+        ChatDatabase::connection()->table('chat_bans')->insert(['room_id' => $room, 'user_id' => 'bob', 'kind' => 'mute']);
         $this->postJson("/api/v4/chat/invite-rooms/$room/position", ['auth_user_id' => 'bob'])->assertOk()
             ->assertJsonPath('data.is_host', false);
         $this->postJson("/api/v4/chat/invite-rooms/$room/position", ['auth_user_id' => 'bob', 'position_ms' => 0])->assertForbidden();
@@ -2006,7 +2074,7 @@ class ChatApiTest extends TestCase
         $session = $this->sendPrivateWatch($room)->assertCreated()->json('data.watch_invite.session_id');
         DB::table('n_active_streams')->update(['status' => 'stopped']);
         app(\App\Support\Chat\PrivateWatchService::class)->streamChanged(\Illuminate\Http\Request::create('/', 'POST'), 1);
-        $this->assertSame(1, DB::table('chat_outbox')->where('kind', 'watch_status')->count());
+        $this->assertSame(1, ChatDatabase::connection()->table('chat_outbox')->where('kind', 'watch_status')->count());
         Http::fake(['*' => Http::response('{}', 200)]);
         $this->artisan('chat:deliver', ['--once' => true])->assertSuccessful();
         Http::assertSent(function ($request) {
@@ -2036,7 +2104,7 @@ class ChatApiTest extends TestCase
         $room = $this->withHeaders(['X-Playback-Token' => 'play-a'])->postJson('/api/v4/chat/invite-rooms', $this->identity([
             'type' => 'movie', 'content_id' => 'film-a', 'room_name' => 'Watch', 'invitee_ids' => ['bob'],
         ]))->assertCreated()->json('data.room_id');
-        DB::table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
+        ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
         $url = "/api/v4/chat/invite-rooms/$room/position";
         $statusUrl = "/api/v4/chat/rooms/$room/watch-status?auth_user_id=bob";
         $this->getJson($statusUrl)->assertOk()->assertJsonPath('data.active', true)->assertJsonPath('data.session_id', null);
@@ -2046,7 +2114,7 @@ class ChatApiTest extends TestCase
         $this->travel(5)->seconds();
         $this->postJson($url, ['auth_user_id' => 'bob'])->assertOk()->assertJsonPath('data.position_ms', 8000)->assertJsonPath('data.paused', true);
         $this->postJson($url, ['auth_user_id' => 'bob', 'paused' => false, 'position_ms' => 0])->assertForbidden();
-        $this->assertSame(1, DB::table('chat_outbox')->where('kind', 'watch_control')->count());
+        $this->assertSame(1, ChatDatabase::connection()->table('chat_outbox')->where('kind', 'watch_control')->count());
         DB::table('n_active_streams')->update(['status' => 'stopped']);
         app(\App\Support\Chat\PrivateWatchService::class)->streamChanged(\Illuminate\Http\Request::create('/', 'POST'), 1);
         Http::fake(['*' => Http::response('{}', 200)]);
@@ -2064,10 +2132,10 @@ class ChatApiTest extends TestCase
         $room = $this->withHeaders(['X-Playback-Token' => 'play-a'])->postJson('/api/v4/chat/invite-rooms', $this->identity([
             'type' => 'movie', 'content_id' => 'film-a', 'room_name' => 'Watch', 'invitee_ids' => ['bob'],
         ]))->assertCreated()->json('data.room_id');
-        $invite = DB::table('chat_room_invites')->where('room_id', $room)->value('id');
+        $invite = ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $room)->value('id');
         $token = str_repeat('w', 64);
-        DB::table('chat_room_invites')->where('id', $invite)->update(['status' => 'accepted', 'link_token_hash' => hash('sha256', $token)]);
-        $this->assertSame(1, (int) DB::table('chat_invite_rooms')->where('room_id', $room)->value('host_stream_id'));
+        ChatDatabase::connection()->table('chat_room_invites')->where('id', $invite)->update(['status' => 'accepted', 'link_token_hash' => hash('sha256', $token)]);
+        $this->assertSame(1, (int) ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $room)->value('host_stream_id'));
         $this->getJson('/api/v4/chat/invite-rooms?auth_user_id=bob')->assertOk()->assertJsonCount(2, 'data.rooms');
         $this->postJson("/api/v4/chat/invite-rooms/$room/join", ['auth_user_id' => 'bob'])->assertOk();
         $other = $this->liveCreatorStream('movie', 'film-a');
@@ -2076,9 +2144,9 @@ class ChatApiTest extends TestCase
         $service = app(\App\Support\Chat\PrivateWatchService::class);
         $service->streamChanged(\Illuminate\Http\Request::create('/'), 1);
         $service->streamChanged(\Illuminate\Http\Request::create('/'), 1);
-        $this->assertFalse((bool) DB::table('chat_invite_rooms')->where('room_id', $room)->value('active'));
-        $this->assertTrue((bool) DB::table('chat_invite_rooms')->where('room_id', $private)->value('active'));
-        $this->assertSame(1, DB::table('chat_outbox')->where('room_id', $room)->where('kind', 'ended')->count());
+        $this->assertFalse((bool) ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $room)->value('active'));
+        $this->assertTrue((bool) ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $private)->value('active'));
+        $this->assertSame(1, ChatDatabase::connection()->table('chat_outbox')->where('room_id', $room)->where('kind', 'ended')->count());
         // Another player watching the same title cannot revive or authorize the old room.
         $this->liveCreatorStream('movie', 'film-a');
         $this->getJson('/api/v4/chat/invite-rooms?auth_user_id=bob')->assertOk()->assertJsonCount(1, 'data.rooms')
@@ -2089,7 +2157,7 @@ class ChatApiTest extends TestCase
         $this->getJson("/api/v4/chat/rooms/$room/messages?auth_user_id=bob")->assertForbidden();
         $this->postJson("/api/v4/chat/rooms/$room/messages", ['auth_user_id' => 'bob', 'body' => 'hello', 'request_id' => (string) Str::uuid()])->assertForbidden();
         $this->getJson("/api/v4/chat/invitation-links/$token?auth_user_id=bob")->assertStatus(410);
-        DB::table('chat_room_invites')->where('id', $invite)->update(['status' => 'pending']);
+        ChatDatabase::connection()->table('chat_room_invites')->where('id', $invite)->update(['status' => 'pending']);
         $this->getJson('/api/v4/chat/invites?auth_user_id=bob')->assertOk()->assertJsonCount(0, 'data.invites');
         $this->postJson("/api/v4/chat/invites/$invite/respond", ['auth_user_id' => 'bob', 'accept' => true])->assertNotFound();
     }
@@ -2100,14 +2168,14 @@ class ChatApiTest extends TestCase
         $room = $this->withHeaders(['X-Playback-Token' => 'play-a'])->postJson('/api/v4/chat/invite-rooms', $this->identity([
             'type' => 'movie', 'content_id' => 'film-a', 'room_name' => 'Watch', 'invitee_ids' => ['bob'],
         ]))->assertCreated()->json('data.room_id');
-        DB::table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
-        DB::table('chat_outbox')->delete();
+        ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
+        ChatDatabase::connection()->table('chat_outbox')->delete();
         $this->travel(181)->seconds();
         $this->getJson('/api/v4/chat/invite-rooms?auth_user_id=bob')->assertOk()->assertJsonCount(1, 'data.rooms');
         $this->postJson("/api/v4/chat/invite-rooms/$room/join", ['auth_user_id' => 'bob'])->assertForbidden();
         Http::fake(['*' => Http::response('{}', 200)]);
         $this->artisan('chat:deliver', ['--once' => true])->assertSuccessful();
-        $this->assertFalse((bool) DB::table('chat_invite_rooms')->where('room_id', $room)->value('active'));
+        $this->assertFalse((bool) ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $room)->value('active'));
         Http::assertSent(function ($request) use ($room) {
             $event = json_decode($request->data()['data'] ?? '{}', true);
             return ($event['kind'] ?? null) === 'ended' && ($event['watch']['room_id'] ?? null) === $room
@@ -2125,7 +2193,7 @@ class ChatApiTest extends TestCase
         $this->getJson('/api/v4/chat/invite-rooms?auth_user_id=alice')->assertOk()->assertJsonCount(1, 'data.rooms');
         $this->postJson("/api/v4/chat/invite-rooms/$room/join", $this->identity())->assertForbidden();
         app(\App\Support\Chat\PrivateWatchService::class)->streamChanged(\Illuminate\Http\Request::create('/'), 1);
-        $this->assertFalse((bool) DB::table('chat_invite_rooms')->where('room_id', $room)->value('active'));
+        $this->assertFalse((bool) ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $room)->value('active'));
     }
 
     public function test_dedicated_room_migration_binds_live_legacy_rooms_and_ends_abandoned_ones(): void
@@ -2136,18 +2204,18 @@ class ChatApiTest extends TestCase
         ]))->assertCreated()->json('data.room_id');
         $live = $create();
         $stale = $create();
-        DB::table('chat_invite_rooms')->where('room_id', $stale)->update(['content_id' => 'old-title']);
-        $migration = require database_path('migrations/2026_10_28_000001_bind_dedicated_watch_rooms_to_host_stream.php');
+        ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $stale)->update(['content_id' => 'old-title']);
+        $migration = require database_path('migrations/chat/2026_10_28_000001_bind_dedicated_watch_rooms_to_host_stream.php');
         $migration->down();
         $migration->up();
-        $bound = DB::table('chat_invite_rooms')->where('room_id', $live)->first();
+        $bound = ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $live)->first();
         $this->assertSame(1, (int) $bound->host_stream_id);
         $this->assertSame(hash('sha256', 'play-a'), $bound->stream_token_hash);
         $this->assertTrue((bool) $bound->active);
-        $this->assertFalse((bool) DB::table('chat_invite_rooms')->where('room_id', $stale)->value('active'));
-        $this->assertTrue(DB::table('chat_outbox')->where('room_id', $stale)->where('kind', 'ended')->exists());
-        $this->assertTrue((bool) DB::table('chat_invite_rooms')->where('room_id', $private)->value('active'));
-        $this->assertNull(DB::table('chat_invite_rooms')->where('room_id', $private)->value('host_stream_id'));
+        $this->assertFalse((bool) ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $stale)->value('active'));
+        $this->assertTrue(ChatDatabase::connection()->table('chat_outbox')->where('room_id', $stale)->where('kind', 'ended')->exists());
+        $this->assertTrue((bool) ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $private)->value('active'));
+        $this->assertNull(ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $private)->value('host_stream_id'));
     }
 
     public function test_public_invitation_page_never_exposes_private_room_data(): void
@@ -2172,12 +2240,12 @@ class ChatApiTest extends TestCase
         DB::table('seasons')->insert(['id' => 9, 'season_number' => 2]);
         DB::table('episodes')->insert(['num' => '42', 'title' => 'Episode', 'season_id' => 9, 'episode_number' => 3, 'isPremium' => true]);
         $this->liveCreatorStream('episode', '42');
-        DB::table('chat_invite_rooms')->where('room_id', $invite->room_id)->update([
+        ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $invite->room_id)->update([
             'content_type' => 'episode', 'content_id' => '42', 'idle_expires_at' => null, 'watch_position_ms' => 123000,
         ]);
         $url = '/api/v4/chat/invitation-links/'.$job->token;
         $this->postJson($url.'/respond', ['auth_user_id' => 'bob', 'accept' => true])->assertForbidden();
-        $this->assertSame('pending', DB::table('chat_room_invites')->where('id', $invite->id)->value('status'));
+        $this->assertSame('pending', ChatDatabase::connection()->table('chat_room_invites')->where('id', $invite->id)->value('status'));
         DB::table('n_subscriptions')->insert(['user_id' => 'bob', 'is_active' => true, 'end_at' => now()->addDay()]);
         $this->postJson($url.'/respond', ['auth_user_id' => 'bob', 'accept' => true])->assertOk()
             ->assertJsonPath('data.content_type', 'episode')->assertJsonPath('data.content_id', '42')
@@ -2191,17 +2259,17 @@ class ChatApiTest extends TestCase
     public function test_whatsapp_failure_can_retry_even_with_an_old_disabled_preference(): void
     {
         [$job, $invite] = $this->linkedInvitation();
-        DB::table('chat_invitation_preferences')->insert(['user_id' => 'bob', 'whatsapp_enabled' => false]);
+        ChatDatabase::connection()->table('chat_invitation_preferences')->insert(['user_id' => 'bob', 'whatsapp_enabled' => false]);
         $service = \Mockery::mock(\App\Services\WhatsAppCloudService::class);
         $service->shouldReceive('sendTemplate')->once()->andThrow(new \RuntimeException('Provider unavailable'));
         try { $job->handle($service); $this->fail('Provider failure must be retryable'); }
         catch (\RuntimeException $e) { $this->assertSame('Provider unavailable', $e->getMessage()); }
-        $this->assertNull(DB::table('chat_room_invites')->where('id', $invite->id)->value('whatsapp_sent_at'));
+        $this->assertNull(ChatDatabase::connection()->table('chat_room_invites')->where('id', $invite->id)->value('whatsapp_sent_at'));
         $service = \Mockery::mock(\App\Services\WhatsAppCloudService::class);
         $service->shouldReceive('sendTemplate')->once()->andReturn(new \App\Models\WhatsAppMessage());
         $job->handle($service);
-        $this->assertNotNull(DB::table('chat_room_invites')->where('id', $invite->id)->value('whatsapp_sent_at'));
-        $this->assertSame('pending', DB::table('chat_room_invites')->where('id', $invite->id)->value('status'));
+        $this->assertNotNull(ChatDatabase::connection()->table('chat_room_invites')->where('id', $invite->id)->value('whatsapp_sent_at'));
+        $this->assertSame('pending', ChatDatabase::connection()->table('chat_room_invites')->where('id', $invite->id)->value('status'));
     }
 
     public function test_encoded_template_placeholder_redirects_to_canonical_invitation_without_accepting_it(): void
@@ -2212,7 +2280,7 @@ class ChatApiTest extends TestCase
                 ->assertRedirect('/invite/'.$job->token)->assertHeader('Referrer-Policy', 'no-referrer');
         }
         $this->get('/invite/'.$job->token)->assertOk();
-        $this->assertSame('pending', DB::table('chat_room_invites')->where('id', $invite->id)->value('status'));
+        $this->assertSame('pending', ChatDatabase::connection()->table('chat_room_invites')->where('id', $invite->id)->value('status'));
         $this->get('/invite/%7B%7B1%7D%7Dbad')->assertNotFound();
     }
 

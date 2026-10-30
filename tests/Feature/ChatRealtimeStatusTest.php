@@ -16,7 +16,7 @@ final class ChatRealtimeStatusTest extends TestCase
         parent::setUp();
         config(['database.default' => 'realtime_testing', 'database.connections.realtime_testing' => [
             'driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '',
-        ], 'chat.enabled' => true, 'chat.websocket_url' => 'wss://chat.example.test/app/public-key?protocol=7',
+        ], 'chat.connection' => 'realtime_testing', 'chat.enabled' => true, 'chat.websocket_url' => 'wss://chat.example.test/app/public-key?protocol=7',
             'app.url' => 'https://api.example.test', 'broadcasting.connections.reverb.key' => 'public-key',
             'broadcasting.connections.reverb.secret' => 'never-print-this-secret',
             'broadcasting.connections.reverb.app_id' => 'chat',

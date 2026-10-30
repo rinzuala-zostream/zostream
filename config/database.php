@@ -112,6 +112,23 @@ return [
             // 'trust_server_certificate' => env('DB_TRUST_SERVER_CERTIFICATE', 'false'),
         ],
 
+        // Dedicated PostgreSQL storage. DB_* continues to configure the main MySQL database.
+        'chat' => [
+            'driver' => 'pgsql',
+            'url' => env('CHAT_DB_URL'),
+            'host' => env('CHAT_DB_HOST', '127.0.0.1'),
+            'port' => env('CHAT_DB_PORT', '5432'),
+            'database' => env('CHAT_DB_DATABASE', 'zostream_chat'),
+            'username' => env('CHAT_DB_USERNAME', 'zostream_chat'),
+            'password' => env('CHAT_DB_PASSWORD', ''),
+            'charset' => 'utf8',
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'search_path' => 'public',
+            'sslmode' => env('CHAT_DB_SSLMODE', 'prefer'),
+            'connect_timeout' => 3,
+        ],
+
         'analytics' => [
             'driver' => env('ANALYTICS_DB_CONNECTION', env('DB_CONNECTION', 'mysql')),
             'url' => env('ANALYTICS_DB_URL'),

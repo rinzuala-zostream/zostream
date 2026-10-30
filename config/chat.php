@@ -1,6 +1,8 @@
 <?php
 
 return [
+    'primary_connection' => env('DB_CONNECTION', 'mysql'),
+    'connection' => env('CHAT_DB_CONNECTION', 'chat'),
     'whatsapp_enabled' => env('CHAT_WHATSAPP_ENABLED', false),
     'whatsapp_template' => env('CHAT_WHATSAPP_TEMPLATE', 'zostream_room_invitation'),
     'whatsapp_language' => env('CHAT_WHATSAPP_LANGUAGE', 'en_US'),

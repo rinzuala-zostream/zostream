@@ -2,11 +2,10 @@
 
 namespace App\Console\Commands;
 
+use App\Support\Chat\ChatDatabase;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 final class ChatRealtimeStatus extends Command
@@ -43,11 +42,11 @@ final class ChatRealtimeStatus extends Command
         $this->line('Check the API root currently used by the apps, including any remote-config override.');
 
         try {
-            if (! Schema::hasTable('chat_outbox')) {
+            if (! ChatDatabase::schema()->hasTable('chat_outbox')) {
                 $this->error('chat_outbox is missing. Apply the chat migrations.');
                 $ready = false;
             } else {
-                $pending = DB::table('chat_outbox')->whereNull('delivered_at');
+                $pending = ChatDatabase::connection()->table('chat_outbox')->whereNull('delivered_at');
                 $this->line('Pending broadcasts: '.(clone $pending)->count());
                 $oldest = (clone $pending)->min('created_at');
                 if ($oldest && Carbon::parse($oldest)->lt(now()->subSeconds(10))) {

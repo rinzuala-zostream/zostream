@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V4;
 
+use App\Support\Chat\ChatDatabase;
 use App\Http\Controllers\Controller;
 use App\Support\Api\V4Response;
 use Carbon\CarbonImmutable;
@@ -14,7 +15,7 @@ final class AdminChatController extends Controller
 {
     private function ready(): void
     {
-        abort_unless(Schema::hasTable('chat_rooms'), 503, 'Chat storage has not been deployed yet.');
+        abort_unless(ChatDatabase::schema()->hasTable('chat_rooms'), 503, 'Chat storage has not been deployed yet.');
     }
 
     private function paging(Request $r): array
@@ -25,7 +26,7 @@ final class AdminChatController extends Controller
     private function room(int $room): object
     {
         $this->ready();
-        $value = DB::table('chat_rooms')->find($room);
+        $value = ChatDatabase::connection()->table('chat_rooms')->find($room);
         abort_unless($value, 404);
 
         return $value;
@@ -36,11 +37,11 @@ final class AdminChatController extends Controller
         $this->ready();
         $p = $this->paging($r);
         $v = $r->validate(['q' => 'nullable|string|max:150', 'type' => ['nullable', Rule::in(['global', 'movie', 'episode', 'invite'])], 'state' => ['nullable', Rule::in(['open', 'closed'])]]);
-        $rooms = DB::table('chat_rooms as r')
+        $rooms = ChatDatabase::connection()->table('chat_rooms as r')
             ->select('r.*')
-            ->selectSub(DB::table('chat_messages as m')->selectRaw('COUNT(*)')->whereColumn('m.room_id', 'r.id'), 'message_count')
-            ->selectSub(DB::table('chat_messages as m')->selectRaw('MAX(created_at)')->whereColumn('m.room_id', 'r.id'), 'last_message_at')
-            ->selectSub(DB::table('chat_reports as p')->join('chat_messages as m', 'm.id', '=', 'p.message_id')->selectRaw('COUNT(*)')->whereColumn('m.room_id', 'r.id')->where('p.status', 'pending'), 'pending_reports')
+            ->selectSub(ChatDatabase::connection()->table('chat_messages as m')->selectRaw('COUNT(*)')->whereColumn('m.room_id', 'r.id'), 'message_count')
+            ->selectSub(ChatDatabase::connection()->table('chat_messages as m')->selectRaw('MAX(created_at)')->whereColumn('m.room_id', 'r.id'), 'last_message_at')
+            ->selectSub(ChatDatabase::connection()->table('chat_reports as p')->join('chat_messages as m', 'm.id', '=', 'p.message_id')->selectRaw('COUNT(*)')->whereColumn('m.room_id', 'r.id')->where('p.status', 'pending'), 'pending_reports')
             ->when(! empty($v['q']), fn ($q) => $q->where('r.room_key', 'like', '%'.$v['q'].'%'))
             ->when(! empty($v['type']), fn ($q) => $q->where('r.type', $v['type']))
             ->when(! empty($v['state']), fn ($q) => $q->where('r.closed', $v['state'] === 'closed'))
@@ -52,7 +53,7 @@ final class AdminChatController extends Controller
 
     private function titles($rooms): void
     {
-        $inviteNames = DB::table('chat_invite_rooms')->whereIn('room_id', $rooms->where('type', 'invite')->pluck('id'))
+        $inviteNames = ChatDatabase::connection()->table('chat_invite_rooms')->whereIn('room_id', $rooms->where('type', 'invite')->pluck('id'))
             ->pluck('room_name', 'room_id');
         foreach ($rooms as $room) {
             if ($room->type === 'invite') {
@@ -76,7 +77,7 @@ final class AdminChatController extends Controller
         $this->titles(collect([$info]));
         $v = $r->validate(['before' => ['nullable', 'integer', 'min:1', Rule::prohibitedIf($r->filled('after'))], 'after' => 'nullable|integer|min:0', 'q' => 'nullable|string|max:200']);
         $after = $v['after'] ?? null;
-        $rows = DB::table('chat_messages')->where('room_id', $room)
+        $rows = ChatDatabase::connection()->table('chat_messages')->where('room_id', $room)
             ->when(isset($v['before']), fn ($q) => $q->where('id', '<', $v['before']))
             ->when($after !== null, fn ($q) => $q->where('id', '>', $after))
             ->when(! empty($v['q']), fn ($q) => $q->where(fn ($q) => $q->where('body', 'like', '%'.$v['q'].'%')->orWhere('user_id', $v['q'])->orWhere('display_name', 'like', '%'.$v['q'].'%')))
@@ -95,7 +96,7 @@ final class AdminChatController extends Controller
         $this->ready();
         $p = $this->paging($r);
         $v = $r->validate(['status' => ['nullable', Rule::in(['pending', 'resolved', 'all'])], 'room_id' => 'nullable|integer|min:1']);
-        $rows = DB::table('chat_reports as p')->leftJoin('chat_messages as m', 'm.id', '=', 'p.message_id')->leftJoin('chat_rooms as r', 'r.id', '=', 'm.room_id')
+        $rows = ChatDatabase::connection()->table('chat_reports as p')->leftJoin('chat_messages as m', 'm.id', '=', 'p.message_id')->leftJoin('chat_rooms as r', 'r.id', '=', 'm.room_id')
             ->when(($v['status'] ?? 'pending') !== 'all', fn ($q) => $q->where('p.status', $v['status'] ?? 'pending'))
             ->when(isset($v['room_id']), fn ($q) => $q->where('m.room_id', $v['room_id']))
             ->select('p.*', 'm.room_id', 'm.user_id as sender_id', 'm.display_name', 'm.body', 'm.deleted_at', 'r.room_key')
@@ -109,11 +110,13 @@ final class AdminChatController extends Controller
         $this->ready();
         $p = $this->paging($r);
         $v = $r->validate(['room_id' => 'nullable|integer|min:0', 'user_id' => 'nullable|string|max:191']);
-        $rows = DB::table('chat_bans as b')->leftJoin('user as u', 'u.uid', '=', 'b.user_id')->leftJoin('chat_rooms as r', 'r.id', '=', 'b.room_id')
+        $rows = ChatDatabase::connection()->table('chat_bans as b')->leftJoin('chat_rooms as r', 'r.id', '=', 'b.room_id')
             ->where(fn ($q) => $q->whereNull('b.expires_at')->orWhere('b.expires_at', '>', now()))
             ->when(isset($v['room_id']), fn ($q) => $q->where('b.room_id', $v['room_id']))
             ->when(! empty($v['user_id']), fn ($q) => $q->where('b.user_id', $v['user_id']))
-            ->select('b.*', 'u.name as display_name', 'r.room_key')->orderByDesc('b.id')->paginate($p['per_page'] ?? 25);
+            ->select('b.*', 'r.room_key')->orderByDesc('b.id')->paginate($p['per_page'] ?? 25);
+        $names = DB::table('user')->whereIn('uid', $rows->getCollection()->pluck('user_id'))->pluck('name', 'uid');
+        foreach ($rows as $row) { $row->display_name = $names[$row->user_id] ?? null; }
 
         return V4Response::success($rows);
     }
@@ -124,7 +127,7 @@ final class AdminChatController extends Controller
         $p = $this->paging($r);
         $v = $r->validate(['room_id' => 'nullable|integer|min:0']);
 
-        return V4Response::success(DB::table('chat_moderation_actions')->when(isset($v['room_id']), fn ($q) => $q->where('room_id', $v['room_id']))->orderByDesc('id')->paginate($p['per_page'] ?? 25));
+        return V4Response::success(ChatDatabase::connection()->table('chat_moderation_actions')->when(isset($v['room_id']), fn ($q) => $q->where('room_id', $v['room_id']))->orderByDesc('id')->paginate($p['per_page'] ?? 25));
     }
 
     public function metrics(Request $r)
@@ -140,13 +143,13 @@ final class AdminChatController extends Controller
         abort_if($from->gt($to) || $from->diffInDays($to) > 93, 422, 'Choose a date range of at most 93 days.');
         $operational = [
             'chat_enabled' => (bool) config('chat.enabled'),
-            'rooms' => DB::table('chat_rooms')->count(),
-            'open_rooms' => DB::table('chat_rooms')->where('closed', false)->count(),
-            'pending_reports' => DB::table('chat_reports')->where('status', 'pending')->count(),
-            'active_restrictions' => DB::table('chat_bans')->where(fn ($q) => $q->whereNull('expires_at')->orWhere('expires_at', '>', now()))->count(),
-            'pending_broadcasts' => DB::table('chat_outbox')->whereNull('delivered_at')->count(),
-            'pending_analytics' => DB::table('chat_outbox')->whereNotNull('analytics')->whereNull('analytics_delivered_at')->count(),
-            'oldest_pending_broadcast' => DB::table('chat_outbox')->whereNull('delivered_at')->min('created_at'),
+            'rooms' => ChatDatabase::connection()->table('chat_rooms')->count(),
+            'open_rooms' => ChatDatabase::connection()->table('chat_rooms')->where('closed', false)->count(),
+            'pending_reports' => ChatDatabase::connection()->table('chat_reports')->where('status', 'pending')->count(),
+            'active_restrictions' => ChatDatabase::connection()->table('chat_bans')->where(fn ($q) => $q->whereNull('expires_at')->orWhere('expires_at', '>', now()))->count(),
+            'pending_broadcasts' => ChatDatabase::connection()->table('chat_outbox')->whereNull('delivered_at')->count(),
+            'pending_analytics' => ChatDatabase::connection()->table('chat_outbox')->whereNotNull('analytics')->whereNull('analytics_delivered_at')->count(),
+            'oldest_pending_broadcast' => ChatDatabase::connection()->table('chat_outbox')->whereNull('delivered_at')->min('created_at'),
         ];
         $response = ['operational' => $operational, 'analytics_available' => true, 'summary' => null, 'events' => [], 'trend' => [], 'platforms' => [], 'rooms' => [],
             'linked_playback' => null,
@@ -175,7 +178,7 @@ final class AdminChatController extends Controller
             }
             $roomExpr = $db->getQueryGrammar()->wrap('properties_json->room_id');
             $response['rooms'] = (clone $q)->selectRaw($roomExpr.' as room_id')->selectRaw("COUNT(*) as events, SUM(CASE WHEN name='chat_message_sent' THEN 1 ELSE 0 END) as messages, COUNT(DISTINCT user_id) as users")->groupByRaw($roomExpr)->orderByDesc('messages')->limit(25)->get();
-            $roomInfo = DB::table('chat_rooms')->whereIn('id', collect($response['rooms'])->pluck('room_id')->filter()->all())->get()->keyBy('id');
+            $roomInfo = ChatDatabase::connection()->table('chat_rooms')->whereIn('id', collect($response['rooms'])->pluck('room_id')->filter()->all())->get()->keyBy('id');
             $this->titles($roomInfo);
             foreach ($response['rooms'] as $row) {
                 $row->title = $roomInfo[$row->room_id]->title ?? 'Unknown room';

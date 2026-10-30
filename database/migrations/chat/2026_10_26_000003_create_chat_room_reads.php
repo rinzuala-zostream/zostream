@@ -1,14 +1,14 @@
 <?php
 
+use App\Support\Chat\ChatDatabase;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('chat_room_reads', function (Blueprint $table): void {
+        ChatDatabase::schema()->create('chat_room_reads', function (Blueprint $table): void {
             $table->id();
             $table->string('user_id', 191);
             $table->unsignedBigInteger('room_id');
@@ -20,6 +20,6 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::dropIfExists('chat_room_reads');
+        ChatDatabase::schema()->dropIfExists('chat_room_reads');
     }
 };

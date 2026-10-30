@@ -16,13 +16,13 @@ final class ChatService
     public function room(Request $r, int $id, bool $writing = false): object
     {
         abort_unless(config('chat.enabled'), 503, 'Chat is currently unavailable.');
-        $room = $this->remember('chat:room:'.$id, 30, fn () => DB::table('chat_rooms')->find($id));
+        $room = $this->remember('chat:room:'.$id, 30, fn () => ChatDatabase::connection()->table('chat_rooms')->find($id));
         abort_unless($room, 404);
         abort_if($room->closed, 403, 'This room is closed.');
         $uid = (string) $r->input('auth_user_id');
         $ban = false;
         foreach ([0, $id] as $scope) {
-            $kind = $this->remember($this->banKey($uid, $scope), 15, fn () => DB::table('chat_bans')
+            $kind = $this->remember($this->banKey($uid, $scope), 15, fn () => ChatDatabase::connection()->table('chat_bans')
                 ->where('user_id', $uid)->where('room_id', $scope)
                 ->where(fn ($q) => $q->whereNull('expires_at')->orWhere('expires_at', '>', now()))->value('kind') ?: false);
             $ban = $ban || $kind === 'ban' || ($writing && $kind === 'mute');
@@ -34,10 +34,10 @@ final class ChatService
             abort_unless($valid, 403, 'Start online playback to join this movie chat.');
         }
         if ($room->type === 'invite') {
-            $inviteRoom = DB::table('chat_invite_rooms')->where('room_id', $id)->first();
+            $inviteRoom = ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $id)->first();
             $this->assertInviteRoomActive($inviteRoom);
             $member = (string) $r->input('auth_user_id');
-            abort_unless($inviteRoom->host_user_id === $member || DB::table('chat_room_invites')
+            abort_unless($inviteRoom->host_user_id === $member || ChatDatabase::connection()->table('chat_room_invites')
                 ->where('room_id', $id)->where('invitee_user_id', $member)->where('status', 'accepted')->exists(),
                 403, 'You were not invited to this room.');
             if ($inviteRoom->content_type && $inviteRoom->content_id) {
@@ -105,7 +105,7 @@ final class ChatService
 
     public function blocked(string $uid): array
     {
-        return $this->remember('chat:blocks:'.hash('sha256', $uid), 60, fn () => DB::table('chat_blocks')->where('user_id', $uid)->pluck('blocked_user_id')->all());
+        return $this->remember('chat:blocks:'.hash('sha256', $uid), 60, fn () => ChatDatabase::connection()->table('chat_blocks')->where('user_id', $uid)->pluck('blocked_user_id')->all());
     }
 
     private function remember(string $key, int $ttl, callable $load): mixed
@@ -142,7 +142,7 @@ final class ChatService
 
     public function recent(int $room): array
     {
-        $load = fn () => DB::table('chat_messages')->where('room_id', $room)
+        $load = fn () => ChatDatabase::connection()->table('chat_messages')->where('room_id', $room)
             ->where('created_at', '>=', now()->subDays(config('chat.retention_days')))
             ->orderByDesc('id')->limit(config('chat.recent_limit'))->get()->map(fn ($m) => $this->message($m))->all();
         try {
@@ -173,70 +173,70 @@ final class ChatService
 
     public function eraseUser(string $uid): void
     {
-        DB::transaction(fn () => $this->eraseUserData($uid));
+        ChatDatabase::connection()->transaction(fn () => $this->eraseUserData($uid));
     }
 
     private function eraseUserData(string $uid): void
     {
-        if (! \Illuminate\Support\Facades\Schema::hasTable('chat_messages')) {
+        if (! ChatDatabase::schema()->hasTable('chat_messages')) {
             return;
         }
         $anonymous = 'deleted:'.\Illuminate\Support\Str::uuid();
-        DB::table('chat_messages')->where('user_id', $uid)->orderBy('id')->chunkById(500, function ($rows) use ($anonymous) {
+        ChatDatabase::connection()->table('chat_messages')->where('user_id', $uid)->orderBy('id')->chunkById(500, function ($rows) use ($anonymous) {
             foreach ($rows as $message) {
-                DB::table('chat_outbox')->insert(['room_id' => $message->room_id, 'kind' => 'deleted', 'message_id' => $message->id,
+                ChatDatabase::connection()->table('chat_outbox')->insert(['room_id' => $message->room_id, 'kind' => 'deleted', 'message_id' => $message->id,
                     'created_at' => now(), 'updated_at' => now()]);
             }
-            DB::table('chat_messages')->whereIn('id', $rows->pluck('id'))->update([
+            ChatDatabase::connection()->table('chat_messages')->whereIn('id', $rows->pluck('id'))->update([
                 'body' => '', 'display_name' => 'Deleted viewer', 'user_id' => $anonymous, 'deleted_at' => now()]
-                + (\Illuminate\Support\Facades\Schema::hasColumn('chat_messages', 'watch_invite') ? ['watch_invite' => null] : []));
+                + (ChatDatabase::schema()->hasColumn('chat_messages', 'watch_invite') ? ['watch_invite' => null] : []));
             foreach ($rows->pluck('room_id')->unique() as $room) {
-                DB::afterCommit(fn () => $this->invalidate($room));
+                ChatDatabase::connection()->afterCommit(fn () => $this->invalidate($room));
             }
         });
-        $blockers = DB::table('chat_blocks')->where('blocked_user_id', $uid)->pluck('user_id');
-        DB::table('chat_blocks')->where('user_id', $uid)->orWhere('blocked_user_id', $uid)->delete();
+        $blockers = ChatDatabase::connection()->table('chat_blocks')->where('blocked_user_id', $uid)->pluck('user_id');
+        ChatDatabase::connection()->table('chat_blocks')->where('user_id', $uid)->orWhere('blocked_user_id', $uid)->delete();
         foreach ($blockers as $blocker) {
-            DB::afterCommit(fn () => $this->invalidateBlocks($blocker));
+            ChatDatabase::connection()->afterCommit(fn () => $this->invalidateBlocks($blocker));
         }
-        if (\Illuminate\Support\Facades\Schema::hasTable('chat_invite_rooms')) {
-            $hosted = DB::table('chat_invite_rooms')->where('host_user_id', $uid)->lockForUpdate()->pluck('room_id');
-            DB::table('chat_invite_rooms')->whereIn('room_id', $hosted)->update([
+        if (ChatDatabase::schema()->hasTable('chat_invite_rooms')) {
+            $hosted = ChatDatabase::connection()->table('chat_invite_rooms')->where('host_user_id', $uid)->lockForUpdate()->pluck('room_id');
+            ChatDatabase::connection()->table('chat_invite_rooms')->whereIn('room_id', $hosted)->update([
                 'host_user_id' => $anonymous, 'room_name' => 'Ended room', 'active' => false, 'updated_at' => now(),
                 'host_stream_id' => null, 'stream_token_hash' => null,
             ]);
-            DB::table('chat_rooms')->whereIn('id', $hosted)->update(['closed' => true, 'updated_at' => now()]);
+            ChatDatabase::connection()->table('chat_rooms')->whereIn('id', $hosted)->update(['closed' => true, 'updated_at' => now()]);
             foreach ($hosted as $room) {
                 app(RoomInvitationService::class)->publishEnded(Request::create('/'), (int) $room);
-                DB::table('chat_outbox')->insert(['room_id' => $room, 'kind' => 'ended', 'created_at' => now(), 'updated_at' => now()]);
-                DB::afterCommit(fn () => $this->invalidate($room, true));
+                ChatDatabase::connection()->table('chat_outbox')->insert(['room_id' => $room, 'kind' => 'ended', 'created_at' => now(), 'updated_at' => now()]);
+                ChatDatabase::connection()->afterCommit(fn () => $this->invalidate($room, true));
             }
-            DB::table('chat_room_invites')->where('invitee_user_id', $uid)->orWhere('inviter_user_id', $uid)->delete();
+            ChatDatabase::connection()->table('chat_room_invites')->where('invitee_user_id', $uid)->orWhere('inviter_user_id', $uid)->delete();
         }
-        if (\Illuminate\Support\Facades\Schema::hasTable('chat_watch_sessions')) {
-            $sessions = DB::table('chat_watch_sessions')->where('host_user_id', $uid)->pluck('id');
-            if (\Illuminate\Support\Facades\Schema::hasTable('chat_watch_participants')) {
-                $rooms = DB::table('chat_watch_sessions')->whereIn('id', DB::table('chat_watch_participants')
+        if (ChatDatabase::schema()->hasTable('chat_watch_sessions')) {
+            $sessions = ChatDatabase::connection()->table('chat_watch_sessions')->where('host_user_id', $uid)->pluck('id');
+            if (ChatDatabase::schema()->hasTable('chat_watch_participants')) {
+                $rooms = ChatDatabase::connection()->table('chat_watch_sessions')->whereIn('id', ChatDatabase::connection()->table('chat_watch_participants')
                     ->select('session_id')->where('user_id', $uid))->pluck('room_id');
-                DB::table('chat_watch_participants')->where('user_id', $uid)->orWhereIn('session_id', $sessions)->delete();
+                ChatDatabase::connection()->table('chat_watch_participants')->where('user_id', $uid)->orWhereIn('session_id', $sessions)->delete();
                 foreach ($rooms as $room) {
-                    DB::table('chat_outbox')->insert(['room_id' => $room, 'kind' => 'watch_status', 'created_at' => now(), 'updated_at' => now()]);
+                    ChatDatabase::connection()->table('chat_outbox')->insert(['room_id' => $room, 'kind' => 'watch_status', 'created_at' => now(), 'updated_at' => now()]);
                 }
             }
-            DB::table('chat_watch_sessions')->whereIn('id', $sessions)->update([
+            ChatDatabase::connection()->table('chat_watch_sessions')->whereIn('id', $sessions)->update([
                 'host_user_id' => $anonymous, 'active' => false, 'host_stream_id' => 0, 'stream_token_hash' => '', 'updated_at' => now(),
             ]);
         }
-        DB::table('chat_moderation_actions')->where('admin_id', $uid)->update(['admin_id' => $anonymous]);
-        DB::table('chat_moderation_actions')->whereIn('action', ['mute', 'ban', 'unban'])->where('target', $uid)->update(['target' => $anonymous]);
-        DB::table('chat_bans')->where('user_id', $uid)->delete();
-        DB::table('chat_reports')->where('user_id', $uid)->delete();
-        if (\Illuminate\Support\Facades\Schema::hasTable('chat_room_reads')) {
-            DB::table('chat_room_reads')->where('user_id', $uid)->delete();
+        ChatDatabase::connection()->table('chat_moderation_actions')->where('admin_id', $uid)->update(['admin_id' => $anonymous]);
+        ChatDatabase::connection()->table('chat_moderation_actions')->whereIn('action', ['mute', 'ban', 'unban'])->where('target', $uid)->update(['target' => $anonymous]);
+        ChatDatabase::connection()->table('chat_bans')->where('user_id', $uid)->delete();
+        ChatDatabase::connection()->table('chat_reports')->where('user_id', $uid)->delete();
+        if (ChatDatabase::schema()->hasTable('chat_room_reads')) {
+            ChatDatabase::connection()->table('chat_room_reads')->where('user_id', $uid)->delete();
         }
-        DB::table('chat_outbox')->where('analytics->user_id', $uid)->update(['analytics' => null]);
-        if (\Illuminate\Support\Facades\Schema::hasColumn('chat_outbox', 'recipient_user_id')) {
-            DB::table('chat_outbox')->where('recipient_user_id', $uid)->delete();
+        ChatDatabase::connection()->table('chat_outbox')->where('analytics->user_id', $uid)->update(['analytics' => null]);
+        if (ChatDatabase::schema()->hasColumn('chat_outbox', 'recipient_user_id')) {
+            ChatDatabase::connection()->table('chat_outbox')->where('recipient_user_id', $uid)->delete();
         }
         $this->invalidateBlocks($uid);
     }
@@ -250,11 +250,11 @@ final class ChatService
                 'app_session_id' => $r->input('app_session_id'), 'playback_session_id' => $r->input('playback_session_id'), 'room_id' => (string) $room,
                 'platform' => in_array($r->header('X-Client-Platform'), ['android', 'ios'], true) ? $r->header('X-Client-Platform') : 'unknown', 'app_version' => mb_substr($r->header('X-Client-Version', 'unknown'), 0, 64)]);
         }
-        DB::table('chat_outbox')->insert(['room_id' => $room, 'kind' => $kind, 'message_id' => $message,
+        ChatDatabase::connection()->table('chat_outbox')->insert(['room_id' => $room, 'kind' => $kind, 'message_id' => $message,
             'analytics' => $analytics, 'created_at' => now(), 'updated_at' => now()]
             + ($recipient !== null ? ['recipient_user_id' => $recipient] : []));
         if ($message !== null && $recipient === null && in_array($kind, ['created', 'deleted'], true)) {
-            DB::table('chat_outbox')->insert(['room_id' => $room, 'kind' => 'feed_'.$kind, 'message_id' => $message,
+            ChatDatabase::connection()->table('chat_outbox')->insert(['room_id' => $room, 'kind' => 'feed_'.$kind, 'message_id' => $message,
                 'created_at' => now(), 'updated_at' => now()]);
         }
     }

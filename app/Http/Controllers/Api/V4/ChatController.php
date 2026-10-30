@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V4;
 
+use App\Support\Chat\ChatDatabase;
 use App\Http\Controllers\Controller;
 use App\Support\Api\V4Response;
 use App\Support\Chat\ChatService;
@@ -59,9 +60,9 @@ final class ChatController extends Controller
             abort_unless($this->chat->playbackAllowed($r, $v['type'], $v['content_id']), 403, 'Start online playback to join this movie chat.');
         }
         $key = $v['type'] === 'global' ? 'global' : $v['type'].':'.$v['content_id'];
-        DB::table('chat_rooms')->insertOrIgnore(['room_key' => $key, 'type' => $v['type'],
+        ChatDatabase::connection()->table('chat_rooms')->insertOrIgnore(['room_key' => $key, 'type' => $v['type'],
             'content_id' => $v['type'] === 'global' ? null : $v['content_id'], 'created_at' => now(), 'updated_at' => now()]);
-        $room = DB::table('chat_rooms')->where('room_key', $key)->first();
+        $room = ChatDatabase::connection()->table('chat_rooms')->where('room_key', $key)->first();
         $this->chat->room($r, $room->id);
 
         return V4Response::success(['room_id' => (string) $room->id, 'room_type' => $room->type,
@@ -139,14 +140,14 @@ final class ChatController extends Controller
             ->where('s.stream_token', (string) $r->header('X-Playback-Token'))->first(['s.id', 's.stream_token']);
         abort_if($type !== 'global' && ! $hostStream, 403, 'Start online playback before creating a movie invite room.');
         $links = [];
-        $roomId = DB::transaction(function () use ($host, $type, $v, $invitees, $content, $hostStream, &$links): int {
+        $roomId = ChatDatabase::connection()->transaction(function () use ($host, $type, $v, $invitees, $content, $hostStream, &$links): int {
             $now = now();
             $key = 'invite:'.Str::uuid();
-            $room = DB::table('chat_rooms')->insertGetId([
+            $room = ChatDatabase::connection()->table('chat_rooms')->insertGetId([
                 'room_key' => $key, 'type' => 'invite', 'content_id' => $v['content_id'] ?? null,
                 'created_at' => $now, 'updated_at' => $now,
             ]);
-            DB::table('chat_invite_rooms')->insert([
+            ChatDatabase::connection()->table('chat_invite_rooms')->insert([
                 'room_id' => $room, 'host_user_id' => $host,
                 'room_name' => trim($v['room_name']),
                 'content_type' => $type === 'global' ? null : $type,
@@ -159,7 +160,7 @@ final class ChatController extends Controller
             ]);
             foreach ($invitees as $invitee) {
                 $token = Str::random(64);
-                $inviteId = DB::table('chat_room_invites')->insertGetId([
+                $inviteId = ChatDatabase::connection()->table('chat_room_invites')->insertGetId([
                     'room_id' => $room, 'inviter_user_id' => $host, 'invitee_user_id' => $invitee->uid,
                     'link_token_hash' => hash('sha256', $token),
                     'status' => 'pending', 'expires_at' => $now->copy()->addHours(24), 'created_at' => $now, 'updated_at' => $now,
@@ -191,7 +192,7 @@ final class ChatController extends Controller
         foreach ($invitees as $invitee) {
             $this->chat->outbox($r, $roomId, 'badge_sync', null, null, (string) $invitee->uid);
             if (! empty($invitee->token)) {
-                $inviteId = DB::table('chat_room_invites')->where('room_id', $roomId)->where('invitee_user_id', $invitee->uid)->value('id');
+                $inviteId = ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $roomId)->where('invitee_user_id', $invitee->uid)->value('id');
                 try {
                     app(\App\Http\Controllers\FCMNotificationController::class)->sendToToken(
                         $invitee->token,
@@ -214,8 +215,8 @@ final class ChatController extends Controller
         $host = (string) $r->input('auth_user_id');
         $links = [];
         $content = null;
-        $invited = DB::transaction(function () use ($r, $room, $v, $host, &$links, &$content) {
-            $inviteRoom = DB::table('chat_invite_rooms')->where('room_id', $room)->lockForUpdate()->first();
+        $invited = ChatDatabase::connection()->transaction(function () use ($r, $room, $v, $host, &$links, &$content) {
+            $inviteRoom = ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $room)->lockForUpdate()->first();
             abort_unless($inviteRoom, 404);
             abort_unless($inviteRoom->host_user_id === $host, 403, 'Only the room creator can invite more people.');
             $this->chat->refreshPlayback($r);
@@ -223,7 +224,7 @@ final class ChatController extends Controller
             $users = DB::table('user')->whereIn('uid', $v['invitee_ids'])->where('uid', '!=', $host)
                 ->get(['uid', 'name', 'token'])->keyBy('uid');
             abort_unless($users->count() === count($v['invitee_ids']), 422, 'One or more invited users are unavailable.');
-            $existingInvites = DB::table('chat_room_invites')->where('room_id', $room)
+            $existingInvites = ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $room)
                 ->whereIn('invitee_user_id', $users->keys())->get()->keyBy('invitee_user_id');
             $users = $users->reject(function ($user) use ($existingInvites) {
                 $existing = $existingInvites->get($user->uid);
@@ -246,10 +247,10 @@ final class ChatController extends Controller
                 $values = ['inviter_user_id' => $host, 'status' => 'pending', 'expires_at' => now()->addHours(24),
                     'responded_at' => null, 'whatsapp_sent_at' => null, 'link_token_hash' => hash('sha256', $token), 'updated_at' => now()];
                 if ($existing) {
-                    DB::table('chat_room_invites')->where('id', $existing->id)->update($values);
+                    ChatDatabase::connection()->table('chat_room_invites')->where('id', $existing->id)->update($values);
                     $id = $existing->id;
                 } else {
-                    $id = DB::table('chat_room_invites')->insertGetId($values + ['room_id' => $room, 'invitee_user_id' => $user->uid, 'created_at' => now()]);
+                    $id = ChatDatabase::connection()->table('chat_room_invites')->insertGetId($values + ['room_id' => $room, 'invitee_user_id' => $user->uid, 'created_at' => now()]);
                 }
                 $links[$id] = $token;
                 return true;
@@ -266,7 +267,7 @@ final class ChatController extends Controller
         $v = $r->validate(['recipient_user_id' => 'sometimes|string|max:191']);
         $recipient = $v['recipient_user_id'] ?? null;
         $uid = (string) $r->input('auth_user_id');
-        $rooms = DB::table('chat_invite_rooms as ir')
+        $rooms = ChatDatabase::connection()->table('chat_invite_rooms as ir')
             ->join('chat_rooms as r', 'r.id', '=', 'ir.room_id')
             ->where('ir.active', true)->where('r.closed', false)
             ->tap(fn ($q) => app(InviteRoomLifecycle::class)->candidates($q))
@@ -280,7 +281,7 @@ final class ChatController extends Controller
             ->orderByDesc('ir.room_id')
             ->get(['ir.room_id', 'ir.room_name', 'ir.content_type', 'ir.content_id', 'ir.host_user_id', 'ir.idle_expires_at', 'ir.active'])
             ->filter(fn ($room) => app(InviteRoomLifecycle::class)->active($room))->values();
-        $joined = $recipient === null ? [] : DB::table('chat_room_invites')
+        $joined = $recipient === null ? [] : ChatDatabase::connection()->table('chat_room_invites')
             ->whereIn('room_id', $rooms->where('host_user_id', $uid)->pluck('room_id'))
             ->where('invitee_user_id', $recipient)->where('status', 'accepted')->pluck('room_id')->map(fn ($id) => (string) $id)->all();
         $rooms->transform(function ($room) use ($uid, $recipient, $joined) {
@@ -300,13 +301,13 @@ final class ChatController extends Controller
     public function endInviteRoom(Request $r, int $room)
     {
         abort_unless(config('chat.enabled'), 503, 'Chat is currently unavailable.');
-        DB::transaction(function () use ($r, $room): void {
-            $inviteRoom = DB::table('chat_invite_rooms')->where('room_id', $room)->lockForUpdate()->first();
+        ChatDatabase::connection()->transaction(function () use ($r, $room): void {
+            $inviteRoom = ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $room)->lockForUpdate()->first();
             abort_unless($inviteRoom, 404);
             abort_unless($inviteRoom->host_user_id === (string) $r->input('auth_user_id'), 403, 'Only the room creator can end this room.');
             abort_unless($inviteRoom->content_type === null, 422, 'Only private chat rooms can be ended here.');
             if ($inviteRoom->active) {
-                DB::table('chat_invite_rooms')->where('room_id', $room)->update(['active' => false, 'updated_at' => now()]);
+                ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $room)->update(['active' => false, 'updated_at' => now()]);
                 $this->chat->outbox($r, $room, 'ended', null, null);
                 app(\App\Support\Chat\RoomInvitationService::class)->publishEnded($r, $room);
             }
@@ -319,20 +320,22 @@ final class ChatController extends Controller
     public function invites(Request $r)
     {
         $uid = (string) $r->input('auth_user_id');
-        $rows = DB::table('chat_room_invites as i')->join('chat_rooms as r', 'r.id', '=', 'i.room_id')
-            ->join('chat_invite_rooms as ir', 'ir.room_id', '=', 'i.room_id')->leftJoin('user as u', 'u.uid', '=', 'i.inviter_user_id')
+        $rows = ChatDatabase::connection()->table('chat_room_invites as i')->join('chat_rooms as r', 'r.id', '=', 'i.room_id')
+            ->join('chat_invite_rooms as ir', 'ir.room_id', '=', 'i.room_id')
             ->where('i.invitee_user_id', $uid)->where('i.status', 'pending')->where('i.expires_at', '>', now())
             ->where('r.closed', false)
             ->tap(fn ($q) => app(InviteRoomLifecycle::class)->candidates($q))
             ->where('ir.active', true)->orderByDesc('i.id')->limit(50)
-            ->get(['i.id as invite_id', 'i.room_id', 'i.expires_at', 'ir.room_name', 'ir.content_type', 'ir.content_id', 'ir.watch_position_ms', 'u.name as inviter_name', 'ir.active', 'ir.idle_expires_at'])
+            ->get(['i.id as invite_id', 'i.room_id', 'i.expires_at', 'ir.room_name', 'ir.content_type', 'ir.content_id', 'ir.watch_position_ms', 'i.inviter_user_id', 'ir.active', 'ir.idle_expires_at'])
             ->filter(fn ($room) => app(InviteRoomLifecycle::class)->active($room))->values();
-        $rows->transform(function ($invite) {
+        $names = DB::table('user')->whereIn('uid', $rows->pluck('inviter_user_id'))->pluck('name', 'uid');
+        $rows->transform(function ($invite) use ($names) {
             unset($invite->active, $invite->idle_expires_at);
             $invite->invite_id = (string) $invite->invite_id;
             $invite->room_id = (string) $invite->room_id;
             $invite->watch_position_ms = (int) $invite->watch_position_ms;
-            $invite->inviter_name = $invite->inviter_name ?? 'Viewer';
+            $invite->inviter_name = $names[$invite->inviter_user_id] ?? 'Viewer';
+            unset($invite->inviter_user_id);
             if ($invite->content_type && $invite->content_id) {
                 $content = \App\Support\Chat\ChatContent::find($invite->content_type, $invite->content_id);
                 $invite->content_title = $content->title ?? null;
@@ -351,14 +354,14 @@ final class ChatController extends Controller
     public function respondInvite(Request $r, int $invite)
     {
         $v = $r->validate(['accept' => 'required|boolean']);
-        return DB::transaction(function () use ($r, $invite, $v) {
+        return ChatDatabase::connection()->transaction(function () use ($r, $invite, $v) {
             $uid = (string) $r->input('auth_user_id');
-            $membership = DB::table('chat_room_invites')->where('id', $invite)->where('invitee_user_id', $uid)->first();
+            $membership = ChatDatabase::connection()->table('chat_room_invites')->where('id', $invite)->where('invitee_user_id', $uid)->first();
             abort_unless($membership, 404, 'This invitation is unavailable.');
             // All membership mutations lock the room before the invitation.
-            DB::table('chat_invite_rooms')->where('room_id', $membership->room_id)->lockForUpdate()->first();
-            DB::table('chat_rooms')->where('id', $membership->room_id)->lockForUpdate()->first();
-            $row = DB::table('chat_room_invites as i')->join('chat_invite_rooms as ir', 'ir.room_id', '=', 'i.room_id')
+            ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $membership->room_id)->lockForUpdate()->first();
+            ChatDatabase::connection()->table('chat_rooms')->where('id', $membership->room_id)->lockForUpdate()->first();
+            $row = ChatDatabase::connection()->table('chat_room_invites as i')->join('chat_invite_rooms as ir', 'ir.room_id', '=', 'i.room_id')
                 ->join('chat_rooms as cr', 'cr.id', '=', 'i.room_id')->where('cr.closed', false)
                 ->where('i.id', $invite)->where('i.invitee_user_id', $uid)->where('i.status', 'pending')
                 ->where('i.expires_at', '>', now())->where('ir.active', true)
@@ -367,7 +370,7 @@ final class ChatController extends Controller
             abort_unless(app(InviteRoomLifecycle::class)->active($row), 404, 'This invitation has expired or is no longer available.');
             if ($v['accept']) {
                 $limit = (int) config($row->content_type ? 'chat.watch_member_limit' : 'chat.private_member_limit');
-                $accepted = DB::table('chat_room_invites')->where('room_id', $row->room_id)
+                $accepted = ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $row->room_id)
                     ->where('status', 'accepted')->lockForUpdate()->pluck('invitee_user_id')->unique()->count();
                 abort_if($accepted + 1 >= $limit, 409, "This room is full (maximum {$limit} members including the creator).");
             }
@@ -390,12 +393,12 @@ final class ChatController extends Controller
                         ->where('updated_at', '>=', now()->subMinute())->value('position');
                     if ($progress !== null) {
                         $positionMs = min(86400000, max(0, (int) $progress * 1000));
-                        DB::table('chat_invite_rooms')->where('room_id', $row->room_id)->update(['watch_position_ms' => $positionMs, 'updated_at' => now()]);
+                        ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $row->room_id)->update(['watch_position_ms' => $positionMs, 'updated_at' => now()]);
                         $row->watch_position_ms = $positionMs;
                     }
                 }
             }
-            DB::table('chat_room_invites')->where('id', $invite)->where('status', 'pending')->update([
+            ChatDatabase::connection()->table('chat_room_invites')->where('id', $invite)->where('status', 'pending')->update([
                 'status' => $v['accept'] ? 'accepted' : 'declined', 'responded_at' => now(), 'updated_at' => now(),
             ]);
             if ($v['accept']) { $this->chat->outbox($r, (int) $row->room_id, 'badge_sync', null, null, $uid); }
@@ -415,7 +418,7 @@ final class ChatController extends Controller
     {
         $roomInfo = $this->chat->room($r, $room);
         abort_unless($roomInfo->type === 'invite', 404);
-        $inviteRoom = DB::table('chat_invite_rooms')->where('room_id', $room)->first();
+        $inviteRoom = ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $room)->first();
         $content = $inviteRoom->content_type && $inviteRoom->content_id
             ? \App\Support\Chat\ChatContent::find($inviteRoom->content_type, $inviteRoom->content_id) : null;
         $seasonId = $inviteRoom->content_type === 'episode' ? ($content->season_id ?? null) : null;
@@ -459,8 +462,8 @@ final class ChatController extends Controller
             app(\App\Support\Chat\PrivateWatchService::class)->heartbeat($r, $room, isset($v['session_id']) ? (int) $v['session_id'] : null);
         }
         $revision = isset($v['session_id'])
-            ? DB::table('chat_watch_sessions')->where('room_id', $room)->where('id', $v['session_id'])->value('control_sequence')
-            : DB::table('chat_invite_rooms')->where('room_id', $room)->value('control_sequence');
+            ? ChatDatabase::connection()->table('chat_watch_sessions')->where('room_id', $room)->where('id', $v['session_id'])->value('control_sequence')
+            : ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $room)->value('control_sequence');
         return V4Response::success(['active' => true, 'revision' => (string) ($revision ?? 0)]);
     }
 
@@ -487,7 +490,7 @@ final class ChatController extends Controller
         $service->touchParticipant($r, $watch);
         $service->publishStatus($r, $room);
         if ($host) {
-            DB::table('chat_invite_rooms')->where('room_id', $room)->where('idle_expires_at', '<=', now()->addMinutes(30))
+            ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $room)->where('idle_expires_at', '<=', now()->addMinutes(30))
                 ->update(['idle_expires_at' => now()->addHour()]);
         }
         return V4Response::success(app(\App\Support\Chat\WatchPlaybackState::class)->payload($watch, 'position_ms', $host));
@@ -501,7 +504,7 @@ final class ChatController extends Controller
         $this->chat->refreshPlayback($r);
         // Playback-state reads/creator controls are separate from chat-message mute.
         $this->chat->room($r, $room);
-        $inviteRoom = DB::table('chat_invite_rooms')->where('room_id', $room)->first();
+        $inviteRoom = ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $room)->first();
         abort_unless($inviteRoom, 404);
         $isHost = $inviteRoom->host_user_id === (string) $r->input('auth_user_id');
         if ($isHost && isset($v['position_ms'])) {
@@ -541,7 +544,7 @@ final class ChatController extends Controller
             $hasMore = count($rows) > $limit || count($recent) >= config('chat.recent_limit');
             $rows = array_slice($rows, 0, $limit);
         } else {
-            $q = DB::table('chat_messages')->where('room_id', $room)->whereNotIn('user_id', $blocked)
+            $q = ChatDatabase::connection()->table('chat_messages')->where('room_id', $room)->whereNotIn('user_id', $blocked)
                 ->where('created_at', '>=', now()->subDays(config('chat.retention_days')))
                 ->when($before !== null, fn ($q) => $q->where('id', '<', $before))
                 ->when($after !== null, fn ($q) => $q->where('id', '>', $after));
@@ -571,7 +574,7 @@ final class ChatController extends Controller
         abort_if($body === '/watch' && ($roomInfo->type !== 'invite' || empty($v['watch'])), 422, 'Use /watch in a private room while watching a title.');
         abort_if($body === '/invite' && empty($v['room_invite']), 422, 'Choose an active private room to invite people.');
         abort_if(isset($v['room_invite']) && ($body !== '/invite' || isset($v['watch']) || ($v['spoiler'] ?? false)), 422, 'Use /invite to share a private room invitation.');
-        $old = DB::table('chat_messages')->where('user_id', $uid)->where('request_id', $v['request_id'])->first();
+        $old = ChatDatabase::connection()->table('chat_messages')->where('user_id', $uid)->where('request_id', $v['request_id'])->first();
         if ($old) {
             abort_unless((int) $old->room_id === $room, 409);
 
@@ -584,27 +587,27 @@ final class ChatController extends Controller
             abort(503, 'Chat is temporarily unavailable. Please retry.');
         }
         abort_unless($allowed, 429, 'Please wait before sending another message.');
-        $m = DB::transaction(function () use ($r, $room, $uid, $v, $body, $roomInfo) {
+        $m = ChatDatabase::connection()->transaction(function () use ($r, $room, $uid, $v, $body, $roomInfo) {
             // Serialize messages with host termination, and recheck expiry after acquiring the lock.
             if ($roomInfo->type === 'invite') {
-                $inviteRoom = DB::table('chat_invite_rooms')->where('room_id', $room)->lockForUpdate()->first();
+                $inviteRoom = ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $room)->lockForUpdate()->first();
                 $this->chat->assertInviteRoomActive($inviteRoom);
             }
             $sharedRoom = isset($v['room_invite']) ? app(\App\Support\Chat\RoomInvitationService::class)->share($r, $roomInfo, (int) $v['room_invite']['room_id']) : null;
             $name = DB::table('user')->where('uid', $uid)->value('name');
-            $inserted = DB::table('chat_messages')->insertOrIgnore(['room_id' => $room, 'user_id' => $uid, 'request_id' => $v['request_id'],
+            $inserted = ChatDatabase::connection()->table('chat_messages')->insertOrIgnore(['room_id' => $room, 'user_id' => $uid, 'request_id' => $v['request_id'],
                 'display_name' => mb_substr(trim((string) $name) ?: 'Viewer', 0, 100), 'body' => $sharedRoom ? 'Invitation to '.$sharedRoom->room_name : $body,
                 'invite_room_id' => $sharedRoom?->room_id,
                 'spoiler' => $v['spoiler'] ?? false, 'created_at' => now(), 'updated_at' => now()]);
-            $m = DB::table('chat_messages')->where('user_id', $uid)->where('request_id', $v['request_id'])->first();
+            $m = ChatDatabase::connection()->table('chat_messages')->where('user_id', $uid)->where('request_id', $v['request_id'])->first();
             abort_unless((int) $m->room_id === $room, 409);
             if ($inserted) {
                 if ($body === '/watch') {
                     app(\App\Support\Chat\PrivateWatchService::class)->start($r, $inviteRoom, $m->id, $v['watch']);
-                    $m = DB::table('chat_messages')->find($m->id);
+                    $m = ChatDatabase::connection()->table('chat_messages')->find($m->id);
                 }
                 if ($roomInfo->type === 'invite' && $inviteRoom->content_type === null) {
-                    DB::table('chat_invite_rooms')->where('room_id', $room)->update(['idle_expires_at' => now()->addHour()]);
+                    ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $room)->update(['idle_expires_at' => now()->addHour()]);
                 }
                 $this->chat->outbox($r, $room, 'created', $m->id, 'chat_message_sent');
                 if ($roomInfo->type === 'invite') {
@@ -635,9 +638,9 @@ final class ChatController extends Controller
     {
         $this->chat->room($r, $room);
         $v = $r->validate(['reason' => 'required|string|max:500', 'app_session_id' => 'nullable|uuid', 'playback_session_id' => 'nullable|uuid']);
-        abort_unless(DB::table('chat_messages')->where('room_id', $room)->where('id', $message)->exists(), 404);
-        DB::transaction(function () use ($r, $room, $message, $v) {
-            $new = DB::table('chat_reports')->insertOrIgnore(['message_id' => $message, 'user_id' => $r->input('auth_user_id'),
+        abort_unless(ChatDatabase::connection()->table('chat_messages')->where('room_id', $room)->where('id', $message)->exists(), 404);
+        ChatDatabase::connection()->transaction(function () use ($r, $room, $message, $v) {
+            $new = ChatDatabase::connection()->table('chat_reports')->insertOrIgnore(['message_id' => $message, 'user_id' => $r->input('auth_user_id'),
                 'reason' => $v['reason'], 'created_at' => now(), 'updated_at' => now()]);
             if ($new) {
                 $this->chat->outbox($r, $room, 'reported', $message, 'chat_message_reported');
@@ -676,7 +679,7 @@ final class ChatController extends Controller
     public function reports(Request $r)
     {
         $v = $r->validate(['before' => 'nullable|integer|min:1']);
-        $rows = DB::table('chat_reports as r')->leftJoin('chat_messages as m', 'm.id', '=', 'r.message_id')
+        $rows = ChatDatabase::connection()->table('chat_reports as r')->leftJoin('chat_messages as m', 'm.id', '=', 'r.message_id')
             ->where('r.status', 'pending')->when(isset($v['before']), fn ($q) => $q->where('r.id', '<', $v['before']))
             ->orderByDesc('r.id')->limit(50)->get(['r.*', 'm.room_id', 'm.user_id as sender_id', 'm.body', 'm.deleted_at']);
 
@@ -686,12 +689,12 @@ final class ChatController extends Controller
     public function resolveReport(Request $r, int $report)
     {
         $v = $r->validate(['reason' => 'required|string|max:500']);
-        DB::transaction(function () use ($r, $report, $v) {
-            $row = DB::table('chat_reports')->where('id', $report)->first();
+        ChatDatabase::connection()->transaction(function () use ($r, $report, $v) {
+            $row = ChatDatabase::connection()->table('chat_reports')->where('id', $report)->first();
             abort_unless($row, 404);
-            $message = DB::table('chat_messages')->find($row->message_id);
-            DB::table('chat_reports')->where('id', $report)->update(['status' => 'resolved', 'updated_at' => now()]);
-            DB::table('chat_moderation_actions')->insert(['admin_id' => $r->input('auth_user_id'),
+            $message = ChatDatabase::connection()->table('chat_messages')->find($row->message_id);
+            ChatDatabase::connection()->table('chat_reports')->where('id', $report)->update(['status' => 'resolved', 'updated_at' => now()]);
+            ChatDatabase::connection()->table('chat_moderation_actions')->insert(['admin_id' => $r->input('auth_user_id'),
                 'room_id' => $message?->room_id ?? 0, 'action' => 'resolve_report', 'target' => (string) $report,
                 'reason' => $v['reason'], 'created_at' => now(), 'updated_at' => now()]);
         });
@@ -704,9 +707,9 @@ final class ChatController extends Controller
         $v = $r->validate(['user_id' => 'required|string|max:191', 'blocked' => 'required|boolean']);
         $uid = (string) $r->input('auth_user_id');
         abort_if($uid === $v['user_id'], 422);
-        $q = DB::table('chat_blocks')->where('user_id', $uid)->where('blocked_user_id', $v['user_id']);
+        $q = ChatDatabase::connection()->table('chat_blocks')->where('user_id', $uid)->where('blocked_user_id', $v['user_id']);
         if ($v['blocked']) {
-            DB::table('chat_blocks')->insertOrIgnore(['user_id' => $uid, 'blocked_user_id' => $v['user_id']]);
+            ChatDatabase::connection()->table('chat_blocks')->insertOrIgnore(['user_id' => $uid, 'blocked_user_id' => $v['user_id']]);
         } else {
             $q->delete();
         }
@@ -718,7 +721,7 @@ final class ChatController extends Controller
 
     public function moderate(Request $r, int $room)
     {
-        abort_unless(DB::table('chat_rooms')->where('id', $room)->exists() || $room === 0, 404);
+        abort_unless(ChatDatabase::connection()->table('chat_rooms')->where('id', $room)->exists() || $room === 0, 404);
         $v = $r->validate(['action' => ['required', Rule::in(['delete', 'mute', 'ban', 'unban', 'close', 'open'])],
             'target' => 'required|string|max:191', 'reason' => 'required|string|max:500', 'expires_at' => 'nullable|date|after:now']);
         if ($room === 0) {
@@ -727,25 +730,25 @@ final class ChatController extends Controller
         if ($v['action'] === 'delete') {
             abort_unless(ctype_digit($v['target']), 422, 'A message ID is required.');
         }
-        DB::transaction(function () use ($r, $room, $v) {
+        ChatDatabase::connection()->transaction(function () use ($r, $room, $v) {
             switch ($v['action']) {
                 case 'delete':
-                    $message = DB::table('chat_messages')->where('room_id', $room)->where('id', $v['target'])->lockForUpdate()->first();
+                    $message = ChatDatabase::connection()->table('chat_messages')->where('room_id', $room)->where('id', $v['target'])->lockForUpdate()->first();
                     abort_unless($message, 404);
                     if ($message->deleted_at !== null) {
                         return;
                     }
-                    DB::table('chat_messages')->where('id', $message->id)->update(['body' => '', 'deleted_at' => now()]);
+                    ChatDatabase::connection()->table('chat_messages')->where('id', $message->id)->update(['body' => '', 'deleted_at' => now()]);
                     $this->chat->outbox($r, $room, 'deleted', (int) $v['target'], null);
                     break;
                 case 'mute': case 'ban':
-                    DB::table('chat_bans')->updateOrInsert(['room_id' => $room, 'user_id' => $v['target']], ['kind' => $v['action'], 'expires_at' => $v['expires_at'] ?? null]);
+                    ChatDatabase::connection()->table('chat_bans')->updateOrInsert(['room_id' => $room, 'user_id' => $v['target']], ['kind' => $v['action'], 'expires_at' => $v['expires_at'] ?? null]);
                     break;
-                case 'unban': DB::table('chat_bans')->where('room_id', $room)->where('user_id', $v['target'])->delete();
+                case 'unban': ChatDatabase::connection()->table('chat_bans')->where('room_id', $room)->where('user_id', $v['target'])->delete();
                     break;
-                default: DB::table('chat_rooms')->where('id', $room)->update(['closed' => $v['action'] === 'close']);
+                default: ChatDatabase::connection()->table('chat_rooms')->where('id', $room)->update(['closed' => $v['action'] === 'close']);
             }
-            DB::table('chat_moderation_actions')->insert(['admin_id' => $r->input('auth_user_id'), 'room_id' => $room,
+            ChatDatabase::connection()->table('chat_moderation_actions')->insert(['admin_id' => $r->input('auth_user_id'), 'room_id' => $room,
                 'action' => $v['action'], 'target' => $v['target'], 'reason' => $v['reason'], 'created_at' => now(), 'updated_at' => now()]);
         });
         $this->chat->invalidate($room, true);

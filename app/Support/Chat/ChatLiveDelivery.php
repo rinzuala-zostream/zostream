@@ -16,8 +16,8 @@ final class ChatLiveDelivery
         if (! config('chat.socket_protocol_enabled')) { return; }
         $viewers = app(ChatLiveChannels::class)->viewers((int) $row->room_id);
         if ($viewers === []) { return; }
-        $room = DB::table('chat_rooms')->find($row->room_id);
-        $message = DB::table('chat_messages')->where('room_id', $row->room_id)->find($row->message_id);
+        $room = ChatDatabase::connection()->table('chat_rooms')->find($row->room_id);
+        $message = ChatDatabase::connection()->table('chat_messages')->where('room_id', $row->room_id)->find($row->message_id);
         if (! $room || $room->closed || ! $message || Carbon::parse($message->created_at)->lt(now()->subDays(config('chat.retention_days')))) { return; }
 
         // One batch query per 500 sessions, instead of one authenticated HTTP
@@ -27,14 +27,14 @@ final class ChatLiveDelivery
             $sessions = $sessions->merge(DB::table('session_tokens')->whereIn('id', $ids)->where('access_expires_at', '>', now())->get());
         }
         $sessions = $sessions->keyBy('id');
-        $banned = DB::table('chat_bans')->whereIn('room_id', [0, $room->id])->where('kind', 'ban')
+        $banned = ChatDatabase::connection()->table('chat_bans')->whereIn('room_id', [0, $room->id])->where('kind', 'ban')
             ->where(fn ($q) => $q->whereNull('expires_at')->orWhere('expires_at', '>', now()))->pluck('user_id')->flip();
-        $blocked = DB::table('chat_blocks')->where('blocked_user_id', $message->user_id)->pluck('user_id')->flip();
+        $blocked = ChatDatabase::connection()->table('chat_blocks')->where('blocked_user_id', $message->user_id)->pluck('user_id')->flip();
         $members = null;
         if ($room->type === 'invite') {
-            $invite = DB::table('chat_invite_rooms')->where('room_id', $room->id)->first();
+            $invite = ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $room->id)->first();
             if (! app(InviteRoomLifecycle::class)->active($invite)) { return; }
-            $members = DB::table('chat_room_invites')->where('room_id', $room->id)->where('status', 'accepted')
+            $members = ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $room->id)->where('status', 'accepted')
                 ->pluck('invitee_user_id')->push($invite->host_user_id)->flip();
             if ($invite->content_type) {
                 $content = ChatContent::find($invite->content_type, $invite->content_id);
