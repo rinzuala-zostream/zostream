@@ -30,7 +30,12 @@ public struct ChatMessage: Decodable, Identifiable, Sendable {
 public struct ChatPage: Decodable, Sendable {
     public let messages: [ChatMessage]
     public let has_more: Bool
-    public init(messages: [ChatMessage], has_more: Bool) { self.messages = messages; self.has_more = has_more }
+    public let first_unread_id: String?
+    public let initial_after: String?
+    public init(messages: [ChatMessage], has_more: Bool, first_unread_id: String? = nil, initial_after: String? = nil) {
+        self.messages = messages; self.has_more = has_more
+        self.first_unread_id = first_unread_id; self.initial_after = initial_after
+    }
 }
 public struct ChatRoom: Decodable, Sendable {
     public let room_id: String
@@ -405,8 +410,8 @@ public final class ZoChatClient {
         }
     }
 
-    public func history(roomId: String, before: String? = nil, after: String? = nil) async throws -> ChatPage {
-        let query = before.map { "?before=\($0)" } ?? after.map { "?after=\($0)" } ?? ""
+    public func history(roomId: String, before: String? = nil, after: String? = nil, initial: Bool = false) async throws -> ChatPage {
+        let query = initial ? "?initial=1" : (before.map { "?before=\($0)" } ?? after.map { "?after=\($0)" } ?? "")
         return try await request("rooms/\(roomId)/messages\(query)", as: ChatPage.self)
     }
 

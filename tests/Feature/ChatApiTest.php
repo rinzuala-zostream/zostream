@@ -1216,6 +1216,46 @@ class ChatApiTest extends TestCase
         $this->unread()->assertJsonPath('data.total_unread', 105)->assertJsonPath('data.rooms.0.first_unread_id', (string) $ids[50]);
     }
 
+    public function test_initial_history_returns_small_transcript_and_its_unread_cursor_in_one_response(): void
+    {
+        $room = $this->room();
+        $this->message($room, 'alice');
+        $first = $this->message($room, 'bob');
+        $last = $this->message($room, 'bob');
+        $page = $this->getJson("/api/v4/chat/rooms/$room/messages?".http_build_query($this->identity(['initial' => 1])))
+            ->assertOk()->assertJsonCount(2, 'data.messages')->assertJsonPath('data.has_more', false)
+            ->assertJsonPath('data.first_unread_id', (string) $first)->assertJsonPath('data.initial_after', (string) ($first - 1));
+        $this->assertSame([(string) $first, (string) $last], array_column($page->json('data.messages'), 'id'));
+    }
+
+    public function test_initial_history_starts_at_oldest_unread_and_restores_advanced_read_position(): void
+    {
+        $room = $this->room();
+        $ids = [];
+        for ($i = 0; $i < 155; $i++) { $ids[] = $this->message($room, 'bob'); }
+        $url = "/api/v4/chat/rooms/$room/messages?".http_build_query($this->identity(['initial' => 1]));
+        $this->getJson($url)->assertOk()->assertJsonCount(50, 'data.messages')->assertJsonPath('data.has_more', true)
+            ->assertJsonPath('data.messages.0.id', (string) $ids[0])->assertJsonPath('data.first_unread_id', (string) $ids[0]);
+        $this->postJson("/api/v4/chat/rooms/$room/read", $this->identity(['message_id' => $ids[149]]))->assertOk();
+        $this->getJson($url)->assertOk()->assertJsonCount(5, 'data.messages')->assertJsonPath('data.has_more', false)
+            ->assertJsonPath('data.messages.0.id', (string) $ids[150])->assertJsonPath('data.first_unread_id', (string) $ids[150]);
+    }
+
+    public function test_initial_history_ignores_own_deleted_and_blocked_messages_and_falls_back_to_recent(): void
+    {
+        $room = $this->room();
+        $this->message($room, 'alice');
+        $deleted = $this->message($room, 'bob');
+        ChatDatabase::connection()->table('chat_messages')->where('id', $deleted)->update(['deleted_at' => now()]);
+        $this->message($room, 'blocked');
+        ChatDatabase::connection()->table('chat_blocks')->insert(['user_id' => 'alice', 'blocked_user_id' => 'blocked']);
+        $url = "/api/v4/chat/rooms/$room/messages?".http_build_query($this->identity(['initial' => 1]));
+        $this->getJson($url)->assertOk()->assertJsonPath('data.first_unread_id', null)
+            ->assertJsonPath('data.initial_after', null)->assertJsonCount(2, 'data.messages');
+        $this->getJson($url.'&after=0')->assertUnprocessable();
+        $this->getJson($url.'&before=1')->assertUnprocessable();
+    }
+
     public function test_banned_viewer_cannot_inspect_counts_or_advance_reads(): void
     {
         $room = $this->room();

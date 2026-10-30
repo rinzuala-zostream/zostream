@@ -1,5 +1,42 @@
 # Deploy mobile chat
 
+## Chat action error dialogs — 30 October
+
+Rebuild Android and iOS for the updated error presentation. Failed sends, room
+opening, initial history loading, history pagination, watch-session joins and
+block/report actions show a titled notice with the server's explanation. Failed
+sends preserve the draft and request ID; Android offers Retry/Cancel, and iOS
+keeps the Send retry control available after dismissing the notice. Existing
+invitation dialogs continue handling invitation errors.
+
+Connection status stays in the header. Periodic reconciliation failures retain
+the current transcript and retry in the background without repeated modal
+notices. Closing chat or switching rooms dismisses its pending error notice.
+No backend API or database change is required for this presentation update.
+
+## Initial message loading — 30 October
+
+Deploy the updated backend before rebuilding Android and iOS (including the local
+ZoAnalytics Swift package). Opening a room now fetches
+`GET /api/v4/chat/rooms/{room}/messages?initial=1`: one response supplies the first
+unread position and its history page. It avoids waiting for two full-account
+unread summaries before loading messages. Only unsent read progress for the
+selected room is flushed first, when present. Badge refreshes continue separately.
+
+The response adds nullable string fields `first_unread_id` and `initial_after`.
+When unread messages exist, history starts just before the oldest eligible unread
+message and is ordered ascending; `has_more` indicates newer pages. Otherwise it
+returns the usual recent page and `has_more` indicates older history. `initial=1`
+cannot be combined with `before` or `after`. Authorization, blocks, retention and
+deleted-message rules still apply. Android loads room-list, block-list and watch
+metadata after initial history so they do not queue ahead of the transcript.
+
+No database migration or Reverb protocol change is required. Older app builds
+continue using the previous messages endpoint behavior. Retest cold opening with
+three messages, older unread history exceeding one page, a read/reopen cycle,
+cached tab switching and reconnect recovery. Actual VPS/network latency still
+needs device measurement; local tests verify ordering and correctness.
+
 ## When both apps stay on Reconnecting
 
 Message history and sending use HTTPS independently of the live WebSocket. If

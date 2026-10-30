@@ -530,11 +530,29 @@ final class ChatController extends Controller
     public function messages(Request $r, int $room)
     {
         $this->chat->room($r, $room);
-        $v = $r->validate(['before' => ['nullable', 'integer', 'min:1', Rule::prohibitedIf($r->filled('after'))], 'after' => 'nullable|integer|min:0']);
+        $v = $r->validate([
+            'initial' => 'sometimes|boolean',
+            'before' => ['nullable', 'integer', 'min:1', Rule::prohibitedIf($r->filled('after') || $r->boolean('initial'))],
+            'after' => ['nullable', 'integer', 'min:0', Rule::prohibitedIf($r->boolean('initial'))],
+        ]);
         $limit = config('chat.page_size');
         $blocked = $this->chat->blocked((string) $r->input('auth_user_id'));
         $after = $v['after'] ?? null;
         $before = $v['before'] ?? null;
+        $initial = [];
+        if ($v['initial'] ?? false) {
+            // Opening a room needs only this room's read cursor, not two full
+            // unread summaries covering every room before fetching messages.
+            $uid = (string) $r->input('auth_user_id');
+            $readThrough = ChatDatabase::connection()->table('chat_room_reads')
+                ->where('user_id', $uid)->where('room_id', $room)->value('last_read_message_id') ?? 0;
+            $firstUnread = ChatDatabase::connection()->table('chat_messages')->where('room_id', $room)
+                ->where('id', '>', $readThrough)->where('user_id', '!=', $uid)->whereNotIn('user_id', $blocked)
+                ->whereNull('deleted_at')->where('created_at', '>=', now()->subDays(config('chat.retention_days')))->min('id');
+            $after = $firstUnread === null ? null : max(0, (int) $firstUnread - 1);
+            $initial = ['first_unread_id' => $firstUnread === null ? null : (string) $firstUnread,
+                'initial_after' => $after === null ? null : (string) $after];
+        }
         // Live delta reads must see committed rows even if an in-flight cache
         // loader repopulated the recent snapshot around a message commit.
         $recent = $after === null && $before === null ? $this->chat->recent($room) : [];
@@ -557,7 +575,7 @@ final class ChatController extends Controller
         }
 
         $rows = app(\App\Support\Chat\PrivateWatchService::class)->hydrate($rows);
-        return V4Response::success(['messages' => app(\App\Support\Chat\RoomInvitationService::class)->hydrate($rows), 'has_more' => $hasMore]);
+        return V4Response::success(['messages' => app(\App\Support\Chat\RoomInvitationService::class)->hydrate($rows), 'has_more' => $hasMore] + $initial);
     }
 
     public function send(Request $r, int $room)

@@ -19,6 +19,27 @@ private final class ChatURLProtocol: URLProtocol {
 
 final class ChatClientTests: XCTestCase {
     @MainActor
+    func testInitialHistoryRequestsUnreadPositionAndMessagesTogether() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [ChatURLProtocol.self]
+        ChatURLProtocol.handle = { request in
+            XCTAssertEqual(request.url?.path, "/api/v4/chat/rooms/1/messages")
+            XCTAssertEqual(request.url?.query, "initial=1")
+            return (200, #"{"success":true,"data":{"messages":[],"has_more":false,"first_unread_id":"9","initial_after":"8"}}"#)
+        }
+        let client = ZoChatClient(baseURL: URL(string: "https://example.test")!, version: "test", credentials: {
+            AnalyticsCredentials(accessToken: "token", deviceToken: "device", ownerKey: "alice")
+        }, session: URLSession(configuration: configuration))
+        defer { client.close() }
+        let page = try await client.history(roomId: "1", initial: true)
+        XCTAssertEqual(page.first_unread_id, "9")
+        XCTAssertEqual(page.initial_after, "8")
+        let legacy = try JSONDecoder().decode(ChatPage.self, from: Data(#"{"messages":[],"has_more":false}"#.utf8))
+        XCTAssertNil(legacy.first_unread_id)
+        XCTAssertNil(legacy.initial_after)
+    }
+
+    @MainActor
     func testDisconnectedTranscriptRecoversWithoutReopeningAndStopsOnClose() async throws {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [ChatURLProtocol.self]
