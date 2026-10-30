@@ -1211,9 +1211,9 @@ class ChatApiTest extends TestCase
         $page = $this->getJson("/api/v4/chat/rooms/$room/messages?".http_build_query($this->identity(['after' => 0])))
             ->assertOk()->assertJsonPath('data.has_more', true)->json('data.messages');
         $this->assertSame((string) $ids[0], $page[0]['id']);
-        $this->assertCount(50, $page);
-        $this->postJson("/api/v4/chat/rooms/$room/read", $this->identity(['message_id' => $ids[49]]))->assertOk();
-        $this->unread()->assertJsonPath('data.total_unread', 105)->assertJsonPath('data.rooms.0.first_unread_id', (string) $ids[50]);
+        $this->assertCount(20, $page);
+        $this->postJson("/api/v4/chat/rooms/$room/read", $this->identity(['message_id' => $ids[19]]))->assertOk();
+        $this->unread()->assertJsonPath('data.total_unread', 135)->assertJsonPath('data.rooms.0.first_unread_id', (string) $ids[20]);
     }
 
     public function test_initial_history_returns_small_transcript_and_its_unread_cursor_in_one_response(): void
@@ -1234,7 +1234,7 @@ class ChatApiTest extends TestCase
         $ids = [];
         for ($i = 0; $i < 155; $i++) { $ids[] = $this->message($room, 'bob'); }
         $url = "/api/v4/chat/rooms/$room/messages?".http_build_query($this->identity(['initial' => 1]));
-        $this->getJson($url)->assertOk()->assertJsonCount(50, 'data.messages')->assertJsonPath('data.has_more', true)
+        $this->getJson($url)->assertOk()->assertJsonCount(20, 'data.messages')->assertJsonPath('data.has_more', true)
             ->assertJsonPath('data.messages.0.id', (string) $ids[0])->assertJsonPath('data.first_unread_id', (string) $ids[0]);
         $this->postJson("/api/v4/chat/rooms/$room/read", $this->identity(['message_id' => $ids[149]]))->assertOk();
         $this->getJson($url)->assertOk()->assertJsonCount(5, 'data.messages')->assertJsonPath('data.has_more', false)
@@ -1286,13 +1286,15 @@ class ChatApiTest extends TestCase
         }
         $url = "/api/v4/chat/rooms/$room/messages";
         $latest = $this->getJson($url.'?'.http_build_query($this->identity()))->assertOk()->json('data');
-        $this->assertCount(50, $latest['messages']);
+        $this->assertCount(20, $latest['messages']);
         $this->assertTrue($latest['has_more']);
-        $this->assertSame((string) $ids[105], $latest['messages'][0]['id']);
-        $older = $this->getJson($url.'?'.http_build_query($this->identity(['before' => $ids[105]])))->assertOk()->json('data.messages');
-        $this->assertSame((string) $ids[55], $older[0]['id']);
+        $this->assertSame((string) $ids[135], $latest['messages'][0]['id']);
+        $older = $this->getJson($url.'?'.http_build_query($this->identity(['before' => $ids[135]])))->assertOk()->json('data.messages');
+        $this->assertCount(20, $older);
+        $this->assertSame((string) $ids[115], $older[0]['id']);
         $catchup = $this->getJson($url.'?'.http_build_query($this->identity(['after' => $ids[0]])))->assertOk()->json('data');
         $this->assertSame((string) $ids[1], $catchup['messages'][0]['id']);
+        $this->assertCount(20, $catchup['messages']);
         $this->assertTrue($catchup['has_more']);
     }
 
