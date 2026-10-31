@@ -59,21 +59,36 @@ final class ChatInteractions
     {
         $chat = app(ChatService::class);
         $info = $chat->room($r, $room, $active !== null);
-        abort_unless($info->type === 'invite', 422, 'Typing indicators are only available in private rooms.');
         $uid = (string) $r->input('auth_user_id');
-        $members = ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $room)->where('status', 'accepted')
-            ->pluck('invitee_user_id')->push(ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $room)->value('host_user_id'))->unique();
         $cache = Cache::store(config('chat.cache_store'));
-        $key = fn ($id) => 'chat:typing:'.$room.':'.hash('sha256', $id);
+        $key = 'chat:typists:'.$room;
         if ($active !== null) {
-            if ($active) {
-                $name = DB::table('user')->where('uid', $uid)->value('name') ?: 'Someone';
-                $cache->put($key($uid), ['user_id' => $uid, 'name' => mb_substr($name, 0, 100)], 6);
-            } else { $cache->forget($key($uid)); }
+            // Keep a bounded room index so public rooms need no membership scan.
+            // Serialize updates: two simultaneous typists must not overwrite one another.
+            $cache->lock($key.':lock', 3)->block(1, function () use ($cache, $key, $active, $uid): void {
+                $users = array_filter($cache->get($key, []), fn ($user) => $user['expires_at'] > now()->timestamp);
+                $userKey = hash('sha256', $uid);
+                unset($users[$userKey]);
+                if ($active) {
+                    $name = DB::table('user')->where('uid', $uid)->value('name') ?: 'Viewer';
+                    $users[$userKey] = ['user_id' => $uid, 'name' => mb_substr(trim($name), 0, 100), 'expires_at' => now()->timestamp + 6];
+                }
+                $cache->put($key, array_slice($users, -20, null, true), 6);
+            });
             $chat->outbox($r, $room, 'typing', null, null);
         }
-        $blocked = $chat->blocked($uid);
-        $eligible = $members->reject(fn ($id) => $id === $uid || in_array($id, $blocked, true));
-        return array_values(array_filter($cache->many($eligible->map($key)->all())));
+        $blocked = ChatDatabase::connection()->table('chat_blocks')
+            ->where('user_id', $uid)->orWhere('blocked_user_id', $uid)->get()
+            ->map(fn ($block) => (string) ($block->user_id === $uid ? $block->blocked_user_id : $block->user_id))->all();
+        $members = null;
+        if ($info->type === 'invite') {
+            $members = ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $room)->where('status', 'accepted')
+                ->pluck('invitee_user_id')->push(ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $room)->value('host_user_id'))
+                ->map(fn ($id) => (string) $id)->all();
+        }
+        $users = array_filter($cache->get($key, []), fn ($user) => $user['expires_at'] > now()->timestamp
+            && $user['user_id'] !== $uid && ! in_array($user['user_id'], $blocked, true)
+            && ($members === null || in_array($user['user_id'], $members, true)));
+        return array_values(array_map(fn ($user) => ['user_id' => $user['user_id'], 'name' => $user['name']], $users));
     }
 }

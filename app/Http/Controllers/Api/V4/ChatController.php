@@ -634,8 +634,9 @@ final class ChatController extends Controller
                     ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $room)->update(['idle_expires_at' => now()->addHour()]);
                 }
                 $this->chat->outbox($r, $room, 'created', $m->id, 'chat_message_sent');
+                $replyRecipient = app(\App\Support\Chat\ChatInteractionNotifications::class)->reply($m);
                 if ($roomInfo->type === 'invite') {
-                    app(\App\Support\Chat\ChatMessageNotifications::class)->queue($m, $inviteRoom);
+                    app(\App\Support\Chat\ChatMessageNotifications::class)->queue($m, $inviteRoom, $replyRecipient);
                 }
             }
 

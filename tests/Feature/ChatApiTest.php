@@ -72,6 +72,159 @@ class ChatApiTest extends TestCase
         $this->assertSame(4, ChatDatabase::connection()->table('chat_watch_participants')->where('session_id', $session)->count());
     }
 
+    public function test_reaction_push_is_targeted_deduplicated_and_uses_the_push_lane(): void
+    {
+        $room = $this->room();
+        DB::table('user')->insert(['uid' => 'bob', 'name' => 'Bob', 'token' => 'bob-token']);
+        $id = $this->message($room, 'bob');
+        $url = "/api/v4/chat/rooms/$room/messages/$id/reactions";
+        foreach ([true, true, false, true] as $active) {
+            $this->postJson($url, $this->identity(['emoji' => '❤️', 'active' => $active]))->assertOk();
+        }
+        $this->assertSame(1, ChatDatabase::connection()->table('chat_outbox')->where('kind', 'interaction_push')->count());
+        $row = ChatDatabase::connection()->table('chat_outbox')->where('kind', 'interaction_push')->first();
+        $this->assertSame('bob', $row->recipient_user_id);
+        $fcm = \Mockery::mock(\App\Http\Controllers\FCMNotificationController::class);
+        $fcm->shouldReceive('sendToToken')->once()->with('bob-token', 'Global Chat · Reaction',
+            'Alice reacted ❤️ to your message.', '', 'chat_activity', \Mockery::on(fn ($p) =>
+                $p['room_id'] === $room && $p['message_id'] === (string) $id && $p['room_type'] === 'global'))
+            ->andReturn(['success' => true]);
+        $this->app->instance(\App\Http\Controllers\FCMNotificationController::class, $fcm);
+        Http::fake();
+        $this->artisan('chat:deliver', ['--once' => true, '--lane' => 'realtime'])->assertSuccessful();
+        $this->assertNull(ChatDatabase::connection()->table('chat_outbox')->find($row->id)->delivered_at);
+        $this->artisan('chat:deliver', ['--once' => true, '--lane' => 'push'])->assertSuccessful();
+        $this->assertNotNull(ChatDatabase::connection()->table('chat_outbox')->find($row->id)->delivered_at);
+    }
+
+    public function test_private_reply_push_replaces_generic_push_and_retry_does_not_duplicate(): void
+    {
+        $room = $this->createPrivateRoom();
+        ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
+        DB::table('user')->where('uid', 'bob')->update(['token' => 'bob-token']);
+        $parent = $this->message($room, 'bob');
+        $payload = $this->identity(['body' => 'Secret spoiler', 'spoiler' => true, 'reply_to_id' => $parent, 'request_id' => (string) Str::uuid()]);
+        $sent = $this->postJson("/api/v4/chat/rooms/$room/messages", $payload)->assertCreated();
+        $this->postJson("/api/v4/chat/rooms/$room/messages", $payload)->assertOk();
+        $this->assertSame(0, ChatDatabase::connection()->table('chat_outbox')->where('kind', 'message_push')->count());
+        $this->assertSame(1, ChatDatabase::connection()->table('chat_outbox')->where('kind', 'interaction_push')->count());
+        $fcm = \Mockery::mock(\App\Http\Controllers\FCMNotificationController::class);
+        $fcm->shouldReceive('sendToToken')->once()->with('bob-token', 'Friends · Reply', 'Alice replied to your message.', '',
+            'chat_message', \Mockery::on(fn ($p) => $p['message_id'] === $sent->json('data.id') && $p['activity'] === 'reply'))
+            ->andReturn(['success' => true]);
+        $this->app->instance(\App\Http\Controllers\FCMNotificationController::class, $fcm);
+        $this->artisan('chat:deliver', ['--once' => true, '--lane' => 'push'])->assertSuccessful();
+    }
+
+    public function test_self_reactions_and_self_replies_do_not_queue_push(): void
+    {
+        $room = $this->room();
+        $id = $this->message($room);
+        $this->postJson("/api/v4/chat/rooms/$room/messages/$id/reactions", $this->identity(['emoji' => '🔥', 'active' => true]))->assertOk();
+        $this->postJson("/api/v4/chat/rooms/$room/messages", $this->identity([
+            'body' => 'My reply', 'reply_to_id' => $id, 'request_id' => (string) Str::uuid(),
+        ]))->assertCreated();
+        $this->assertSame(0, ChatDatabase::connection()->table('chat_outbox')->where('kind', 'interaction_push')->count());
+    }
+
+    public function test_interaction_push_rechecks_visibility_blocks_deletion_removal_and_expiry(): void
+    {
+        $room = $this->room();
+        DB::table('user')->insert(['uid' => 'bob', 'name' => 'Bob', 'token' => 'bob-token']);
+        $id = $this->message($room, 'bob');
+        $url = "/api/v4/chat/rooms/$room/messages/$id/reactions";
+        $this->postJson($url, $this->identity(['emoji' => '🔥', 'active' => true]))->assertOk();
+        $db = ChatDatabase::connection();
+        $row = $db->table('chat_outbox')->where('kind', 'interaction_push')->first();
+        $service = app(\App\Support\Chat\ChatInteractionNotifications::class);
+        $fcm = \Mockery::mock(\App\Http\Controllers\FCMNotificationController::class);
+        $fcm->shouldNotReceive('sendToToken');
+        $this->app->instance(\App\Http\Controllers\FCMNotificationController::class, $fcm);
+        $this->postJson("/api/v4/chat/rooms/$room/heartbeat", ['auth_user_id' => 'bob', 'auth_device_id' => 'bob-device',
+            'visible' => true, 'visibility_sequence' => 1])->assertOk();
+        $service->deliver($row);
+        $this->postJson("/api/v4/chat/rooms/$room/heartbeat", ['auth_user_id' => 'bob', 'auth_device_id' => 'bob-device',
+            'visible' => false, 'visibility_sequence' => 2])->assertOk();
+        foreach ([['user_id' => 'bob', 'blocked_user_id' => 'alice'], ['user_id' => 'alice', 'blocked_user_id' => 'bob']] as $block) {
+            $db->table('chat_blocks')->insert($block); $service->deliver($row); $db->table('chat_blocks')->delete();
+        }
+        $db->table('chat_messages')->where('id', $id)->update(['deleted_at' => now()]);
+        $service->deliver($row);
+        $db->table('chat_messages')->where('id', $id)->update(['deleted_at' => null]);
+        $this->postJson($url, $this->identity(['emoji' => '🔥', 'active' => false]))->assertOk();
+        $service->deliver($row);
+        $this->postJson($url, $this->identity(['emoji' => '🔥', 'active' => true]))->assertOk();
+        $db->table('chat_rooms')->where('id', $room)->update(['closed' => true]); $service->deliver($row);
+        $db->table('chat_rooms')->where('id', $room)->update(['closed' => false]);
+        $this->travel(6)->minutes(); $service->deliver($row);
+    }
+
+    public function test_content_interaction_notifications_resolve_movie_and_episode_destinations(): void
+    {
+        $this->privateWatchFixture();
+        DB::table('user')->where('uid', 'bob')->update(['token' => 'bob-token']);
+        Schema::create('seasons', function (Blueprint $t) { $t->string('id'); $t->string('movie_id'); });
+        Schema::create('episodes', function (Blueprint $t) { $t->string('id'); $t->string('num'); $t->string('season_id'); });
+        DB::table('seasons')->insert(['id' => 'season-a', 'movie_id' => '101']);
+        DB::table('episodes')->insert(['id' => 'episode-a', 'num' => '1', 'season_id' => 'season-a']);
+        $fcm = \Mockery::mock(\App\Http\Controllers\FCMNotificationController::class);
+        foreach (['movie' => 'film-a', 'episode' => 'episode-a'] as $type => $content) {
+            $room = ChatDatabase::connection()->table('chat_rooms')->insertGetId([
+                'room_key' => $type.':'.$content, 'type' => $type, 'content_id' => $content, 'created_at' => now(), 'updated_at' => now(),
+            ]);
+            $id = $this->message((string) $room, 'bob');
+            ChatDatabase::connection()->table('chat_reactions')->insert(['message_id' => $id, 'user_id' => 'alice', 'emoji' => '🔥']);
+            app(\App\Support\Chat\ChatInteractionNotifications::class)->reaction(ChatDatabase::connection()->table('chat_messages')->find($id), 'alice', '🔥');
+            $fcm->shouldReceive('sendToToken')->once()->with('bob-token', ($type === 'movie' ? 'Film A' : 'Episode Chat').' · Reaction',
+                'Alice reacted 🔥 to your message.', '', 'chat_activity', \Mockery::on(fn ($p) =>
+                    $p['room_type'] === $type && $p['watch_content_id'] === 'film-a'))->andReturn(['success' => true]);
+        }
+        $this->app->instance(\App\Http\Controllers\FCMNotificationController::class, $fcm);
+        $this->artisan('chat:deliver', ['--once' => true, '--lane' => 'push'])->assertSuccessful();
+    }
+
+    public function test_reply_push_rechecks_read_parent_and_private_membership(): void
+    {
+        $room = $this->createPrivateRoom();
+        $db = ChatDatabase::connection();
+        $db->table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
+        DB::table('user')->where('uid', 'bob')->update(['token' => 'bob-token']);
+        $parent = $this->message($room, 'bob');
+        $reply = $this->postJson("/api/v4/chat/rooms/$room/messages", $this->identity([
+            'body' => 'Reply', 'reply_to_id' => $parent, 'request_id' => (string) Str::uuid(),
+        ]))->assertCreated()->json('data.id');
+        $row = $db->table('chat_outbox')->where('kind', 'interaction_push')->first();
+        $service = app(\App\Support\Chat\ChatInteractionNotifications::class);
+        $fcm = \Mockery::mock(\App\Http\Controllers\FCMNotificationController::class);
+        $fcm->shouldNotReceive('sendToToken');
+        $this->app->instance(\App\Http\Controllers\FCMNotificationController::class, $fcm);
+        $db->table('chat_room_reads')->insert(['room_id' => $room, 'user_id' => 'bob', 'last_read_message_id' => $reply]);
+        $service->deliver($row); $db->table('chat_room_reads')->delete();
+        $db->table('chat_messages')->where('id', $parent)->update(['deleted_at' => now()]);
+        $service->deliver($row); $db->table('chat_messages')->where('id', $parent)->update(['deleted_at' => null]);
+        $db->table('chat_room_invites')->where('room_id', $room)->update(['status' => 'declined']);
+        $service->deliver($row);
+    }
+
+    public function test_interaction_push_failures_retry_without_realtime_broadcasts(): void
+    {
+        $room = $this->room();
+        DB::table('user')->insert(['uid' => 'bob', 'name' => 'Bob', 'token' => 'bob-token']);
+        $id = $this->message($room, 'bob');
+        $this->postJson("/api/v4/chat/rooms/$room/messages/$id/reactions", $this->identity(['emoji' => '👏', 'active' => true]))->assertOk();
+        $fcm = \Mockery::mock(\App\Http\Controllers\FCMNotificationController::class);
+        $fcm->shouldReceive('sendToToken')->twice()->andReturn(['success' => false], ['success' => true]);
+        $this->app->instance(\App\Http\Controllers\FCMNotificationController::class, $fcm);
+        Http::fake();
+        $this->artisan('chat:deliver', ['--once' => true, '--lane' => 'push'])->assertSuccessful();
+        $row = ChatDatabase::connection()->table('chat_outbox')->where('kind', 'interaction_push')->first();
+        $this->assertSame(1, $row->attempts); $this->assertNull($row->delivered_at);
+        $this->travel(6)->seconds();
+        $this->artisan('chat:deliver', ['--once' => true, '--lane' => 'push'])->assertSuccessful();
+        $this->assertNotNull(ChatDatabase::connection()->table('chat_outbox')->find($row->id)->delivered_at);
+        Http::assertNothingSent();
+    }
+
     public function test_private_message_push_is_durable_and_request_retries_do_not_duplicate_it(): void
     {
         $room = $this->createPrivateRoom();
@@ -565,7 +718,58 @@ class ChatApiTest extends TestCase
         $this->getJson($url.'?auth_user_id=bob&auth_device_id=b')->assertOk()->assertJsonCount(0, 'data.users');
         $this->assertSame(0, ChatDatabase::connection()->table('chat_messages')->count());
         $global = $this->room();
-        $this->postJson("/api/v4/chat/rooms/$global/typing", $this->identity(['active' => true]))->assertUnprocessable();
+        $this->postJson("/api/v4/chat/rooms/$global/typing", $this->identity(['active' => true]))->assertOk();
+    }
+
+    public function test_public_typing_lists_multiple_users_and_hides_self_blocks_and_other_rooms(): void
+    {
+        $room = $this->room();
+        DB::table('user')->insert([['uid' => 'bob', 'name' => 'Bob'], ['uid' => 'carol', 'name' => 'Carol']]);
+        $url = "/api/v4/chat/rooms/$room/typing";
+        foreach (['alice', 'bob', 'carol'] as $user) {
+            $this->postJson($url, ['auth_user_id' => $user, 'auth_device_id' => $user.'-device', 'active' => true])->assertOk();
+        }
+        $this->getJson($url.'?auth_user_id=alice')->assertOk()->assertJsonCount(2, 'data.users')
+            ->assertJsonPath('data.users.0.user_id', 'bob')->assertJsonPath('data.users.1.name', 'Carol');
+        ChatDatabase::connection()->table('chat_blocks')->insert(['user_id' => 'carol', 'blocked_user_id' => 'alice']);
+        $this->getJson($url.'?auth_user_id=alice')->assertOk()->assertJsonCount(1, 'data.users')->assertJsonPath('data.users.0.name', 'Bob');
+        $this->postJson($url, ['auth_user_id' => 'bob', 'active' => false])->assertOk();
+        $this->getJson($url.'?auth_user_id=alice')->assertOk()->assertJsonCount(0, 'data.users');
+        $private = $this->createPrivateRoom();
+        $this->getJson("/api/v4/chat/rooms/$private/typing?auth_user_id=alice")->assertOk()->assertJsonCount(0, 'data.users');
+        $this->assertSame(0, ChatDatabase::connection()->table('chat_messages')->count());
+    }
+
+    public function test_typing_signal_is_published_over_websocket_without_a_message_or_push(): void
+    {
+        $room = $this->room();
+        $this->postJson("/api/v4/chat/rooms/$room/typing", $this->identity(['active' => true]))->assertOk();
+        Http::fake();
+        $this->artisan('chat:deliver', ['--once' => true, '--lane' => 'realtime'])->assertSuccessful();
+        Http::assertSent(function ($request) use ($room) {
+            $body = json_decode($request->body(), true);
+            $event = json_decode($body['data'] ?? '{}', true);
+            return ($body['name'] ?? '') === 'chat.changed' && ($event['kind'] ?? '') === 'typing'
+                && in_array(ChatChannels::leased('private-chat.'.$room), $body['channels'] ?? [], true);
+        });
+        $this->assertSame(0, ChatDatabase::connection()->table('chat_messages')->count());
+        $this->assertSame(0, ChatDatabase::connection()->table('chat_outbox')->whereIn('kind', ['message_push', 'interaction_push'])->count());
+    }
+
+    public function test_movie_and_episode_typing_require_current_matching_playback(): void
+    {
+        $this->liveCreatorStream('movie', 'film-a');
+        $movie = $this->withHeaders(['X-Playback-Token' => 'play-a'])->postJson('/api/v4/chat/rooms/join',
+            $this->identity(['type' => 'movie', 'content_id' => 'film-a']))->assertOk()->json('data.room_id');
+        $this->postJson("/api/v4/chat/rooms/$movie/typing", $this->identity(['active' => true]))->assertOk();
+        DB::table('n_active_streams')->update(['status' => 'stopped']);
+        Cache::flush();
+        $this->getJson("/api/v4/chat/rooms/$movie/typing?auth_user_id=alice&auth_device_id=device-a")->assertForbidden();
+        DB::table('n_active_streams')->update(['status' => 'active', 'content_type' => 'episode', 'content_key' => 'ep-a']);
+        Cache::flush();
+        $episode = $this->postJson('/api/v4/chat/rooms/join', $this->identity(['type' => 'episode', 'content_id' => 'ep-a']))
+            ->assertOk()->json('data.room_id');
+        $this->postJson("/api/v4/chat/rooms/$episode/typing", $this->identity(['active' => true]))->assertOk();
     }
 
     public function test_movie_moments_require_playback_and_matching_room_and_round_trip(): void
@@ -624,6 +828,7 @@ class ChatApiTest extends TestCase
         (require database_path('migrations/chat/2026_10_28_000002_add_shared_room_invitation_messages.php'))->up();
         (require database_path('migrations/chat/2026_10_28_000003_add_chat_delivery_claims.php'))->up();
         (require database_path('migrations/chat/2026_10_30_000001_add_chat_interactions.php'))->up();
+        (require database_path('migrations/chat/2026_10_31_000001_add_chat_interaction_notifications.php'))->up();
         Schema::create('user', function (Blueprint $t) {
             $t->id();
             $t->string('uid');
@@ -677,7 +882,7 @@ class ChatApiTest extends TestCase
     {
         ChatDatabase::schema()->dropAllTables();
         $this->artisan('chat:migrate', ['--force' => true])->assertSuccessful();
-        $this->assertSame(14, ChatDatabase::connection()->table('migrations')->count());
+        $this->assertSame(15, ChatDatabase::connection()->table('migrations')->count());
         $this->assertFalse(Schema::hasTable('migrations'));
         $this->assertSame('chat_testing', DB::getDefaultConnection());
         $this->send($this->room())->assertCreated();

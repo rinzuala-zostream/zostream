@@ -27,7 +27,10 @@ Android and iOS both need rebuilding. The iOS project includes the new
 
 ## Behavior and API
 
-* Long press a message to reply or choose 😂 ❤️ 🔥 😢 👏 😮. Tap a reaction count
+* Long press a message to reply or choose 😂 ❤️ 🔥 😢 👏 😮 from a separate
+  horizontal Reactions section. Android shows the emoji row immediately alongside
+  the message actions, with no intermediate React menu. Selected reactions are
+  highlighted and can be removed directly. Tap a reaction count
   to add/remove your reaction. Desired state writes are idempotent per
   message/user/emoji; moderation, room access and block rules apply.
 * `POST /rooms/{room}/messages` accepts optional `reply_to_id` and
@@ -42,7 +45,12 @@ Android and iOS both need rebuilding. The iOS project includes the new
   `POST .../reactions` accepts `{emoji, active}`.
 * `POST /rooms/{room}/typing` accepts `{active}`. `GET .../typing` returns eligible
   other typists. Indicators are private-room only, use six-second cache expiry,
-  and are refreshed on realtime events instead of viewer polling. Clients send
+  and are refreshed on realtime events instead of viewer polling. The indicator
+  appears as an incoming message-style bubble with a username/avatar and three
+  animated dots at the bottom of the transcript. It is not a history message or
+  read-receipt target, and remains visible independently of reply/moment drafts.
+  Animation stops when hidden and respects reduced-motion/system animation settings.
+  Clients send
   at most one active heartbeat every three seconds while typing, plus stop events.
 * Timestamp taps seek only in a matching active player. Watch Together guests
   keep following their host, so independent moment seeks are disabled for guests.

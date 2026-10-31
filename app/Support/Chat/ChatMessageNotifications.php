@@ -7,12 +7,12 @@ use Illuminate\Support\Facades\DB;
 
 final class ChatMessageNotifications
 {
-    public function queue(object $message, object $room): void
+    public function queue(object $message, object $room, ?string $replyRecipient = null): void
     {
         $members = ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $message->room_id)
             ->where('status', 'accepted')->pluck('invitee_user_id')->push($room->host_user_id)->unique();
         foreach ($members as $user) {
-            if ((string) $user === (string) $message->user_id) { continue; }
+            if ((string) $user === (string) $message->user_id || (string) $user === $replyRecipient) { continue; }
             ChatDatabase::connection()->table('chat_outbox')->insert(['room_id' => $message->room_id, 'kind' => 'message_push',
                 'message_id' => $message->id, 'recipient_user_id' => $user, 'created_at' => now(), 'updated_at' => now()]);
         }

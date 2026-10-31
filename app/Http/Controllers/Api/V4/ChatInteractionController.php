@@ -27,7 +27,12 @@ final class ChatInteractionController extends Controller
             $key = ['message_id' => $message, 'user_id' => (string) $r->input('auth_user_id'), 'emoji' => $v['emoji']];
             $changed = $v['active'] ? ChatDatabase::connection()->table('chat_reactions')->insertOrIgnore($key)
                 : ChatDatabase::connection()->table('chat_reactions')->where($key)->delete();
-            if ($changed) { $chat->outbox($r, $room, 'reactions', $message, null); }
+            if ($changed) {
+                $chat->outbox($r, $room, 'reactions', $message, null);
+                if ($v['active']) {
+                    app(\App\Support\Chat\ChatInteractionNotifications::class)->reaction($target, $key['user_id'], $v['emoji']);
+                }
+            }
         });
         return V4Response::success($interactions->decorate([$chat->message($m)], (string) $r->input('auth_user_id'))[0]);
     }

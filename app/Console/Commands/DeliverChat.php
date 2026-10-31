@@ -32,8 +32,8 @@ final class DeliverChat extends Command
             $pending = ChatDatabase::connection()->table('chat_outbox')->whereNull('delivered_at')
                 ->where(fn ($q) => $q->whereNull('claimed_until')->orWhere('claimed_until', '<=', now()))
                 ->where(fn ($q) => $q->whereNull('available_at')->orWhere('available_at', '<=', now()));
-            if ($lane === 'push') { $pending->where('kind', 'message_push'); }
-            if ($lane === 'realtime') { $pending->where('kind', '!=', 'message_push'); }
+            if ($lane === 'push') { $pending->whereIn('kind', ['message_push', 'interaction_push']); }
+            if ($lane === 'realtime') { $pending->whereNotIn('kind', ['message_push', 'interaction_push']); }
             $rows = $lane === 'analytics' ? collect() : $pending->orderBy('id')->limit(100)->get();
             foreach ($rows as $row) {
                 $claim = (string) \Illuminate\Support\Str::uuid();
@@ -52,6 +52,8 @@ final class DeliverChat extends Command
                 try {
                     if ($row->kind === 'message_push') {
                         app(\App\Support\Chat\ChatMessageNotifications::class)->deliver($row);
+                    } elseif ($row->kind === 'interaction_push') {
+                        app(\App\Support\Chat\ChatInteractionNotifications::class)->deliver($row);
                     } elseif (in_array($row->kind, ['feed_created', 'feed_deleted'], true)) {
                         app(\App\Support\Chat\ChatLiveDelivery::class)->deliver($row, $renew);
                     } elseif ($row->kind !== 'reported') {
