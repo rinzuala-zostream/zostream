@@ -32,6 +32,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'auth.token' => AuthTokenMiddleware::class,
             'owner.device' => OwnerDeviceMiddleware::class,
             'admin.token' => AdminTokenMiddleware::class,
+            'admin.config-whitelist' => \App\Http\Middleware\AdminConfigWhitelistMiddleware::class,
             'nexframe.access' => EnsureNexframeAccess::class,
             'api.client' => ApiClientContext::class,
             'api.v4' => V4ResponseEnvelope::class,

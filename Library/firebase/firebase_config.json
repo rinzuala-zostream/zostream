@@ -1,0 +1,334 @@
+{
+  "config": {
+    "analytics": {
+      "enabled": false,
+      "updated_at": "2026-10-31T00:00:00.000Z"
+    },
+    "razorpay": {
+      "key_id": "rzp_live_RRhIv50U7HyiyY"
+    }
+  },
+  "official_client_configs": {
+    "android": {
+      "-P5HgskzuWL2YJCWvtB9": {
+        "api_base_url": "https://zostream.in",
+        "api_version": "4",
+        "app_identifier": "com.buannel.studio.pvt.ltd.zostream",
+        "certificate_sha256": [
+          "D4:C6:19:8D:AB:AF:B2:43:B0:D0:43:A3:C3:3A:9F:E1:71:F8:16:05:15:8C:26:7C:7D:FE:5F:66:DF:29:55:9A",
+          "24:A4:78:5B:B2:25:D7:39:2A:A4:19:E2:18:D9:E2:E7:46:1E:19:3A:27:C4:2D:8A:F8:41:8D:28:E0:D5:36:76"
+        ],
+        "enabled": true,
+        "latest_version": "36.3.6",
+        "name": "Zo Stream Android",
+        "platform": "android",
+        "updated_at": "2026-10-31T22:14:27+05:30",
+        "verification_enabled": true,
+        "verification_mode": "manual"
+      }
+    },
+    "android-tv": {
+      "-P5HpOY4fN5NUjqp3viA": {
+        "api_base_url": "https://zostream.in/api",
+        "api_version": "4",
+        "app_identifier": "com.buannel.studio.pvt.ltd.zostream",
+        "certificate_sha256": [
+          "D4:C6:19:8D:AB:AF:B2:43:B0:D0:43:A3:C3:3A:9F:E1:71:F8:16:05:15:8C:26:7C:7D:FE:5F:66:DF:29:55:9A",
+          "24:A4:78:5B:B2:25:D7:39:2A:A4:19:E2:18:D9:E2:E7:46:1E:19:3A:27:C4:2D:8A:F8:41:8D:28:E0:D5:36:76"
+        ],
+        "enabled": true,
+        "latest_version": "2029.3.7",
+        "name": "Zo Stream TV",
+        "platform": "android-tv",
+        "updated_at": "2026-10-31T22:10:34+05:30",
+        "verification_enabled": true,
+        "verification_mode": "manual"
+      }
+    },
+    "ios": {
+      "-P5Hpv6XwSJxNLEd1XM_": {
+        "api_base_url": "https://zostream.in/api",
+        "api_version": "4",
+        "app_identifier": "com.buannel.pvt.ltd.zostream.Zo-Stream",
+        "enabled": true,
+        "latest_version": "26.0.1",
+        "name": "Zo Stream iOS",
+        "platform": "ios",
+        "updated_at": "2026-10-31T22:12:52+05:30",
+        "verification_enabled": true,
+        "verification_mode": "manual"
+      }
+    }
+  },
+  "payment_features": {
+    "amazon_tv": {
+      "iap_enabled": false,
+      "updated_at": "2026-10-31T00:00:00.000Z"
+    }
+  },
+  "qr_sessions": {
+    "44r9fH32tBRvUS7ml0W211": {
+      "admin_only": true,
+      "allowed_user_ids": [
+        "7749b482-b153-4cde-a077-0789ad047cdc",
+        "LrJYLgWOBEPEpClinDZ8Upt47As1",
+        "AW7ovVnTdgWuvE1Uke7QTQ5OEQt1",
+        "756a8965-4c74-4c59-aa62-b979281278eb",
+        "N5vtjDL26EXGawQSumHuDmNMDWG2"
+      ],
+      "device_id": "web_browser",
+      "device_name": "BROWSER \u2022 Unknown Browser",
+      "device_type": "browser",
+      "expires_at": 1793464957,
+      "note": "os=Unknown OS ; browser=Unknown Browser ; model=",
+      "status": "initialized",
+      "type": "admin_login",
+      "user_id": ""
+    },
+    "4Rn7hFerRpQAJF81e1ACrW": {
+      "admin_only": true,
+      "allowed_user_ids": [
+        "7749b482-b153-4cde-a077-0789ad047cdc",
+        "32b75aa1-86fa-44be-8ae4-c1784ba7ed26"
+      ],
+      "device_id": "web_browser",
+      "device_name": "BROWSER \u2022 Unknown Browser",
+      "device_type": "browser",
+      "expires_at": 1793465979,
+      "note": "os=Unknown OS ; browser=Unknown Browser ; model=",
+      "status": "initialized",
+      "type": "admin_login",
+      "user_id": ""
+    },
+    "4RzD3tsvg5nDiMFTCBOiKB": {
+      "admin_only": true,
+      "allowed_user_ids": [
+        "7749b482-b153-4cde-a077-0789ad047cdc",
+        "LrJYLgWOBEPEpClinDZ8Upt47As1",
+        "AW7ovVnTdgWuvE1Uke7QTQ5OEQt1",
+        "756a8965-4c74-4c59-aa62-b979281278eb",
+        "N5vtjDL26EXGawQSumHuDmNMDWG2"
+      ],
+      "device_id": "web_browser",
+      "device_name": "BROWSER \u2022 Chrome 140",
+      "device_type": "browser",
+      "expires_at": 1793465549,
+      "note": "os=Linux ; browser=Chrome 140.0.0.0; model=",
+      "status": "initialized",
+      "type": "admin_login",
+      "user_id": ""
+    },
+    "DMqWnXAW92bm1NLexhPwzo": {
+      "device_id": "066556fb-7d36-4010-b2d3-505f31e6bcd0",
+      "device_name": "Android Device \u2022 Chrome 134",
+      "device_token": "066556fb-7d36-4010-b2d3-505f31e6bcd0",
+      "device_type": "browser",
+      "expires_at": 1793465888,
+      "note": "os=Android 10; browser=Chrome 134.0.0.0; model=Android Device",
+      "status": "initialized",
+      "type": "login",
+      "user_id": ""
+    },
+    "K13An0fIGnG4D1VR3F6u07": {
+      "device_id": "c0fb81f4-6731-4df0-a9d0-bf4953b8a90a",
+      "device_name": "Android Device \u2022 Chrome 156",
+      "device_token": "c0fb81f4-6731-4df0-a9d0-bf4953b8a90a",
+      "device_type": "browser",
+      "expires_at": 1793464836,
+      "note": "os=Android 10; browser=Chrome 156.0.0.0; model=Android Device",
+      "status": "initialized",
+      "type": "login",
+      "user_id": ""
+    },
+    "NasjcF1snjKAhrbUQZ5HjS": {
+      "currency": "INR",
+      "device_id": "tv-2e1d2c92b7d015a3a7c1d701",
+      "device_name": "Linux x86_64 Mozilla/5.0 (SMART-TV; Linux; Tizen 10.0) AppleWebKit/537.36 (KHTML",
+      "device_type": "tv",
+      "expires_at": 1793465343,
+      "status": "initialized",
+      "type": "login",
+      "user_id": ""
+    },
+    "UGHmjo5Ui7iPTrtFQkoRJx": {
+      "admin_only": true,
+      "allowed_user_ids": [
+        "7749b482-b153-4cde-a077-0789ad047cdc",
+        "LrJYLgWOBEPEpClinDZ8Upt47As1",
+        "AW7ovVnTdgWuvE1Uke7QTQ5OEQt1",
+        "756a8965-4c74-4c59-aa62-b979281278eb",
+        "N5vtjDL26EXGawQSumHuDmNMDWG2"
+      ],
+      "device_id": "web_browser",
+      "device_name": "Android Device \u2022 Chrome 156",
+      "device_type": "browser",
+      "expires_at": 1793465483,
+      "note": "os=Android 10; browser=Chrome 156.0.0.0; model=Android Device",
+      "status": "initialized",
+      "type": "admin_login",
+      "user_id": ""
+    },
+    "afSIYGgk8KVZOTlIZqfMBP": {
+      "device_id": "8152023f-57ca-49ef-9a85-096f21e01e03",
+      "device_name": "BROWSER \u2022 Chrome 156",
+      "device_token": "8152023f-57ca-49ef-9a85-096f21e01e03",
+      "device_type": "browser",
+      "expires_at": 1793465076,
+      "note": "os=Linux ; browser=Chrome 156.0.0.0; model=",
+      "status": "initialized",
+      "type": "login",
+      "user_id": ""
+    },
+    "cirqYZsbWXD5Gg5XYGuL7F": {
+      "device_id": "16bb3fbe-30ee-4847-923f-a8f905f35376",
+      "device_name": "Smart TV \u2022 Chrome 120",
+      "device_token": "16bb3fbe-30ee-4847-923f-a8f905f35376",
+      "device_type": "browser",
+      "expires_at": 1793465273,
+      "note": "os=Linux ; browser=Chrome 120.0.0.0; model=Smart TV",
+      "status": "initialized",
+      "type": "login",
+      "user_id": ""
+    },
+    "ebmm3fcSWpAJadyIp9FDGT": {
+      "device_id": "c0fb81f4-6731-4df0-a9d0-bf4953b8a90a",
+      "device_name": "Android Device \u2022 Chrome 156",
+      "device_token": "c0fb81f4-6731-4df0-a9d0-bf4953b8a90a",
+      "device_type": "browser",
+      "expires_at": 1793464836,
+      "note": "os=Android 10; browser=Chrome 156.0.0.0; model=Android Device",
+      "status": "initialized",
+      "type": "login",
+      "user_id": ""
+    },
+    "k0IPw2SrDlawahE2o32s97": {
+      "admin_only": true,
+      "allowed_user_ids": [
+        "7749b482-b153-4cde-a077-0789ad047cdc",
+        "32b75aa1-86fa-44be-8ae4-c1784ba7ed26"
+      ],
+      "device_id": "web_browser",
+      "device_name": "BROWSER \u2022 Unknown Browser",
+      "device_type": "browser",
+      "expires_at": 1793465316,
+      "note": "os=Unknown OS ; browser=Unknown Browser ; model=",
+      "status": "initialized",
+      "type": "admin_login",
+      "user_id": ""
+    },
+    "lb0rtLUWRSeTuKjxzLtaQa": {
+      "device_id": "a293d7df-b83b-49a9-a013-7a27908d5b31",
+      "device_name": "Android Device \u2022 Chrome 156",
+      "device_token": "a293d7df-b83b-49a9-a013-7a27908d5b31",
+      "device_type": "browser",
+      "expires_at": 1793464824,
+      "note": "os=Android 10; browser=Chrome 156.0.0.0; model=Android Device",
+      "status": "initialized",
+      "type": "login",
+      "user_id": ""
+    },
+    "mqlR5NI4xsrFXSv118xruL": {
+      "device_id": "354efd8d-8ed4-4550-9711-ab763c043a01",
+      "device_name": "BROWSER \u2022 Chrome 156",
+      "device_token": "354efd8d-8ed4-4550-9711-ab763c043a01",
+      "device_type": "browser",
+      "expires_at": 1793465132,
+      "note": "os=Linux ; browser=Chrome 156.0.0.0; model=",
+      "status": "initialized",
+      "type": "login",
+      "user_id": ""
+    },
+    "nN2x7O0H3TbJqIPYfvRWkH": {
+      "admin_only": true,
+      "allowed_user_ids": [
+        "7749b482-b153-4cde-a077-0789ad047cdc",
+        "LrJYLgWOBEPEpClinDZ8Upt47As1",
+        "AW7ovVnTdgWuvE1Uke7QTQ5OEQt1",
+        "756a8965-4c74-4c59-aa62-b979281278eb",
+        "N5vtjDL26EXGawQSumHuDmNMDWG2"
+      ],
+      "device_id": "web_browser",
+      "device_name": "Android Device \u2022 Chrome 156",
+      "device_type": "browser",
+      "expires_at": 1793465483,
+      "note": "os=Android 10; browser=Chrome 156.0.0.0; model=Android Device",
+      "status": "initialized",
+      "type": "admin_login",
+      "user_id": ""
+    },
+    "obBF9l94Jq1jQuAiQYBEg8": {
+      "device_id": "354efd8d-8ed4-4550-9711-ab763c043a01",
+      "device_name": "BROWSER \u2022 Chrome 156",
+      "device_token": "354efd8d-8ed4-4550-9711-ab763c043a01",
+      "device_type": "browser",
+      "expires_at": 1793465131,
+      "note": "os=Linux ; browser=Chrome 156.0.0.0; model=",
+      "status": "initialized",
+      "type": "login",
+      "user_id": ""
+    },
+    "tH7lpGLXUqUhbs2bCd6Hh6": {
+      "currency": "INR",
+      "device_id": "tv-2e1d2c92b7d015a3a7c1d701",
+      "device_name": "Linux x86_64 Mozilla/5.0 (SMART-TV; Linux; Tizen 10.0) AppleWebKit/537.36 (KHTML",
+      "device_type": "tv",
+      "expires_at": 1793465946,
+      "status": "initialized",
+      "type": "login",
+      "user_id": ""
+    },
+    "xr2KugaQ1gsY9AhtFn7gLD": {
+      "currency": "INR",
+      "device_id": "tv-2e1d2c92b7d015a3a7c1d701",
+      "device_name": "Linux x86_64 Mozilla/5.0 (SMART-TV; Linux; Tizen 10.0) AppleWebKit/537.36 (KHTML",
+      "device_type": "tv",
+      "expires_at": 1793465060,
+      "status": "initialized",
+      "type": "login",
+      "user_id": ""
+    }
+  },
+  "text_scroll": {
+    "created_at": 1793404800000,
+    "show": false,
+    "text": "",
+    "updated_at": 1793404800000
+  },
+  "warning": {
+    "isCancelable": true,
+    "isShow": false,
+    "isShowInLatest": false,
+    "platform": "all",
+    "txt": ""
+  },
+  "update": {
+    "enabled": false,
+    "force": false,
+    "url": "",
+    "v_code": 0
+  },
+  "ios_update": {
+    "enabled": false,
+    "force": false,
+    "url": "",
+    "v_code": 0
+  },
+  "tv_update": {
+    "enabled": false,
+    "force": false,
+    "url": "",
+    "v": 0
+  },
+  "lg_tv_update": {
+    "enabled": false,
+    "force": false,
+    "url": "",
+    "version": ""
+  },
+  "sam_tv_update": {
+    "enabled": false,
+    "force": false,
+    "url": "",
+    "version": ""
+  }
+}

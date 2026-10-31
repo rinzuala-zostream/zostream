@@ -10,7 +10,7 @@ use Illuminate\Http\Request;
 
 final class AdminAccess
 {
-    public function authenticatedAdminId(Request $request): ?string
+    public function authenticatedAdminId(Request $request, bool $whitelistOnly = false): ?string
     {
         $authorization = (string) $request->header('Authorization', '');
 
@@ -27,13 +27,28 @@ final class AdminAccess
 
         $userId = trim((string) $session->user_id);
 
-        return $userId !== '' && $this->isAdmin($userId) ? $userId : null;
+        if ($userId === '') {
+            return null;
+        }
+
+        $allowed = $whitelistOnly ? $this->isWhitelistedAdmin($userId) : $this->isAdmin($userId);
+
+        return $allowed ? $userId : null;
     }
 
     public function isAdmin(string $userId): bool
     {
         if (AdminUser::where('admin_uid', $userId)->exists()) {
             return true;
+        }
+
+        return $this->isWhitelistedAdmin($userId);
+    }
+
+    public function isWhitelistedAdmin(string $userId): bool
+    {
+        if ($userId === '') {
+            return false;
         }
 
         if (in_array($userId, config('services.admin_qr.allowed_uids', []), true)) {

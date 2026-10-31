@@ -275,7 +275,8 @@ Route::prefix('v3.0')->group(function () {
 
     // ✅ Protected routes
     Route::middleware('auth.token')->group(function () {
-        Route::put('/app-updates/{platform}', [AppUpdateController::class, 'update']);
+        Route::put('/app-updates/{platform}', [AppUpdateController::class, 'update'])
+            ->middleware('admin.config-whitelist');
 
         Route::prefix('stream')->group(function () {
             Route::post('start', [NewStreamController::class, 'start']); // Start streaming

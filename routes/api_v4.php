@@ -358,7 +358,7 @@ Route::prefix('v4')
                     });
 
                     Route::get('/analytics/config', [AdminAnalyticsController::class, 'showConfig']);
-                    Route::put('/analytics/config', [AdminAnalyticsController::class, 'updateConfig']);
+                    Route::put('/analytics/config', [AdminAnalyticsController::class, 'updateConfig'])->middleware('admin.config-whitelist');
 
                     Route::get('/home-sections', [AdminHomeSectionController::class, 'index']);
                     Route::put('/home-sections', [AdminHomeSectionController::class, 'update']);
@@ -450,7 +450,7 @@ Route::prefix('v4')
                     Route::put('/poll-options/{optionId}', [PollController::class, 'updateOption']);
                     Route::delete('/poll-options/{optionId}', [PollController::class, 'destroyOption']);
 
-                    Route::put('/app-releases/{platform}', [AppUpdateController::class, 'update']);
+                    Route::put('/app-releases/{platform}', [AppUpdateController::class, 'update'])->middleware('admin.config-whitelist');
                     Route::post('/notifications/push', [FCMNotificationController::class, 'send']);
                     Route::post('/whatsapp/send', [AdminWhatsAppController::class, 'send']);
                     Route::get('/whatsapp/settings', [AdminWhatsAppInboxController::class, 'settings']);
@@ -462,17 +462,17 @@ Route::prefix('v4')
                     Route::post('/whatsapp/conversations/{phone}/read', [AdminWhatsAppInboxController::class, 'markRead']);
                     Route::post('/whatsapp/reply', [AdminWhatsAppInboxController::class, 'reply']);
                     Route::get('/realtime/warning', [AdminRealtimeConfigController::class, 'warning']);
-                    Route::put('/realtime/warning', [AdminRealtimeConfigController::class, 'saveWarning']);
-                    Route::delete('/realtime/warning', [AdminRealtimeConfigController::class, 'deleteWarning']);
+                    Route::put('/realtime/warning', [AdminRealtimeConfigController::class, 'saveWarning'])->middleware('admin.config-whitelist');
+                    Route::delete('/realtime/warning', [AdminRealtimeConfigController::class, 'deleteWarning'])->middleware('admin.config-whitelist');
                     Route::get('/realtime/text-scroll', [AdminRealtimeConfigController::class, 'textScroll']);
-                    Route::put('/realtime/text-scroll', [AdminRealtimeConfigController::class, 'saveTextScroll']);
-                    Route::delete('/realtime/text-scroll', [AdminRealtimeConfigController::class, 'deleteTextScroll']);
+                    Route::put('/realtime/text-scroll', [AdminRealtimeConfigController::class, 'saveTextScroll'])->middleware('admin.config-whitelist');
+                    Route::delete('/realtime/text-scroll', [AdminRealtimeConfigController::class, 'deleteTextScroll'])->middleware('admin.config-whitelist');
                     Route::get('/realtime/amazon-iap', [AdminRealtimeConfigController::class, 'amazonIap']);
-                    Route::put('/realtime/amazon-iap', [AdminRealtimeConfigController::class, 'saveAmazonIap']);
+                    Route::put('/realtime/amazon-iap', [AdminRealtimeConfigController::class, 'saveAmazonIap'])->middleware('admin.config-whitelist');
                     Route::get('/official-clients', [AdminRealtimeConfigController::class, 'officialClients']);
-                    Route::post('/official-clients', [AdminRealtimeConfigController::class, 'saveOfficialClient']);
-                    Route::put('/official-clients/{id}', [AdminRealtimeConfigController::class, 'saveOfficialClient']);
-                    Route::delete('/official-clients/{id}', [AdminRealtimeConfigController::class, 'deleteOfficialClient']);
+                    Route::post('/official-clients', [AdminRealtimeConfigController::class, 'saveOfficialClient'])->middleware('admin.config-whitelist');
+                    Route::put('/official-clients/{id}', [AdminRealtimeConfigController::class, 'saveOfficialClient'])->middleware('admin.config-whitelist');
+                    Route::delete('/official-clients/{id}', [AdminRealtimeConfigController::class, 'deleteOfficialClient'])->middleware('admin.config-whitelist');
 
                     Route::get('/payments/user/{userId}', [PaymentHistoryController::class, 'getByUser']);
 

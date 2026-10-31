@@ -1,0 +1,71 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "config": {
+      "analytics": {
+        ".read": true,
+        "enabled": {
+          ".validate": "newData.isBoolean()"
+        },
+        "updated_at": {
+          ".validate": "newData.isString()"
+        }
+      },
+      "razorpay": {
+        "key_id": {
+          ".read": true
+        }
+      }
+    },
+    "warning": {
+      ".read": true
+    },
+    "text_scroll": {
+      ".read": true
+    },
+    "update": {
+      ".read": true
+    },
+    "ios_update": {
+      ".read": true
+    },
+    "tv_update": {
+      ".read": true
+    },
+    "lg_tv_update": {
+      ".read": true
+    },
+    "sam_tv_update": {
+      ".read": true
+    },
+    "official_client_configs": {
+      ".read": true
+    },
+    "payment_features": {
+      "amazon_tv": {
+        "iap_enabled": {
+          ".read": true
+        }
+      }
+    },
+    "qr_sessions": {
+      ".indexOn": ["order_id"],
+      "$token": {
+        ".read": true,
+        "amount": {
+          ".write": "data.parent().exists() && data.parent().child('type').val() === 'payment' && data.parent().child('expires_at').isNumber() && data.parent().child('expires_at').val() * 1000 > now && newData.exists()",
+          ".validate": "newData.isNumber() && newData.val() >= 0"
+        },
+        "movie_id": {
+          ".write": "data.parent().exists() && data.parent().child('type').val() === 'payment' && data.parent().child('expires_at').isNumber() && data.parent().child('expires_at').val() * 1000 > now && newData.exists()",
+          ".validate": "(newData.isString() && newData.val().length > 0) || (newData.isNumber() && newData.val() > 0)"
+        },
+        "plan_id": {
+          ".write": "data.parent().exists() && data.parent().child('type').val() === 'payment' && data.parent().child('expires_at').isNumber() && data.parent().child('expires_at').val() * 1000 > now && newData.exists()",
+          ".validate": "(newData.isString() && newData.val().length > 0) || (newData.isNumber() && newData.val() > 0)"
+        }
+      }
+    }
+  }
+}
