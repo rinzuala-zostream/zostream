@@ -20,6 +20,8 @@ class NotificationImagePayloadTest extends TestCase
         $this->assertSame(1, $message['apns']['payload']['aps']['mutable-content']);
         $this->assertSame('default', $message['apns']['payload']['aps']['sound']);
         $this->assertSame('high', $message['android']['priority']);
+        $this->assertSame('zostream_notifications', $message['android']['notification']['channel_id']);
+        $this->assertSame('PRIORITY_HIGH', $message['android']['notification']['notification_priority']);
         $this->assertSame('default', $message['android']['notification']['sound']);
         $this->assertSame('movie-123', $message['data']['key']);
     }
@@ -47,6 +49,18 @@ class NotificationImagePayloadTest extends TestCase
             $this->assertArrayNotHasKey('fcm_options', $message['apns']);
             $this->assertArrayNotHasKey('mutable-content', $message['apns']['payload']['aps']);
             $this->assertSame('episode-parent', $message['data']['key']);
+        }
+    }
+
+    public function test_chat_notifications_use_the_channels_registered_by_android(): void
+    {
+        foreach ([
+            'chat_invite' => 'chat_invitations',
+            'chat_message' => 'private_chat_messages',
+            'chat_activity' => 'private_chat_messages',
+        ] as $key => $channel) {
+            $message = $this->message('recipient-token', null, null, $key);
+            $this->assertSame($channel, $message['android']['notification']['channel_id']);
         }
     }
 

@@ -155,6 +155,12 @@ class FCMNotificationController extends Controller
             ->withAndroidConfig([
                 'priority' => 'high',
                 'notification' => [
+                    'channel_id' => match ($messageData['key'] ?? null) {
+                        'chat_invite' => 'chat_invitations',
+                        'chat_message', 'chat_activity' => 'private_chat_messages',
+                        default => 'zostream_notifications',
+                    },
+                    'notification_priority' => 'PRIORITY_HIGH',
                     'sound' => 'default',
                     'color' => '#f45342',
                 ],
