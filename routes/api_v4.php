@@ -219,6 +219,12 @@ Route::prefix('v4')
                 ->name('v4.recommendations.home');
 
             Route::prefix('account')->group(function () {
+                Route::get('/mobile-profile', [\App\Http\Controllers\Api\V4\MobileProfileController::class, 'show']);
+                Route::get('/mobile-profile/locations', [\App\Http\Controllers\Api\V4\MobileProfileController::class, 'locations']);
+                Route::get('/mobile-profile/username', [\App\Http\Controllers\Api\V4\MobileProfileController::class, 'username'])
+                    ->middleware('throttle:120,1');
+                Route::post('/mobile-profile', [\App\Http\Controllers\Api\V4\MobileProfileController::class, 'store'])
+                    ->middleware('throttle:20,1');
             Route::post('/web-session', [WebSessionController::class, 'create'])
                 ->middleware('throttle:10,1');
                 Route::get('/stats', [CustomerStatsController::class, 'show'])

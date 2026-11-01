@@ -1,0 +1,6558 @@
+{
+  "state": "Mizoram",
+  "state_lgd_code": "15",
+  "district_count": 11,
+  "village_count": 887,
+  "source": {
+    "name": "Local Government Directory (LGD), Ministry of Panchayati Raj, Government of India",
+    "official_url": "https://lgdirectory.gov.in/",
+    "distribution": "Public third-party mirror by ramSeraph/opendata; not a direct government download",
+    "mirror_url": "https://github.com/ramSeraph/opendata/releases/tag/lgd-parquet-latest",
+    "snapshot_date": "2026-11-01",
+    "download_url": "https://github.com/ramSeraph/opendata/releases/download/lgd-parquet-latest/villages.2026-11-01.f236a2a9c522cc3a.parquet",
+    "sha256": "fa6c5754a4e9aa40180e454e3f8d77c1a0ba4c6e7d12e0a2fdf0a08f629bc9f0",
+    "manifest_url": "https://github.com/ramSeraph/opendata/releases/download/lgd-parquet-latest/villages.2026-11-01.f236a2a9c522cc3a.json",
+    "scope": "Every Mizoram village record in this LGD snapshot, including Rural and Urban categories. This is a village register, not a complete list of neighbourhoods, wards, Village Councils or sub-villages.",
+    "name_policy": "Names, district assignments and categories are preserved as reported by LGD. Different LGD codes remain separate even when names match."
+  },
+  "districts": [
+    {
+      "name": "Aizawl",
+      "lgd_code": "261",
+      "village_count": 71,
+      "villages": [
+        {
+          "name": "Aibawk",
+          "lgd_code": "271236",
+          "subdistrict": "Aibawk",
+          "subdistrict_lgd_code": "1904",
+          "category": "Rural"
+        },
+        {
+          "name": "Chamring",
+          "lgd_code": "271248",
+          "subdistrict": "Aibawk",
+          "subdistrict_lgd_code": "1904",
+          "category": "Rural"
+        },
+        {
+          "name": "Chawilung",
+          "lgd_code": "271250",
+          "subdistrict": "Aibawk",
+          "subdistrict_lgd_code": "1904",
+          "category": "Rural"
+        },
+        {
+          "name": "Chhanchhuahna Khawpui",
+          "lgd_code": "271207",
+          "subdistrict": "Darlawn",
+          "subdistrict_lgd_code": "1902",
+          "category": "Rural"
+        },
+        {
+          "name": "Darlawn Chhim Veng",
+          "lgd_code": "933800",
+          "subdistrict": "Darlawn",
+          "subdistrict_lgd_code": "1902",
+          "category": "Rural"
+        },
+        {
+          "name": "Darlawn Venghlun",
+          "lgd_code": "933802",
+          "subdistrict": "Darlawn",
+          "subdistrict_lgd_code": "1902",
+          "category": "Rural"
+        },
+        {
+          "name": "Darlawn Vengpui",
+          "lgd_code": "933803",
+          "subdistrict": "Darlawn",
+          "subdistrict_lgd_code": "1902",
+          "category": "Rural"
+        },
+        {
+          "name": "Darlawng",
+          "lgd_code": "271282",
+          "subdistrict": "Thingsulthliah",
+          "subdistrict_lgd_code": "1905",
+          "category": "Rural"
+        },
+        {
+          "name": "E.Phaileng",
+          "lgd_code": "271209",
+          "subdistrict": "Darlawn",
+          "subdistrict_lgd_code": "1902",
+          "category": "Rural",
+          "local_name": "E.Phaileng"
+        },
+        {
+          "name": "East Damdiai",
+          "lgd_code": "271197",
+          "subdistrict": "Darlawn",
+          "subdistrict_lgd_code": "1902",
+          "category": "Rural"
+        },
+        {
+          "name": "Falkawn",
+          "lgd_code": "271233",
+          "subdistrict": "Aibawk",
+          "subdistrict_lgd_code": "1904",
+          "category": "Rural"
+        },
+        {
+          "name": "Hmuifang",
+          "lgd_code": "271244",
+          "subdistrict": "Aibawk",
+          "subdistrict_lgd_code": "1904",
+          "category": "Rural"
+        },
+        {
+          "name": "Hmunnghak",
+          "lgd_code": "271215",
+          "subdistrict": "Darlawn",
+          "subdistrict_lgd_code": "1902",
+          "category": "Rural"
+        },
+        {
+          "name": "Hualngohmun",
+          "lgd_code": "271229",
+          "subdistrict": "Aibawk",
+          "subdistrict_lgd_code": "1904",
+          "category": "Rural"
+        },
+        {
+          "name": "Kelsih",
+          "lgd_code": "271232",
+          "subdistrict": "Aibawk",
+          "subdistrict_lgd_code": "1904",
+          "category": "Rural"
+        },
+        {
+          "name": "Kepran",
+          "lgd_code": "271208",
+          "subdistrict": "Darlawn",
+          "subdistrict_lgd_code": "1902",
+          "category": "Rural"
+        },
+        {
+          "name": "Khawpuar",
+          "lgd_code": "271194",
+          "subdistrict": "Darlawn",
+          "subdistrict_lgd_code": "1902",
+          "category": "Rural"
+        },
+        {
+          "name": "Khawruhlian",
+          "lgd_code": "271213",
+          "subdistrict": "Darlawn",
+          "subdistrict_lgd_code": "1902",
+          "category": "Rural"
+        },
+        {
+          "name": "Lamchhip",
+          "lgd_code": "271249",
+          "subdistrict": "Aibawk",
+          "subdistrict_lgd_code": "1904",
+          "category": "Rural"
+        },
+        {
+          "name": "Lengpui",
+          "lgd_code": "935365",
+          "subdistrict": "Tlangnuam",
+          "subdistrict_lgd_code": "1901",
+          "category": "Rural"
+        },
+        {
+          "name": "Lungleng I",
+          "lgd_code": "271263",
+          "subdistrict": "Tlangnuam",
+          "subdistrict_lgd_code": "1901",
+          "category": "Rural"
+        },
+        {
+          "name": "Lungsei",
+          "lgd_code": "271246",
+          "subdistrict": "Aibawk",
+          "subdistrict_lgd_code": "1904",
+          "category": "Rural"
+        },
+        {
+          "name": "Lungsum",
+          "lgd_code": "271200",
+          "subdistrict": "Darlawn",
+          "subdistrict_lgd_code": "1902",
+          "category": "Rural"
+        },
+        {
+          "name": "Maubuang",
+          "lgd_code": "931573",
+          "subdistrict": "Aibawk",
+          "subdistrict_lgd_code": "1904",
+          "category": "Rural"
+        },
+        {
+          "name": "Mauchar",
+          "lgd_code": "931574",
+          "subdistrict": "Darlawn",
+          "subdistrict_lgd_code": "1902",
+          "category": "Rural"
+        },
+        {
+          "name": "Melriat",
+          "lgd_code": "271231",
+          "subdistrict": "Aibawk",
+          "subdistrict_lgd_code": "1904",
+          "category": "Rural"
+        },
+        {
+          "name": "Muallungthu",
+          "lgd_code": "271234",
+          "subdistrict": "Aibawk",
+          "subdistrict_lgd_code": "1904",
+          "category": "Rural"
+        },
+        {
+          "name": "Muthi",
+          "lgd_code": "271259",
+          "subdistrict": "Tlangnuam",
+          "subdistrict_lgd_code": "1901",
+          "category": "Rural"
+        },
+        {
+          "name": "N.Khawdungsei",
+          "lgd_code": "271192",
+          "subdistrict": "Darlawn",
+          "subdistrict_lgd_code": "1902",
+          "category": "Rural",
+          "local_name": "N.Khawdungsei"
+        },
+        {
+          "name": "N.Lungleng",
+          "lgd_code": "271264",
+          "subdistrict": "Tlangnuam",
+          "subdistrict_lgd_code": "1901",
+          "category": "Rural",
+          "local_name": "N.Lungleng"
+        },
+        {
+          "name": "N.Serzawl",
+          "lgd_code": "271205",
+          "subdistrict": "Darlawn",
+          "subdistrict_lgd_code": "1902",
+          "category": "Rural",
+          "local_name": "N.Serzawl"
+        },
+        {
+          "name": "N.Tinghmun",
+          "lgd_code": "271187",
+          "subdistrict": "Darlawn",
+          "subdistrict_lgd_code": "1902",
+          "category": "Rural",
+          "local_name": "N.Tinghmun"
+        },
+        {
+          "name": "Nausel",
+          "lgd_code": "271258",
+          "subdistrict": "Tlangnuam",
+          "subdistrict_lgd_code": "1901",
+          "category": "Rural"
+        },
+        {
+          "name": "New Vervek",
+          "lgd_code": "271199",
+          "subdistrict": "Darlawn",
+          "subdistrict_lgd_code": "1902",
+          "category": "Rural"
+        },
+        {
+          "name": "Palsang",
+          "lgd_code": "271189",
+          "subdistrict": "Darlawn",
+          "subdistrict_lgd_code": "1902",
+          "category": "Rural"
+        },
+        {
+          "name": "Pehlawn",
+          "lgd_code": "271210",
+          "subdistrict": "Darlawn",
+          "subdistrict_lgd_code": "1902",
+          "category": "Rural"
+        },
+        {
+          "name": "Phulmawi",
+          "lgd_code": "271284",
+          "subdistrict": "Thingsulthliah",
+          "subdistrict_lgd_code": "1905",
+          "category": "Rural"
+        },
+        {
+          "name": "Phulpui",
+          "lgd_code": "271238",
+          "subdistrict": "Aibawk",
+          "subdistrict_lgd_code": "1904",
+          "category": "Rural"
+        },
+        {
+          "name": "Ratu",
+          "lgd_code": "271201",
+          "subdistrict": "Darlawn",
+          "subdistrict_lgd_code": "1902",
+          "category": "Rural"
+        },
+        {
+          "name": "Sailam",
+          "lgd_code": "271253",
+          "subdistrict": "Aibawk",
+          "subdistrict_lgd_code": "1904",
+          "category": "Rural"
+        },
+        {
+          "name": "Sailutar",
+          "lgd_code": "271203",
+          "subdistrict": "Darlawn",
+          "subdistrict_lgd_code": "1902",
+          "category": "Rural"
+        },
+        {
+          "name": "Sairang",
+          "lgd_code": "935366",
+          "subdistrict": "Tlangnuam",
+          "subdistrict_lgd_code": "1901",
+          "category": "Rural"
+        },
+        {
+          "name": "Sairang Dinthar",
+          "lgd_code": "271182",
+          "subdistrict": "Tlangnuam",
+          "subdistrict_lgd_code": "1901",
+          "category": "Rural"
+        },
+        {
+          "name": "Sairang Sihhmui",
+          "lgd_code": "935367",
+          "subdistrict": "Tlangnuam",
+          "subdistrict_lgd_code": "1901",
+          "category": "Rural"
+        },
+        {
+          "name": "Sakawrdai",
+          "lgd_code": "931575",
+          "subdistrict": "Darlawn",
+          "subdistrict_lgd_code": "1902",
+          "category": "Rural"
+        },
+        {
+          "name": "Samlukhai",
+          "lgd_code": "271247",
+          "subdistrict": "Aibawk",
+          "subdistrict_lgd_code": "1904",
+          "category": "Rural"
+        },
+        {
+          "name": "Samtlang",
+          "lgd_code": "271265",
+          "subdistrict": "Tlangnuam",
+          "subdistrict_lgd_code": "1901",
+          "category": "Rural"
+        },
+        {
+          "name": "Sateek",
+          "lgd_code": "271237",
+          "subdistrict": "Aibawk",
+          "subdistrict_lgd_code": "1904",
+          "category": "Rural"
+        },
+        {
+          "name": "Sawleng",
+          "lgd_code": "271206",
+          "subdistrict": "Darlawn",
+          "subdistrict_lgd_code": "1902",
+          "category": "Rural"
+        },
+        {
+          "name": "Seling",
+          "lgd_code": "271272",
+          "subdistrict": "Thingsulthliah",
+          "subdistrict_lgd_code": "1905",
+          "category": "Rural"
+        },
+        {
+          "name": "Sesawng-I",
+          "lgd_code": "271267",
+          "subdistrict": "Thingsulthliah",
+          "subdistrict_lgd_code": "1905",
+          "category": "Rural",
+          "local_name": "Sesawng-I"
+        },
+        {
+          "name": "Sesawng-II",
+          "lgd_code": "939595",
+          "subdistrict": "Thingsulthliah",
+          "subdistrict_lgd_code": "1905",
+          "category": "Rural",
+          "local_name": "Sesawng-II"
+        },
+        {
+          "name": "Sesawng-III",
+          "lgd_code": "939596",
+          "subdistrict": "Thingsulthliah",
+          "subdistrict_lgd_code": "1905",
+          "category": "Rural",
+          "local_name": "Sesawng-III"
+        },
+        {
+          "name": "Sialsuk",
+          "lgd_code": "271251",
+          "subdistrict": "Aibawk",
+          "subdistrict_lgd_code": "1904",
+          "category": "Rural"
+        },
+        {
+          "name": "Sihphir",
+          "lgd_code": "271256",
+          "subdistrict": "Tlangnuam",
+          "subdistrict_lgd_code": "1901",
+          "category": "Rural"
+        },
+        {
+          "name": "Sihphir Venghlun",
+          "lgd_code": "931577",
+          "subdistrict": "Tlangnuam",
+          "subdistrict_lgd_code": "1901",
+          "category": "Rural"
+        },
+        {
+          "name": "Sumsuih",
+          "lgd_code": "271243",
+          "subdistrict": "Aibawk",
+          "subdistrict_lgd_code": "1904",
+          "category": "Rural"
+        },
+        {
+          "name": "Sunhluchhip",
+          "lgd_code": "271202",
+          "subdistrict": "Darlawn",
+          "subdistrict_lgd_code": "1902",
+          "category": "Rural"
+        },
+        {
+          "name": "Tachhip",
+          "lgd_code": "271235",
+          "subdistrict": "Aibawk",
+          "subdistrict_lgd_code": "1904",
+          "category": "Rural"
+        },
+        {
+          "name": "Thiak",
+          "lgd_code": "271242",
+          "subdistrict": "Aibawk",
+          "subdistrict_lgd_code": "1904",
+          "category": "Rural"
+        },
+        {
+          "name": "Thingsat",
+          "lgd_code": "271198",
+          "subdistrict": "Darlawn",
+          "subdistrict_lgd_code": "1902",
+          "category": "Rural"
+        },
+        {
+          "name": "Thingsul Tlangnuam",
+          "lgd_code": "271276",
+          "subdistrict": "Thingsulthliah",
+          "subdistrict_lgd_code": "1905",
+          "category": "Rural"
+        },
+        {
+          "name": "Thingsulthliah - I",
+          "lgd_code": "271277",
+          "subdistrict": "Thingsulthliah",
+          "subdistrict_lgd_code": "1905",
+          "category": "Rural"
+        },
+        {
+          "name": "Thingsulthliah - II",
+          "lgd_code": "937848",
+          "subdistrict": "Thingsulthliah",
+          "subdistrict_lgd_code": "1905",
+          "category": "Rural"
+        },
+        {
+          "name": "Tlungvel",
+          "lgd_code": "271283",
+          "subdistrict": "Thingsulthliah",
+          "subdistrict_lgd_code": "1905",
+          "category": "Rural"
+        },
+        {
+          "name": "Tuirial",
+          "lgd_code": "271261",
+          "subdistrict": "Tlangnuam",
+          "subdistrict_lgd_code": "1901",
+          "category": "Rural"
+        },
+        {
+          "name": "Tuirial Airfield",
+          "lgd_code": "931578",
+          "subdistrict": "Tlangnuam",
+          "subdistrict_lgd_code": "1901",
+          "category": "Rural"
+        },
+        {
+          "name": "Upper Sakawrdai",
+          "lgd_code": "271190",
+          "subdistrict": "Darlawn",
+          "subdistrict_lgd_code": "1902",
+          "category": "Rural"
+        },
+        {
+          "name": "Vaitin",
+          "lgd_code": "271193",
+          "subdistrict": "Darlawn",
+          "subdistrict_lgd_code": "1902",
+          "category": "Rural"
+        },
+        {
+          "name": "Zohmun",
+          "lgd_code": "271188",
+          "subdistrict": "Darlawn",
+          "subdistrict_lgd_code": "1902",
+          "category": "Rural"
+        },
+        {
+          "name": "Zokhawthiang",
+          "lgd_code": "271185",
+          "subdistrict": "Darlawn",
+          "subdistrict_lgd_code": "1902",
+          "category": "Rural"
+        }
+      ]
+    },
+    {
+      "name": "Champhai",
+      "lgd_code": "262",
+      "village_count": 62,
+      "villages": [
+        {
+          "name": "Bethel",
+          "lgd_code": "935467",
+          "subdistrict": "Champhai",
+          "subdistrict_lgd_code": "1908",
+          "category": "Rural"
+        },
+        {
+          "name": "Buang",
+          "lgd_code": "271350",
+          "subdistrict": "Khawbung",
+          "subdistrict_lgd_code": "1909",
+          "category": "Rural"
+        },
+        {
+          "name": "Bulfekzawl",
+          "lgd_code": "271352",
+          "subdistrict": "Khawbung",
+          "subdistrict_lgd_code": "1909",
+          "category": "Rural"
+        },
+        {
+          "name": "Bungzung",
+          "lgd_code": "271357",
+          "subdistrict": "Khawbung",
+          "subdistrict_lgd_code": "1909",
+          "category": "Rural"
+        },
+        {
+          "name": "Champhai Jail Veng",
+          "lgd_code": "937844",
+          "subdistrict": "Champhai",
+          "subdistrict_lgd_code": "1908",
+          "category": "Rural"
+        },
+        {
+          "name": "Champhai Vengthar",
+          "lgd_code": "935482",
+          "subdistrict": "Champhai",
+          "subdistrict_lgd_code": "1908",
+          "category": "Rural"
+        },
+        {
+          "name": "Chawngtui E",
+          "lgd_code": "271370",
+          "subdistrict": "Khawbung",
+          "subdistrict_lgd_code": "1909",
+          "category": "Rural",
+          "local_name": "Chawngtui E"
+        },
+        {
+          "name": "Chhungte",
+          "lgd_code": "935468",
+          "subdistrict": "Champhai",
+          "subdistrict_lgd_code": "1908",
+          "category": "Rural"
+        },
+        {
+          "name": "Dilkawn",
+          "lgd_code": "271337",
+          "subdistrict": "Champhai",
+          "subdistrict_lgd_code": "1908",
+          "category": "Rural"
+        },
+        {
+          "name": "Dinthar",
+          "lgd_code": "935469",
+          "subdistrict": "Champhai",
+          "subdistrict_lgd_code": "1908",
+          "category": "Rural"
+        },
+        {
+          "name": "Dungtlang",
+          "lgd_code": "271360",
+          "subdistrict": "Khawbung",
+          "subdistrict_lgd_code": "1909",
+          "category": "Rural"
+        },
+        {
+          "name": "Electric Veng",
+          "lgd_code": "935470",
+          "subdistrict": "Champhai",
+          "subdistrict_lgd_code": "1908",
+          "category": "Rural"
+        },
+        {
+          "name": "Farkawn",
+          "lgd_code": "271371",
+          "subdistrict": "Khawbung",
+          "subdistrict_lgd_code": "1909",
+          "category": "Rural"
+        },
+        {
+          "name": "Hmunhmeltha",
+          "lgd_code": "935471",
+          "subdistrict": "Champhai",
+          "subdistrict_lgd_code": "1908",
+          "category": "Rural"
+        },
+        {
+          "name": "Hnahlan",
+          "lgd_code": "271344",
+          "subdistrict": "Champhai",
+          "subdistrict_lgd_code": "1908",
+          "category": "Rural"
+        },
+        {
+          "name": "Hruaikawn",
+          "lgd_code": "271353",
+          "subdistrict": "Khawbung",
+          "subdistrict_lgd_code": "1909",
+          "category": "Rural"
+        },
+        {
+          "name": "Kahrawt",
+          "lgd_code": "935472",
+          "subdistrict": "Champhai",
+          "subdistrict_lgd_code": "1908",
+          "category": "Rural"
+        },
+        {
+          "name": "Kanan",
+          "lgd_code": "935473",
+          "subdistrict": "Champhai",
+          "subdistrict_lgd_code": "1908",
+          "category": "Rural"
+        },
+        {
+          "name": "Kelkang",
+          "lgd_code": "271328",
+          "subdistrict": "Champhai",
+          "subdistrict_lgd_code": "1908",
+          "category": "Rural"
+        },
+        {
+          "name": "Khankawn",
+          "lgd_code": "271373",
+          "subdistrict": "Khawbung",
+          "subdistrict_lgd_code": "1909",
+          "category": "Rural"
+        },
+        {
+          "name": "Khawbung South",
+          "lgd_code": "271368",
+          "subdistrict": "Khawbung",
+          "subdistrict_lgd_code": "1909",
+          "category": "Rural"
+        },
+        {
+          "name": "Khuangleng",
+          "lgd_code": "271351",
+          "subdistrict": "Khawbung",
+          "subdistrict_lgd_code": "1909",
+          "category": "Rural"
+        },
+        {
+          "name": "Khuangphah",
+          "lgd_code": "271343",
+          "subdistrict": "Champhai",
+          "subdistrict_lgd_code": "1908",
+          "category": "Rural"
+        },
+        {
+          "name": "Khuangthing",
+          "lgd_code": "271375",
+          "subdistrict": "Khawbung",
+          "subdistrict_lgd_code": "1909",
+          "category": "Rural"
+        },
+        {
+          "name": "Leisenzo",
+          "lgd_code": "271356",
+          "subdistrict": "Khawbung",
+          "subdistrict_lgd_code": "1909",
+          "category": "Rural"
+        },
+        {
+          "name": "Leithum",
+          "lgd_code": "271361",
+          "subdistrict": "Khawbung",
+          "subdistrict_lgd_code": "1909",
+          "category": "Rural"
+        },
+        {
+          "name": "Lianpui",
+          "lgd_code": "271363",
+          "subdistrict": "Khawbung",
+          "subdistrict_lgd_code": "1909",
+          "category": "Rural"
+        },
+        {
+          "name": "Lungphunlian",
+          "lgd_code": "271342",
+          "subdistrict": "Champhai",
+          "subdistrict_lgd_code": "1908",
+          "category": "Rural"
+        },
+        {
+          "name": "Melbuk",
+          "lgd_code": "271327",
+          "subdistrict": "Champhai",
+          "subdistrict_lgd_code": "1908",
+          "category": "Rural"
+        },
+        {
+          "name": "Mualkawi",
+          "lgd_code": "271326",
+          "subdistrict": "Champhai",
+          "subdistrict_lgd_code": "1908",
+          "category": "Rural"
+        },
+        {
+          "name": "Murlen",
+          "lgd_code": "271340",
+          "subdistrict": "Champhai",
+          "subdistrict_lgd_code": "1908",
+          "category": "Rural"
+        },
+        {
+          "name": "N.Diltlang",
+          "lgd_code": "271345",
+          "subdistrict": "Champhai",
+          "subdistrict_lgd_code": "1908",
+          "category": "Rural",
+          "local_name": "N.Diltlang"
+        },
+        {
+          "name": "N.Khawbung",
+          "lgd_code": "271348",
+          "subdistrict": "Champhai",
+          "subdistrict_lgd_code": "1908",
+          "category": "Rural"
+        },
+        {
+          "name": "New Champhai",
+          "lgd_code": "935474",
+          "subdistrict": "Champhai",
+          "subdistrict_lgd_code": "1908",
+          "category": "Rural"
+        },
+        {
+          "name": "New Hruaikawn",
+          "lgd_code": "271354",
+          "subdistrict": "Khawbung",
+          "subdistrict_lgd_code": "1909",
+          "category": "Rural"
+        },
+        {
+          "name": "Ngur",
+          "lgd_code": "271347",
+          "subdistrict": "Champhai",
+          "subdistrict_lgd_code": "1908",
+          "category": "Rural"
+        },
+        {
+          "name": "Ruantlang",
+          "lgd_code": "935475",
+          "subdistrict": "Champhai",
+          "subdistrict_lgd_code": "1908",
+          "category": "Rural"
+        },
+        {
+          "name": "Ruantlang Mual Veng",
+          "lgd_code": "937846",
+          "subdistrict": "Champhai",
+          "subdistrict_lgd_code": "1908",
+          "category": "Rural"
+        },
+        {
+          "name": "Samthang",
+          "lgd_code": "271366",
+          "subdistrict": "Khawbung",
+          "subdistrict_lgd_code": "1909",
+          "category": "Rural",
+          "local_name": "Samthang"
+        },
+        {
+          "name": "Sazep",
+          "lgd_code": "271362",
+          "subdistrict": "Khawbung",
+          "subdistrict_lgd_code": "1909",
+          "category": "Rural"
+        },
+        {
+          "name": "Selam",
+          "lgd_code": "271298",
+          "subdistrict": "Champhai",
+          "subdistrict_lgd_code": "1908",
+          "category": "Rural"
+        },
+        {
+          "name": "Sesih",
+          "lgd_code": "271355",
+          "subdistrict": "Khawbung",
+          "subdistrict_lgd_code": "1909",
+          "category": "Rural"
+        },
+        {
+          "name": "Thekpui",
+          "lgd_code": "271374",
+          "subdistrict": "Khawbung",
+          "subdistrict_lgd_code": "1909",
+          "category": "Rural"
+        },
+        {
+          "name": "Thekte",
+          "lgd_code": "271372",
+          "subdistrict": "Khawbung",
+          "subdistrict_lgd_code": "1909",
+          "category": "Rural"
+        },
+        {
+          "name": "Tlangsam",
+          "lgd_code": "935476",
+          "subdistrict": "Champhai",
+          "subdistrict_lgd_code": "1908",
+          "category": "Rural"
+        },
+        {
+          "name": "Tualcheng",
+          "lgd_code": "271341",
+          "subdistrict": "Champhai",
+          "subdistrict_lgd_code": "1908",
+          "category": "Rural"
+        },
+        {
+          "name": "Tuipui",
+          "lgd_code": "271325",
+          "subdistrict": "Champhai",
+          "subdistrict_lgd_code": "1908",
+          "category": "Rural"
+        },
+        {
+          "name": "Vaikhawtlang",
+          "lgd_code": "271339",
+          "subdistrict": "Champhai",
+          "subdistrict_lgd_code": "1908",
+          "category": "Rural"
+        },
+        {
+          "name": "Vangchhia",
+          "lgd_code": "271364",
+          "subdistrict": "Khawbung",
+          "subdistrict_lgd_code": "1909",
+          "category": "Rural"
+        },
+        {
+          "name": "Vanzau",
+          "lgd_code": "271358",
+          "subdistrict": "Khawbung",
+          "subdistrict_lgd_code": "1909",
+          "category": "Rural"
+        },
+        {
+          "name": "Vapar",
+          "lgd_code": "271346",
+          "subdistrict": "Champhai",
+          "subdistrict_lgd_code": "1908",
+          "category": "Rural"
+        },
+        {
+          "name": "Vaphai",
+          "lgd_code": "271365",
+          "subdistrict": "Khawbung",
+          "subdistrict_lgd_code": "1909",
+          "category": "Rural"
+        },
+        {
+          "name": "Venglai",
+          "lgd_code": "935477",
+          "subdistrict": "Champhai",
+          "subdistrict_lgd_code": "1908",
+          "category": "Rural"
+        },
+        {
+          "name": "Vengsang",
+          "lgd_code": "935478",
+          "subdistrict": "Champhai",
+          "subdistrict_lgd_code": "1908",
+          "category": "Rural"
+        },
+        {
+          "name": "Vengthlang",
+          "lgd_code": "935466",
+          "subdistrict": "Champhai",
+          "subdistrict_lgd_code": "1908",
+          "category": "Rural"
+        },
+        {
+          "name": "Vengthlang North",
+          "lgd_code": "935465",
+          "subdistrict": "Champhai",
+          "subdistrict_lgd_code": "1908",
+          "category": "Rural"
+        },
+        {
+          "name": "Zawlsei",
+          "lgd_code": "271369",
+          "subdistrict": "Khawbung",
+          "subdistrict_lgd_code": "1909",
+          "category": "Rural"
+        },
+        {
+          "name": "Zawngtetui",
+          "lgd_code": "271349",
+          "subdistrict": "Khawbung",
+          "subdistrict_lgd_code": "1909",
+          "category": "Rural"
+        },
+        {
+          "name": "Zion Veng",
+          "lgd_code": "935479",
+          "subdistrict": "Champhai",
+          "subdistrict_lgd_code": "1908",
+          "category": "Rural"
+        },
+        {
+          "name": "Zokhawthar",
+          "lgd_code": "271338",
+          "subdistrict": "Champhai",
+          "subdistrict_lgd_code": "1908",
+          "category": "Rural"
+        },
+        {
+          "name": "Zote",
+          "lgd_code": "935480",
+          "subdistrict": "Champhai",
+          "subdistrict_lgd_code": "1908",
+          "category": "Rural"
+        },
+        {
+          "name": "Zotlang East",
+          "lgd_code": "935481",
+          "subdistrict": "Champhai",
+          "subdistrict_lgd_code": "1908",
+          "category": "Rural"
+        }
+      ]
+    },
+    {
+      "name": "Hnahthial",
+      "lgd_code": "726",
+      "village_count": 32,
+      "villages": [
+        {
+          "name": "Aithur",
+          "lgd_code": "271597",
+          "subdistrict": "Hnahthial",
+          "subdistrict_lgd_code": "1915",
+          "category": "Rural"
+        },
+        {
+          "name": "Bualpui H",
+          "lgd_code": "271602",
+          "subdistrict": "Hnahthial",
+          "subdistrict_lgd_code": "1915",
+          "category": "Rural"
+        },
+        {
+          "name": "Bualpui V",
+          "lgd_code": "271548",
+          "subdistrict": "Hnahthial",
+          "subdistrict_lgd_code": "1915",
+          "category": "Rural",
+          "local_name": "Bualpui V"
+        },
+        {
+          "name": "Chawngtui South",
+          "lgd_code": "271594",
+          "subdistrict": "Hnahthial",
+          "subdistrict_lgd_code": "1915",
+          "category": "Rural"
+        },
+        {
+          "name": "Cherhlun",
+          "lgd_code": "271598",
+          "subdistrict": "Hnahthial",
+          "subdistrict_lgd_code": "1915",
+          "category": "Rural"
+        },
+        {
+          "name": "Chhipphir",
+          "lgd_code": "271545",
+          "subdistrict": "Hnahthial",
+          "subdistrict_lgd_code": "1915",
+          "category": "Rural"
+        },
+        {
+          "name": "Darzo",
+          "lgd_code": "271610",
+          "subdistrict": "Hnahthial",
+          "subdistrict_lgd_code": "1915",
+          "category": "Rural"
+        },
+        {
+          "name": "Denlung",
+          "lgd_code": "271604",
+          "subdistrict": "Hnahthial",
+          "subdistrict_lgd_code": "1915",
+          "category": "Rural"
+        },
+        {
+          "name": "Hnahthial North II",
+          "lgd_code": "935462",
+          "subdistrict": "Hnahthial",
+          "subdistrict_lgd_code": "1915",
+          "category": "Rural"
+        },
+        {
+          "name": "Hnahthial North-I",
+          "lgd_code": "935461",
+          "subdistrict": "Hnahthial",
+          "subdistrict_lgd_code": "1915",
+          "category": "Rural",
+          "local_name": "Hnahthial North-I"
+        },
+        {
+          "name": "Hnahthial South III",
+          "lgd_code": "939593",
+          "subdistrict": "Hnahthial",
+          "subdistrict_lgd_code": "1915",
+          "category": "Rural",
+          "local_name": "Hnahthial South III"
+        },
+        {
+          "name": "Hnahthial South-I",
+          "lgd_code": "935463",
+          "subdistrict": "Hnahthial",
+          "subdistrict_lgd_code": "1915",
+          "category": "Rural",
+          "local_name": "Hnahthial South-I"
+        },
+        {
+          "name": "Hnahthial South-II",
+          "lgd_code": "935464",
+          "subdistrict": "Hnahthial",
+          "subdistrict_lgd_code": "1915",
+          "category": "Rural",
+          "local_name": "Hnahthial South-II"
+        },
+        {
+          "name": "Khawhri",
+          "lgd_code": "271596",
+          "subdistrict": "Hnahthial",
+          "subdistrict_lgd_code": "1915",
+          "category": "Rural"
+        },
+        {
+          "name": "Leite",
+          "lgd_code": "271606",
+          "subdistrict": "Hnahthial",
+          "subdistrict_lgd_code": "1915",
+          "category": "Rural"
+        },
+        {
+          "name": "Lungmawi",
+          "lgd_code": "271549",
+          "subdistrict": "Hnahthial",
+          "subdistrict_lgd_code": "1915",
+          "category": "Rural"
+        },
+        {
+          "name": "Lungpuitlang",
+          "lgd_code": "271612",
+          "subdistrict": "Hnahthial",
+          "subdistrict_lgd_code": "1915",
+          "category": "Rural"
+        },
+        {
+          "name": "Muallianpui",
+          "lgd_code": "271611",
+          "subdistrict": "Hnahthial",
+          "subdistrict_lgd_code": "1915",
+          "category": "Rural"
+        },
+        {
+          "name": "New Kawnpui",
+          "lgd_code": "937847",
+          "subdistrict": "Hnahthial",
+          "subdistrict_lgd_code": "1915",
+          "category": "Rural",
+          "local_name": "New Kawnpui"
+        },
+        {
+          "name": "New Ngharchhip",
+          "lgd_code": "271600",
+          "subdistrict": "Hnahthial",
+          "subdistrict_lgd_code": "1915",
+          "category": "Rural"
+        },
+        {
+          "name": "Ngharchhip",
+          "lgd_code": "271599",
+          "subdistrict": "Hnahthial",
+          "subdistrict_lgd_code": "1915",
+          "category": "Rural",
+          "local_name": "Ngharchhip"
+        },
+        {
+          "name": "Pangzawl North",
+          "lgd_code": "271591",
+          "subdistrict": "Hnahthial",
+          "subdistrict_lgd_code": "1915",
+          "category": "Rural"
+        },
+        {
+          "name": "Pangzawl South",
+          "lgd_code": "937842",
+          "subdistrict": "Hnahthial",
+          "subdistrict_lgd_code": "1915",
+          "category": "Rural"
+        },
+        {
+          "name": "Rawpui",
+          "lgd_code": "271589",
+          "subdistrict": "Hnahthial",
+          "subdistrict_lgd_code": "1915",
+          "category": "Rural"
+        },
+        {
+          "name": "Rotlang East",
+          "lgd_code": "271608",
+          "subdistrict": "Hnahthial",
+          "subdistrict_lgd_code": "1915",
+          "category": "Rural"
+        },
+        {
+          "name": "South Lungleng",
+          "lgd_code": "271603",
+          "subdistrict": "Hnahthial",
+          "subdistrict_lgd_code": "1915",
+          "category": "Rural"
+        },
+        {
+          "name": "South Phaileng",
+          "lgd_code": "271553",
+          "subdistrict": "Hnahthial",
+          "subdistrict_lgd_code": "1915",
+          "category": "Rural",
+          "local_name": "South Phaileng"
+        },
+        {
+          "name": "South Vanlaiphai",
+          "lgd_code": "271613",
+          "subdistrict": "Hnahthial",
+          "subdistrict_lgd_code": "1915",
+          "category": "Rural"
+        },
+        {
+          "name": "Tarpho",
+          "lgd_code": "271595",
+          "subdistrict": "Hnahthial",
+          "subdistrict_lgd_code": "1915",
+          "category": "Rural"
+        },
+        {
+          "name": "Thiltlang",
+          "lgd_code": "271592",
+          "subdistrict": "Hnahthial",
+          "subdistrict_lgd_code": "1915",
+          "category": "Rural"
+        },
+        {
+          "name": "Thingsai",
+          "lgd_code": "271601",
+          "subdistrict": "Hnahthial",
+          "subdistrict_lgd_code": "1915",
+          "category": "Rural"
+        },
+        {
+          "name": "Tuipui South",
+          "lgd_code": "271609",
+          "subdistrict": "Hnahthial",
+          "subdistrict_lgd_code": "1915",
+          "category": "Rural",
+          "local_name": "Tuipui South"
+        }
+      ]
+    },
+    {
+      "name": "Khawzawl",
+      "lgd_code": "728",
+      "village_count": 38,
+      "villages": [
+        {
+          "name": "Aiduzawl",
+          "lgd_code": "271312",
+          "subdistrict": "Khawzawl",
+          "subdistrict_lgd_code": "1907",
+          "category": "Rural"
+        },
+        {
+          "name": "Arro",
+          "lgd_code": "271318",
+          "subdistrict": "Khawzawl",
+          "subdistrict_lgd_code": "1907",
+          "category": "Rural"
+        },
+        {
+          "name": "Biate",
+          "lgd_code": "935484",
+          "subdistrict": "Khawzawl",
+          "subdistrict_lgd_code": "1907",
+          "category": "Rural"
+        },
+        {
+          "name": "Chalrang",
+          "lgd_code": "271331",
+          "subdistrict": "Khawzawl",
+          "subdistrict_lgd_code": "1907",
+          "category": "Rural"
+        },
+        {
+          "name": "Chawngtlai",
+          "lgd_code": "271322",
+          "subdistrict": "Khawzawl",
+          "subdistrict_lgd_code": "1907",
+          "category": "Rural"
+        },
+        {
+          "name": "Chhawrtui",
+          "lgd_code": "271320",
+          "subdistrict": "Khawzawl",
+          "subdistrict_lgd_code": "1907",
+          "category": "Rural"
+        },
+        {
+          "name": "Dulte",
+          "lgd_code": "271305",
+          "subdistrict": "Khawzawl",
+          "subdistrict_lgd_code": "1907",
+          "category": "Rural"
+        },
+        {
+          "name": "Hmuncheng",
+          "lgd_code": "271321",
+          "subdistrict": "Khawzawl",
+          "subdistrict_lgd_code": "1907",
+          "category": "Rural"
+        },
+        {
+          "name": "Kawlkulh",
+          "lgd_code": "271306",
+          "subdistrict": "Khawzawl",
+          "subdistrict_lgd_code": "1907",
+          "category": "Rural",
+          "local_name": "Kawlkulh"
+        },
+        {
+          "name": "Kawlkulh N",
+          "lgd_code": "935485",
+          "subdistrict": "Khawzawl",
+          "subdistrict_lgd_code": "1907",
+          "category": "Rural",
+          "local_name": "Kawlkulh N"
+        },
+        {
+          "name": "Khawhai",
+          "lgd_code": "935483",
+          "subdistrict": "Khawzawl",
+          "subdistrict_lgd_code": "1907",
+          "category": "Rural"
+        },
+        {
+          "name": "Khawzawl Arro Veng",
+          "lgd_code": "937850",
+          "subdistrict": "Khawzawl",
+          "subdistrict_lgd_code": "1907",
+          "category": "Rural"
+        },
+        {
+          "name": "Khawzawl Darngawn",
+          "lgd_code": "935490",
+          "subdistrict": "Khawzawl",
+          "subdistrict_lgd_code": "1907",
+          "category": "Rural"
+        },
+        {
+          "name": "Khawzawl Dinthar",
+          "lgd_code": "935493",
+          "subdistrict": "Khawzawl",
+          "subdistrict_lgd_code": "1907",
+          "category": "Rural"
+        },
+        {
+          "name": "Khawzawl Electric",
+          "lgd_code": "935491",
+          "subdistrict": "Khawzawl",
+          "subdistrict_lgd_code": "1907",
+          "category": "Rural"
+        },
+        {
+          "name": "Khawzawl Hermon",
+          "lgd_code": "935486",
+          "subdistrict": "Khawzawl",
+          "subdistrict_lgd_code": "1907",
+          "category": "Rural"
+        },
+        {
+          "name": "Khawzawl Kawnzar",
+          "lgd_code": "935487",
+          "subdistrict": "Khawzawl",
+          "subdistrict_lgd_code": "1907",
+          "category": "Rural"
+        },
+        {
+          "name": "Khawzawl Vengthar",
+          "lgd_code": "935492",
+          "subdistrict": "Khawzawl",
+          "subdistrict_lgd_code": "1907",
+          "category": "Rural"
+        },
+        {
+          "name": "Khawzawl Zaingen",
+          "lgd_code": "939565",
+          "subdistrict": "Khawzawl",
+          "subdistrict_lgd_code": "1907",
+          "category": "Rural"
+        },
+        {
+          "name": "Khawzawl Zuchhip",
+          "lgd_code": "935489",
+          "subdistrict": "Khawzawl",
+          "subdistrict_lgd_code": "1907",
+          "category": "Rural"
+        },
+        {
+          "name": "Khualen",
+          "lgd_code": "271310",
+          "subdistrict": "Khawzawl",
+          "subdistrict_lgd_code": "1907",
+          "category": "Rural"
+        },
+        {
+          "name": "Lungtan",
+          "lgd_code": "271334",
+          "subdistrict": "Khawzawl",
+          "subdistrict_lgd_code": "1907",
+          "category": "Rural"
+        },
+        {
+          "name": "Lungvar",
+          "lgd_code": "935488",
+          "subdistrict": "Khawzawl",
+          "subdistrict_lgd_code": "1907",
+          "category": "Rural"
+        },
+        {
+          "name": "Neihdawn",
+          "lgd_code": "271316",
+          "subdistrict": "Khawzawl",
+          "subdistrict_lgd_code": "1907",
+          "category": "Rural"
+        },
+        {
+          "name": "New Chalrang",
+          "lgd_code": "271332",
+          "subdistrict": "Khawzawl",
+          "subdistrict_lgd_code": "1907",
+          "category": "Rural"
+        },
+        {
+          "name": "Ngaizawl",
+          "lgd_code": "271315",
+          "subdistrict": "Khawzawl",
+          "subdistrict_lgd_code": "1907",
+          "category": "Rural"
+        },
+        {
+          "name": "Pamchung",
+          "lgd_code": "271313",
+          "subdistrict": "Khawzawl",
+          "subdistrict_lgd_code": "1907",
+          "category": "Rural"
+        },
+        {
+          "name": "Puilo",
+          "lgd_code": "271319",
+          "subdistrict": "Khawzawl",
+          "subdistrict_lgd_code": "1907",
+          "category": "Rural"
+        },
+        {
+          "name": "Rabung",
+          "lgd_code": "271311",
+          "subdistrict": "Khawzawl",
+          "subdistrict_lgd_code": "1907",
+          "category": "Rural"
+        },
+        {
+          "name": "Riangtlei",
+          "lgd_code": "271378",
+          "subdistrict": "Khawzawl",
+          "subdistrict_lgd_code": "1907",
+          "category": "Rural"
+        },
+        {
+          "name": "Sialhawk",
+          "lgd_code": "271377",
+          "subdistrict": "Khawzawl",
+          "subdistrict_lgd_code": "1907",
+          "category": "Rural"
+        },
+        {
+          "name": "Tlangmawi",
+          "lgd_code": "271335",
+          "subdistrict": "Khawzawl",
+          "subdistrict_lgd_code": "1907",
+          "category": "Rural"
+        },
+        {
+          "name": "Tlangpui",
+          "lgd_code": "271376",
+          "subdistrict": "Khawzawl",
+          "subdistrict_lgd_code": "1907",
+          "category": "Rural"
+        },
+        {
+          "name": "Tualpui",
+          "lgd_code": "271314",
+          "subdistrict": "Khawzawl",
+          "subdistrict_lgd_code": "1907",
+          "category": "Rural"
+        },
+        {
+          "name": "Tualte",
+          "lgd_code": "271329",
+          "subdistrict": "Khawzawl",
+          "subdistrict_lgd_code": "1907",
+          "category": "Rural"
+        },
+        {
+          "name": "Vanchengpui",
+          "lgd_code": "271403",
+          "subdistrict": "Khawzawl",
+          "subdistrict_lgd_code": "1907",
+          "category": "Rural"
+        },
+        {
+          "name": "Vangtlang",
+          "lgd_code": "271330",
+          "subdistrict": "Khawzawl",
+          "subdistrict_lgd_code": "1907",
+          "category": "Rural"
+        },
+        {
+          "name": "Vankal",
+          "lgd_code": "271309",
+          "subdistrict": "Khawzawl",
+          "subdistrict_lgd_code": "1907",
+          "category": "Rural"
+        }
+      ]
+    },
+    {
+      "name": "Kolasib",
+      "lgd_code": "263",
+      "village_count": 61,
+      "villages": [
+        {
+          "name": "Bairabi North",
+          "lgd_code": "935390",
+          "subdistrict": "Bilkhawthlir",
+          "subdistrict_lgd_code": "1900",
+          "category": "Rural"
+        },
+        {
+          "name": "Barabi South",
+          "lgd_code": "935373",
+          "subdistrict": "Bilkhawthlir",
+          "subdistrict_lgd_code": "1900",
+          "category": "Rural"
+        },
+        {
+          "name": "Bilkhawthlir North",
+          "lgd_code": "271162",
+          "subdistrict": "Bilkhawthlir",
+          "subdistrict_lgd_code": "1900",
+          "category": "Rural"
+        },
+        {
+          "name": "Bilkhawthlir South",
+          "lgd_code": "931579",
+          "subdistrict": "Bilkhawthlir",
+          "subdistrict_lgd_code": "1900",
+          "category": "Rural"
+        },
+        {
+          "name": "Bualpui North",
+          "lgd_code": "935394",
+          "subdistrict": "Thingdawl",
+          "subdistrict_lgd_code": "1899",
+          "category": "Rural"
+        },
+        {
+          "name": "Buhchangphai",
+          "lgd_code": "271164",
+          "subdistrict": "Bilkhawthlir",
+          "subdistrict_lgd_code": "1900",
+          "category": "Rural"
+        },
+        {
+          "name": "Bukpui",
+          "lgd_code": "271151",
+          "subdistrict": "Thingdawl",
+          "subdistrict_lgd_code": "1899",
+          "category": "Rural"
+        },
+        {
+          "name": "Bukvannei",
+          "lgd_code": "271166",
+          "subdistrict": "Bilkhawthlir",
+          "subdistrict_lgd_code": "1900",
+          "category": "Rural"
+        },
+        {
+          "name": "Hortoki-I",
+          "lgd_code": "271147",
+          "subdistrict": "Thingdawl",
+          "subdistrict_lgd_code": "1899",
+          "category": "Rural",
+          "local_name": "Hortoki-I"
+        },
+        {
+          "name": "Hortoki-II",
+          "lgd_code": "951309",
+          "subdistrict": "Thingdawl",
+          "subdistrict_lgd_code": "1899",
+          "category": "Rural",
+          "local_name": "Hortoki-II"
+        },
+        {
+          "name": "Kawnpui Venglai",
+          "lgd_code": "937839",
+          "subdistrict": "Thingdawl",
+          "subdistrict_lgd_code": "1899",
+          "category": "Rural"
+        },
+        {
+          "name": "Kawnpui-I",
+          "lgd_code": "935391",
+          "subdistrict": "Thingdawl",
+          "subdistrict_lgd_code": "1899",
+          "category": "Rural",
+          "local_name": "Kawnpui-I"
+        },
+        {
+          "name": "Kawnpui-II",
+          "lgd_code": "935392",
+          "subdistrict": "Thingdawl",
+          "subdistrict_lgd_code": "1899",
+          "category": "Rural",
+          "local_name": "Kawnpui-II"
+        },
+        {
+          "name": "Kawnpui-III",
+          "lgd_code": "935393",
+          "subdistrict": "Thingdawl",
+          "subdistrict_lgd_code": "1899",
+          "category": "Rural",
+          "local_name": "Kawnpui-III"
+        },
+        {
+          "name": "Kawnpui-IV",
+          "lgd_code": "951291",
+          "subdistrict": "Thingdawl",
+          "subdistrict_lgd_code": "1899",
+          "category": "Rural",
+          "local_name": "Kawnpui-IV"
+        },
+        {
+          "name": "Khamrang",
+          "lgd_code": "271177",
+          "subdistrict": "Thingdawl",
+          "subdistrict_lgd_code": "1899",
+          "category": "Rural"
+        },
+        {
+          "name": "Kolasib College Veng",
+          "lgd_code": "935374",
+          "subdistrict": "Bilkhawthlir",
+          "subdistrict_lgd_code": "1900",
+          "category": "Rural"
+        },
+        {
+          "name": "Kolasib Diakkawn",
+          "lgd_code": "935375",
+          "subdistrict": "Bilkhawthlir",
+          "subdistrict_lgd_code": "1900",
+          "category": "Rural"
+        },
+        {
+          "name": "Kolasib Electric Veng",
+          "lgd_code": "935378",
+          "subdistrict": "Bilkhawthlir",
+          "subdistrict_lgd_code": "1900",
+          "category": "Rural"
+        },
+        {
+          "name": "Kolasib Gosen",
+          "lgd_code": "935376",
+          "subdistrict": "Bilkhawthlir",
+          "subdistrict_lgd_code": "1900",
+          "category": "Rural"
+        },
+        {
+          "name": "Kolasib Hmar Veng",
+          "lgd_code": "935377",
+          "subdistrict": "Bilkhawthlir",
+          "subdistrict_lgd_code": "1900",
+          "category": "Rural"
+        },
+        {
+          "name": "Kolasib Khuangpuilam",
+          "lgd_code": "935379",
+          "subdistrict": "Bilkhawthlir",
+          "subdistrict_lgd_code": "1900",
+          "category": "Rural"
+        },
+        {
+          "name": "Kolasib New Diakkawn",
+          "lgd_code": "935383",
+          "subdistrict": "Bilkhawthlir",
+          "subdistrict_lgd_code": "1900",
+          "category": "Rural"
+        },
+        {
+          "name": "Kolasib Project Veng",
+          "lgd_code": "935380",
+          "subdistrict": "Bilkhawthlir",
+          "subdistrict_lgd_code": "1900",
+          "category": "Rural"
+        },
+        {
+          "name": "Kolasib Rengtekawn",
+          "lgd_code": "936339",
+          "subdistrict": "Bilkhawthlir",
+          "subdistrict_lgd_code": "1900",
+          "category": "Rural",
+          "local_name": "Kolasib Rengtekawn"
+        },
+        {
+          "name": "Kolasib Saidan",
+          "lgd_code": "935384",
+          "subdistrict": "Bilkhawthlir",
+          "subdistrict_lgd_code": "1900",
+          "category": "Rural"
+        },
+        {
+          "name": "Kolasib Tuitha Veng",
+          "lgd_code": "937838",
+          "subdistrict": "Bilkhawthlir",
+          "subdistrict_lgd_code": "1900",
+          "category": "Rural"
+        },
+        {
+          "name": "Kolasib Tumpui",
+          "lgd_code": "935385",
+          "subdistrict": "Bilkhawthlir",
+          "subdistrict_lgd_code": "1900",
+          "category": "Rural"
+        },
+        {
+          "name": "Kolasib Venglai",
+          "lgd_code": "935381",
+          "subdistrict": "Bilkhawthlir",
+          "subdistrict_lgd_code": "1900",
+          "category": "Rural"
+        },
+        {
+          "name": "Kolasib Venglai East",
+          "lgd_code": "937837",
+          "subdistrict": "Bilkhawthlir",
+          "subdistrict_lgd_code": "1900",
+          "category": "Rural"
+        },
+        {
+          "name": "Kolasib Vengthar",
+          "lgd_code": "935382",
+          "subdistrict": "Bilkhawthlir",
+          "subdistrict_lgd_code": "1900",
+          "category": "Rural"
+        },
+        {
+          "name": "Lungdai",
+          "lgd_code": "931589",
+          "subdistrict": "Thingdawl",
+          "subdistrict_lgd_code": "1899",
+          "category": "Rural"
+        },
+        {
+          "name": "Lungmuat",
+          "lgd_code": "931592",
+          "subdistrict": "Thingdawl",
+          "subdistrict_lgd_code": "1899",
+          "category": "Rural"
+        },
+        {
+          "name": "Meidum",
+          "lgd_code": "271171",
+          "subdistrict": "Bilkhawthlir",
+          "subdistrict_lgd_code": "1900",
+          "category": "Rural"
+        },
+        {
+          "name": "Mualkhang",
+          "lgd_code": "271181",
+          "subdistrict": "Thingdawl",
+          "subdistrict_lgd_code": "1899",
+          "category": "Rural"
+        },
+        {
+          "name": "N.Chaltlang-I",
+          "lgd_code": "271152",
+          "subdistrict": "Thingdawl",
+          "subdistrict_lgd_code": "1899",
+          "category": "Rural",
+          "local_name": "N.Chaltlang-I"
+        },
+        {
+          "name": "N.Chaltlang-II",
+          "lgd_code": "937843",
+          "subdistrict": "Thingdawl",
+          "subdistrict_lgd_code": "1899",
+          "category": "Rural",
+          "local_name": "N.Chaltlang-II"
+        },
+        {
+          "name": "N.Chawnpui",
+          "lgd_code": "271161",
+          "subdistrict": "Bilkhawthlir",
+          "subdistrict_lgd_code": "1900",
+          "category": "Rural"
+        },
+        {
+          "name": "N.Chhimluang",
+          "lgd_code": "271158",
+          "subdistrict": "Bilkhawthlir",
+          "subdistrict_lgd_code": "1900",
+          "category": "Rural"
+        },
+        {
+          "name": "New Builum",
+          "lgd_code": "935372",
+          "subdistrict": "Bilkhawthlir",
+          "subdistrict_lgd_code": "1900",
+          "category": "Rural"
+        },
+        {
+          "name": "Nisapui",
+          "lgd_code": "271179",
+          "subdistrict": "Thingdawl",
+          "subdistrict_lgd_code": "1899",
+          "category": "Rural"
+        },
+        {
+          "name": "North Hlimen",
+          "lgd_code": "271139",
+          "subdistrict": "Thingdawl",
+          "subdistrict_lgd_code": "1899",
+          "category": "Rural",
+          "local_name": "North Hlimen"
+        },
+        {
+          "name": "North Thinglian",
+          "lgd_code": "271165",
+          "subdistrict": "Bilkhawthlir",
+          "subdistrict_lgd_code": "1900",
+          "category": "Rural",
+          "local_name": "North Thinglian"
+        },
+        {
+          "name": "Pangbalkawn",
+          "lgd_code": "271169",
+          "subdistrict": "Bilkhawthlir",
+          "subdistrict_lgd_code": "1900",
+          "category": "Rural"
+        },
+        {
+          "name": "Phainuam",
+          "lgd_code": "271156",
+          "subdistrict": "Bilkhawthlir",
+          "subdistrict_lgd_code": "1900",
+          "category": "Rural"
+        },
+        {
+          "name": "Phaisen",
+          "lgd_code": "271163",
+          "subdistrict": "Bilkhawthlir",
+          "subdistrict_lgd_code": "1900",
+          "category": "Rural"
+        },
+        {
+          "name": "S.Chhimluang",
+          "lgd_code": "945589",
+          "subdistrict": "Bilkhawthlir",
+          "subdistrict_lgd_code": "1900",
+          "category": "Rural"
+        },
+        {
+          "name": "Saihapui K",
+          "lgd_code": "271167",
+          "subdistrict": "Bilkhawthlir",
+          "subdistrict_lgd_code": "1900",
+          "category": "Rural"
+        },
+        {
+          "name": "Saihapui V",
+          "lgd_code": "271157",
+          "subdistrict": "Bilkhawthlir",
+          "subdistrict_lgd_code": "1900",
+          "category": "Rural"
+        },
+        {
+          "name": "Saiphai",
+          "lgd_code": "271159",
+          "subdistrict": "Bilkhawthlir",
+          "subdistrict_lgd_code": "1900",
+          "category": "Rural"
+        },
+        {
+          "name": "Saipum-I",
+          "lgd_code": "271160",
+          "subdistrict": "Bilkhawthlir",
+          "subdistrict_lgd_code": "1900",
+          "category": "Rural",
+          "local_name": "Saipum-I"
+        },
+        {
+          "name": "Saipum-II",
+          "lgd_code": "951305",
+          "subdistrict": "Bilkhawthlir",
+          "subdistrict_lgd_code": "1900",
+          "category": "Rural",
+          "local_name": "Saipum-II"
+        },
+        {
+          "name": "Serkhan",
+          "lgd_code": "271180",
+          "subdistrict": "Thingdawl",
+          "subdistrict_lgd_code": "1899",
+          "category": "Rural"
+        },
+        {
+          "name": "Thingdawl-I",
+          "lgd_code": "271142",
+          "subdistrict": "Thingdawl",
+          "subdistrict_lgd_code": "1899",
+          "category": "Rural",
+          "local_name": "Thingdawl-I"
+        },
+        {
+          "name": "Thingdawl-II",
+          "lgd_code": "951220",
+          "subdistrict": "Thingdawl",
+          "subdistrict_lgd_code": "1899",
+          "category": "Rural",
+          "local_name": "Thingdawl-II"
+        },
+        {
+          "name": "Thingthelh",
+          "lgd_code": "271140",
+          "subdistrict": "Thingdawl",
+          "subdistrict_lgd_code": "1899",
+          "category": "Rural"
+        },
+        {
+          "name": "Vairengte - I",
+          "lgd_code": "935386",
+          "subdistrict": "Bilkhawthlir",
+          "subdistrict_lgd_code": "1900",
+          "category": "Rural",
+          "local_name": "Vairengte - I"
+        },
+        {
+          "name": "Vairengte-II",
+          "lgd_code": "935387",
+          "subdistrict": "Bilkhawthlir",
+          "subdistrict_lgd_code": "1900",
+          "category": "Rural",
+          "local_name": "Vairengte-II"
+        },
+        {
+          "name": "Vairengte-III",
+          "lgd_code": "935388",
+          "subdistrict": "Bilkhawthlir",
+          "subdistrict_lgd_code": "1900",
+          "category": "Rural",
+          "local_name": "Vairengte-III"
+        },
+        {
+          "name": "Vairengte-IV",
+          "lgd_code": "935389",
+          "subdistrict": "Bilkhawthlir",
+          "subdistrict_lgd_code": "1900",
+          "category": "Rural",
+          "local_name": "Vairengte-IV"
+        },
+        {
+          "name": "Zanlawn",
+          "lgd_code": "271154",
+          "subdistrict": "Thingdawl",
+          "subdistrict_lgd_code": "1899",
+          "category": "Rural"
+        }
+      ]
+    },
+    {
+      "name": "Lawngtlai",
+      "lgd_code": "264",
+      "village_count": 188,
+      "villages": [
+        {
+          "name": "Adubangasora",
+          "lgd_code": "271644",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural"
+        },
+        {
+          "name": "Ajasora-I",
+          "lgd_code": "271655",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural"
+        },
+        {
+          "name": "Ajasora-II",
+          "lgd_code": "271697",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural",
+          "local_name": "Ajasora-II"
+        },
+        {
+          "name": "Ajasora-III",
+          "lgd_code": "271696",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural",
+          "local_name": "Ajasora-III"
+        },
+        {
+          "name": "Aoc Veng",
+          "lgd_code": "914277",
+          "subdistrict": "Lawngtlai",
+          "subdistrict_lgd_code": "1917",
+          "category": "Rural"
+        },
+        {
+          "name": "Aratinagar",
+          "lgd_code": "914258",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural",
+          "local_name": "Aratinagar"
+        },
+        {
+          "name": "Archhuang",
+          "lgd_code": "271776",
+          "subdistrict": "Sangau",
+          "subdistrict_lgd_code": "1919",
+          "category": "Rural"
+        },
+        {
+          "name": "Baganpara",
+          "lgd_code": "271629",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural"
+        },
+        {
+          "name": "Bajeisora",
+          "lgd_code": "271630",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural"
+        },
+        {
+          "name": "Baraguisury",
+          "lgd_code": "271681",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural",
+          "local_name": "Baraguisury"
+        },
+        {
+          "name": "Barakabakhali-I",
+          "lgd_code": "271654",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural",
+          "local_name": "Barakabakhali-I"
+        },
+        {
+          "name": "Barakabakhali-II",
+          "lgd_code": "914265",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural",
+          "local_name": "Barakabakhali-II"
+        },
+        {
+          "name": "Baranasury",
+          "lgd_code": "271614",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural",
+          "local_name": "Baranasury"
+        },
+        {
+          "name": "Barapansury E",
+          "lgd_code": "939571",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural",
+          "local_name": "Baranpansury E"
+        },
+        {
+          "name": "Barapansury-I",
+          "lgd_code": "271616",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural",
+          "local_name": "Barapansury-I"
+        },
+        {
+          "name": "Barapansury-II",
+          "lgd_code": "271617",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural",
+          "local_name": "Barapansury-II"
+        },
+        {
+          "name": "Barkalak",
+          "lgd_code": "271656",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural",
+          "local_name": "Barkalak"
+        },
+        {
+          "name": "Betbonya",
+          "lgd_code": "271661",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural"
+        },
+        {
+          "name": "Billosora",
+          "lgd_code": "271684",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural",
+          "local_name": "Billosora"
+        },
+        {
+          "name": "Bolisora",
+          "lgd_code": "914262",
+          "subdistrict": "Bungtlang South",
+          "subdistrict_lgd_code": "1918",
+          "category": "Rural"
+        },
+        {
+          "name": "Boroituli",
+          "lgd_code": "271653",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural",
+          "local_name": "Boroituli"
+        },
+        {
+          "name": "Bualpui Ng W-I",
+          "lgd_code": "271772",
+          "subdistrict": "Sangau",
+          "subdistrict_lgd_code": "1919",
+          "category": "Rural",
+          "local_name": "Bualpui Ng W-I"
+        },
+        {
+          "name": "Bualpui Ng West-II",
+          "lgd_code": "948198",
+          "subdistrict": "Sangau",
+          "subdistrict_lgd_code": "1919",
+          "category": "Rural",
+          "local_name": "Bualpui Ng West-II"
+        },
+        {
+          "name": "Bualpui Ng-Ii",
+          "lgd_code": "271771",
+          "subdistrict": "Sangau",
+          "subdistrict_lgd_code": "1919",
+          "category": "Rural"
+        },
+        {
+          "name": "Bundukbanga",
+          "lgd_code": "271692",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural",
+          "local_name": "Bundukbanga"
+        },
+        {
+          "name": "Bungtlang S-I",
+          "lgd_code": "271738",
+          "subdistrict": "Bungtlang South",
+          "subdistrict_lgd_code": "1918",
+          "category": "Rural"
+        },
+        {
+          "name": "Bungtlang S-Ii",
+          "lgd_code": "914276",
+          "subdistrict": "Bungtlang South",
+          "subdistrict_lgd_code": "1918",
+          "category": "Rural"
+        },
+        {
+          "name": "Chamdur P-I",
+          "lgd_code": "271752",
+          "subdistrict": "Bungtlang South",
+          "subdistrict_lgd_code": "1918",
+          "category": "Rural",
+          "local_name": "Chamdur P-I"
+        },
+        {
+          "name": "Chamdur P-II",
+          "lgd_code": "271753",
+          "subdistrict": "Bungtlang South",
+          "subdistrict_lgd_code": "1918",
+          "category": "Rural",
+          "local_name": "Chamdur P-II"
+        },
+        {
+          "name": "Chamdurtlang I",
+          "lgd_code": "271754",
+          "subdistrict": "Bungtlang South",
+          "subdistrict_lgd_code": "1918",
+          "category": "Rural"
+        },
+        {
+          "name": "Chamdurtlang II",
+          "lgd_code": "271755",
+          "subdistrict": "Bungtlang South",
+          "subdistrict_lgd_code": "1918",
+          "category": "Rural"
+        },
+        {
+          "name": "Chaminisora",
+          "lgd_code": "271665",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural"
+        },
+        {
+          "name": "Charluitlang",
+          "lgd_code": "271666",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural"
+        },
+        {
+          "name": "Chawngte ‘P’",
+          "lgd_code": "271698",
+          "subdistrict": "Lawngtlai",
+          "subdistrict_lgd_code": "1917",
+          "category": "Rural"
+        },
+        {
+          "name": "Chawngtelui",
+          "lgd_code": "271705",
+          "subdistrict": "Lawngtlai",
+          "subdistrict_lgd_code": "1917",
+          "category": "Rural"
+        },
+        {
+          "name": "Chawnhu",
+          "lgd_code": "914312",
+          "subdistrict": "Lawngtlai",
+          "subdistrict_lgd_code": "1917",
+          "category": "Rural"
+        },
+        {
+          "name": "Chawntlangpui",
+          "lgd_code": "271711",
+          "subdistrict": "Lawngtlai",
+          "subdistrict_lgd_code": "1917",
+          "category": "Rural"
+        },
+        {
+          "name": "Cheural",
+          "lgd_code": "271766",
+          "subdistrict": "Sangau",
+          "subdistrict_lgd_code": "1919",
+          "category": "Rural"
+        },
+        {
+          "name": "Chikhurlui",
+          "lgd_code": "271749",
+          "subdistrict": "Bungtlang South",
+          "subdistrict_lgd_code": "1918",
+          "category": "Rural"
+        },
+        {
+          "name": "Chotaguisury-I",
+          "lgd_code": "271672",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural",
+          "local_name": "Chotaguisury-I"
+        },
+        {
+          "name": "Chotaguisury-II",
+          "lgd_code": "271673",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural",
+          "local_name": "Chotaguisury-II"
+        },
+        {
+          "name": "Chotakabakhali",
+          "lgd_code": "939572",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural",
+          "local_name": "Chotakabakhali"
+        },
+        {
+          "name": "Chotapansury",
+          "lgd_code": "271626",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural",
+          "local_name": "Chotapansury"
+        },
+        {
+          "name": "College Veng",
+          "lgd_code": "914308",
+          "subdistrict": "Lawngtlai",
+          "subdistrict_lgd_code": "1917",
+          "category": "Rural"
+        },
+        {
+          "name": "Council Veng",
+          "lgd_code": "914309",
+          "subdistrict": "Lawngtlai",
+          "subdistrict_lgd_code": "1917",
+          "category": "Rural"
+        },
+        {
+          "name": "Damlui",
+          "lgd_code": "271742",
+          "subdistrict": "Bungtlang South",
+          "subdistrict_lgd_code": "1918",
+          "category": "Rural"
+        },
+        {
+          "name": "Darnamtlang",
+          "lgd_code": "271721",
+          "subdistrict": "Lawngtlai",
+          "subdistrict_lgd_code": "1917",
+          "category": "Rural"
+        },
+        {
+          "name": "Devasora N",
+          "lgd_code": "271668",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural"
+        },
+        {
+          "name": "Devasora S",
+          "lgd_code": "271686",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural",
+          "local_name": "Devasora S"
+        },
+        {
+          "name": "Diltlang S",
+          "lgd_code": "271706",
+          "subdistrict": "Lawngtlai",
+          "subdistrict_lgd_code": "1917",
+          "category": "Rural",
+          "local_name": "Diltlang S"
+        },
+        {
+          "name": "Dumzautlang",
+          "lgd_code": "271759",
+          "subdistrict": "Bungtlang South",
+          "subdistrict_lgd_code": "1918",
+          "category": "Rural"
+        },
+        {
+          "name": "Dursora",
+          "lgd_code": "271677",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural"
+        },
+        {
+          "name": "Electric Veng",
+          "lgd_code": "914310",
+          "subdistrict": "Lawngtlai",
+          "subdistrict_lgd_code": "1917",
+          "category": "Rural"
+        },
+        {
+          "name": "Fangfarlui",
+          "lgd_code": "271746",
+          "subdistrict": "Bungtlang South",
+          "subdistrict_lgd_code": "1918",
+          "category": "Rural"
+        },
+        {
+          "name": "Fulsora",
+          "lgd_code": "271669",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural"
+        },
+        {
+          "name": "Fultuli",
+          "lgd_code": "271682",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural"
+        },
+        {
+          "name": "Futsury",
+          "lgd_code": "271664",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural"
+        },
+        {
+          "name": "Gabasury",
+          "lgd_code": "271691",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural",
+          "local_name": "Gabasury"
+        },
+        {
+          "name": "Gerakuluksora",
+          "lgd_code": "271638",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural",
+          "local_name": "Gerakuluksora"
+        },
+        {
+          "name": "Gerasury",
+          "lgd_code": "271671",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural"
+        },
+        {
+          "name": "Golasury",
+          "lgd_code": "271660",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural"
+        },
+        {
+          "name": "Gulsingbapsora",
+          "lgd_code": "271636",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural",
+          "local_name": "Gulsingbapsora"
+        },
+        {
+          "name": "Hlimzawl",
+          "lgd_code": "959734",
+          "subdistrict": "Bungtlang South",
+          "subdistrict_lgd_code": "1918",
+          "category": "Rural",
+          "local_name": "Hlimzawl"
+        },
+        {
+          "name": "Hmawngbu",
+          "lgd_code": "271728",
+          "subdistrict": "Lawngtlai",
+          "subdistrict_lgd_code": "1917",
+          "category": "Rural"
+        },
+        {
+          "name": "Hmawngbuchhuah",
+          "lgd_code": "271729",
+          "subdistrict": "Lawngtlai",
+          "subdistrict_lgd_code": "1917",
+          "category": "Rural"
+        },
+        {
+          "name": "Hmunlai",
+          "lgd_code": "271700",
+          "subdistrict": "Lawngtlai",
+          "subdistrict_lgd_code": "1917",
+          "category": "Rural"
+        },
+        {
+          "name": "Hmunnuam",
+          "lgd_code": "271740",
+          "subdistrict": "Bungtlang South",
+          "subdistrict_lgd_code": "1918",
+          "category": "Rural"
+        },
+        {
+          "name": "Hruitezawl",
+          "lgd_code": "271723",
+          "subdistrict": "Lawngtlai",
+          "subdistrict_lgd_code": "1917",
+          "category": "Rural"
+        },
+        {
+          "name": "Jamersury",
+          "lgd_code": "271645",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural"
+        },
+        {
+          "name": "Jaruldubasora",
+          "lgd_code": "271676",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural",
+          "local_name": "Jaruldubasora"
+        },
+        {
+          "name": "Jarulsury-I",
+          "lgd_code": "271642",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural",
+          "local_name": "Jarulsury-I"
+        },
+        {
+          "name": "Jarulsury-Ii",
+          "lgd_code": "914267",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural"
+        },
+        {
+          "name": "Jognasuri",
+          "lgd_code": "271736",
+          "subdistrict": "Bungtlang South",
+          "subdistrict_lgd_code": "1918",
+          "category": "Rural"
+        },
+        {
+          "name": "Jognasury-II",
+          "lgd_code": "945901",
+          "subdistrict": "Bungtlang South",
+          "subdistrict_lgd_code": "1918",
+          "category": "Rural",
+          "local_name": "Jognasury-II"
+        },
+        {
+          "name": "Kakichhuah",
+          "lgd_code": "271730",
+          "subdistrict": "Lawngtlai",
+          "subdistrict_lgd_code": "1917",
+          "category": "Rural"
+        },
+        {
+          "name": "Kamalanagar V",
+          "lgd_code": "939569",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural"
+        },
+        {
+          "name": "Kamalanagar VI",
+          "lgd_code": "939570",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural"
+        },
+        {
+          "name": "Kamalanagar-I",
+          "lgd_code": "271633",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural"
+        },
+        {
+          "name": "Kamalanagar-II",
+          "lgd_code": "271631",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural",
+          "local_name": "Kamalanagar-II"
+        },
+        {
+          "name": "Kamalanagar-III",
+          "lgd_code": "271632",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural",
+          "local_name": "Kamalanagar-III"
+        },
+        {
+          "name": "Kamalanagar-IV",
+          "lgd_code": "271695",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural",
+          "local_name": "Kamalanagar-IV"
+        },
+        {
+          "name": "Kamtuli",
+          "lgd_code": "271690",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural"
+        },
+        {
+          "name": "Karlui II",
+          "lgd_code": "914278",
+          "subdistrict": "Bungtlang South",
+          "subdistrict_lgd_code": "1918",
+          "category": "Rural"
+        },
+        {
+          "name": "Karlui-I",
+          "lgd_code": "271737",
+          "subdistrict": "Bungtlang South",
+          "subdistrict_lgd_code": "1918",
+          "category": "Rural",
+          "local_name": "Karlui-I"
+        },
+        {
+          "name": "Kawlchaw ‘W’",
+          "lgd_code": "271717",
+          "subdistrict": "Lawngtlai",
+          "subdistrict_lgd_code": "1917",
+          "category": "Rural"
+        },
+        {
+          "name": "Kawnkhua",
+          "lgd_code": "914302",
+          "subdistrict": "Bungtlang South",
+          "subdistrict_lgd_code": "1918",
+          "category": "Rural"
+        },
+        {
+          "name": "Kawrthindeng",
+          "lgd_code": "271720",
+          "subdistrict": "Lawngtlai",
+          "subdistrict_lgd_code": "1917",
+          "category": "Rural"
+        },
+        {
+          "name": "Kukurduleya",
+          "lgd_code": "271647",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural"
+        },
+        {
+          "name": "Kurbalovasora",
+          "lgd_code": "271615",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural"
+        },
+        {
+          "name": "Laitlang",
+          "lgd_code": "271762",
+          "subdistrict": "Bungtlang South",
+          "subdistrict_lgd_code": "1918",
+          "category": "Rural"
+        },
+        {
+          "name": "Lawngtlai Bethel Veng",
+          "lgd_code": "914284",
+          "subdistrict": "Lawngtlai",
+          "subdistrict_lgd_code": "1917",
+          "category": "Rural",
+          "local_name": "Lawngtlai Bethel Veng"
+        },
+        {
+          "name": "Lawngtlai I (Vengpui - I)",
+          "lgd_code": "914279",
+          "subdistrict": "Lawngtlai",
+          "subdistrict_lgd_code": "1917",
+          "category": "Rural"
+        },
+        {
+          "name": "Lawngtlai I (Vengpui - Ii)",
+          "lgd_code": "936495",
+          "subdistrict": "Lawngtlai",
+          "subdistrict_lgd_code": "1917",
+          "category": "Rural"
+        },
+        {
+          "name": "Lawngtlai II (Bazar Veng)",
+          "lgd_code": "914286",
+          "subdistrict": "Lawngtlai",
+          "subdistrict_lgd_code": "1917",
+          "category": "Rural"
+        },
+        {
+          "name": "Lawngtlai IV (Chanmary - I)",
+          "lgd_code": "914291",
+          "subdistrict": "Lawngtlai",
+          "subdistrict_lgd_code": "1917",
+          "category": "Rural"
+        },
+        {
+          "name": "Lawngtlai-III (Salem)",
+          "lgd_code": "914287",
+          "subdistrict": "Lawngtlai",
+          "subdistrict_lgd_code": "1917",
+          "category": "Rural",
+          "local_name": "Lawngtlai-III (Salem)"
+        },
+        {
+          "name": "Lokkisury",
+          "lgd_code": "914268",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural",
+          "local_name": "Lokkisury"
+        },
+        {
+          "name": "Longpuighat-I",
+          "lgd_code": "271663",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural",
+          "local_name": "Longpuighat-I"
+        },
+        {
+          "name": "Longpuighat-Ii",
+          "lgd_code": "914269",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural"
+        },
+        {
+          "name": "Ludisora",
+          "lgd_code": "271670",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural"
+        },
+        {
+          "name": "Lunghauka",
+          "lgd_code": "271726",
+          "subdistrict": "Lawngtlai",
+          "subdistrict_lgd_code": "1917",
+          "category": "Rural"
+        },
+        {
+          "name": "Lungtian II",
+          "lgd_code": "914296",
+          "subdistrict": "Sangau",
+          "subdistrict_lgd_code": "1919",
+          "category": "Rural"
+        },
+        {
+          "name": "Lungtian-I",
+          "lgd_code": "271765",
+          "subdistrict": "Sangau",
+          "subdistrict_lgd_code": "1919",
+          "category": "Rural",
+          "local_name": "Lungtian-I"
+        },
+        {
+          "name": "Lungzarhtum",
+          "lgd_code": "271773",
+          "subdistrict": "Sangau",
+          "subdistrict_lgd_code": "1919",
+          "category": "Rural"
+        },
+        {
+          "name": "M.Kawnpui",
+          "lgd_code": "271747",
+          "subdistrict": "Bungtlang South",
+          "subdistrict_lgd_code": "1918",
+          "category": "Rural"
+        },
+        {
+          "name": "Mainabapsora-I",
+          "lgd_code": "271650",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural",
+          "local_name": "Mainabapsora-I"
+        },
+        {
+          "name": "Mainabapsora-Ii",
+          "lgd_code": "271652",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural"
+        },
+        {
+          "name": "Mampui",
+          "lgd_code": "271708",
+          "subdistrict": "Lawngtlai",
+          "subdistrict_lgd_code": "1917",
+          "category": "Rural"
+        },
+        {
+          "name": "Massury",
+          "lgd_code": "914270",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural"
+        },
+        {
+          "name": "Mautlang",
+          "lgd_code": "271756",
+          "subdistrict": "Bungtlang South",
+          "subdistrict_lgd_code": "1918",
+          "category": "Rural",
+          "local_name": "Mautlang"
+        },
+        {
+          "name": "Mondirosora",
+          "lgd_code": "271649",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural",
+          "local_name": "Mondirosora"
+        },
+        {
+          "name": "Montola",
+          "lgd_code": "271622",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural"
+        },
+        {
+          "name": "Mualbu ‘L’",
+          "lgd_code": "271701",
+          "subdistrict": "Lawngtlai",
+          "subdistrict_lgd_code": "1917",
+          "category": "Rural"
+        },
+        {
+          "name": "Nagdarasora",
+          "lgd_code": "271637",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural"
+        },
+        {
+          "name": "Nalbonya",
+          "lgd_code": "271635",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural",
+          "local_name": "Nalbonya"
+        },
+        {
+          "name": "New Jaganasury-I",
+          "lgd_code": "271679",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural"
+        },
+        {
+          "name": "New Jaganasury-Ii",
+          "lgd_code": "271680",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural"
+        },
+        {
+          "name": "New Jaganasury-Iii",
+          "lgd_code": "914271",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural"
+        },
+        {
+          "name": "Ngengpuikai",
+          "lgd_code": "271707",
+          "subdistrict": "Lawngtlai",
+          "subdistrict_lgd_code": "1917",
+          "category": "Rural"
+        },
+        {
+          "name": "Ngengpuitlang",
+          "lgd_code": "271734",
+          "subdistrict": "Lawngtlai",
+          "subdistrict_lgd_code": "1917",
+          "category": "Rural"
+        },
+        {
+          "name": "Nghalimlui",
+          "lgd_code": "271743",
+          "subdistrict": "Bungtlang South",
+          "subdistrict_lgd_code": "1918",
+          "category": "Rural"
+        },
+        {
+          "name": "Ngunlingkhua",
+          "lgd_code": "271757",
+          "subdistrict": "Bungtlang South",
+          "subdistrict_lgd_code": "1918",
+          "category": "Rural"
+        },
+        {
+          "name": "Old Bajeisora",
+          "lgd_code": "271634",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural"
+        },
+        {
+          "name": "Paithar",
+          "lgd_code": "271713",
+          "subdistrict": "Lawngtlai",
+          "subdistrict_lgd_code": "1917",
+          "category": "Rural"
+        },
+        {
+          "name": "Palenosora",
+          "lgd_code": "914272",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural"
+        },
+        {
+          "name": "Pandawnglui",
+          "lgd_code": "271741",
+          "subdistrict": "Bungtlang South",
+          "subdistrict_lgd_code": "1918",
+          "category": "Rural"
+        },
+        {
+          "name": "Pangkhua",
+          "lgd_code": "271781",
+          "subdistrict": "Sangau",
+          "subdistrict_lgd_code": "1919",
+          "category": "Rural"
+        },
+        {
+          "name": "Parva-I",
+          "lgd_code": "271687",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural",
+          "local_name": "Parva-I"
+        },
+        {
+          "name": "Parva-II",
+          "lgd_code": "271688",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural",
+          "local_name": "Parva-II"
+        },
+        {
+          "name": "Parva-III",
+          "lgd_code": "271689",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural",
+          "local_name": "Parva-III"
+        },
+        {
+          "name": "Parva-Iv",
+          "lgd_code": "914273",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural"
+        },
+        {
+          "name": "R.Vanhne",
+          "lgd_code": "271715",
+          "subdistrict": "Lawngtlai",
+          "subdistrict_lgd_code": "1917",
+          "category": "Rural",
+          "local_name": "R.Vanhne"
+        },
+        {
+          "name": "Rajmandal",
+          "lgd_code": "271619",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural",
+          "local_name": "Rajmandal"
+        },
+        {
+          "name": "Ramhlun - Village Council",
+          "lgd_code": "948199",
+          "subdistrict": "Sangau",
+          "subdistrict_lgd_code": "1919",
+          "category": "Rural",
+          "local_name": "Ramhlun - Village Council"
+        },
+        {
+          "name": "Rawlbuk",
+          "lgd_code": "271767",
+          "subdistrict": "Sangau",
+          "subdistrict_lgd_code": "1919",
+          "category": "Rural"
+        },
+        {
+          "name": "Rengkashya",
+          "lgd_code": "271662",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural"
+        },
+        {
+          "name": "Rulkual",
+          "lgd_code": "271716",
+          "subdistrict": "Lawngtlai",
+          "subdistrict_lgd_code": "1917",
+          "category": "Rural"
+        },
+        {
+          "name": "S.Lungpher",
+          "lgd_code": "271769",
+          "subdistrict": "Sangau",
+          "subdistrict_lgd_code": "1919",
+          "category": "Rural",
+          "local_name": "S.Lungpher"
+        },
+        {
+          "name": "Sabualtlang",
+          "lgd_code": "271732",
+          "subdistrict": "Lawngtlai",
+          "subdistrict_lgd_code": "1917",
+          "category": "Rural"
+        },
+        {
+          "name": "Saibawh",
+          "lgd_code": "271745",
+          "subdistrict": "Bungtlang South",
+          "subdistrict_lgd_code": "1918",
+          "category": "Rural"
+        },
+        {
+          "name": "Saibawh-II",
+          "lgd_code": "945900",
+          "subdistrict": "Bungtlang South",
+          "subdistrict_lgd_code": "1918",
+          "category": "Rural",
+          "local_name": "Saibawh-II"
+        },
+        {
+          "name": "Saikah L",
+          "lgd_code": "937448",
+          "subdistrict": "Lawngtlai",
+          "subdistrict_lgd_code": "1917",
+          "category": "Rural",
+          "local_name": "Saikah L"
+        },
+        {
+          "name": "Saikah U",
+          "lgd_code": "271709",
+          "subdistrict": "Lawngtlai",
+          "subdistrict_lgd_code": "1917",
+          "category": "Rural"
+        },
+        {
+          "name": "Saikhawthlir West",
+          "lgd_code": "271739",
+          "subdistrict": "Bungtlang South",
+          "subdistrict_lgd_code": "1918",
+          "category": "Rural",
+          "local_name": "Saikhawthlir West"
+        },
+        {
+          "name": "Saizawh W",
+          "lgd_code": "271628",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural",
+          "local_name": "Saizawh W"
+        },
+        {
+          "name": "Saizawh ‘E’",
+          "lgd_code": "271719",
+          "subdistrict": "Lawngtlai",
+          "subdistrict_lgd_code": "1917",
+          "category": "Rural"
+        },
+        {
+          "name": "Sakeilui-I",
+          "lgd_code": "271703",
+          "subdistrict": "Lawngtlai",
+          "subdistrict_lgd_code": "1917",
+          "category": "Rural",
+          "local_name": "Sakeilui-I"
+        },
+        {
+          "name": "Sakeilui-II",
+          "lgd_code": "271704",
+          "subdistrict": "Lawngtlai",
+          "subdistrict_lgd_code": "1917",
+          "category": "Rural",
+          "local_name": "Sakeilui-II"
+        },
+        {
+          "name": "Samuksora",
+          "lgd_code": "914274",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural"
+        },
+        {
+          "name": "Sangau III",
+          "lgd_code": "914298",
+          "subdistrict": "Sangau",
+          "subdistrict_lgd_code": "1919",
+          "category": "Rural"
+        },
+        {
+          "name": "Sangau IV",
+          "lgd_code": "914300",
+          "subdistrict": "Sangau",
+          "subdistrict_lgd_code": "1919",
+          "category": "Rural"
+        },
+        {
+          "name": "Sangau-I",
+          "lgd_code": "271780",
+          "subdistrict": "Sangau",
+          "subdistrict_lgd_code": "1919",
+          "category": "Rural",
+          "local_name": "Sangau-I"
+        },
+        {
+          "name": "Sangau-II",
+          "lgd_code": "271779",
+          "subdistrict": "Sangau",
+          "subdistrict_lgd_code": "1919",
+          "category": "Rural",
+          "local_name": "Sangau-II"
+        },
+        {
+          "name": "Sangrasury",
+          "lgd_code": "914266",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural",
+          "local_name": "Sangrasury"
+        },
+        {
+          "name": "Sentetfiang",
+          "lgd_code": "271778",
+          "subdistrict": "Sangau",
+          "subdistrict_lgd_code": "1919",
+          "category": "Rural"
+        },
+        {
+          "name": "Siachangkawn",
+          "lgd_code": "271770",
+          "subdistrict": "Sangau",
+          "subdistrict_lgd_code": "1919",
+          "category": "Rural"
+        },
+        {
+          "name": "Sihtlangpui",
+          "lgd_code": "271714",
+          "subdistrict": "Lawngtlai",
+          "subdistrict_lgd_code": "1917",
+          "category": "Rural"
+        },
+        {
+          "name": "Silbanga",
+          "lgd_code": "271674",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural"
+        },
+        {
+          "name": "Sillosora",
+          "lgd_code": "271685",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural"
+        },
+        {
+          "name": "Silsury",
+          "lgd_code": "271624",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural"
+        },
+        {
+          "name": "Simeisury",
+          "lgd_code": "271657",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural"
+        },
+        {
+          "name": "Siminasora",
+          "lgd_code": "271693",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural"
+        },
+        {
+          "name": "Sumsilui",
+          "lgd_code": "271702",
+          "subdistrict": "Lawngtlai",
+          "subdistrict_lgd_code": "1917",
+          "category": "Rural"
+        },
+        {
+          "name": "T. Dumzau",
+          "lgd_code": "271760",
+          "subdistrict": "Bungtlang South",
+          "subdistrict_lgd_code": "1918",
+          "category": "Rural",
+          "local_name": "T. Dumzau"
+        },
+        {
+          "name": "Thaltlang",
+          "lgd_code": "271777",
+          "subdistrict": "Sangau",
+          "subdistrict_lgd_code": "1919",
+          "category": "Rural"
+        },
+        {
+          "name": "Thingkah",
+          "lgd_code": "914292",
+          "subdistrict": "Lawngtlai",
+          "subdistrict_lgd_code": "1917",
+          "category": "Rural"
+        },
+        {
+          "name": "Tialdawngilung",
+          "lgd_code": "271774",
+          "subdistrict": "Sangau",
+          "subdistrict_lgd_code": "1919",
+          "category": "Rural"
+        },
+        {
+          "name": "Tuichawngtlang",
+          "lgd_code": "271761",
+          "subdistrict": "Bungtlang South",
+          "subdistrict_lgd_code": "1918",
+          "category": "Rural"
+        },
+        {
+          "name": "Tuidangtlang",
+          "lgd_code": "914314",
+          "subdistrict": "Lawngtlai",
+          "subdistrict_lgd_code": "1917",
+          "category": "Rural"
+        },
+        {
+          "name": "Tuikhurlui",
+          "lgd_code": "271699",
+          "subdistrict": "Lawngtlai",
+          "subdistrict_lgd_code": "1917",
+          "category": "Rural"
+        },
+        {
+          "name": "Tuisentlang",
+          "lgd_code": "271758",
+          "subdistrict": "Bungtlang South",
+          "subdistrict_lgd_code": "1918",
+          "category": "Rural"
+        },
+        {
+          "name": "Tuithumhnar",
+          "lgd_code": "271724",
+          "subdistrict": "Lawngtlai",
+          "subdistrict_lgd_code": "1917",
+          "category": "Rural"
+        },
+        {
+          "name": "Tungosora",
+          "lgd_code": "271625",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural"
+        },
+        {
+          "name": "Udaltana-I",
+          "lgd_code": "271640",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural",
+          "local_name": "Udaltana-I"
+        },
+        {
+          "name": "Udaltana-II",
+          "lgd_code": "271639",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural",
+          "local_name": "Udaltana-II"
+        },
+        {
+          "name": "Ugalsury",
+          "lgd_code": "271618",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural"
+        },
+        {
+          "name": "Ugudasury N",
+          "lgd_code": "271621",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural"
+        },
+        {
+          "name": "Ugudasury ‘S’",
+          "lgd_code": "271643",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural"
+        },
+        {
+          "name": "Ulusury",
+          "lgd_code": "271648",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural"
+        },
+        {
+          "name": "Vartek",
+          "lgd_code": "271764",
+          "subdistrict": "Sangau",
+          "subdistrict_lgd_code": "1919",
+          "category": "Rural"
+        },
+        {
+          "name": "Vartekkai",
+          "lgd_code": "271763",
+          "subdistrict": "Sangau",
+          "subdistrict_lgd_code": "1919",
+          "category": "Rural"
+        },
+        {
+          "name": "Vaseitlang-I",
+          "lgd_code": "271658",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural",
+          "local_name": "Vaseitlang-I"
+        },
+        {
+          "name": "Vaseitlang-II",
+          "lgd_code": "271659",
+          "subdistrict": "Chawngte",
+          "subdistrict_lgd_code": "1916",
+          "category": "Rural",
+          "local_name": "Vaseitlang-II"
+        },
+        {
+          "name": "Vathuampui",
+          "lgd_code": "271751",
+          "subdistrict": "Bungtlang South",
+          "subdistrict_lgd_code": "1918",
+          "category": "Rural"
+        },
+        {
+          "name": "Vawmbuk-I",
+          "lgd_code": "914311",
+          "subdistrict": "Sangau",
+          "subdistrict_lgd_code": "1919",
+          "category": "Rural",
+          "local_name": "Vawmbuk-I"
+        },
+        {
+          "name": "Vawmbuk-Ii (Vaivakawn)",
+          "lgd_code": "271775",
+          "subdistrict": "Sangau",
+          "subdistrict_lgd_code": "1919",
+          "category": "Rural"
+        },
+        {
+          "name": "Veseikai",
+          "lgd_code": "271744",
+          "subdistrict": "Bungtlang South",
+          "subdistrict_lgd_code": "1918",
+          "category": "Rural"
+        },
+        {
+          "name": "Zochachhuah",
+          "lgd_code": "271731",
+          "subdistrict": "Lawngtlai",
+          "subdistrict_lgd_code": "1917",
+          "category": "Rural"
+        }
+      ]
+    },
+    {
+      "name": "Lunglei",
+      "lgd_code": "265",
+      "village_count": 131,
+      "villages": [
+        {
+          "name": "Balungsuri",
+          "lgd_code": "271493",
+          "subdistrict": "Tlabung",
+          "subdistrict_lgd_code": "7358",
+          "category": "Rural"
+        },
+        {
+          "name": "Belkhai",
+          "lgd_code": "271454",
+          "subdistrict": "Bunghmun",
+          "subdistrict_lgd_code": "1912",
+          "category": "Rural",
+          "local_name": "Belkhai"
+        },
+        {
+          "name": "Belpei",
+          "lgd_code": "271537",
+          "subdistrict": "Tlabung",
+          "subdistrict_lgd_code": "7358",
+          "category": "Rural"
+        },
+        {
+          "name": "Belthei",
+          "lgd_code": "271474",
+          "subdistrict": "Lungsen",
+          "subdistrict_lgd_code": "1913",
+          "category": "Rural"
+        },
+        {
+          "name": "Bindiasora",
+          "lgd_code": "271490",
+          "subdistrict": "Tlabung",
+          "subdistrict_lgd_code": "7358",
+          "category": "Rural"
+        },
+        {
+          "name": "Bolia",
+          "lgd_code": "271535",
+          "subdistrict": "Lungsen",
+          "subdistrict_lgd_code": "1913",
+          "category": "Rural"
+        },
+        {
+          "name": "Bornasury",
+          "lgd_code": "959758",
+          "subdistrict": "Tlabung",
+          "subdistrict_lgd_code": "7358",
+          "category": "Rural",
+          "local_name": "Bornasury"
+        },
+        {
+          "name": "Bualte",
+          "lgd_code": "271575",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Rural"
+        },
+        {
+          "name": "Buarpui",
+          "lgd_code": "271428",
+          "subdistrict": "Bunghmun",
+          "subdistrict_lgd_code": "1912",
+          "category": "Rural"
+        },
+        {
+          "name": "Buknuam",
+          "lgd_code": "271570",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Rural"
+        },
+        {
+          "name": "Bunghmun",
+          "lgd_code": "271437",
+          "subdistrict": "Bunghmun",
+          "subdistrict_lgd_code": "1912",
+          "category": "Rural",
+          "local_name": "Bunghmun"
+        },
+        {
+          "name": "Bungtlang West",
+          "lgd_code": "271429",
+          "subdistrict": "Bunghmun",
+          "subdistrict_lgd_code": "1912",
+          "category": "Rural"
+        },
+        {
+          "name": "Changpui",
+          "lgd_code": "271435",
+          "subdistrict": "Bunghmun",
+          "subdistrict_lgd_code": "1912",
+          "category": "Rural"
+        },
+        {
+          "name": "Chawilung South",
+          "lgd_code": "271512",
+          "subdistrict": "Tlabung",
+          "subdistrict_lgd_code": "7358",
+          "category": "Rural",
+          "local_name": "Chawilung South"
+        },
+        {
+          "name": "Chawngte L",
+          "lgd_code": "271522",
+          "subdistrict": "Lungsen",
+          "subdistrict_lgd_code": "1913",
+          "category": "Rural"
+        },
+        {
+          "name": "Chengkawllui",
+          "lgd_code": "271462",
+          "subdistrict": "Tlabung",
+          "subdistrict_lgd_code": "7358",
+          "category": "Rural"
+        },
+        {
+          "name": "Chengpui",
+          "lgd_code": "271557",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Rural"
+        },
+        {
+          "name": "Chhuahthum",
+          "lgd_code": "271476",
+          "subdistrict": "Lungsen",
+          "subdistrict_lgd_code": "1913",
+          "category": "Rural"
+        },
+        {
+          "name": "Chhumkhum",
+          "lgd_code": "271495",
+          "subdistrict": "Lungsen",
+          "subdistrict_lgd_code": "1913",
+          "category": "Rural"
+        },
+        {
+          "name": "Chithar",
+          "lgd_code": "271569",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Rural"
+        },
+        {
+          "name": "College Veng",
+          "lgd_code": "935431",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Urban"
+        },
+        {
+          "name": "Dawn",
+          "lgd_code": "271564",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Rural"
+        },
+        {
+          "name": "Dengsur",
+          "lgd_code": "271425",
+          "subdistrict": "Bunghmun",
+          "subdistrict_lgd_code": "1912",
+          "category": "Rural"
+        },
+        {
+          "name": "Devasuri",
+          "lgd_code": "271446",
+          "subdistrict": "Tlabung",
+          "subdistrict_lgd_code": "7358",
+          "category": "Rural"
+        },
+        {
+          "name": "Diblibagh",
+          "lgd_code": "271464",
+          "subdistrict": "Tlabung",
+          "subdistrict_lgd_code": "7358",
+          "category": "Rural"
+        },
+        {
+          "name": "Electric Veng",
+          "lgd_code": "935432",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Urban"
+        },
+        {
+          "name": "Farm Veng",
+          "lgd_code": "935433",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Urban"
+        },
+        {
+          "name": "Haulawng",
+          "lgd_code": "271551",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Rural"
+        },
+        {
+          "name": "Hauruang",
+          "lgd_code": "935434",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Urban"
+        },
+        {
+          "name": "Hlumte",
+          "lgd_code": "271574",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Rural"
+        },
+        {
+          "name": "Hmundo",
+          "lgd_code": "271458",
+          "subdistrict": "Tlabung",
+          "subdistrict_lgd_code": "7358",
+          "category": "Rural"
+        },
+        {
+          "name": "Hmuntlang",
+          "lgd_code": "271550",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Rural"
+        },
+        {
+          "name": "Hrangchalkawn",
+          "lgd_code": "935435",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Urban"
+        },
+        {
+          "name": "Kalapani",
+          "lgd_code": "271529",
+          "subdistrict": "Tlabung",
+          "subdistrict_lgd_code": "7358",
+          "category": "Rural"
+        },
+        {
+          "name": "Kauchhuah",
+          "lgd_code": "271472",
+          "subdistrict": "Lungsen",
+          "subdistrict_lgd_code": "1913",
+          "category": "Rural"
+        },
+        {
+          "name": "Kawlhawk",
+          "lgd_code": "271434",
+          "subdistrict": "Bunghmun",
+          "subdistrict_lgd_code": "1912",
+          "category": "Rural"
+        },
+        {
+          "name": "Khawlek South",
+          "lgd_code": "271426",
+          "subdistrict": "Bunghmun",
+          "subdistrict_lgd_code": "1912",
+          "category": "Rural",
+          "local_name": "Khawlek South"
+        },
+        {
+          "name": "Khawmawi",
+          "lgd_code": "271528",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Rural"
+        },
+        {
+          "name": "Khojoysury",
+          "lgd_code": "271510",
+          "subdistrict": "Tlabung",
+          "subdistrict_lgd_code": "7358",
+          "category": "Rural"
+        },
+        {
+          "name": "Laisawral",
+          "lgd_code": "271422",
+          "subdistrict": "Bunghmun",
+          "subdistrict_lgd_code": "1912",
+          "category": "Rural"
+        },
+        {
+          "name": "Lalnutui",
+          "lgd_code": "271518",
+          "subdistrict": "Lungsen",
+          "subdistrict_lgd_code": "1913",
+          "category": "Rural"
+        },
+        {
+          "name": "Lokisuri",
+          "lgd_code": "271450",
+          "subdistrict": "Tlabung",
+          "subdistrict_lgd_code": "7358",
+          "category": "Rural"
+        },
+        {
+          "name": "Luangmual",
+          "lgd_code": "935436",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Urban"
+        },
+        {
+          "name": "Lungchem",
+          "lgd_code": "271436",
+          "subdistrict": "Bunghmun",
+          "subdistrict_lgd_code": "1912",
+          "category": "Rural"
+        },
+        {
+          "name": "Lungdai South",
+          "lgd_code": "271457",
+          "subdistrict": "Bunghmun",
+          "subdistrict_lgd_code": "1912",
+          "category": "Rural",
+          "local_name": "Lungdai South"
+        },
+        {
+          "name": "Lunglawn",
+          "lgd_code": "935437",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Urban"
+        },
+        {
+          "name": "Lunglei Bazar Veng",
+          "lgd_code": "935429",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Urban"
+        },
+        {
+          "name": "Lunglei Chanmari",
+          "lgd_code": "935430",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Urban"
+        },
+        {
+          "name": "Lungpuizawl",
+          "lgd_code": "935438",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Urban"
+        },
+        {
+          "name": "Lungrang South",
+          "lgd_code": "271538",
+          "subdistrict": "Lungsen",
+          "subdistrict_lgd_code": "1913",
+          "category": "Rural",
+          "local_name": "Lungrang South"
+        },
+        {
+          "name": "Lungrang South-I",
+          "lgd_code": "271514",
+          "subdistrict": "Lungsen",
+          "subdistrict_lgd_code": "1913",
+          "category": "Rural",
+          "local_name": "Lungrang South-I"
+        },
+        {
+          "name": "Lungsen-I",
+          "lgd_code": "271475",
+          "subdistrict": "Lungsen",
+          "subdistrict_lgd_code": "1913",
+          "category": "Rural",
+          "local_name": "Lungsen-I"
+        },
+        {
+          "name": "Lungsen-II",
+          "lgd_code": "935454",
+          "subdistrict": "Lungsen",
+          "subdistrict_lgd_code": "1913",
+          "category": "Rural",
+          "local_name": "Lungsen-II"
+        },
+        {
+          "name": "Madhiasora",
+          "lgd_code": "935460",
+          "subdistrict": "Tlabung",
+          "subdistrict_lgd_code": "7358",
+          "category": "Rural"
+        },
+        {
+          "name": "Malsury",
+          "lgd_code": "271448",
+          "subdistrict": "Tlabung",
+          "subdistrict_lgd_code": "7358",
+          "category": "Rural"
+        },
+        {
+          "name": "Mamte",
+          "lgd_code": "271585",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Rural"
+        },
+        {
+          "name": "Marpara South",
+          "lgd_code": "271419",
+          "subdistrict": "Bunghmun",
+          "subdistrict_lgd_code": "1912",
+          "category": "Rural",
+          "local_name": "Marpara South"
+        },
+        {
+          "name": "Mausen",
+          "lgd_code": "271552",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Rural"
+        },
+        {
+          "name": "Mautlang",
+          "lgd_code": "271497",
+          "subdistrict": "Lungsen",
+          "subdistrict_lgd_code": "1913",
+          "category": "Rural",
+          "local_name": "Mautlang"
+        },
+        {
+          "name": "Mauzam",
+          "lgd_code": "271443",
+          "subdistrict": "Bunghmun",
+          "subdistrict_lgd_code": "1912",
+          "category": "Rural"
+        },
+        {
+          "name": "Mualcheng South",
+          "lgd_code": "271582",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Rural"
+        },
+        {
+          "name": "Mualthuam North",
+          "lgd_code": "271547",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Rural",
+          "local_name": "Mualthuam North"
+        },
+        {
+          "name": "Mualthuam South",
+          "lgd_code": "271580",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Rural",
+          "local_name": "Mualthuam South"
+        },
+        {
+          "name": "Muriskata",
+          "lgd_code": "271489",
+          "subdistrict": "Tlabung",
+          "subdistrict_lgd_code": "7358",
+          "category": "Rural"
+        },
+        {
+          "name": "New Baluksury",
+          "lgd_code": "271482",
+          "subdistrict": "Tlabung",
+          "subdistrict_lgd_code": "7358",
+          "category": "Rural",
+          "local_name": "New Baluksury"
+        },
+        {
+          "name": "New Sachan",
+          "lgd_code": "271439",
+          "subdistrict": "Bunghmun",
+          "subdistrict_lgd_code": "1912",
+          "category": "Rural"
+        },
+        {
+          "name": "Nunsury-I",
+          "lgd_code": "271487",
+          "subdistrict": "Tlabung",
+          "subdistrict_lgd_code": "7358",
+          "category": "Rural",
+          "local_name": "Nunsury-I"
+        },
+        {
+          "name": "Nunsury-II",
+          "lgd_code": "935455",
+          "subdistrict": "Tlabung",
+          "subdistrict_lgd_code": "7358",
+          "category": "Rural",
+          "local_name": "Nunsury-II"
+        },
+        {
+          "name": "Old Ralvawng",
+          "lgd_code": "936504",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Rural"
+        },
+        {
+          "name": "Phairuangkai",
+          "lgd_code": "271498",
+          "subdistrict": "Lungsen",
+          "subdistrict_lgd_code": "1913",
+          "category": "Rural"
+        },
+        {
+          "name": "Puankhai",
+          "lgd_code": "271449",
+          "subdistrict": "Tlabung",
+          "subdistrict_lgd_code": "7358",
+          "category": "Rural"
+        },
+        {
+          "name": "Pukpui",
+          "lgd_code": "935439",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Urban"
+        },
+        {
+          "name": "Putlungasih",
+          "lgd_code": "271473",
+          "subdistrict": "Lungsen",
+          "subdistrict_lgd_code": "1913",
+          "category": "Rural"
+        },
+        {
+          "name": "Rahsi Veng",
+          "lgd_code": "935440",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Urban"
+        },
+        {
+          "name": "Ralvawng",
+          "lgd_code": "271562",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Rural"
+        },
+        {
+          "name": "Ramlaitui",
+          "lgd_code": "271544",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Rural"
+        },
+        {
+          "name": "Ramthar Veng",
+          "lgd_code": "935447",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Urban"
+        },
+        {
+          "name": "Rangte",
+          "lgd_code": "271500",
+          "subdistrict": "Lungsen",
+          "subdistrict_lgd_code": "1913",
+          "category": "Rural"
+        },
+        {
+          "name": "Rolui",
+          "lgd_code": "271467",
+          "subdistrict": "Lungsen",
+          "subdistrict_lgd_code": "1913",
+          "category": "Rural"
+        },
+        {
+          "name": "Rotlang West",
+          "lgd_code": "271499",
+          "subdistrict": "Lungsen",
+          "subdistrict_lgd_code": "1913",
+          "category": "Rural"
+        },
+        {
+          "name": "Rualalung",
+          "lgd_code": "271519",
+          "subdistrict": "Lungsen",
+          "subdistrict_lgd_code": "1913",
+          "category": "Rural"
+        },
+        {
+          "name": "Runtung",
+          "lgd_code": "271568",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Rural"
+        },
+        {
+          "name": "Sachan",
+          "lgd_code": "271438",
+          "subdistrict": "Bunghmun",
+          "subdistrict_lgd_code": "1912",
+          "category": "Rural"
+        },
+        {
+          "name": "Sailen",
+          "lgd_code": "271515",
+          "subdistrict": "Lungsen",
+          "subdistrict_lgd_code": "1913",
+          "category": "Rural"
+        },
+        {
+          "name": "Sairep",
+          "lgd_code": "271572",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Rural"
+        },
+        {
+          "name": "Salem",
+          "lgd_code": "935449",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Urban"
+        },
+        {
+          "name": "Sazaikawn",
+          "lgd_code": "935448",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Urban"
+        },
+        {
+          "name": "Sekhum",
+          "lgd_code": "271546",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Rural"
+        },
+        {
+          "name": "Serhuan",
+          "lgd_code": "271486",
+          "subdistrict": "Tlabung",
+          "subdistrict_lgd_code": "7358",
+          "category": "Rural"
+        },
+        {
+          "name": "Serkawn",
+          "lgd_code": "935450",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Urban"
+        },
+        {
+          "name": "Serte",
+          "lgd_code": "271456",
+          "subdistrict": "Bunghmun",
+          "subdistrict_lgd_code": "1912",
+          "category": "Rural"
+        },
+        {
+          "name": "Sertlangpui",
+          "lgd_code": "271455",
+          "subdistrict": "Bunghmun",
+          "subdistrict_lgd_code": "1912",
+          "category": "Rural"
+        },
+        {
+          "name": "Sesawm",
+          "lgd_code": "271421",
+          "subdistrict": "Bunghmun",
+          "subdistrict_lgd_code": "1912",
+          "category": "Rural"
+        },
+        {
+          "name": "Sethlun",
+          "lgd_code": "935451",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Urban"
+        },
+        {
+          "name": "Silkur",
+          "lgd_code": "271503",
+          "subdistrict": "Tlabung",
+          "subdistrict_lgd_code": "7358",
+          "category": "Rural"
+        },
+        {
+          "name": "Sugarbasora",
+          "lgd_code": "271463",
+          "subdistrict": "Tlabung",
+          "subdistrict_lgd_code": "7358",
+          "category": "Rural"
+        },
+        {
+          "name": "Sumasumi",
+          "lgd_code": "271452",
+          "subdistrict": "Bunghmun",
+          "subdistrict_lgd_code": "1912",
+          "category": "Rural"
+        },
+        {
+          "name": "Tablabagh",
+          "lgd_code": "271485",
+          "subdistrict": "Tlabung",
+          "subdistrict_lgd_code": "7358",
+          "category": "Rural"
+        },
+        {
+          "name": "Tawipui North-I",
+          "lgd_code": "271587",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Rural",
+          "local_name": "Tawipui North-I"
+        },
+        {
+          "name": "Tawipui North-II",
+          "lgd_code": "271588",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Rural",
+          "local_name": "Tawipui North-II"
+        },
+        {
+          "name": "Tawipui South",
+          "lgd_code": "271583",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Rural",
+          "local_name": "Tawipui South"
+        },
+        {
+          "name": "Thaizawl",
+          "lgd_code": "271573",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Rural"
+        },
+        {
+          "name": "Thangpui",
+          "lgd_code": "271577",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Rural"
+        },
+        {
+          "name": "Thangte",
+          "lgd_code": "271578",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Rural"
+        },
+        {
+          "name": "Theiriat",
+          "lgd_code": "935452",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Urban"
+        },
+        {
+          "name": "Thenhlum",
+          "lgd_code": "271433",
+          "subdistrict": "Bunghmun",
+          "subdistrict_lgd_code": "1912",
+          "category": "Rural"
+        },
+        {
+          "name": "Thingfal",
+          "lgd_code": "271586",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Rural"
+        },
+        {
+          "name": "Thlengang",
+          "lgd_code": "271584",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Rural"
+        },
+        {
+          "name": "Thualthu",
+          "lgd_code": "271579",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Rural",
+          "local_name": "Thualthu"
+        },
+        {
+          "name": "Thuampui",
+          "lgd_code": "271556",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Rural"
+        },
+        {
+          "name": "Tiperaghat",
+          "lgd_code": "271507",
+          "subdistrict": "Tlabung",
+          "subdistrict_lgd_code": "7358",
+          "category": "Rural"
+        },
+        {
+          "name": "Tlabung",
+          "lgd_code": "935457",
+          "subdistrict": "Tlabung",
+          "subdistrict_lgd_code": "7358",
+          "category": "Rural"
+        },
+        {
+          "name": "Tleu",
+          "lgd_code": "271432",
+          "subdistrict": "Bunghmun",
+          "subdistrict_lgd_code": "1912",
+          "category": "Rural"
+        },
+        {
+          "name": "Tuichawng",
+          "lgd_code": "271466",
+          "subdistrict": "Tlabung",
+          "subdistrict_lgd_code": "7358",
+          "category": "Rural"
+        },
+        {
+          "name": "Tuisenchhuah",
+          "lgd_code": "271536",
+          "subdistrict": "Lungsen",
+          "subdistrict_lgd_code": "1913",
+          "category": "Rural",
+          "local_name": "Tuisenchhuah"
+        },
+        {
+          "name": "Ukdasuri (Tuilet)",
+          "lgd_code": "271459",
+          "subdistrict": "Tlabung",
+          "subdistrict_lgd_code": "7358",
+          "category": "Rural"
+        },
+        {
+          "name": "Undermanik",
+          "lgd_code": "271468",
+          "subdistrict": "Lungsen",
+          "subdistrict_lgd_code": "1913",
+          "category": "Rural"
+        },
+        {
+          "name": "Vairawkai",
+          "lgd_code": "271520",
+          "subdistrict": "Lungsen",
+          "subdistrict_lgd_code": "1913",
+          "category": "Rural"
+        },
+        {
+          "name": "Vaisam",
+          "lgd_code": "271571",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Rural"
+        },
+        {
+          "name": "Vanhne",
+          "lgd_code": "271560",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Rural"
+        },
+        {
+          "name": "Venghlun",
+          "lgd_code": "935441",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Urban"
+        },
+        {
+          "name": "Venglai",
+          "lgd_code": "935442",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Urban"
+        },
+        {
+          "name": "Zawlpui",
+          "lgd_code": "271533",
+          "subdistrict": "Lungsen",
+          "subdistrict_lgd_code": "1913",
+          "category": "Rural",
+          "local_name": "Zawlpui"
+        },
+        {
+          "name": "Zehtet",
+          "lgd_code": "271516",
+          "subdistrict": "Lungsen",
+          "subdistrict_lgd_code": "1913",
+          "category": "Rural"
+        },
+        {
+          "name": "Zobawk North",
+          "lgd_code": "935444",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Urban"
+        },
+        {
+          "name": "Zobawk South",
+          "lgd_code": "935443",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Urban"
+        },
+        {
+          "name": "Zodin",
+          "lgd_code": "935456",
+          "subdistrict": "Tlabung",
+          "subdistrict_lgd_code": "7358",
+          "category": "Rural"
+        },
+        {
+          "name": "Zohmun",
+          "lgd_code": "959769",
+          "subdistrict": "Tlabung",
+          "subdistrict_lgd_code": "7358",
+          "category": "Rural",
+          "local_name": "Zohmun"
+        },
+        {
+          "name": "Zohnuai",
+          "lgd_code": "935445",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Urban"
+        },
+        {
+          "name": "Zotlang",
+          "lgd_code": "935446",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Urban"
+        },
+        {
+          "name": "Zotuitlang",
+          "lgd_code": "271554",
+          "subdistrict": "Lunglei",
+          "subdistrict_lgd_code": "1914",
+          "category": "Rural"
+        }
+      ]
+    },
+    {
+      "name": "Mamit",
+      "lgd_code": "266",
+      "village_count": 102,
+      "villages": [
+        {
+          "name": "Ailawng",
+          "lgd_code": "271125",
+          "subdistrict": "Reiek",
+          "subdistrict_lgd_code": "1898",
+          "category": "Rural"
+        },
+        {
+          "name": "Andermanik",
+          "lgd_code": "271068",
+          "subdistrict": "Kawrtethawveng",
+          "subdistrict_lgd_code": "7342",
+          "category": "Rural",
+          "local_name": "Andermanik"
+        },
+        {
+          "name": "Bawlte",
+          "lgd_code": "271129",
+          "subdistrict": "Reiek",
+          "subdistrict_lgd_code": "1898",
+          "category": "Rural"
+        },
+        {
+          "name": "Bawngthah",
+          "lgd_code": "271130",
+          "subdistrict": "Reiek",
+          "subdistrict_lgd_code": "1898",
+          "category": "Rural"
+        },
+        {
+          "name": "Bawngva",
+          "lgd_code": "271042",
+          "subdistrict": "Kawrtethawveng",
+          "subdistrict_lgd_code": "7342",
+          "category": "Rural"
+        },
+        {
+          "name": "Bekabekya/Lianbuang",
+          "lgd_code": "935417",
+          "subdistrict": "West Phaileng",
+          "subdistrict_lgd_code": "1897",
+          "category": "Rural",
+          "local_name": "Bekabekya/Lianbuang"
+        },
+        {
+          "name": "Belkhai",
+          "lgd_code": "271061",
+          "subdistrict": "Kawrtethawveng",
+          "subdistrict_lgd_code": "7342",
+          "category": "Rural"
+        },
+        {
+          "name": "Borai",
+          "lgd_code": "935426",
+          "subdistrict": "Zawlnuam",
+          "subdistrict_lgd_code": "1896",
+          "category": "Rural"
+        },
+        {
+          "name": "Bunghmun West",
+          "lgd_code": "271033",
+          "subdistrict": "Kawrtethawveng",
+          "subdistrict_lgd_code": "7342",
+          "category": "Rural",
+          "local_name": "Bunghmun West"
+        },
+        {
+          "name": "Bungthuam",
+          "lgd_code": "271019",
+          "subdistrict": "Zawlnuam",
+          "subdistrict_lgd_code": "1896",
+          "category": "Rural"
+        },
+        {
+          "name": "Chhippui",
+          "lgd_code": "937841",
+          "subdistrict": "West Phaileng",
+          "subdistrict_lgd_code": "1897",
+          "category": "Rural",
+          "local_name": "Chhippui"
+        },
+        {
+          "name": "Chilui",
+          "lgd_code": "271046",
+          "subdistrict": "Zawlnuam",
+          "subdistrict_lgd_code": "1896",
+          "category": "Rural"
+        },
+        {
+          "name": "Chuhvel",
+          "lgd_code": "271058",
+          "subdistrict": "Zawlnuam",
+          "subdistrict_lgd_code": "1896",
+          "category": "Rural"
+        },
+        {
+          "name": "Chungtlang",
+          "lgd_code": "271123",
+          "subdistrict": "Reiek",
+          "subdistrict_lgd_code": "1898",
+          "category": "Rural"
+        },
+        {
+          "name": "Damdiai",
+          "lgd_code": "271077",
+          "subdistrict": "Zawlnuam",
+          "subdistrict_lgd_code": "1896",
+          "category": "Rural"
+        },
+        {
+          "name": "Damparengpui Vc-I",
+          "lgd_code": "271080",
+          "subdistrict": "West Phaileng",
+          "subdistrict_lgd_code": "1897",
+          "category": "Rural",
+          "local_name": "Damparengpui VC-I"
+        },
+        {
+          "name": "Damparengpui Village Council-II",
+          "lgd_code": "951933",
+          "subdistrict": "West Phaileng",
+          "subdistrict_lgd_code": "1897",
+          "category": "Rural",
+          "local_name": "Damparengpui Village Council-II"
+        },
+        {
+          "name": "Dampui",
+          "lgd_code": "271040",
+          "subdistrict": "Zawlnuam",
+          "subdistrict_lgd_code": "1896",
+          "category": "Rural"
+        },
+        {
+          "name": "Dapchhuah",
+          "lgd_code": "271121",
+          "subdistrict": "Reiek",
+          "subdistrict_lgd_code": "1898",
+          "category": "Rural"
+        },
+        {
+          "name": "Darlak",
+          "lgd_code": "271028",
+          "subdistrict": "Kawrtethawveng",
+          "subdistrict_lgd_code": "7342",
+          "category": "Rural"
+        },
+        {
+          "name": "Darlung",
+          "lgd_code": "271131",
+          "subdistrict": "Reiek",
+          "subdistrict_lgd_code": "1898",
+          "category": "Rural"
+        },
+        {
+          "name": "Dilzawl",
+          "lgd_code": "271116",
+          "subdistrict": "Reiek",
+          "subdistrict_lgd_code": "1898",
+          "category": "Rural"
+        },
+        {
+          "name": "Hmunpui",
+          "lgd_code": "271115",
+          "subdistrict": "Reiek",
+          "subdistrict_lgd_code": "1898",
+          "category": "Rural"
+        },
+        {
+          "name": "Hnahva",
+          "lgd_code": "271109",
+          "subdistrict": "West Phaileng",
+          "subdistrict_lgd_code": "1897",
+          "category": "Rural"
+        },
+        {
+          "name": "Hreichuk",
+          "lgd_code": "271135",
+          "subdistrict": "Reiek",
+          "subdistrict_lgd_code": "1898",
+          "category": "Rural"
+        },
+        {
+          "name": "Hriphaw",
+          "lgd_code": "271018",
+          "subdistrict": "Zawlnuam",
+          "subdistrict_lgd_code": "1896",
+          "category": "Rural"
+        },
+        {
+          "name": "Hruaitluang",
+          "lgd_code": "271087",
+          "subdistrict": "West Phaileng",
+          "subdistrict_lgd_code": "1897",
+          "category": "Rural"
+        },
+        {
+          "name": "Hruiduk",
+          "lgd_code": "271110",
+          "subdistrict": "West Phaileng",
+          "subdistrict_lgd_code": "1897",
+          "category": "Rural"
+        },
+        {
+          "name": "K. Sarali",
+          "lgd_code": "271045",
+          "subdistrict": "Zawlnuam",
+          "subdistrict_lgd_code": "1896",
+          "category": "Rural"
+        },
+        {
+          "name": "Kananthar",
+          "lgd_code": "271055",
+          "subdistrict": "Zawlnuam",
+          "subdistrict_lgd_code": "1896",
+          "category": "Rural"
+        },
+        {
+          "name": "Kanghmun",
+          "lgd_code": "271128",
+          "subdistrict": "Reiek",
+          "subdistrict_lgd_code": "1898",
+          "category": "Rural"
+        },
+        {
+          "name": "Kanhmun",
+          "lgd_code": "271013",
+          "subdistrict": "Zawlnuam",
+          "subdistrict_lgd_code": "1896",
+          "category": "Rural"
+        },
+        {
+          "name": "Kawnmawi",
+          "lgd_code": "271090",
+          "subdistrict": "West Phaileng",
+          "subdistrict_lgd_code": "1897",
+          "category": "Rural",
+          "local_name": "Kawnmawi"
+        },
+        {
+          "name": "Kawrtethawveng",
+          "lgd_code": "271029",
+          "subdistrict": "Kawrtethawveng",
+          "subdistrict_lgd_code": "7342",
+          "category": "Rural"
+        },
+        {
+          "name": "Kawrthah",
+          "lgd_code": "951219",
+          "subdistrict": "Zawlnuam",
+          "subdistrict_lgd_code": "1896",
+          "category": "Rural",
+          "local_name": "Kawrthah"
+        },
+        {
+          "name": "Kawrthah North",
+          "lgd_code": "935419",
+          "subdistrict": "Zawlnuam",
+          "subdistrict_lgd_code": "1896",
+          "category": "Rural"
+        },
+        {
+          "name": "Kawrthah South",
+          "lgd_code": "271024",
+          "subdistrict": "Zawlnuam",
+          "subdistrict_lgd_code": "1896",
+          "category": "Rural"
+        },
+        {
+          "name": "Khanthuam",
+          "lgd_code": "271035",
+          "subdistrict": "Zawlnuam",
+          "subdistrict_lgd_code": "1896",
+          "category": "Rural"
+        },
+        {
+          "name": "Khantlang",
+          "lgd_code": "271062",
+          "subdistrict": "Kawrtethawveng",
+          "subdistrict_lgd_code": "7342",
+          "category": "Rural"
+        },
+        {
+          "name": "Khawhnai",
+          "lgd_code": "271084",
+          "subdistrict": "West Phaileng",
+          "subdistrict_lgd_code": "1897",
+          "category": "Rural"
+        },
+        {
+          "name": "Khawrihnim",
+          "lgd_code": "271127",
+          "subdistrict": "Reiek",
+          "subdistrict_lgd_code": "1898",
+          "category": "Rural"
+        },
+        {
+          "name": "Kolalian",
+          "lgd_code": "271017",
+          "subdistrict": "Zawlnuam",
+          "subdistrict_lgd_code": "1896",
+          "category": "Rural"
+        },
+        {
+          "name": "Lallen",
+          "lgd_code": "271091",
+          "subdistrict": "West Phaileng",
+          "subdistrict_lgd_code": "1897",
+          "category": "Rural"
+        },
+        {
+          "name": "Lengte",
+          "lgd_code": "271118",
+          "subdistrict": "Reiek",
+          "subdistrict_lgd_code": "1898",
+          "category": "Rural"
+        },
+        {
+          "name": "Luangpawl",
+          "lgd_code": "935424",
+          "subdistrict": "Zawlnuam",
+          "subdistrict_lgd_code": "1896",
+          "category": "Rural"
+        },
+        {
+          "name": "Luimawi",
+          "lgd_code": "271014",
+          "subdistrict": "Zawlnuam",
+          "subdistrict_lgd_code": "1896",
+          "category": "Rural"
+        },
+        {
+          "name": "Lungphun",
+          "lgd_code": "271134",
+          "subdistrict": "Reiek",
+          "subdistrict_lgd_code": "1898",
+          "category": "Rural"
+        },
+        {
+          "name": "Mamit Bazar Veng",
+          "lgd_code": "935420",
+          "subdistrict": "Zawlnuam",
+          "subdistrict_lgd_code": "1896",
+          "category": "Rural"
+        },
+        {
+          "name": "Mamit Chhim Veng",
+          "lgd_code": "935421",
+          "subdistrict": "Zawlnuam",
+          "subdistrict_lgd_code": "1896",
+          "category": "Rural"
+        },
+        {
+          "name": "Mamit Hmar Veng",
+          "lgd_code": "935422",
+          "subdistrict": "Zawlnuam",
+          "subdistrict_lgd_code": "1896",
+          "category": "Rural"
+        },
+        {
+          "name": "Mamit Venghlun",
+          "lgd_code": "935423",
+          "subdistrict": "Zawlnuam",
+          "subdistrict_lgd_code": "1896",
+          "category": "Rural"
+        },
+        {
+          "name": "Marpara Mizo Veng",
+          "lgd_code": "935413",
+          "subdistrict": "West Phaileng",
+          "subdistrict_lgd_code": "1897",
+          "category": "Rural"
+        },
+        {
+          "name": "Marpara North",
+          "lgd_code": "271111",
+          "subdistrict": "West Phaileng",
+          "subdistrict_lgd_code": "1897",
+          "category": "Rural"
+        },
+        {
+          "name": "Mualthuam",
+          "lgd_code": "271027",
+          "subdistrict": "Kawrtethawveng",
+          "subdistrict_lgd_code": "7342",
+          "category": "Rural"
+        },
+        {
+          "name": "Nalzawl",
+          "lgd_code": "271041",
+          "subdistrict": "Kawrtethawveng",
+          "subdistrict_lgd_code": "7342",
+          "category": "Rural"
+        },
+        {
+          "name": "New Eden",
+          "lgd_code": "271072",
+          "subdistrict": "Kawrtethawveng",
+          "subdistrict_lgd_code": "7342",
+          "category": "Rural"
+        },
+        {
+          "name": "New Kawnpui",
+          "lgd_code": "935495",
+          "subdistrict": "Kawrtethawveng",
+          "subdistrict_lgd_code": "7342",
+          "category": "Rural"
+        },
+        {
+          "name": "New Mamit",
+          "lgd_code": "935425",
+          "subdistrict": "Zawlnuam",
+          "subdistrict_lgd_code": "1896",
+          "category": "Rural"
+        },
+        {
+          "name": "New West Phaileng",
+          "lgd_code": "935418",
+          "subdistrict": "West Phaileng",
+          "subdistrict_lgd_code": "1897",
+          "category": "Rural"
+        },
+        {
+          "name": "Nghalchawm",
+          "lgd_code": "271119",
+          "subdistrict": "Reiek",
+          "subdistrict_lgd_code": "1898",
+          "category": "Rural"
+        },
+        {
+          "name": "North Sabual",
+          "lgd_code": "271047",
+          "subdistrict": "Zawlnuam",
+          "subdistrict_lgd_code": "1896",
+          "category": "Rural"
+        },
+        {
+          "name": "Parvatui",
+          "lgd_code": "271097",
+          "subdistrict": "West Phaileng",
+          "subdistrict_lgd_code": "1897",
+          "category": "Rural"
+        },
+        {
+          "name": "Phaizau",
+          "lgd_code": "271043",
+          "subdistrict": "Zawlnuam",
+          "subdistrict_lgd_code": "1896",
+          "category": "Rural"
+        },
+        {
+          "name": "Phuldungsei",
+          "lgd_code": "271098",
+          "subdistrict": "West Phaileng",
+          "subdistrict_lgd_code": "1897",
+          "category": "Rural"
+        },
+        {
+          "name": "Phuldungsei Zampui",
+          "lgd_code": "937840",
+          "subdistrict": "Kawrtethawveng",
+          "subdistrict_lgd_code": "7342",
+          "category": "Rural",
+          "local_name": "Phuldungsei Zampui"
+        },
+        {
+          "name": "Phulpui West",
+          "lgd_code": "271104",
+          "subdistrict": "West Phaileng",
+          "subdistrict_lgd_code": "1897",
+          "category": "Rural"
+        },
+        {
+          "name": "Pukzing",
+          "lgd_code": "271107",
+          "subdistrict": "West Phaileng",
+          "subdistrict_lgd_code": "1897",
+          "category": "Rural"
+        },
+        {
+          "name": "Pukzing Vengthar",
+          "lgd_code": "271108",
+          "subdistrict": "West Phaileng",
+          "subdistrict_lgd_code": "1897",
+          "category": "Rural"
+        },
+        {
+          "name": "Rajiv Nagar-I",
+          "lgd_code": "271065",
+          "subdistrict": "Kawrtethawveng",
+          "subdistrict_lgd_code": "7342",
+          "category": "Rural",
+          "local_name": "Rajiv Nagar-I"
+        },
+        {
+          "name": "Rajiv Nagar-II",
+          "lgd_code": "935416",
+          "subdistrict": "Kawrtethawveng",
+          "subdistrict_lgd_code": "7342",
+          "category": "Rural",
+          "local_name": "Rajiv Nagar-II"
+        },
+        {
+          "name": "Rawpuichhip",
+          "lgd_code": "271117",
+          "subdistrict": "Reiek",
+          "subdistrict_lgd_code": "1898",
+          "category": "Rural"
+        },
+        {
+          "name": "Reiek",
+          "lgd_code": "271124",
+          "subdistrict": "Reiek",
+          "subdistrict_lgd_code": "1898",
+          "category": "Rural"
+        },
+        {
+          "name": "Rengdil",
+          "lgd_code": "271022",
+          "subdistrict": "Zawlnuam",
+          "subdistrict_lgd_code": "1896",
+          "category": "Rural"
+        },
+        {
+          "name": "Rulpuihlim",
+          "lgd_code": "271122",
+          "subdistrict": "Reiek",
+          "subdistrict_lgd_code": "1898",
+          "category": "Rural"
+        },
+        {
+          "name": "Saikhawthlir",
+          "lgd_code": "271057",
+          "subdistrict": "Zawlnuam",
+          "subdistrict_lgd_code": "1896",
+          "category": "Rural",
+          "local_name": "Saikhawthlir"
+        },
+        {
+          "name": "Saithah",
+          "lgd_code": "271093",
+          "subdistrict": "West Phaileng",
+          "subdistrict_lgd_code": "1897",
+          "category": "Rural"
+        },
+        {
+          "name": "Sihthiang",
+          "lgd_code": "271049",
+          "subdistrict": "Zawlnuam",
+          "subdistrict_lgd_code": "1896",
+          "category": "Rural"
+        },
+        {
+          "name": "Silsury East",
+          "lgd_code": "935414",
+          "subdistrict": "West Phaileng",
+          "subdistrict_lgd_code": "1897",
+          "category": "Rural"
+        },
+        {
+          "name": "Silsury West",
+          "lgd_code": "935415",
+          "subdistrict": "West Phaileng",
+          "subdistrict_lgd_code": "1897",
+          "category": "Rural"
+        },
+        {
+          "name": "Sotapa",
+          "lgd_code": "935412",
+          "subdistrict": "Kawrtethawveng",
+          "subdistrict_lgd_code": "7342",
+          "category": "Rural"
+        },
+        {
+          "name": "South Sabual",
+          "lgd_code": "271132",
+          "subdistrict": "Reiek",
+          "subdistrict_lgd_code": "1898",
+          "category": "Rural"
+        },
+        {
+          "name": "Suarhliap",
+          "lgd_code": "271056",
+          "subdistrict": "Zawlnuam",
+          "subdistrict_lgd_code": "1896",
+          "category": "Rural"
+        },
+        {
+          "name": "Thaidawr",
+          "lgd_code": "271074",
+          "subdistrict": "Kawrtethawveng",
+          "subdistrict_lgd_code": "7342",
+          "category": "Rural"
+        },
+        {
+          "name": "Thinghlun",
+          "lgd_code": "271016",
+          "subdistrict": "Zawlnuam",
+          "subdistrict_lgd_code": "1896",
+          "category": "Rural"
+        },
+        {
+          "name": "Tlangkhang",
+          "lgd_code": "271048",
+          "subdistrict": "Zawlnuam",
+          "subdistrict_lgd_code": "1896",
+          "category": "Rural",
+          "local_name": "Tlangkhang"
+        },
+        {
+          "name": "Tuahzawl",
+          "lgd_code": "271120",
+          "subdistrict": "Reiek",
+          "subdistrict_lgd_code": "1898",
+          "category": "Rural"
+        },
+        {
+          "name": "Tuidam",
+          "lgd_code": "271071",
+          "subdistrict": "Kawrtethawveng",
+          "subdistrict_lgd_code": "7342",
+          "category": "Rural"
+        },
+        {
+          "name": "Tuipuibari Venghlui",
+          "lgd_code": "935494",
+          "subdistrict": "Kawrtethawveng",
+          "subdistrict_lgd_code": "7342",
+          "category": "Rural"
+        },
+        {
+          "name": "Tuipuibari-I",
+          "lgd_code": "271064",
+          "subdistrict": "Kawrtethawveng",
+          "subdistrict_lgd_code": "7342",
+          "category": "Rural",
+          "local_name": "Tuipuibari-I"
+        },
+        {
+          "name": "Tuipuibari-II",
+          "lgd_code": "951218",
+          "subdistrict": "Kawrtethawveng",
+          "subdistrict_lgd_code": "7342",
+          "category": "Rural",
+          "local_name": "Tuipuibari-II"
+        },
+        {
+          "name": "Tuirum",
+          "lgd_code": "271085",
+          "subdistrict": "West Phaileng",
+          "subdistrict_lgd_code": "1897",
+          "category": "Rural"
+        },
+        {
+          "name": "Tumpanglui",
+          "lgd_code": "271025",
+          "subdistrict": "Kawrtethawveng",
+          "subdistrict_lgd_code": "7342",
+          "category": "Rural"
+        },
+        {
+          "name": "Vawngawnzo",
+          "lgd_code": "271076",
+          "subdistrict": "Zawlnuam",
+          "subdistrict_lgd_code": "1896",
+          "category": "Rural"
+        },
+        {
+          "name": "West Lungdar",
+          "lgd_code": "271126",
+          "subdistrict": "Reiek",
+          "subdistrict_lgd_code": "1898",
+          "category": "Rural"
+        },
+        {
+          "name": "West Phaileng",
+          "lgd_code": "271088",
+          "subdistrict": "West Phaileng",
+          "subdistrict_lgd_code": "1897",
+          "category": "Rural"
+        },
+        {
+          "name": "West Serzawl",
+          "lgd_code": "271114",
+          "subdistrict": "Reiek",
+          "subdistrict_lgd_code": "1898",
+          "category": "Rural"
+        },
+        {
+          "name": "Zamuang",
+          "lgd_code": "271021",
+          "subdistrict": "Zawlnuam",
+          "subdistrict_lgd_code": "1896",
+          "category": "Rural"
+        },
+        {
+          "name": "Zawlnuam Thuampui",
+          "lgd_code": "935427",
+          "subdistrict": "Zawlnuam",
+          "subdistrict_lgd_code": "1896",
+          "category": "Rural"
+        },
+        {
+          "name": "Zawlnuam Vengpui",
+          "lgd_code": "935428",
+          "subdistrict": "Zawlnuam",
+          "subdistrict_lgd_code": "1896",
+          "category": "Rural"
+        },
+        {
+          "name": "Zawlpui",
+          "lgd_code": "271020",
+          "subdistrict": "Zawlnuam",
+          "subdistrict_lgd_code": "1896",
+          "category": "Rural",
+          "local_name": "Zawlpui"
+        },
+        {
+          "name": "Zomuantlang",
+          "lgd_code": "271063",
+          "subdistrict": "Kawrtethawveng",
+          "subdistrict_lgd_code": "7342",
+          "category": "Rural"
+        },
+        {
+          "name": "Zopui",
+          "lgd_code": "271102",
+          "subdistrict": "West Phaileng",
+          "subdistrict_lgd_code": "1897",
+          "category": "Rural"
+        }
+      ]
+    },
+    {
+      "name": "Saitual",
+      "lgd_code": "727",
+      "village_count": 46,
+      "villages": [
+        {
+          "name": "Buhban",
+          "lgd_code": "271266",
+          "subdistrict": "Phullen",
+          "subdistrict_lgd_code": "1903",
+          "category": "Rural"
+        },
+        {
+          "name": "Changzawl",
+          "lgd_code": "271301",
+          "subdistrict": "Ngopa",
+          "subdistrict_lgd_code": "1906",
+          "category": "Rural"
+        },
+        {
+          "name": "Chiahpui",
+          "lgd_code": "271289",
+          "subdistrict": "Ngopa",
+          "subdistrict_lgd_code": "1906",
+          "category": "Rural"
+        },
+        {
+          "name": "Daido",
+          "lgd_code": "271228",
+          "subdistrict": "Phullen",
+          "subdistrict_lgd_code": "1903",
+          "category": "Rural"
+        },
+        {
+          "name": "Dilkhan",
+          "lgd_code": "271269",
+          "subdistrict": "Phullen",
+          "subdistrict_lgd_code": "1903",
+          "category": "Rural"
+        },
+        {
+          "name": "Hliappui",
+          "lgd_code": "271302",
+          "subdistrict": "Ngopa",
+          "subdistrict_lgd_code": "1906",
+          "category": "Rural"
+        },
+        {
+          "name": "Hrianghmun",
+          "lgd_code": "271293",
+          "subdistrict": "Ngopa",
+          "subdistrict_lgd_code": "1906",
+          "category": "Rural"
+        },
+        {
+          "name": "Kawlbem",
+          "lgd_code": "271295",
+          "subdistrict": "Ngopa",
+          "subdistrict_lgd_code": "1906",
+          "category": "Rural"
+        },
+        {
+          "name": "Keifang Leitan",
+          "lgd_code": "939568",
+          "subdistrict": "Phullen",
+          "subdistrict_lgd_code": "1903",
+          "category": "Rural"
+        },
+        {
+          "name": "Keifang Venghlun",
+          "lgd_code": "935368",
+          "subdistrict": "Phullen",
+          "subdistrict_lgd_code": "1903",
+          "category": "Rural"
+        },
+        {
+          "name": "Keifang Venglai",
+          "lgd_code": "939567",
+          "subdistrict": "Phullen",
+          "subdistrict_lgd_code": "1903",
+          "category": "Rural"
+        },
+        {
+          "name": "Khanpui",
+          "lgd_code": "271212",
+          "subdistrict": "Phullen",
+          "subdistrict_lgd_code": "1903",
+          "category": "Rural"
+        },
+        {
+          "name": "Khawkawn",
+          "lgd_code": "271291",
+          "subdistrict": "Ngopa",
+          "subdistrict_lgd_code": "1906",
+          "category": "Rural"
+        },
+        {
+          "name": "Khawlian",
+          "lgd_code": "271226",
+          "subdistrict": "Phullen",
+          "subdistrict_lgd_code": "1903",
+          "category": "Rural"
+        },
+        {
+          "name": "Lailak",
+          "lgd_code": "271216",
+          "subdistrict": "Phullen",
+          "subdistrict_lgd_code": "1903",
+          "category": "Rural"
+        },
+        {
+          "name": "Lamherh",
+          "lgd_code": "271219",
+          "subdistrict": "Phullen",
+          "subdistrict_lgd_code": "1903",
+          "category": "Rural"
+        },
+        {
+          "name": "Lamzawl",
+          "lgd_code": "271299",
+          "subdistrict": "Ngopa",
+          "subdistrict_lgd_code": "1906",
+          "category": "Rural"
+        },
+        {
+          "name": "Lenchim",
+          "lgd_code": "271281",
+          "subdistrict": "Phullen",
+          "subdistrict_lgd_code": "1903",
+          "category": "Rural"
+        },
+        {
+          "name": "Luangpawn",
+          "lgd_code": "271224",
+          "subdistrict": "Phullen",
+          "subdistrict_lgd_code": "1903",
+          "category": "Rural"
+        },
+        {
+          "name": "Maite",
+          "lgd_code": "271286",
+          "subdistrict": "Phullen",
+          "subdistrict_lgd_code": "1903",
+          "category": "Rural"
+        },
+        {
+          "name": "Mimbung",
+          "lgd_code": "271292",
+          "subdistrict": "Ngopa",
+          "subdistrict_lgd_code": "1906",
+          "category": "Rural"
+        },
+        {
+          "name": "Mualpheng",
+          "lgd_code": "271280",
+          "subdistrict": "Phullen",
+          "subdistrict_lgd_code": "1903",
+          "category": "Rural"
+        },
+        {
+          "name": "N.E.Khawdungsei",
+          "lgd_code": "271290",
+          "subdistrict": "Ngopa",
+          "subdistrict_lgd_code": "1906",
+          "category": "Rural"
+        },
+        {
+          "name": "N.Khawlek",
+          "lgd_code": "271217",
+          "subdistrict": "Phullen",
+          "subdistrict_lgd_code": "1903",
+          "category": "Rural"
+        },
+        {
+          "name": "N.Lungpher",
+          "lgd_code": "271270",
+          "subdistrict": "Phullen",
+          "subdistrict_lgd_code": "1903",
+          "category": "Rural"
+        },
+        {
+          "name": "Ne Tlangnuam",
+          "lgd_code": "271227",
+          "subdistrict": "Phullen",
+          "subdistrict_lgd_code": "1903",
+          "category": "Rural",
+          "local_name": "NE Tlangnuam"
+        },
+        {
+          "name": "Ngopa",
+          "lgd_code": "271297",
+          "subdistrict": "Ngopa",
+          "subdistrict_lgd_code": "1906",
+          "category": "Rural"
+        },
+        {
+          "name": "Ngopa Chhimveng",
+          "lgd_code": "951182",
+          "subdistrict": "Ngopa",
+          "subdistrict_lgd_code": "1906",
+          "category": "Rural",
+          "local_name": "Ngopa Chhimveng"
+        },
+        {
+          "name": "Ngopa Hmarveng",
+          "lgd_code": "951183",
+          "subdistrict": "Ngopa",
+          "subdistrict_lgd_code": "1906",
+          "category": "Rural",
+          "local_name": "Ngopa Hmarveng"
+        },
+        {
+          "name": "Pawlrang",
+          "lgd_code": "271300",
+          "subdistrict": "Ngopa",
+          "subdistrict_lgd_code": "1906",
+          "category": "Rural"
+        },
+        {
+          "name": "Phuaibuang",
+          "lgd_code": "271225",
+          "subdistrict": "Phullen",
+          "subdistrict_lgd_code": "1903",
+          "category": "Rural"
+        },
+        {
+          "name": "Phullen",
+          "lgd_code": "271222",
+          "subdistrict": "Phullen",
+          "subdistrict_lgd_code": "1903",
+          "category": "Rural"
+        },
+        {
+          "name": "Ruallung",
+          "lgd_code": "935363",
+          "subdistrict": "Phullen",
+          "subdistrict_lgd_code": "1903",
+          "category": "Rural"
+        },
+        {
+          "name": "Rulchawm",
+          "lgd_code": "935362",
+          "subdistrict": "Phullen",
+          "subdistrict_lgd_code": "1903",
+          "category": "Rural"
+        },
+        {
+          "name": "Saichal",
+          "lgd_code": "271304",
+          "subdistrict": "Ngopa",
+          "subdistrict_lgd_code": "1906",
+          "category": "Rural"
+        },
+        {
+          "name": "Saitual I",
+          "lgd_code": "935369",
+          "subdistrict": "Phullen",
+          "subdistrict_lgd_code": "1903",
+          "category": "Rural"
+        },
+        {
+          "name": "Saitual II",
+          "lgd_code": "935370",
+          "subdistrict": "Phullen",
+          "subdistrict_lgd_code": "1903",
+          "category": "Rural"
+        },
+        {
+          "name": "Saitual III",
+          "lgd_code": "935371",
+          "subdistrict": "Phullen",
+          "subdistrict_lgd_code": "1903",
+          "category": "Rural"
+        },
+        {
+          "name": "Sihfa",
+          "lgd_code": "271271",
+          "subdistrict": "Phullen",
+          "subdistrict_lgd_code": "1903",
+          "category": "Rural"
+        },
+        {
+          "name": "Suangpuilawn",
+          "lgd_code": "271220",
+          "subdistrict": "Phullen",
+          "subdistrict_lgd_code": "1903",
+          "category": "Rural"
+        },
+        {
+          "name": "Tawizo",
+          "lgd_code": "271285",
+          "subdistrict": "Phullen",
+          "subdistrict_lgd_code": "1903",
+          "category": "Rural"
+        },
+        {
+          "name": "Teikhang",
+          "lgd_code": "271294",
+          "subdistrict": "Ngopa",
+          "subdistrict_lgd_code": "1906",
+          "category": "Rural"
+        },
+        {
+          "name": "Thanglailung",
+          "lgd_code": "271223",
+          "subdistrict": "Phullen",
+          "subdistrict_lgd_code": "1903",
+          "category": "Rural"
+        },
+        {
+          "name": "Tualbung",
+          "lgd_code": "271268",
+          "subdistrict": "Phullen",
+          "subdistrict_lgd_code": "1903",
+          "category": "Rural"
+        },
+        {
+          "name": "Vanbawng",
+          "lgd_code": "271218",
+          "subdistrict": "Phullen",
+          "subdistrict_lgd_code": "1903",
+          "category": "Rural"
+        },
+        {
+          "name": "Zawngin",
+          "lgd_code": "271221",
+          "subdistrict": "Phullen",
+          "subdistrict_lgd_code": "1903",
+          "category": "Rural"
+        }
+      ]
+    },
+    {
+      "name": "Serchhip",
+      "lgd_code": "268",
+      "village_count": 57,
+      "villages": [
+        {
+          "name": "Baktawng",
+          "lgd_code": "935396",
+          "subdistrict": "Serchhip",
+          "subdistrict_lgd_code": "1910",
+          "category": "Rural",
+          "local_name": "Baktawng"
+        },
+        {
+          "name": "Bawktlang",
+          "lgd_code": "271412",
+          "subdistrict": "East Lungdar",
+          "subdistrict_lgd_code": "1911",
+          "category": "Rural"
+        },
+        {
+          "name": "Buangpui",
+          "lgd_code": "271401",
+          "subdistrict": "Serchhip",
+          "subdistrict_lgd_code": "1910",
+          "category": "Rural"
+        },
+        {
+          "name": "Buhkangkawn",
+          "lgd_code": "271383",
+          "subdistrict": "Serchhip",
+          "subdistrict_lgd_code": "1910",
+          "category": "Rural"
+        },
+        {
+          "name": "Bungtlang",
+          "lgd_code": "271400",
+          "subdistrict": "Serchhip",
+          "subdistrict_lgd_code": "1910",
+          "category": "Rural"
+        },
+        {
+          "name": "Chekawn",
+          "lgd_code": "271406",
+          "subdistrict": "East Lungdar",
+          "subdistrict_lgd_code": "1911",
+          "category": "Rural"
+        },
+        {
+          "name": "Chhiahtlang North",
+          "lgd_code": "916414",
+          "subdistrict": "Serchhip",
+          "subdistrict_lgd_code": "1910",
+          "category": "Rural",
+          "local_name": "CHHIAHTLANG"
+        },
+        {
+          "name": "Chhiahtlang South",
+          "lgd_code": "937845",
+          "subdistrict": "Serchhip",
+          "subdistrict_lgd_code": "1910",
+          "category": "Rural"
+        },
+        {
+          "name": "Chhingchhip",
+          "lgd_code": "271386",
+          "subdistrict": "Serchhip",
+          "subdistrict_lgd_code": "1910",
+          "category": "Rural"
+        },
+        {
+          "name": "Chhuanthar Tlangnuam",
+          "lgd_code": "271382",
+          "subdistrict": "Serchhip",
+          "subdistrict_lgd_code": "1910",
+          "category": "Rural"
+        },
+        {
+          "name": "Darnam",
+          "lgd_code": "939566",
+          "subdistrict": "Serchhip",
+          "subdistrict_lgd_code": "1910",
+          "category": "Rural"
+        },
+        {
+          "name": "E.Lungdar",
+          "lgd_code": "271404",
+          "subdistrict": "East Lungdar",
+          "subdistrict_lgd_code": "1911",
+          "category": "Rural",
+          "local_name": "E.Lungdar"
+        },
+        {
+          "name": "Hmawngkawn",
+          "lgd_code": "271384",
+          "subdistrict": "Serchhip",
+          "subdistrict_lgd_code": "1910",
+          "category": "Rural"
+        },
+        {
+          "name": "Hmuntha",
+          "lgd_code": "271388",
+          "subdistrict": "Serchhip",
+          "subdistrict_lgd_code": "1910",
+          "category": "Rural"
+        },
+        {
+          "name": "Hmunzawl",
+          "lgd_code": "271395",
+          "subdistrict": "Serchhip",
+          "subdistrict_lgd_code": "1910",
+          "category": "Rural"
+        },
+        {
+          "name": "Hriangtlang",
+          "lgd_code": "271396",
+          "subdistrict": "Serchhip",
+          "subdistrict_lgd_code": "1910",
+          "category": "Rural"
+        },
+        {
+          "name": "Hualtu",
+          "lgd_code": "271380",
+          "subdistrict": "Serchhip",
+          "subdistrict_lgd_code": "1910",
+          "category": "Rural"
+        },
+        {
+          "name": "Kanghmun South",
+          "lgd_code": "271541",
+          "subdistrict": "Serchhip",
+          "subdistrict_lgd_code": "1910",
+          "category": "Rural",
+          "local_name": "Kanghmun South"
+        },
+        {
+          "name": "Keitum",
+          "lgd_code": "271399",
+          "subdistrict": "Serchhip",
+          "subdistrict_lgd_code": "1910",
+          "category": "Rural"
+        },
+        {
+          "name": "Khawbel",
+          "lgd_code": "271387",
+          "subdistrict": "Serchhip",
+          "subdistrict_lgd_code": "1910",
+          "category": "Rural"
+        },
+        {
+          "name": "Khawlailung",
+          "lgd_code": "271407",
+          "subdistrict": "East Lungdar",
+          "subdistrict_lgd_code": "1911",
+          "category": "Rural"
+        },
+        {
+          "name": "Khumtung",
+          "lgd_code": "271379",
+          "subdistrict": "Serchhip",
+          "subdistrict_lgd_code": "1910",
+          "category": "Rural"
+        },
+        {
+          "name": "Leng",
+          "lgd_code": "271413",
+          "subdistrict": "East Lungdar",
+          "subdistrict_lgd_code": "1911",
+          "category": "Rural"
+        },
+        {
+          "name": "Lungchhuan",
+          "lgd_code": "271411",
+          "subdistrict": "East Lungdar",
+          "subdistrict_lgd_code": "1911",
+          "category": "Rural"
+        },
+        {
+          "name": "Lungkawlh",
+          "lgd_code": "271417",
+          "subdistrict": "East Lungdar",
+          "subdistrict_lgd_code": "1911",
+          "category": "Rural"
+        },
+        {
+          "name": "Lungpho",
+          "lgd_code": "271392",
+          "subdistrict": "Serchhip",
+          "subdistrict_lgd_code": "1910",
+          "category": "Rural"
+        },
+        {
+          "name": "Mualpui Chhingchhip",
+          "lgd_code": "931585",
+          "subdistrict": "Serchhip",
+          "subdistrict_lgd_code": "1910",
+          "category": "Rural"
+        },
+        {
+          "name": "N. Vanlaiphai-I",
+          "lgd_code": "935395",
+          "subdistrict": "East Lungdar",
+          "subdistrict_lgd_code": "1911",
+          "category": "Rural",
+          "local_name": "N. Vanlaiphai-I"
+        },
+        {
+          "name": "N. Vanlaiphai-II",
+          "lgd_code": "951185",
+          "subdistrict": "East Lungdar",
+          "subdistrict_lgd_code": "1911",
+          "category": "Rural",
+          "local_name": "N. Vanlaiphai-II"
+        },
+        {
+          "name": "Neihloh",
+          "lgd_code": "271402",
+          "subdistrict": "Serchhip",
+          "subdistrict_lgd_code": "1910",
+          "category": "Rural"
+        },
+        {
+          "name": "New Serchhip North",
+          "lgd_code": "935397",
+          "subdistrict": "Serchhip",
+          "subdistrict_lgd_code": "1910",
+          "category": "Rural"
+        },
+        {
+          "name": "New Serchhip South",
+          "lgd_code": "935398",
+          "subdistrict": "Serchhip",
+          "subdistrict_lgd_code": "1910",
+          "category": "Rural"
+        },
+        {
+          "name": "Ngentiang",
+          "lgd_code": "271393",
+          "subdistrict": "Serchhip",
+          "subdistrict_lgd_code": "1910",
+          "category": "Rural"
+        },
+        {
+          "name": "North Mualcheng",
+          "lgd_code": "271405",
+          "subdistrict": "East Lungdar",
+          "subdistrict_lgd_code": "1911",
+          "category": "Rural",
+          "local_name": "North Mualcheng"
+        },
+        {
+          "name": "Piler",
+          "lgd_code": "271408",
+          "subdistrict": "East Lungdar",
+          "subdistrict_lgd_code": "1911",
+          "category": "Rural"
+        },
+        {
+          "name": "Rullam",
+          "lgd_code": "271389",
+          "subdistrict": "Serchhip",
+          "subdistrict_lgd_code": "1910",
+          "category": "Rural"
+        },
+        {
+          "name": "Sailulak",
+          "lgd_code": "271414",
+          "subdistrict": "East Lungdar",
+          "subdistrict_lgd_code": "1911",
+          "category": "Rural"
+        },
+        {
+          "name": "Serchhip Chanmari Veng",
+          "lgd_code": "937849",
+          "subdistrict": "Serchhip",
+          "subdistrict_lgd_code": "1910",
+          "category": "Rural"
+        },
+        {
+          "name": "Serchhip Chhim Veng",
+          "lgd_code": "935401",
+          "subdistrict": "Serchhip",
+          "subdistrict_lgd_code": "1910",
+          "category": "Rural",
+          "local_name": "Serchhip Chhim Veng"
+        },
+        {
+          "name": "Serchhip Dinthar",
+          "lgd_code": "935400",
+          "subdistrict": "Serchhip",
+          "subdistrict_lgd_code": "1910",
+          "category": "Rural",
+          "local_name": "Serchhip Dinthar"
+        },
+        {
+          "name": "Serchhip Field Veng",
+          "lgd_code": "935403",
+          "subdistrict": "Serchhip",
+          "subdistrict_lgd_code": "1910",
+          "category": "Rural",
+          "local_name": "Serchhip Field Veng"
+        },
+        {
+          "name": "Serchhip Hmar Veng",
+          "lgd_code": "935404",
+          "subdistrict": "Serchhip",
+          "subdistrict_lgd_code": "1910",
+          "category": "Rural",
+          "local_name": "Serchhip Hmar Veng"
+        },
+        {
+          "name": "Serchhip Kawnpui",
+          "lgd_code": "935402",
+          "subdistrict": "Serchhip",
+          "subdistrict_lgd_code": "1910",
+          "category": "Rural",
+          "local_name": "Serchhip Kawnpui"
+        },
+        {
+          "name": "Serchhip Kawnpui North",
+          "lgd_code": "935405",
+          "subdistrict": "Serchhip",
+          "subdistrict_lgd_code": "1910",
+          "category": "Rural",
+          "local_name": "Serchhip Kawnpui North"
+        },
+        {
+          "name": "Serchhip P And E Veng",
+          "lgd_code": "935406",
+          "subdistrict": "Serchhip",
+          "subdistrict_lgd_code": "1910",
+          "category": "Rural",
+          "local_name": "Serchhip P And E Veng"
+        },
+        {
+          "name": "Serchhip Vengchung",
+          "lgd_code": "935399",
+          "subdistrict": "Serchhip",
+          "subdistrict_lgd_code": "1910",
+          "category": "Rural",
+          "local_name": "Serchhip Vengchung"
+        },
+        {
+          "name": "Sialhau",
+          "lgd_code": "271391",
+          "subdistrict": "Serchhip",
+          "subdistrict_lgd_code": "1910",
+          "category": "Rural"
+        },
+        {
+          "name": "Sialsir",
+          "lgd_code": "271410",
+          "subdistrict": "East Lungdar",
+          "subdistrict_lgd_code": "1911",
+          "category": "Rural"
+        },
+        {
+          "name": "Thentlang",
+          "lgd_code": "271390",
+          "subdistrict": "Serchhip",
+          "subdistrict_lgd_code": "1910",
+          "category": "Rural"
+        },
+        {
+          "name": "Thenzawl East",
+          "lgd_code": "935409",
+          "subdistrict": "Serchhip",
+          "subdistrict_lgd_code": "1910",
+          "category": "Rural"
+        },
+        {
+          "name": "Thenzawl Kanan",
+          "lgd_code": "935407",
+          "subdistrict": "Serchhip",
+          "subdistrict_lgd_code": "1910",
+          "category": "Rural"
+        },
+        {
+          "name": "Thenzawl South",
+          "lgd_code": "951184",
+          "subdistrict": "Serchhip",
+          "subdistrict_lgd_code": "1910",
+          "category": "Rural",
+          "local_name": "Thenzawl South"
+        },
+        {
+          "name": "Thenzawl Vengthar",
+          "lgd_code": "935410",
+          "subdistrict": "Serchhip",
+          "subdistrict_lgd_code": "1910",
+          "category": "Rural"
+        },
+        {
+          "name": "Thenzawl West",
+          "lgd_code": "935408",
+          "subdistrict": "Serchhip",
+          "subdistrict_lgd_code": "1910",
+          "category": "Rural"
+        },
+        {
+          "name": "Thinglian",
+          "lgd_code": "271394",
+          "subdistrict": "Serchhip",
+          "subdistrict_lgd_code": "1910",
+          "category": "Rural",
+          "local_name": "Thinglian"
+        },
+        {
+          "name": "Vanchengte",
+          "lgd_code": "271397",
+          "subdistrict": "Serchhip",
+          "subdistrict_lgd_code": "1910",
+          "category": "Rural"
+        },
+        {
+          "name": "Zote S",
+          "lgd_code": "271542",
+          "subdistrict": "Serchhip",
+          "subdistrict_lgd_code": "1910",
+          "category": "Rural"
+        }
+      ]
+    },
+    {
+      "name": "Siaha",
+      "lgd_code": "267",
+      "village_count": 99,
+      "villages": [
+        {
+          "name": "Ahmypi",
+          "lgd_code": "271802",
+          "subdistrict": "Tipa",
+          "subdistrict_lgd_code": "1920",
+          "category": "Rural"
+        },
+        {
+          "name": "Amobyu Beivaih",
+          "lgd_code": "271828",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural",
+          "local_name": "Amobyu Beivaih"
+        },
+        {
+          "name": "Amobyu Ch",
+          "lgd_code": "271829",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural",
+          "local_name": "Amobyu CH"
+        },
+        {
+          "name": "Amobyu Vaithieh",
+          "lgd_code": "271827",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural",
+          "local_name": "Amobyu Vaithieh"
+        },
+        {
+          "name": "Amotlah",
+          "lgd_code": "271824",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural",
+          "local_name": "Amotlah"
+        },
+        {
+          "name": "Bymari",
+          "lgd_code": "271818",
+          "subdistrict": "Tipa",
+          "subdistrict_lgd_code": "1920",
+          "category": "Rural"
+        },
+        {
+          "name": "Chakhei - I",
+          "lgd_code": "913037",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural",
+          "local_name": "Chakhei - I"
+        },
+        {
+          "name": "Chakhei - II",
+          "lgd_code": "271797",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural",
+          "local_name": "Chakhei - II"
+        },
+        {
+          "name": "Chakheitlah",
+          "lgd_code": "914199",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural",
+          "local_name": "Chakheitlah"
+        },
+        {
+          "name": "Chapi - I",
+          "lgd_code": "271800",
+          "subdistrict": "Tipa",
+          "subdistrict_lgd_code": "1920",
+          "category": "Rural",
+          "local_name": "Chapi - I"
+        },
+        {
+          "name": "Chapi - II",
+          "lgd_code": "914228",
+          "subdistrict": "Tipa",
+          "subdistrict_lgd_code": "1920",
+          "category": "Rural",
+          "local_name": "Chapi - II"
+        },
+        {
+          "name": "Chapi - III",
+          "lgd_code": "914229",
+          "subdistrict": "Tipa",
+          "subdistrict_lgd_code": "1920",
+          "category": "Rural",
+          "local_name": "Chapi - III"
+        },
+        {
+          "name": "Chhaolo - I",
+          "lgd_code": "271841",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural",
+          "local_name": "Chhaolo - I"
+        },
+        {
+          "name": "Chhaolo - II",
+          "lgd_code": "271842",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural",
+          "local_name": "Chhaolo - II"
+        },
+        {
+          "name": "Chhaolo - III",
+          "lgd_code": "914215",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural",
+          "local_name": "Chhaolo - III"
+        },
+        {
+          "name": "Chheihlu",
+          "lgd_code": "271796",
+          "subdistrict": "Tipa",
+          "subdistrict_lgd_code": "1920",
+          "category": "Rural"
+        },
+        {
+          "name": "College Vaih-I",
+          "lgd_code": "904582",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural",
+          "local_name": "College Vaih-I"
+        },
+        {
+          "name": "College Vaih-II",
+          "lgd_code": "914216",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural",
+          "local_name": "College Vaih-II"
+        },
+        {
+          "name": "College Vaih-III",
+          "lgd_code": "945588",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural",
+          "local_name": "College Vaih-III"
+        },
+        {
+          "name": "Council Vaih",
+          "lgd_code": "904584",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural",
+          "local_name": "Council Veng"
+        },
+        {
+          "name": "Ecm Vaih",
+          "lgd_code": "904585",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural",
+          "local_name": "ECM Vaih"
+        },
+        {
+          "name": "Iana",
+          "lgd_code": "271834",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural"
+        },
+        {
+          "name": "Iana-II",
+          "lgd_code": "945661",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural",
+          "local_name": "Iana-II"
+        },
+        {
+          "name": "Kaochao East-I",
+          "lgd_code": "271830",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural",
+          "local_name": "Kaochao East-I"
+        },
+        {
+          "name": "Kaochao East-II",
+          "lgd_code": "914217",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural",
+          "local_name": "Kaochao East-II"
+        },
+        {
+          "name": "Khaikhy",
+          "lgd_code": "271821",
+          "subdistrict": "Tipa",
+          "subdistrict_lgd_code": "1920",
+          "category": "Rural"
+        },
+        {
+          "name": "Khopai",
+          "lgd_code": "271801",
+          "subdistrict": "Tipa",
+          "subdistrict_lgd_code": "1920",
+          "category": "Rural"
+        },
+        {
+          "name": "Kiasie",
+          "lgd_code": "271803",
+          "subdistrict": "Tipa",
+          "subdistrict_lgd_code": "1920",
+          "category": "Rural",
+          "local_name": "Kiasie"
+        },
+        {
+          "name": "Laki-I",
+          "lgd_code": "271815",
+          "subdistrict": "Tipa",
+          "subdistrict_lgd_code": "1920",
+          "category": "Rural",
+          "local_name": "Laki I"
+        },
+        {
+          "name": "Laki-Ii",
+          "lgd_code": "914230",
+          "subdistrict": "Tipa",
+          "subdistrict_lgd_code": "1920",
+          "category": "Rural",
+          "local_name": "Laki II"
+        },
+        {
+          "name": "Laty",
+          "lgd_code": "271788",
+          "subdistrict": "Tipa",
+          "subdistrict_lgd_code": "1920",
+          "category": "Rural",
+          "local_name": "Laty"
+        },
+        {
+          "name": "Lobo - I",
+          "lgd_code": "271832",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural",
+          "local_name": "Lobo - I"
+        },
+        {
+          "name": "Lobo - II",
+          "lgd_code": "914218",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural",
+          "local_name": "Lobo - II"
+        },
+        {
+          "name": "Lodaw",
+          "lgd_code": "271808",
+          "subdistrict": "Tipa",
+          "subdistrict_lgd_code": "1920",
+          "category": "Rural",
+          "local_name": "Lodaw"
+        },
+        {
+          "name": "Lomasu",
+          "lgd_code": "271817",
+          "subdistrict": "Tipa",
+          "subdistrict_lgd_code": "1920",
+          "category": "Rural",
+          "local_name": "Lomasu"
+        },
+        {
+          "name": "Lopu-I",
+          "lgd_code": "271820",
+          "subdistrict": "Tipa",
+          "subdistrict_lgd_code": "1920",
+          "category": "Rural",
+          "local_name": "Lopu-I"
+        },
+        {
+          "name": "Lopu-II",
+          "lgd_code": "914233",
+          "subdistrict": "Tipa",
+          "subdistrict_lgd_code": "1920",
+          "category": "Rural",
+          "local_name": "Lopu-II"
+        },
+        {
+          "name": "Lopu-III",
+          "lgd_code": "914235",
+          "subdistrict": "Tipa",
+          "subdistrict_lgd_code": "1920",
+          "category": "Rural",
+          "local_name": "Lopu-III"
+        },
+        {
+          "name": "Lorrain Ville",
+          "lgd_code": "914245",
+          "subdistrict": "Tipa",
+          "subdistrict_lgd_code": "1920",
+          "category": "Rural",
+          "local_name": "Lorrain Ville"
+        },
+        {
+          "name": "Maisa",
+          "lgd_code": "904598",
+          "subdistrict": "Tipa",
+          "subdistrict_lgd_code": "1920",
+          "category": "Rural"
+        },
+        {
+          "name": "Mawhrei",
+          "lgd_code": "271799",
+          "subdistrict": "Tipa",
+          "subdistrict_lgd_code": "1920",
+          "category": "Rural",
+          "local_name": "Mawhrei"
+        },
+        {
+          "name": "Meisatla-I",
+          "lgd_code": "914219",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural",
+          "local_name": "Meisatla I"
+        },
+        {
+          "name": "Meisatla-Ii",
+          "lgd_code": "904586",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural",
+          "local_name": "Meisatla II"
+        },
+        {
+          "name": "Meisavaih East",
+          "lgd_code": "904587",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural",
+          "local_name": "Meisavaih East"
+        },
+        {
+          "name": "Meisavaih West",
+          "lgd_code": "904588",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural"
+        },
+        {
+          "name": "Miepu-I",
+          "lgd_code": "271814",
+          "subdistrict": "Tipa",
+          "subdistrict_lgd_code": "1920",
+          "category": "Rural",
+          "local_name": "Miepu I"
+        },
+        {
+          "name": "Miepu-Ii",
+          "lgd_code": "914234",
+          "subdistrict": "Tipa",
+          "subdistrict_lgd_code": "1920",
+          "category": "Rural",
+          "local_name": "Miepu II"
+        },
+        {
+          "name": "New Colony-I",
+          "lgd_code": "904589",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural",
+          "local_name": "New Colony I"
+        },
+        {
+          "name": "New Colony-II",
+          "lgd_code": "914220",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural",
+          "local_name": "New Colony-II"
+        },
+        {
+          "name": "New Colony-Iii",
+          "lgd_code": "914221",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural",
+          "local_name": "New Colony III"
+        },
+        {
+          "name": "New Colony-Iv",
+          "lgd_code": "914222",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural",
+          "local_name": "New Colony IV"
+        },
+        {
+          "name": "New Colony-V",
+          "lgd_code": "945662",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural",
+          "local_name": "New Colony-V"
+        },
+        {
+          "name": "New Laty",
+          "lgd_code": "271790",
+          "subdistrict": "Tipa",
+          "subdistrict_lgd_code": "1920",
+          "category": "Rural",
+          "local_name": "New Laty"
+        },
+        {
+          "name": "New Saikao",
+          "lgd_code": "271789",
+          "subdistrict": "Tipa",
+          "subdistrict_lgd_code": "1920",
+          "category": "Rural",
+          "local_name": "New Saikao"
+        },
+        {
+          "name": "New Siaha East-I",
+          "lgd_code": "904592",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural",
+          "local_name": "New Siaha East-I"
+        },
+        {
+          "name": "New Siaha East-II",
+          "lgd_code": "914223",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural",
+          "local_name": "New Siaha East-II"
+        },
+        {
+          "name": "New Siaha West",
+          "lgd_code": "904593",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural",
+          "local_name": "New Siaha West"
+        },
+        {
+          "name": "New Siaha West-II",
+          "lgd_code": "945663",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural",
+          "local_name": "New Siaha West-II"
+        },
+        {
+          "name": "Noaotlah - I",
+          "lgd_code": "271839",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural",
+          "local_name": "Noaotlah - I"
+        },
+        {
+          "name": "Noaotlah - II",
+          "lgd_code": "271840",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural",
+          "local_name": "Noaotlah - II"
+        },
+        {
+          "name": "Noaotlah - III",
+          "lgd_code": "914224",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural",
+          "local_name": "Noaotlah - III"
+        },
+        {
+          "name": "Old Tisopi",
+          "lgd_code": "271837",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural",
+          "local_name": "Old Tisopi"
+        },
+        {
+          "name": "Pala",
+          "lgd_code": "271807",
+          "subdistrict": "Tipa",
+          "subdistrict_lgd_code": "1920",
+          "category": "Rural",
+          "local_name": "Pala"
+        },
+        {
+          "name": "Phura-N",
+          "lgd_code": "271811",
+          "subdistrict": "Tipa",
+          "subdistrict_lgd_code": "1920",
+          "category": "Rural",
+          "local_name": "Phura N"
+        },
+        {
+          "name": "Phura-S",
+          "lgd_code": "914243",
+          "subdistrict": "Tipa",
+          "subdistrict_lgd_code": "1920",
+          "category": "Rural",
+          "local_name": "Phura S"
+        },
+        {
+          "name": "Riasikah",
+          "lgd_code": "271825",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural"
+        },
+        {
+          "name": "Saikao",
+          "lgd_code": "271787",
+          "subdistrict": "Tipa",
+          "subdistrict_lgd_code": "1920",
+          "category": "Rural",
+          "local_name": "Saikao"
+        },
+        {
+          "name": "Saikao Beivaih",
+          "lgd_code": "914246",
+          "subdistrict": "Tipa",
+          "subdistrict_lgd_code": "1920",
+          "category": "Rural",
+          "local_name": "Saikao B"
+        },
+        {
+          "name": "Siaha Vaihpi Bazar",
+          "lgd_code": "945664",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural"
+        },
+        {
+          "name": "Siaha Vaihpi-I",
+          "lgd_code": "904594",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural",
+          "local_name": "Siaha Vaihpi-I"
+        },
+        {
+          "name": "Siaha Vaihpi-II",
+          "lgd_code": "904595",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural",
+          "local_name": "Siaha Vaihpi-II"
+        },
+        {
+          "name": "Siaha Vaihpi-III",
+          "lgd_code": "904596",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural",
+          "local_name": "Siaha Vaihpi-III"
+        },
+        {
+          "name": "Siahatla-I",
+          "lgd_code": "271782",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural",
+          "local_name": "Siahatla-I"
+        },
+        {
+          "name": "Siahatla-II",
+          "lgd_code": "914225",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural",
+          "local_name": "Siahatla-II"
+        },
+        {
+          "name": "Siahatlah-III",
+          "lgd_code": "914227",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural",
+          "local_name": "Siahatla-III"
+        },
+        {
+          "name": "Siasi",
+          "lgd_code": "271798",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural"
+        },
+        {
+          "name": "Siata-I",
+          "lgd_code": "271835",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural",
+          "local_name": "Siata I"
+        },
+        {
+          "name": "Siata-Ii",
+          "lgd_code": "904600",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural"
+        },
+        {
+          "name": "Siatlai",
+          "lgd_code": "271794",
+          "subdistrict": "Tipa",
+          "subdistrict_lgd_code": "1920",
+          "category": "Rural"
+        },
+        {
+          "name": "Supha",
+          "lgd_code": "945660",
+          "subdistrict": "Tipa",
+          "subdistrict_lgd_code": "1920",
+          "category": "Rural",
+          "local_name": "Supha"
+        },
+        {
+          "name": "Theiri",
+          "lgd_code": "271786",
+          "subdistrict": "Tipa",
+          "subdistrict_lgd_code": "1920",
+          "category": "Rural"
+        },
+        {
+          "name": "Theiva",
+          "lgd_code": "271831",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural",
+          "local_name": "Theiva"
+        },
+        {
+          "name": "Thiahra",
+          "lgd_code": "271823",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural",
+          "local_name": "Thiahra"
+        },
+        {
+          "name": "Thosai",
+          "lgd_code": "271838",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural",
+          "local_name": "Thosai"
+        },
+        {
+          "name": "Tipa B",
+          "lgd_code": "271791",
+          "subdistrict": "Tipa",
+          "subdistrict_lgd_code": "1920",
+          "category": "Rural",
+          "local_name": "Tipa B"
+        },
+        {
+          "name": "Tipa D-I",
+          "lgd_code": "914251",
+          "subdistrict": "Tipa",
+          "subdistrict_lgd_code": "1920",
+          "category": "Rural",
+          "local_name": "Tipa D-I"
+        },
+        {
+          "name": "Tipa D-II",
+          "lgd_code": "914252",
+          "subdistrict": "Tipa",
+          "subdistrict_lgd_code": "1920",
+          "category": "Rural",
+          "local_name": "Tipa D-II"
+        },
+        {
+          "name": "Tipa V-I",
+          "lgd_code": "271792",
+          "subdistrict": "Tipa",
+          "subdistrict_lgd_code": "1920",
+          "category": "Rural",
+          "local_name": "Tipa V I"
+        },
+        {
+          "name": "Tipa V-Ii",
+          "lgd_code": "914253",
+          "subdistrict": "Tipa",
+          "subdistrict_lgd_code": "1920",
+          "category": "Rural",
+          "local_name": "Tipa V II"
+        },
+        {
+          "name": "Tipa V-Iii",
+          "lgd_code": "914254",
+          "subdistrict": "Tipa",
+          "subdistrict_lgd_code": "1920",
+          "category": "Rural",
+          "local_name": "Tipa V III"
+        },
+        {
+          "name": "Tipi Ferry",
+          "lgd_code": "271826",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural",
+          "local_name": "Tipi Ferry"
+        },
+        {
+          "name": "Tisi - I",
+          "lgd_code": "271785",
+          "subdistrict": "Tipa",
+          "subdistrict_lgd_code": "1920",
+          "category": "Rural",
+          "local_name": "Tisi - I"
+        },
+        {
+          "name": "Tisi - II",
+          "lgd_code": "914255",
+          "subdistrict": "Tipa",
+          "subdistrict_lgd_code": "1920",
+          "category": "Rural",
+          "local_name": "Tisi - II"
+        },
+        {
+          "name": "Tisopi",
+          "lgd_code": "271836",
+          "subdistrict": "Siaha",
+          "subdistrict_lgd_code": "1921",
+          "category": "Rural",
+          "local_name": "Tisopi"
+        },
+        {
+          "name": "Tokalo",
+          "lgd_code": "271813",
+          "subdistrict": "Tipa",
+          "subdistrict_lgd_code": "1920",
+          "category": "Rural",
+          "local_name": "Tokalo"
+        },
+        {
+          "name": "Vahia",
+          "lgd_code": "271812",
+          "subdistrict": "Tipa",
+          "subdistrict_lgd_code": "1920",
+          "category": "Rural",
+          "local_name": "Vahia"
+        },
+        {
+          "name": "Zyhno",
+          "lgd_code": "271795",
+          "subdistrict": "Tipa",
+          "subdistrict_lgd_code": "1920",
+          "category": "Rural",
+          "local_name": "Zyhno"
+        },
+        {
+          "name": "Zyhno B",
+          "lgd_code": "914256",
+          "subdistrict": "Tipa",
+          "subdistrict_lgd_code": "1920",
+          "category": "Rural",
+          "local_name": "Zyhno B"
+        },
+        {
+          "name": "Zyhno Lotai",
+          "lgd_code": "914257",
+          "subdistrict": "Tipa",
+          "subdistrict_lgd_code": "1920",
+          "category": "Rural",
+          "local_name": "Zyhno Lotai"
+        }
+      ]
+    }
+  ]
+}
