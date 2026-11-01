@@ -56,6 +56,11 @@ Route::prefix('analytics/nexframe')->group(function () {
 });
 Route::get('/account/stats/bridge', [WebStatsController::class, 'consumeAppTicket'])->middleware('throttle:20,1');
 Route::get('/account/stats/data', [WebStatsController::class, 'data'])->middleware('throttle:60,1');
+foreach (['overview', 'watching', 'account', 'payments'] as $section) {
+    Route::get('/account/stats/'.$section, [\App\Http\Controllers\CustomerDashboardController::class, $section])->middleware('throttle:60,1');
+}
+Route::get('/account/stats/payments/export', [\App\Http\Controllers\CustomerDashboardController::class, 'export'])->middleware('throttle:10,1');
+Route::get('/account/stats/payments/{payment}/receipt', [\App\Http\Controllers\CustomerDashboardController::class, 'receipt'])->whereNumber('payment')->middleware('throttle:20,1');
 Route::post('/account/stats/logout', [WebStatsController::class, 'logout'])->middleware('throttle:20,1');
 Route::redirect('/legal/advertising-terms', '/advertising-terms', 301);
 Route::view('/legal/{slug}', 'welcome')->where('slug', '[a-z0-9-]+');

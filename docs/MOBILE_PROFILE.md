@@ -2,7 +2,9 @@
 
 Android mobile (`ZoStreamNew`) and iOS mobile (`Zo Stream`) check the authenticated
 profile when Home opens. An incomplete profile requires a username, gender,
-district and village/town before the completion sheet can close. No TV or web client UI changed.
+district and village/town for completion. The sheet can be cancelled or swiped
+away; an incomplete account is prompted again on the next app entry. Cancellation
+does not save completion. No TV or web client UI changed.
 
 The username is a separate handle; existing display names and legacy profile
 fields are preserved. Handles are trimmed and stored in lowercase, with 3–30
@@ -56,6 +58,7 @@ therefore do not prompt an already complete account, and stale local flags canno
 suppress an incomplete profile. Failed saves do not mark completion.
 
 Both clients ignore stale username checks and responses from a previous account.
+Saved usernames appear in smaller text below the name on the main Profile page.
 District selection clears village selection. Location pickers support searching;
 village rows include their sub-district to distinguish repeated names. Automatic
 poll prompts wait while profile completion is pending. Network failures provide

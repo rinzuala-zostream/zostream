@@ -229,6 +229,11 @@ Route::prefix('v4')
                 ->middleware('throttle:10,1');
                 Route::get('/stats', [CustomerStatsController::class, 'show'])
                     ->middleware('throttle:60,1');
+                foreach (['overview', 'watching', 'account', 'payments'] as $section) {
+                    Route::get('/stats/'.$section, [\App\Http\Controllers\CustomerDashboardController::class, $section])->middleware('throttle:60,1');
+                }
+                Route::get('/stats/payments/export', [\App\Http\Controllers\CustomerDashboardController::class, 'export'])->middleware('throttle:10,1');
+                Route::get('/stats/payments/{payment}/receipt', [\App\Http\Controllers\CustomerDashboardController::class, 'receipt'])->whereNumber('payment')->middleware('throttle:20,1');
                 Route::get('/', [AccountController::class, 'show']);
                 Route::patch('/', [AccountController::class, 'update'])
                     ->middleware('owner.device');
