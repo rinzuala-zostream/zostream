@@ -112,3 +112,22 @@ For the browser smoke test, run Vite on `127.0.0.1:5184`, then run
 `node tests/browser/desktop-admin.mjs` with Playwright installed (or set
 `PLAYWRIGHT_MODULE` to its module path). The fixture intercepts every API call;
 it does not authenticate or change real admin settings/devices.
+
+## Native Mac Razorpay checkout
+
+The Mac payment sheet has QR Code and Razorpay tabs. Direct checkout uses the
+existing owner-only subscription-order API or validated PPV pending-purchase API,
+then the existing Razorpay verify API. The native client retains `desktop` and
+its installation token when creating and confirming purchases.
+
+Deploy `GET/POST /api/v4/billing/payments/razorpay/desktop-return` with the Mac
+update. Razorpay Hosted Checkout posts its result to this public HTML bridge;
+GET represents cancellation. The page has no database or gateway side effects
+and never claims a payment is verified. It escapes callback fields, disables
+caching and sends them to the native WebKit handler. The Mac checks the exact
+main-frame callback URL and matching order before authenticated server verification.
+Do not replace this URL with the Razorpay webhook URL.
+
+`DesktopCheckoutReturnTest` covers success-result transport, cancellation/failure,
+injection escaping and malformed input. Existing billing auth/owner protections
+remain in place. No real payment or production settings were changed.

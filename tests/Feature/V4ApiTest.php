@@ -281,6 +281,8 @@ class V4ApiTest extends TestCase
             'api/v4/admin/qr-sessions',
             'api/v4/external/subscription-history',
             'api/v4/webhooks/razorpay',
+            // HTML handoff only; activation remains behind the owner-only verify API.
+            'api/v4/billing/payments/razorpay/desktop-return',
             'api/v4/webhooks/ads/razorpay',
             'api/v4/webhooks/whatsapp',
             'api/v4/ad-submissions',
