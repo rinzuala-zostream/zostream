@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onUnmounted, ref, watch } from 'vue';
 import { api, queryString } from '../lib/api';
+import { platformLabel } from '../lib/platforms';
 import StatusPanel from './StatusPanel.vue';
 const props = defineProps({ filters: { type: Object, default: () => ({}) } });
 const report = ref(null), loading = ref(false), error = ref('');
@@ -52,7 +53,7 @@ onUnmounted(() => { sequence++; controller?.abort(); });
                 <article v-if="report.linked_playback" class="admin-panel chat-card"><h2>Linked movie playback</h2><p>{{ number(report.linked_playback.sessions) }} playback sessions · {{ Number(report.linked_playback.watch_hours || 0).toFixed(2) }} watch hours · {{ Number(report.linked_playback.completion_rate || 0).toFixed(1) }}% completed</p><p class="chat-note">Only sessions linked by the same viewer and playback analytics ID are counted. This shows association with chat use, not proof that chat increased watch time.</p></article>
                 <div class="chat-columns">
                     <article class="admin-panel chat-card"><h2>Daily chat activity</h2><div v-if="!report.trend.length" class="admin-empty">No chat activity in this range.</div><div v-for="row in report.trend" :key="row.date" class="chat-trend"><span>{{ row.date }}</span><i :style="{ width: `${Math.max(1, Number(row.messages) / maximum * 100)}%` }" /><small>{{ number(row.messages) }} messages · {{ number(row.opens) }} opens</small></div></article>
-                    <article class="admin-panel chat-card"><h2>Platforms</h2><div v-if="!report.platforms.length" class="admin-empty">No platform data.</div><div v-for="row in report.platforms" :key="row.platform" class="chat-summary-row"><b>{{ row.platform }}</b><span>{{ number(row.messages) }} messages · {{ number(row.users) }} users</span></div></article>
+                    <article class="admin-panel chat-card"><h2>Platforms</h2><div v-if="!report.platforms.length" class="admin-empty">No platform data.</div><div v-for="row in report.platforms" :key="row.platform" class="chat-summary-row"><b>{{ platformLabel(row.platform) }}</b><span>{{ number(row.messages) }} messages · {{ number(row.users) }} users</span></div></article>
                 </div>
                 <article class="admin-panel chat-card"><h2>Most active rooms</h2><div v-if="!report.rooms.length" class="admin-empty">No room events yet.</div><div v-for="row in report.rooms" :key="row.room_id || 'unknown'" class="chat-summary-row"><RouterLink v-if="row.room_id" :to="{path:'/chat',query:{room:row.room_id}}">{{ row.title }}</RouterLink><span v-else>Unknown room</span><span>{{ number(row.messages) }} messages · {{ number(row.users) }} users</span></div></article>
                 <article class="admin-panel chat-card"><h2>Chat events</h2><div v-if="!report.events.length" class="admin-empty">No events yet.</div><div v-for="row in report.events" :key="row.name" class="chat-summary-row"><span>{{ row.name.replaceAll('_',' ') }}</span><span>{{ number(row.count) }} events · {{ number(row.users) }} users</span></div></article>

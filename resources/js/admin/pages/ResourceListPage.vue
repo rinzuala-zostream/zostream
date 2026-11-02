@@ -7,12 +7,15 @@ import StatusPanel from '../components/StatusPanel.vue';
 import { api, queryString } from '../lib/api';
 import { formatAdminDate } from '../lib/adminDate';
 import { resources } from '../lib/resources';
+import { deviceTypes, desktopPlatforms, deviceTypeLabel, platformLabel } from '../lib/platforms';
 
 const route = useRoute();
 const key = computed(() => route.params.resource);
 const resource = computed(() => resources[key.value]);
 const items = ref([]); const loading = ref(false); const error = ref(''); const notice = ref('');
 const search = ref(''); const parent = ref(''); const page = ref(1); const lastPage = ref(1);
+const deviceType = ref(''); const platform = ref('');
+const supportsDeviceFilter = computed(() => ['devices', 'plans', 'subscriptions'].includes(key.value));
 const episodeMovie = ref(null); const episodeSeason = ref(null);
 let debounce;
 
@@ -121,6 +124,8 @@ async function load(reset = false) {
         const searching = query.length >= 2 && resource.value.searchEndpoint;
         if (searching) endpoint = resource.value.searchEndpoint;
         const searchParams = { per_page: 20, page: page.value };
+        if (supportsDeviceFilter.value) searchParams.device_type = deviceType.value;
+        if (key.value === 'devices') searchParams.platform = platform.value;
         if (searching) searchParams[resource.value.searchParam || 'q'] = query;
         const result = resourceCollection(await api(`${endpoint}${queryString(searchParams)}`));
         if (query && !resource.value.searchEndpoint) result.items = result.items.filter(item => Object.values(item).some(value => typeof value === 'string' && value.toLowerCase().includes(query.toLowerCase())));
@@ -155,6 +160,8 @@ function isBooleanColumn(column) {
 }
 function display(value, column = '') {
     if (value == null || value === '') return '—';
+    if (column === 'device_type') return deviceTypeLabel(value);
+    if (column === 'platform') return platformLabel(value);
     if (typeof value === 'boolean') return value ? 'Yes' : 'No';
     if (isBooleanColumn(column) && (value === 1 || value === '1')) return 'Yes';
     if (isBooleanColumn(column) && (value === 0 || value === '0')) return 'No';
@@ -166,7 +173,8 @@ function heading(column) {
     const labels = { movie_title: 'movie', season_title: 'season', season_count: 'seasons', episode_count: 'episodes' };
     return labels[column] || column.replaceAll('_', ' ');
 }
-watch(key, () => { search.value = ''; parent.value = ''; episodeMovie.value = null; episodeSeason.value = null; load(true); });
+watch(key, () => { search.value = ''; parent.value = ''; deviceType.value = ''; platform.value = ''; episodeMovie.value = null; episodeSeason.value = null; load(true); });
+watch(deviceType, () => { platform.value = ''; load(true); });
 watch(search, () => { episodeMovie.value = null; episodeSeason.value = null; clearTimeout(debounce); debounce = setTimeout(() => load(true), 350); });
 watch(parent, () => { episodeMovie.value = null; episodeSeason.value = null; });
 onMounted(load);
@@ -180,6 +188,8 @@ onMounted(load);
         <StatusPanel tone="success" :message="notice" /><StatusPanel tone="error" :message="error" />
         <section class="admin-list-toolbar">
             <label class="admin-search"><AdminIcon name="search" /><input v-model="search" :placeholder="resource.searchOnly ? 'Type at least 2 characters…' : `Search ${resource.label.toLowerCase()}…`"></label>
+            <label v-if="supportsDeviceFilter" class="admin-parent-filter"><span>Device type</span><select v-model="deviceType"><option value="">All devices</option><option v-for="item in deviceTypes" :key="item.value" :value="item.value">{{ item.label }}</option></select></label>
+            <label v-if="key === 'devices' && (!deviceType || deviceType === 'desktop')" class="admin-parent-filter"><span>Desktop platform</span><select v-model="platform" @change="load(true)"><option value="">Mac &amp; Windows</option><option v-for="item in desktopPlatforms" :key="item.value" :value="item.value">{{ item.label }}</option></select></label>
             <label v-if="resource.parentKey" class="admin-parent-filter"><span>{{ resource.parentKey.replace('_', ' ') }}</span><input v-model="parent" placeholder="Enter ID, or search by movie title" @keyup.enter="load(true)"><button @click="load(true)">Load</button></label>
             <button class="admin-icon-button" aria-label="Refresh" @click="load">↻</button>
         </section>

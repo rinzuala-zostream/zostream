@@ -769,6 +769,50 @@ class AdSubmissionWorkflowTest extends TestCase
         ], $overrides));
     }
 
+    #[\PHPUnit\Framework\Attributes\DataProvider('desktopAdCases')]
+    public function test_native_mac_ad_preparation_preserves_other_platforms_and_delivery_counters(
+        string $platform, string $deviceType, ?string $format, ?string $converted, bool $convert
+    ): void {
+        $dash = 'https://cdn.zostream.in/advertiser/manifest.mpd';
+        $approved = $this->activateImageCampaign(['type' => 'video', 'placement_code' => 'pre_roll', 'media_url' => $dash, 'billing_model' => 'CPV']);
+        $hls = Mockery::mock(\App\Http\Controllers\HlsFolderController::class);
+        if ($convert) {
+            $hls->shouldReceive('check')->once()->withArgs(fn (\Illuminate\Http\Request $request) => $request->input('url') === $dash)
+                ->andReturn(response()->json(['data' => ['stream_url' => $converted]]));
+        } else {
+            $hls->shouldNotReceive('check');
+        }
+        $this->app->instance(\App\Http\Controllers\HlsFolderController::class, $hls);
+        $response = $this->withHeaders(array_merge($this->clientHeaders(), [
+            'X-Client-Platform' => $platform, 'X-Device-Type' => $deviceType,
+        ]))->getJson('/api/v4/ads/serve?'.http_build_query([
+            'placement' => 'pre_roll', 'platform' => $platform, 'playback_format' => $format,
+        ]))->assertOk();
+        if ($convert && $converted === null) {
+            $response->assertJsonPath('data', null);
+            $this->assertSame(0, $approved->campaign->fresh()->served_quantity);
+        } else {
+            $response->assertJsonPath('data.media_url', $convert ? $converted : $dash)
+                ->assertJsonPath('data.proxy_media_url', null);
+            $this->assertSame(1, $approved->campaign->fresh()->served_quantity);
+        }
+        $this->assertSame(0, $approved->campaign->fresh()->consumed_quantity);
+        $this->assertSame($dash, $approved->campaign->creatives()->first()->media_url);
+    }
+
+    public static function desktopAdCases(): array
+    {
+        $hls = 'https://cdn.zostream.in/advertiser/master.m3u8';
+        return [
+            'native mac' => ['macos', 'desktop', 'hls', $hls, true],
+            'failed native mac conversion' => ['macos', 'desktop', 'hls', null, true],
+            'mac electron' => ['macos', 'desktop', null, null, false],
+            'windows' => ['windows', 'desktop', 'hls', null, false],
+            'existing ios' => ['ios', 'mobile', null, $hls, true],
+            'existing android' => ['android', 'mobile', null, null, false],
+        ];
+    }
+
     private function activateImageCampaign(array $overrides = []): AdSubmission
     {
         $approved = app(AdApprovalService::class)->approve(

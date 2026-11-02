@@ -826,9 +826,10 @@ class V4PlaybackSecurityTest extends TestCase
             $hls->shouldNotReceive('check');
         }
         $ads = Mockery::mock(\App\Http\Controllers\Api\V4\AdServingController::class);
-        $ads->shouldReceive('serve')->andReturnUsing(function (Request $request) use ($platform) {
+        $ads->shouldReceive('serve')->andReturnUsing(function (Request $request) use ($platform, $format) {
             $this->assertSame($platform, $request->input('platform'));
             $this->assertSame('desktop', $request->header('X-Device-Type'));
+            $this->assertSame($platform === 'macos' && $format === 'hls' ? 'hls' : null, $request->input('playback_format'));
             return response()->json(['success' => true, 'data' => null]);
         });
         $controller = new NewStreamController($hls, $movies, $watch, $ads);

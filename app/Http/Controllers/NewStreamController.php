@@ -650,6 +650,7 @@ class NewStreamController extends Controller
             $platform,
             (string) $request->input('device_type', 'mobile'),
             (string) $userId,
+            $prefersHls,
         );
 
         return response()->json([
@@ -669,7 +670,7 @@ class NewStreamController extends Controller
         ]);
     }
 
-    private function streamAds(string $platform, string $deviceType, string $userId): array
+    private function streamAds(string $platform, string $deviceType, string $userId, bool $prefersHls = false): array
     {
         $platform = $platform ?: 'android';
         $deviceType = $deviceType ?: 'mobile';
@@ -685,6 +686,7 @@ class NewStreamController extends Controller
                 $request = Request::create('/api/v4/ads/serve', 'GET', [
                     'placement' => $placement,
                     'platform' => $platform,
+                    'playback_format' => $prefersHls ? 'hls' : null,
                 ], [], [], [
                     'HTTP_X_CLIENT_PLATFORM' => $platform,
                     'HTTP_X_DEVICE_TYPE' => $deviceType,

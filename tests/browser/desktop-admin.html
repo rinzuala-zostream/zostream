@@ -1,0 +1,16 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body class="admin-root"><div id="app"></div><script type="module">
+import {createApp, h} from 'vue';
+import {createRouter, createWebHashHistory, RouterView} from 'vue-router';
+import Dashboard from '/resources/js/admin/pages/DashboardPage.vue';
+import Resources from '/resources/js/admin/pages/ResourceListPage.vue';
+import Editor from '/resources/js/admin/pages/ResourceEditorPage.vue';
+import Tools from '/resources/js/admin/pages/ToolsPage.vue';
+import Analytics from '/resources/js/admin/pages/AnalyticsPage.vue';
+import '/resources/css/admin.css';
+const router = createRouter({history:createWebHashHistory(),routes:[
+    {path:'/dashboard',component:Dashboard}, {path:'/manage/:resource',component:Resources},
+    {path:'/manage/:resource/:id',component:Editor}, {path:'/tools/:tool',component:Tools},
+    {path:'/analytics',component:Analytics},
+]});
+createApp({render: () => h(RouterView)}).use(router).mount('#app');
+</script></body></html>

@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router';
 import PageHeader from '../components/PageHeader.vue';
 import StatusPanel from '../components/StatusPanel.vue';
 import { api } from '../lib/api';
+import { deviceTypeLabel } from '../lib/platforms';
 
 const route = useRoute();
 const detail = ref(null); const purchases = ref({ data: [], current_page: 1, last_page: 1, total: 0 });
@@ -73,7 +74,7 @@ watch(() => [route.params.type, route.params.id], load);
                 <StatusPanel tone="error" :message="purchaseError" />
                 <div v-if="purchaseLoading" class="admin-loading">Loading this page…</div>
                 <div v-else-if="!purchases.data?.length" class="admin-empty">No completed purchases for this PPV item.</div>
-                <div v-else class="admin-table-scroll"><table><thead><tr><th>Date</th><th>User</th><th>Content ID</th><th>Device / gateway</th><th>Amount</th></tr></thead><tbody><tr v-for="purchase in purchases.data" :key="`${purchase.source || 'payment'}-${purchase.id}`"><td>{{ purchase.payment_date || purchase.created_at || '—' }}</td><td>{{ purchase.user_id || '—' }}</td><td>{{ purchase.movie_id || '—' }}</td><td>{{ [purchase.device_type, purchase.payment_gateway].filter(Boolean).join(' · ') || '—' }}</td><td>{{ money(purchase.amount, purchase.currency || 'INR') }}</td></tr></tbody></table></div>
+                <div v-else class="admin-table-scroll"><table><thead><tr><th>Date</th><th>User</th><th>Content ID</th><th>Device / gateway</th><th>Amount</th></tr></thead><tbody><tr v-for="purchase in purchases.data" :key="`${purchase.source || 'payment'}-${purchase.id}`"><td>{{ purchase.payment_date || purchase.created_at || '—' }}</td><td>{{ purchase.user_id || '—' }}</td><td>{{ purchase.movie_id || '—' }}</td><td>{{ [purchase.device_type ? deviceTypeLabel(purchase.device_type) : null, purchase.payment_gateway].filter(Boolean).join(' · ') || '—' }}</td><td>{{ money(purchase.amount, purchase.currency || 'INR') }}</td></tr></tbody></table></div>
                 <footer class="ppv-pagination"><span>{{ purchases.total || 0 }} records</span><div><button class="admin-secondary" :disabled="purchaseLoading || purchases.current_page <= 1" @click="loadPurchases(purchases.current_page - 1)">Previous</button><button class="admin-secondary" :disabled="purchaseLoading || purchases.current_page >= purchases.last_page" @click="loadPurchases(purchases.current_page + 1)">Next</button></div></footer>
             </section>
         </template>

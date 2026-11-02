@@ -1,3 +1,5 @@
+import { deviceTypes } from './platforms.js';
+
 const f = (name, label, type = 'text', extra = {}) => ({ name, label, type, ...extra });
 const movieGenres = ['Action', 'Adventure', 'Animation', 'Comedy', 'Crime', 'Drama', 'Fantasy', 'Historical', 'Horror', 'Mystery', 'Romance', 'Science Fiction (Sci-Fi)', 'Thriller', 'Western', 'War', 'Superhero', 'Spy/Espionage', 'Martial Arts', 'Disaster', 'Swashbuckler'];
 
@@ -29,7 +31,7 @@ export const resources = {
     },
     plans: {
         label: 'Plans', singular: 'Plan', icon: 'badge', endpoint: '/admin/plans', searchEndpoint: '/admin/plans', searchParam: 'search', columns: ['id', 'name', 'device_type', 'price', 'duration_days', 'is_active'],
-        fields: [f('name', 'Plan name', 'text', { required: true }), f('device_type', 'Device type', 'select', { required: true, options: ['mobile', 'tv', 'browser', 'desktop'], default: 'mobile' }), f('device_limit', 'Device limit', 'number', { required: true, min: 1 }), f('price', 'Price', 'number', { required: true, min: 0 }), f('duration_days', 'Duration (days)', 'number', { required: true, min: 1 }), f('quality', 'Quality', 'select', { required: true, options: ['SD', 'HD', 'FULL_HD', '4K'], default: 'HD' }), f('features', 'Features (one per line)', 'lines', { wide: true }), f('ppv_discount', 'PPV discount (%)', 'number', { min: 0, max: 100 }), f('is_active', 'Active', 'checkbox', { default: true })],
+        fields: [f('name', 'Plan name', 'text', { required: true }), f('device_type', 'Device type', 'select', { required: true, options: deviceTypes.map(item => item.value), default: 'mobile' }), f('device_limit', 'Device limit', 'number', { required: true, min: 1 }), f('price', 'Price', 'number', { required: true, min: 0 }), f('duration_days', 'Duration (days)', 'number', { required: true, min: 1 }), f('quality', 'Quality', 'select', { required: true, options: ['SD', 'HD', 'FULL_HD', '4K'], default: 'HD' }), f('features', 'Features (one per line)', 'lines', { wide: true }), f('ppv_discount', 'PPV discount (%)', 'number', { min: 0, max: 100 }), f('is_active', 'Active', 'checkbox', { default: true })],
     },
     polls: {
         label: 'Polls', singular: 'Poll', icon: 'chart', endpoint: '/admin/polls', columns: ['id', 'question', 'status', 'starts_at', 'ends_at'],
@@ -39,7 +41,7 @@ export const resources = {
         label: 'Legal pages', singular: 'Legal page', icon: 'file', endpoint: '/admin/legal-pages', columns: ['id', 'title', 'slug', 'effective_date', 'is_published'],
         fields: [f('title', 'Title', 'text', { required: true }), f('slug', 'Slug', 'text', { required: true }), f('eyebrow', 'Eyebrow'), f('effective_date', 'Effective date', 'date'), f('intro', 'Introduction', 'textarea', { wide: true }), f('sections', 'Sections JSON', 'json', { wide: true }), f('sort_order', 'Sort order', 'number'), f('is_published', 'Published', 'checkbox')],
     },
-    devices: { label: 'Devices', singular: 'Device', icon: 'monitor', endpoint: '/admin/devices', searchEndpoint: '/admin/devices/search', noCreate: true, columns: ['id', 'user_id', 'device_name', 'device_type', 'status', 'last_activity'], fields: [f('device_name', 'Device name', 'text', { required: true }), f('device_type', 'Device type', 'select', { required: true, options: ['mobile', 'tv', 'browser', 'desktop'] }), f('status', 'Status', 'select', { required: true, options: ['active', 'inactive', 'blocked'] })] },
+    devices: { label: 'Devices', singular: 'Device', icon: 'monitor', endpoint: '/admin/devices', searchEndpoint: '/admin/devices/search', noCreate: true, columns: ['id', 'user_id', 'device_name', 'device_type', 'platform', 'status', 'last_activity'], fields: [f('device_name', 'Device name', 'text', { required: true }), f('device_type', 'Device type', 'select', { required: true, options: deviceTypes.map(item => item.value) }), f('platform', 'Platform reported by app', 'text', { readOnly: true }), f('status', 'Status', 'select', { required: true, options: ['active', 'inactive', 'blocked'] })] },
 };
 
 const editorSectionDefinitions = {
@@ -70,6 +72,7 @@ Object.entries(editorSectionDefinitions).forEach(([resourceKey, definitions]) =>
 export function normalizeForSubmit(key, source) {
     const payload = { ...source };
     resources[key].fields.forEach((field) => {
+        if (field.readOnly) { delete payload[field.name]; return; }
         if (field.type === 'number' && !Array.isArray(payload[field.name]) && payload[field.name] !== '' && payload[field.name] != null) payload[field.name] = Number(payload[field.name]);
         if (field.type === 'lines' && key === 'polls') payload[field.name] = String(payload[field.name] || '').split('\n').map((value, index) => ({ option_text: value.trim(), sort_order: index })).filter((item) => item.option_text);
         if (field.type === 'lines' && key !== 'polls') payload[field.name] = String(payload[field.name] || '').split('\n').map((value) => value.trim()).filter(Boolean);

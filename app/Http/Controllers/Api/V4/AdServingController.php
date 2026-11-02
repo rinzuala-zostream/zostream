@@ -25,10 +25,11 @@ class AdServingController extends Controller
         $data = $request->validate([
             'placement' => ['required', 'string', 'max:60'],
             'platform' => ['nullable', 'string', 'max:30'],
+            'playback_format' => ['nullable', 'in:hls,dash'],
         ]);
 
-        // Authenticated mobile clients receive ads according to their active
-        // plan feature. Anonymous clients and users without a mobile plan keep
+        // Authenticated clients receive ads according to their device category's
+        // active plan. Anonymous clients and users without a matching plan keep
         // the standard 100% ad experience.
         if (! $this->planAdPolicy->shouldServe($request)) {
             return V4Response::success(null, 'This ad slot is disabled by the active subscription plan.');
@@ -104,7 +105,12 @@ class AdServingController extends Controller
         }
 
         $mediaUrl = $creative->media_url;
-        if (($data['platform'] ?? null) === 'ios'
+        $prefersHls = ($data['platform'] ?? null) === 'ios' || (
+            ($data['platform'] ?? null) === 'macos'
+            && $request->header('X-Device-Type') === 'desktop'
+            && ($data['playback_format'] ?? null) === 'hls'
+        );
+        if ($prefersHls
             && strtolower((string) $creative->type) === 'video'
             && str_contains(strtolower((string) $mediaUrl), '.mpd')) {
             try {
@@ -112,14 +118,15 @@ class AdServingController extends Controller
                 $hlsPayload = $this->hlsFolderController->check($hlsRequest)->getData(true);
                 $mediaUrl = $hlsPayload['data']['stream_url'] ?? null;
             } catch (\Throwable $exception) {
-                Log::warning('iOS DASH ad conversion failed.', [
+                Log::warning('Native Apple DASH ad conversion failed.', [
+                    'platform' => $data['platform'] ?? null,
                     'creative_id' => $creative->creative_id,
                     'error' => $exception->getMessage(),
                 ]);
                 $mediaUrl = null;
             }
 
-            // Do not consume a delivery quota for an iOS creative that cannot
+            // Do not consume a delivery quota for a native Apple creative that cannot
             // be converted into an AVPlayer-compatible HLS stream.
             if (! $mediaUrl) {
                 return V4Response::success(null, 'No eligible ad is available.');
@@ -193,7 +200,7 @@ class AdServingController extends Controller
             'tracking_token' => $trackingToken,
             // The iOS client can use this same-origin delivery URL when a
             // device network cannot establish a connection to the CDN domain.
-            'proxy_media_url' => $this->proxyMediaUrl($mediaUrl, $trackingToken),
+            'proxy_media_url' => $mediaUrl === $creative->media_url ? $this->proxyMediaUrl($mediaUrl, $trackingToken) : null,
         ]);
     }
 
@@ -257,6 +264,11 @@ class AdServingController extends Controller
 
     private function proxyMediaUrl(?string $assetUrl, string $token): ?string
     {
+        // This byte proxy doesn't rewrite manifest-relative segment URLs.
+        // HLS/DASH manifests must retain their actual CDN location.
+        if (in_array(strtolower(pathinfo((string) parse_url($assetUrl ?? '', PHP_URL_PATH), PATHINFO_EXTENSION)), ['m3u8', 'mpd'], true)) {
+            return null;
+        }
         return $assetUrl && $this->isTrustedCdnUrl($assetUrl)
             ? url('/api/v4/ads/media?tracking_token='.rawurlencode($token))
             : null;

@@ -5,6 +5,7 @@ import PageHeader from '../components/PageHeader.vue';
 import StatusPanel from '../components/StatusPanel.vue';
 import ChatAnalyticsPanel from '../components/ChatAnalyticsPanel.vue';
 import { api, queryString } from '../lib/api';
+import { analyticsPlatforms } from '../lib/platforms';
 
 const route = useRoute();
 const tab = ref('rooms'), loading = ref(false), error = ref(''), notice = ref('');
@@ -129,7 +130,7 @@ onUnmounted(() => { active = false; listSeq++; roomSeq++; window.clearInterval(t
         <StatusPanel tone="error" :message="error" />
         <nav class="analytics-tabs" aria-label="Chat sections"><button v-for="value in tabs" :key="value" :class="{active:tab===value}" @click="selectTab(value)">{{ value === 'audit' ? 'Audit log' : value[0].toUpperCase()+value.slice(1) }}</button></nav>
         <template v-if="tab === 'analytics'">
-            <form class="chat-toolbar" @submit.prevent="metricsFilters = {...metricsDraft}"><label>From<input v-model="metricsDraft.from" type="date" required></label><label>To<input v-model="metricsDraft.to" type="date" required></label><label>Platform<select v-model="metricsDraft.platform"><option value="">All platforms</option><option value="ios">iOS</option><option value="android">Android</option></select></label><button class="admin-primary">Apply filters</button></form>
+            <form class="chat-toolbar" @submit.prevent="metricsFilters = {...metricsDraft}"><label>From<input v-model="metricsDraft.from" type="date" required></label><label>To<input v-model="metricsDraft.to" type="date" required></label><label>Platform<select v-model="metricsDraft.platform"><option value="">All platforms</option><option v-for="item in analyticsPlatforms" :key="item.value" :value="item.value">{{ item.label }}</option></select></label><button class="admin-primary">Apply filters</button></form>
             <ChatAnalyticsPanel :filters="metricsFilters" />
         </template>
         <template v-else>

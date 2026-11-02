@@ -134,7 +134,7 @@ final class AdminChatController extends Controller
     {
         $this->ready();
         $v = $r->validate(['from' => 'nullable|date_format:Y-m-d', 'to' => 'nullable|date_format:Y-m-d|after_or_equal:from', 'timezone' => 'nullable|timezone',
-            'platform' => ['nullable', Rule::in(['ios', 'android', 'tvos', 'tv', 'web', 'tizen', 'webos'])], 'app_version' => 'nullable|string|max:64',
+            'platform' => ['nullable', Rule::in(['ios', 'android', 'tvos', 'tv', 'web', 'tizen', 'webos', 'windows', 'macos'])], 'app_version' => 'nullable|string|max:64',
             'room_type' => ['nullable', Rule::in(['global', 'movie', 'episode', 'invite'])], 'content_type' => 'nullable|string|max:24',
             'content_id' => 'nullable|string|max:191', 'user_id' => 'nullable|string|max:191']);
         $tz = $v['timezone'] ?? 'UTC';

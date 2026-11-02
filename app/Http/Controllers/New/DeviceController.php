@@ -8,16 +8,21 @@ use App\Models\New\Devices;
 use App\Models\New\ActiveStream;
 use App\Models\UserModel;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class DeviceController extends Controller
 {
+    private const DEVICE_TYPES = ['mobile', 'browser', 'tv', 'desktop'];
+    private const DESKTOP_PLATFORMS = ['macos', 'windows'];
     // List all devices with pagination
     public function index(Request $request)
     {
         $perPage = $request->get('per_page', 15);
 
-        $devices = Devices::orderBy('created_at', 'desc')
-            ->paginate($perPage);
+        $devices = $this->filterDevices(Devices::query(), $request)->orderBy('created_at', 'desc')
+            ->paginate(min(100, max(1, (int) $perPage)))->appends($request->query());
 
         return response()->json([
             'status' => 'success',
@@ -56,7 +61,7 @@ class DeviceController extends Controller
             })
             ->select('uid');
 
-        $devices = Devices::query()
+        $devices = $this->filterDevices(Devices::query(), $request)
             ->whereIn('user_id', $matchedUserIds)
             ->orderBy('created_at', 'desc')
             ->paginate($perPage)
@@ -84,9 +89,9 @@ class DeviceController extends Controller
     {
         $perPage = $request->get('per_page', 15);
 
-        $devices = Devices::where('user_id', $userId)
+        $devices = $this->filterDevices(Devices::where('user_id', $userId), $request)
             ->orderBy('created_at', 'desc')
-            ->paginate($perPage);
+            ->paginate(min(100, max(1, (int) $perPage)));
 
         if ($devices->isEmpty()) {
             return response()->json(['status' => 'error', 'message' => 'No devices found for this user'], 404);
@@ -100,15 +105,12 @@ class DeviceController extends Controller
     {
         $request->validate([
             'user_id' => 'required|string|max:225',
-            'device_type' => 'nullable|string',
+            'device_type' => ['nullable', Rule::in(self::DEVICE_TYPES)],
+            'platform' => ['nullable', Rule::in(self::DESKTOP_PLATFORMS)],
             'device_token' => 'nullable|string',
         ]);
 
-        $query = Devices::where('user_id', $request->user_id);
-
-        if ($request->filled('device_type')) {
-            $query->where('device_type', $request->device_type);
-        }
+        $query = $this->filterDevices(Devices::where('user_id', $request->user_id), $request);
 
         if ($request->filled('device_token')) {
             $query->where('device_token', $request->device_token);
@@ -150,10 +152,12 @@ class DeviceController extends Controller
             'subscription_id' => 'required|integer',
             'device_token' => 'required|string',
             'device_name' => 'required|string',
-            'device_type' => 'required|string',
+            'device_type' => ['required', Rule::in(self::DEVICE_TYPES)],
+            'platform' => ['nullable', Rule::in(self::DESKTOP_PLATFORMS)],
             'status' => 'nullable|string|in:active,inactive,blocked',
             'is_owner_device' => 'nullable|boolean',
         ]);
+        $this->validateDesktopPlatform($request, (string) $request->input('device_type'));
 
         $device = Devices::create($request->all());
 
@@ -172,7 +176,17 @@ class DeviceController extends Controller
             return response()->json(['status' => 'error', 'message' => 'Device not found'], 404);
         }
 
-        $device->update($request->all());
+        $request->validate([
+            'device_type' => ['sometimes', 'required', Rule::in(self::DEVICE_TYPES)],
+            'platform' => ['nullable', Rule::in(self::DESKTOP_PLATFORMS)],
+        ]);
+        $type = (string) $request->input('device_type', $device->device_type);
+        $this->validateDesktopPlatform($request, $type);
+        $attributes = $request->all();
+        if ($type !== 'desktop' && in_array($device->platform, self::DESKTOP_PLATFORMS, true)) {
+            $attributes['platform'] = null;
+        }
+        $device->update($attributes);
 
         return response()->json([
             'status' => 'success',
@@ -192,5 +206,27 @@ class DeviceController extends Controller
         $device->delete();
 
         return response()->json(['status' => 'success', 'message' => 'Device deleted successfully']);
+    }
+
+    private function filterDevices(Builder $query, Request $request): Builder
+    {
+        $request->validate([
+            'device_type' => ['nullable', Rule::in(self::DEVICE_TYPES)],
+            'platform' => ['nullable', Rule::in(self::DESKTOP_PLATFORMS)],
+        ]);
+        if ($request->filled('device_type')) {
+            $query->where('device_type', $request->input('device_type'));
+        }
+        if ($request->filled('platform')) {
+            $query->where('device_type', 'desktop')->where('platform', $request->input('platform'));
+        }
+        return $query;
+    }
+
+    private function validateDesktopPlatform(Request $request, string $deviceType): void
+    {
+        if ($request->filled('platform') && $deviceType !== 'desktop') {
+            throw ValidationException::withMessages(['platform' => 'Mac and Windows platforms require the desktop device type.']);
+        }
     }
 }

@@ -39,6 +39,12 @@
     "sam_tv_update": {
       ".read": true
     },
+    "windows_update": {
+      ".read": true
+    },
+    "macos_update": {
+      ".read": true
+    },
     "official_client_configs": {
       ".read": true
     },

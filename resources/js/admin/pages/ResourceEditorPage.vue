@@ -5,6 +5,7 @@ import PageHeader from '../components/PageHeader.vue';
 import StatusPanel from '../components/StatusPanel.vue';
 import { api, queryString } from '../lib/api';
 import { normalizeForSubmit, resources } from '../lib/resources';
+import { deviceTypeLabel, optionLabel } from '../lib/platforms';
 
 const route = useRoute(); const router = useRouter();
 const key = computed(() => route.params.resource); const resource = computed(() => resources[key.value]);
@@ -340,9 +341,9 @@ onMounted(load);
                                         <button v-for="option in field.options" :key="option" type="button" :class="{selected:isSelected(field,option)}" :aria-pressed="isSelected(field,option)" @click="toggleMultiValue(field,option)"><i>{{ isSelected(field,option) ? '✓' : '' }}</i><span>{{ option }}</span></button>
                                     </div>
                                 </div>
-                                <select v-else-if="field.type==='select'" v-model="model[field.name]" :required="field.required"><option value="">Choose…</option><option v-for="option in field.options" :key="option" :value="option">{{option}}</option></select>
-                                <template v-else-if="field.upload"><input v-model="model[field.name]" :type="field.type" :required="field.required && !files[field.name]" placeholder="https://…"><input type="file" accept="image/*" @change="files[field.name] = $event.target.files?.[0]"><small v-if="files[field.name]">Selected: {{files[field.name].name}}</small></template>
-                                <input v-else v-model="model[field.name]" :type="field.type" :required="field.required" :placeholder="field.placeholder" :step="field.type==='number'?'any':undefined" :min="field.min" :max="field.max">
+                                <select v-else-if="field.type==='select'" v-model="model[field.name]" :required="field.required"><option value="">Choose…</option><option v-for="option in field.options" :key="option" :value="option">{{ optionLabel(field, option) }}</option></select>
+                                <template v-else-if="field.upload"><input v-model="model[field.name]" :type="field.type" :readonly="field.readOnly" :required="field.required && !files[field.name]" placeholder="https://…"><input type="file" accept="image/*" @change="files[field.name] = $event.target.files?.[0]"><small v-if="files[field.name]">Selected: {{files[field.name].name}}</small></template>
+                                <input v-else v-model="model[field.name]" :type="field.type" :readonly="field.readOnly" :required="field.required" :placeholder="field.placeholder" :step="field.type==='number'?'any':undefined" :min="field.min" :max="field.max">
                             </template>
                         </div>
                     </div>
@@ -355,7 +356,7 @@ onMounted(load);
                         <textarea v-if="['textarea','lines','json'].includes(field.type)" v-model="model[field.name]" :required="field.required" :placeholder="field.type==='lines'?'First item\nSecond item':field.placeholder" />
                         <div v-else-if="field.relation === 'plan' && key === 'subscriptions' && !editing" class="admin-plan-picker">
                             <section v-for="[deviceType, devicePlans] in plansByDevice" :key="deviceType">
-                                <header>{{ deviceType }}</header>
+                                <header>{{ deviceTypeLabel(deviceType) }}</header>
                                 <div v-for="plan in devicePlans" :key="plan.id" class="admin-plan-choice" :class="{selected:isSubscriptionPlanSelected(plan.id)}" @click="toggleSubscriptionPlan(plan.id)">
                                     <input :checked="isSubscriptionPlanSelected(plan.id)" type="checkbox" @click.stop @change.stop="toggleSubscriptionPlan(plan.id)">
                                     <span><b>{{ plan.name }}</b><small>₹{{ plan.price }} · {{ plan.duration_days }} days · {{ plan.quality }}</small></span>
@@ -363,10 +364,10 @@ onMounted(load);
                             </section>
                             <small>Select one or more plans. Start/end dates can be left blank to use each plan duration.</small>
                         </div>
-                        <select v-else-if="field.relation === 'plan'" v-model="model[field.name]" :required="field.required"><option value="">Choose a plan…</option><option v-for="plan in plans" :key="plan.id" :value="plan.id">{{ plan.name }} · {{ plan.device_type }} · ₹{{ plan.price }}</option></select>
-                        <select v-else-if="field.type==='select'" v-model="model[field.name]" :required="field.required"><option value="">Choose…</option><option v-for="option in field.options" :key="option" :value="option">{{option}}</option></select>
-                        <template v-else-if="field.upload"><input v-model="model[field.name]" :type="field.type" :required="field.required && !files[field.name]" placeholder="https://…"><input type="file" accept="image/*" @change="files[field.name] = $event.target.files?.[0]"><small v-if="files[field.name]">Selected: {{files[field.name].name}}</small></template>
-                        <input v-else v-model="model[field.name]" :type="field.type" :required="field.required" :placeholder="field.placeholder" :step="field.type==='number'?'any':undefined" :min="field.min" :max="field.max">
+                        <select v-else-if="field.relation === 'plan'" v-model="model[field.name]" :required="field.required"><option value="">Choose a plan…</option><option v-for="plan in plans" :key="plan.id" :value="plan.id">{{ plan.name }} · {{ deviceTypeLabel(plan.device_type) }} · ₹{{ plan.price }}</option></select>
+                        <select v-else-if="field.type==='select'" v-model="model[field.name]" :required="field.required"><option value="">Choose…</option><option v-for="option in field.options" :key="option" :value="option">{{ optionLabel(field, option) }}</option></select>
+                        <template v-else-if="field.upload"><input v-model="model[field.name]" :type="field.type" :readonly="field.readOnly" :required="field.required && !files[field.name]" placeholder="https://…"><input type="file" accept="image/*" @change="files[field.name] = $event.target.files?.[0]"><small v-if="files[field.name]">Selected: {{files[field.name].name}}</small></template>
+                        <input v-else v-model="model[field.name]" :type="field.type" :readonly="field.readOnly" :required="field.required" :placeholder="field.placeholder" :step="field.type==='number'?'any':undefined" :min="field.min" :max="field.max">
                     </template>
                 </label>
             </div>

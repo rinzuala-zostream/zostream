@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Api\V4;
 use App\Http\Controllers\Controller;
 use App\Support\Api\V4Response;
 use Illuminate\Http\Request;
-use Kreait\Firebase\Database;
+use Kreait\Firebase\Contract\Database;
 use Kreait\Firebase\Factory;
 
 class AdminRealtimeConfigController extends Controller
@@ -19,7 +19,7 @@ class AdminRealtimeConfigController extends Controller
     {
         $data = $request->validate([
             'txt' => ['required', 'string', 'max:5000'],
-            'platform' => ['required', 'in:all,android,ios'],
+            'platform' => ['required', 'in:all,android,ios,windows,macos'],
             'isShow' => ['required', 'boolean'],
             'isCancelable' => ['required', 'boolean'],
             'isShowInLatest' => ['required', 'boolean'],
@@ -152,7 +152,7 @@ class AdminRealtimeConfigController extends Controller
         }
     }
 
-    private function database(): Database
+    protected function database(): Database
     {
         $url = (string) config('firebase.database_url', '');
         abort_if($url === '', 503, 'Firebase database URL is not configured.');

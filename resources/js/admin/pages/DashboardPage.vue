@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue';
 import PageHeader from '../components/PageHeader.vue';
 import StatusPanel from '../components/StatusPanel.vue';
 import { api, queryString } from '../lib/api';
+import { deviceTypes, deviceTypeLabel } from '../lib/platforms';
 
 const loading = ref(true);
 const error = ref('');
@@ -125,7 +126,7 @@ onMounted(load);
 
     <section class="admin-filter-bar">
       <label>Period<select v-model="filters.period" @change="load"><option>daily</option><option>monthly</option><option>yearly</option></select></label>
-      <label>Device<select v-model="filters.device_type" @change="load"><option value="">All devices</option><option>mobile</option><option>browser</option><option>tv</option></select></label>
+      <label>Device<select v-model="filters.device_type" @change="load"><option value="">All devices</option><option v-for="item in deviceTypes" :key="item.value" :value="item.value">{{ item.label }}</option></select></label>
       <label>Date field<select v-model="filters.date_field" @change="load"><option value="created_at">Created</option><option value="start_at">Start</option><option value="end_at">End</option></select></label>
     </section>
 
@@ -148,7 +149,7 @@ onMounted(load);
           </div>
           <label>Month<input v-model="filters.chart_month" type="month" @change="load"></label>
           <label>Compare with<input v-model="filters.comparison_month" type="month" @change="load"></label>
-          <label>Device type<select v-model="filters.chart_device_type" @change="load"><option value="">All devices</option><option value="mobile">Mobile</option><option value="browser">Browser</option><option value="tv">TV</option></select></label>
+          <label>Device type<select v-model="filters.chart_device_type" @change="load"><option value="">All devices</option><option v-for="item in deviceTypes" :key="item.value" :value="item.value">{{ item.label }}</option></select></label>
         </header>
 
         <div v-if="trend.plans?.length" class="trend-chart-wrap">
@@ -188,7 +189,7 @@ onMounted(load);
                 :r="chartDays > 20 ? 2.5 : 4"
                 :fill="comparisonColors[index % comparisonColors.length]"
                 class="trend-point trend-point-previous"
-              ><title>{{ trend.previous_month }} · day {{ dayIndex + 1 }} · {{ plan.plan_name || 'Plan' }} · {{ plan.device_type || 'unknown device' }} · {{ number(value) }} subscriptions · {{ money(plan.previous_amounts?.[dayIndex]) }}</title></circle>
+              ><title>{{ trend.previous_month }} · day {{ dayIndex + 1 }} · {{ plan.plan_name || 'Plan' }} · {{ deviceTypeLabel(plan.device_type) }} · {{ number(value) }} subscriptions · {{ money(plan.previous_amounts?.[dayIndex]) }}</title></circle>
               <circle
                 v-for="(value, dayIndex) in plan.current"
                 :key="`current-${dayIndex}`"
@@ -197,7 +198,7 @@ onMounted(load);
                 :r="chartDays > 20 ? 2.5 : 4"
                 :fill="chartColors[index % chartColors.length]"
                 class="trend-point"
-              ><title>{{ trend.month }} · day {{ dayIndex + 1 }} · {{ plan.plan_name || 'Plan' }} · {{ plan.device_type || 'unknown device' }} · {{ number(value) }} subscriptions · {{ money(plan.current_amounts?.[dayIndex]) }}</title></circle>
+              ><title>{{ trend.month }} · day {{ dayIndex + 1 }} · {{ plan.plan_name || 'Plan' }} · {{ deviceTypeLabel(plan.device_type) }} · {{ number(value) }} subscriptions · {{ money(plan.current_amounts?.[dayIndex]) }}</title></circle>
             </g>
             <line x1="30" :x2="chartWidth - 10" y1="270" y2="270" class="trend-axis" />
             <text
@@ -227,8 +228,8 @@ onMounted(load);
         </p>
 
         <div v-if="trend.plans?.length" class="trend-month-legend">
-          <div><strong>{{ formatMonth(trend.month) }} · solid</strong><span v-for="(plan, index) in trend.plans" :key="`current-${plan.plan_id}`"><i :style="{ backgroundColor: chartColors[index % chartColors.length] }"></i>{{ plan.plan_name || 'Plan' }} · {{ plan.device_type || 'unknown' }}</span></div>
-          <div v-if="trend.previous_month"><strong>{{ formatMonth(trend.previous_month) }} · dashed</strong><span v-for="(plan, index) in trend.plans" :key="`compare-${plan.plan_id}`"><i :style="{ backgroundColor: comparisonColors[index % comparisonColors.length] }"></i>{{ plan.plan_name || 'Plan' }} · {{ plan.device_type || 'unknown' }}</span></div>
+          <div><strong>{{ formatMonth(trend.month) }} · solid</strong><span v-for="(plan, index) in trend.plans" :key="`current-${plan.plan_id}`"><i :style="{ backgroundColor: chartColors[index % chartColors.length] }"></i>{{ plan.plan_name || 'Plan' }} · {{ deviceTypeLabel(plan.device_type) }}</span></div>
+          <div v-if="trend.previous_month"><strong>{{ formatMonth(trend.previous_month) }} · dashed</strong><span v-for="(plan, index) in trend.plans" :key="`compare-${plan.plan_id}`"><i :style="{ backgroundColor: comparisonColors[index % comparisonColors.length] }"></i>{{ plan.plan_name || 'Plan' }} · {{ deviceTypeLabel(plan.device_type) }}</span></div>
         </div>
       </section>
 
@@ -237,7 +238,7 @@ onMounted(load);
           <header><div><p>SUBSCRIPTION MIX</p><h2>Performance by plan</h2></div><strong>{{ money(data.plan_amount_summary?.total_amount) }}</strong></header>
           <div class="admin-plan-list">
             <div v-for="plan in data.active_subscriptions_by_plan || []" :key="plan.plan_id">
-              <span><b>{{ plan.plan_name || 'Unnamed plan' }}</b><small>{{ plan.device_type }} · {{ plan.duration_days }} days</small></span>
+              <span><b>{{ plan.plan_name || 'Unnamed plan' }}</b><small>{{ deviceTypeLabel(plan.device_type) }} · {{ plan.duration_days }} days</small></span>
               <i><b>{{ number(plan.total_active_subscriptions) }}</b><small>{{ money(plan.total_amount) }}</small></i>
             </div>
           </div>
@@ -246,7 +247,7 @@ onMounted(load);
           <header><div><p>DEVICE REACH</p><h2>Active subscriptions</h2></div></header>
           <div class="admin-device-list">
             <div v-for="device in data.active_subscriptions_by_device || []" :key="device.device_type">
-              <span>{{ device.device_type }}</span><strong>{{ number(device.total_active_subscriptions) }}</strong><small>{{ money(device.total_amount) }}</small>
+              <span>{{ deviceTypeLabel(device.device_type) }}</span><strong>{{ number(device.total_active_subscriptions) }}</strong><small>{{ money(device.total_amount) }}</small>
             </div>
           </div>
         </article>

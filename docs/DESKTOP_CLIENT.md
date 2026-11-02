@@ -77,3 +77,38 @@ Deploy the API/admin assets and save the desired platform settings to Firebase
 through the authorized admin account. No remote entries were created by this
 code change. Restart desktop development to pick up the new startup check;
 previously generated preview installers need rebuilding for this integration.
+
+## Desktop admin coverage
+
+The Vue dashboard and subscription chart include Desktop (Mac / Windows).
+Plans, subscriptions and devices can be filtered by device category; device
+lists and user search also support Mac/Windows platform filters on the server.
+Device rows display the reported OS. Editing a device preserves that OS unless
+its category changes away from desktop. The OS field in the Vue editor is read-only.
+Tools → Operations can clear all desktop devices or only one desktop OS for a
+user, stopping only the matching active streams.
+
+Analytics and chat metrics filters include `macos` and `windows`. Warnings can
+target either OS, and payment statistics include the desktop category. Desktop
+release nodes have the same public read-only Firebase rules as existing release
+nodes; deploy `Library/firebase/database.rules.json` to publish those reads.
+Saving warning/release settings still uses the authorized admin API.
+
+Native Mac playback that opts into HLS also requests HLS-compatible video ads.
+DASH ads are converted through the existing Apple HLS path before delivery;
+failed conversions consume no delivery/billing quota. Mac clients without HLS
+opt-in and Windows clients retain their existing media format. Manifest URLs
+remain on the CDN because the byte proxy does not rewrite relative segments.
+
+Local verification (no live Firebase/database changes):
+
+```sh
+npm run build
+node --test tests/desktop-admin-contract.test.mjs
+php vendor/bin/phpunit --filter 'DesktopAdminSupportTest|DesktopWarningConfigTest|DesktopDeviceMigrationTest|DesktopQrSessionTest|DesktopAppReleaseTest|V4PlaybackSecurityTest|CustomerDashboardTest|AnalyticsDashboardReportTest|PlanAdPolicyTest|AdminSpaTest|AdSubmissionWorkflowTest'
+```
+
+For the browser smoke test, run Vite on `127.0.0.1:5184`, then run
+`node tests/browser/desktop-admin.mjs` with Playwright installed (or set
+`PLAYWRIGHT_MODULE` to its module path). The fixture intercepts every API call;
+it does not authenticate or change real admin settings/devices.
