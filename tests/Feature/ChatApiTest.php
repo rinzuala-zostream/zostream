@@ -1682,6 +1682,21 @@ class ChatApiTest extends TestCase
         Http::assertSent(fn ($request) => str_contains($request->body(), 'chat.changed') && ! str_contains($request->body(), 'secret text'));
     }
 
+    public function test_chat_outbox_preserves_desktop_platforms(): void
+    {
+        $setting = \Mockery::mock(AnalyticsCollectionSetting::class);
+        $setting->shouldReceive('enabled')->andReturn(true);
+        $this->app->instance(AnalyticsCollectionSetting::class, $setting);
+        $room = $this->room();
+        foreach (['macos', 'windows'] as $platform) {
+            $request = \Illuminate\Http\Request::create('/', 'POST', $this->identity(['app_session_id' => (string) Str::uuid()]));
+            $request->headers->set('X-Client-Platform', $platform);
+            app(\App\Support\Chat\ChatService::class)->outbox($request, (int) $room, 'created', null, 'chat_message_sent');
+            $row = ChatDatabase::connection()->table('chat_outbox')->latest('id')->first();
+            $this->assertSame($platform, json_decode($row->analytics, true)['platform']);
+        }
+    }
+
     public function test_server_analytics_are_idempotent_and_do_not_copy_message_text(): void
     {
         config(['database.connections.analytics' => ['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '']]);

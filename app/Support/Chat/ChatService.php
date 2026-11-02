@@ -251,7 +251,7 @@ final class ChatService
             $analytics = json_encode(['event_id' => (string) \Illuminate\Support\Str::uuid(), 'name' => $event,
                 'user_id' => (string) $r->input('auth_user_id'), 'device_id' => (string) $r->input('auth_device_id'),
                 'app_session_id' => $r->input('app_session_id'), 'playback_session_id' => $r->input('playback_session_id'), 'room_id' => (string) $room,
-                'platform' => in_array($r->header('X-Client-Platform'), ['android', 'ios'], true) ? $r->header('X-Client-Platform') : 'unknown', 'app_version' => mb_substr($r->header('X-Client-Version', 'unknown'), 0, 64)]);
+                'platform' => in_array($r->header('X-Client-Platform'), ['android', 'ios', 'macos', 'windows'], true) ? $r->header('X-Client-Platform') : 'unknown', 'app_version' => mb_substr($r->header('X-Client-Version', 'unknown'), 0, 64)]);
         }
         ChatDatabase::connection()->table('chat_outbox')->insert(['room_id' => $room, 'kind' => $kind, 'message_id' => $message,
             'analytics' => $analytics, 'created_at' => now(), 'updated_at' => now()]
