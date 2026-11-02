@@ -802,6 +802,69 @@ class V4PlaybackSecurityTest extends TestCase
         $this->assertSame(1, Devices::where('device_type', 'desktop')->where('is_owner_device', true)->count());
     }
 
+    #[\PHPUnit\Framework\Attributes\DataProvider('nativeMacMediaCases')]
+    public function test_native_mac_uses_ios_media_preparation_without_changing_desktop_identity(
+        string $platform, ?string $format, array $links, ?string $conversion, ?string $expected
+    ): void {
+        DB::table('movie')->insert(['id' => 'native-movie', 'isPremium' => false, 'isPayPerView' => false]);
+        $device = $this->device('user-a', 'mac-install', 'active');
+        $device->update(['device_type' => 'desktop']);
+        $movies = Mockery::mock(MovieController::class);
+        $movies->shouldReceive('getLink')->once()->andReturn(response()->json([
+            'status' => 'success', 'title' => 'Native movie', 'links' => $links,
+        ]));
+        $watch = Mockery::mock(WatchPositionController::class);
+        $watch->shouldReceive('getWatchPosition')->once()->andReturn(response()->json([
+            'status' => 'success', 'watchPosition' => 6000,
+        ]));
+        $hls = Mockery::mock(HlsFolderController::class);
+        if ($conversion !== null) {
+            $hls->shouldReceive('check')->once()->withArgs(fn (Request $request) =>
+                $request->input('url') === ($links['url'] ?? $links['dash_url'])
+            )->andReturn(response()->json(['status' => 'success', 'data' => ['stream_url' => $conversion ?: null]]));
+        } else {
+            $hls->shouldNotReceive('check');
+        }
+        $ads = Mockery::mock(\App\Http\Controllers\Api\V4\AdServingController::class);
+        $ads->shouldReceive('serve')->andReturnUsing(function (Request $request) use ($platform) {
+            $this->assertSame($platform, $request->input('platform'));
+            $this->assertSame('desktop', $request->header('X-Device-Type'));
+            return response()->json(['success' => true, 'data' => null]);
+        });
+        $controller = new NewStreamController($hls, $movies, $watch, $ads);
+        $request = Request::create('/', 'POST', [
+            'auth_user_id' => 'user-a', 'user_id' => 'user-a', 'movie_id' => 'native-movie',
+            'type' => 'movie', 'device_type' => 'desktop', 'platform' => $platform, 'playback_format' => $format,
+        ]);
+        $request->headers->set('Device-Token', $device->device_token);
+        $response = $controller->start($request);
+        $data = $response->getData(true);
+        if ($expected !== null) {
+            $this->assertSame(200, $response->getStatusCode());
+            $this->assertSame($expected, $data['movie_links']['links']);
+            $this->assertSame(6000, $data['watch_position']);
+            $this->assertDatabaseHas('n_active_streams', ['device_id' => $device->id, 'device_type' => 'desktop', 'status' => 'active']);
+        } else {
+            $this->assertSame('error', $data['status']);
+            $this->assertDatabaseMissing('n_active_streams', ['device_id' => $device->id, 'status' => 'active']);
+        }
+    }
+
+    public static function nativeMacMediaCases(): array
+    {
+        $dash = 'https://media.example.test/movie/manifest.mpd';
+        $hls = 'https://media.example.test/movie/master.m3u8';
+        $mp4 = 'https://media.example.test/movie/video.mp4';
+        return [
+            'native prefers supplied hls' => ['macos', 'hls', ['dash_url' => $dash, 'hls_url' => $hls], null, $hls],
+            'native converts dash like ios' => ['macos', 'hls', ['dash_url' => $dash], $hls, $hls],
+            'native direct file fallback' => ['macos', 'hls', ['url' => $mp4], '', $mp4],
+            'native failed conversion releases seat' => ['macos', 'hls', ['dash_url' => $dash], '', null],
+            'mac electron keeps dash' => ['macos', null, ['dash_url' => $dash, 'hls_url' => $hls], null, $dash],
+            'windows keeps dash' => ['windows', 'hls', ['dash_url' => $dash, 'hls_url' => $hls], null, $dash],
+        ];
+    }
+
     public function test_desktop_playback_creates_a_desktop_stream_and_saves_progress_on_stop(): void
     {
         DB::table('movie')->insert(['id' => 'free-movie', 'isPremium' => false, 'isPayPerView' => false]);

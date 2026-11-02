@@ -55,6 +55,13 @@ class NewStreamController extends Controller
         $contentId = filled($movieId) && is_numeric($movieId) ? (int) $movieId : null;
         $userId = $request->input('user_id');
         $platform = strtolower(trim((string) $request->input('platform')));
+        // Native Mac AVPlayer opts into the same media preparation as iOS.
+        // Keep macOS Electron on DASH and retain desktop identity/access checks.
+        $prefersHls = $platform === 'ios' || (
+            $platform === 'macos'
+            && $request->input('device_type') === 'desktop'
+            && $request->input('playback_format') === 'hls'
+        );
 
         $isPPV = false;
         $requiresSubscription = false;
@@ -519,7 +526,7 @@ class NewStreamController extends Controller
 
                 // movie format: links => ['url' => '...']
                 if (isset($links['url']) || isset($links['hls_url']) || isset($links['dash_url'])) {
-                    if ($platform === 'ios') {
+                    if ($prefersHls) {
                         $url = $links['hls_url'] ?? $links['url'] ?? $links['dash_url'] ?? null;
                     } else {
                         $url = $links['dash_url'] ?? $links['url'] ?? $links['hls_url'] ?? null;
@@ -538,7 +545,7 @@ class NewStreamController extends Controller
 
                 if ($url) {
                     $streamDebug['selected_url_preview'] = mb_substr((string) $url, 0, 180);
-                    if ($platform === 'ios') {
+                    if ($prefersHls) {
                         $normalizedUrl = strtolower($url);
                         $streamUrl = str_contains($normalizedUrl, 'm3u8') ? $url : null;
                         $streamDebug['selected_url_kind'] = str_contains($normalizedUrl, 'm3u8')
