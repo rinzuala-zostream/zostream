@@ -261,7 +261,8 @@ class V4PlaybackSecurityTest extends TestCase
         $this->assertSame('active', $device->fresh()->status);
     }
 
-    public function test_owner_is_always_active_and_counts_toward_the_device_limit(): void
+    #[\PHPUnit\Framework\Attributes\DataProvider('playbackDeviceTypes')]
+    public function test_owner_is_always_active_and_counts_toward_the_device_limit(string $deviceType, string $platform): void
     {
         DB::table('movie')->insert([
             'id' => 'premium-movie',
@@ -270,7 +271,7 @@ class V4PlaybackSecurityTest extends TestCase
         ]);
         $plan = Plan::create([
             'name' => 'One mobile device',
-            'device_type' => 'mobile',
+            'device_type' => $deviceType,
             'device_limit' => 1,
             'price' => 100,
             'duration_days' => 30,
@@ -287,11 +288,13 @@ class V4PlaybackSecurityTest extends TestCase
         $owner = $this->device('user-a', 'owner-device', 'inactive');
         $owner->update([
             'subscription_id' => $subscription->id,
+            'device_type' => $deviceType,
             'is_owner_device' => true,
         ]);
         $otherDevice = $this->device('user-a', 'other-device', 'inactive');
         $otherDevice->update([
             'subscription_id' => $subscription->id,
+            'device_type' => $deviceType,
             'is_owner_device' => false,
         ]);
 
@@ -301,8 +304,8 @@ class V4PlaybackSecurityTest extends TestCase
             'subscription_id' => $subscription->id,
             'movie_id' => 'premium-movie',
             'type' => 'movie',
-            'device_type' => 'mobile',
-            'platform' => 'android',
+            'device_type' => $deviceType,
+            'platform' => $platform,
         ]);
         $request->headers->set('Device-Token', $otherDevice->device_token);
 
@@ -346,11 +349,12 @@ class V4PlaybackSecurityTest extends TestCase
         $this->assertNull($device->fresh()->subscription_id);
     }
 
-    public function test_manual_renewal_keeps_owner_and_resets_shared_browser_devices(): void
+    #[\PHPUnit\Framework\Attributes\DataProvider('renewalDeviceTypes')]
+    public function test_manual_renewal_keeps_owner_and_resets_shared_devices(string $deviceType): void
     {
         $plan = Plan::create([
             'name' => 'Browser plan',
-            'device_type' => 'browser',
+            'device_type' => $deviceType,
             'device_limit' => 2,
             'price' => 100,
             'duration_days' => 30,
@@ -367,7 +371,7 @@ class V4PlaybackSecurityTest extends TestCase
         $owner = Devices::create([
             'user_id' => 'user-a',
             'device_name' => 'Owner browser',
-            'device_type' => 'browser',
+            'device_type' => $deviceType,
             'device_token' => 'owner-browser',
             'is_owner_device' => true,
             'status' => 'inactive',
@@ -375,7 +379,7 @@ class V4PlaybackSecurityTest extends TestCase
         $activeBrowser = Devices::create([
             'user_id' => 'user-a',
             'device_name' => 'Current browser session',
-            'device_type' => 'browser',
+            'device_type' => $deviceType,
             'device_token' => 'current-browser',
             'is_owner_device' => false,
             'status' => 'active',
@@ -383,7 +387,7 @@ class V4PlaybackSecurityTest extends TestCase
         $inactiveBrowser = Devices::create([
             'user_id' => 'user-a',
             'device_name' => 'Signed-in browser',
-            'device_type' => 'browser',
+            'device_type' => $deviceType,
             'device_token' => 'inactive-browser',
             'is_owner_device' => false,
             'status' => 'inactive',
@@ -394,7 +398,7 @@ class V4PlaybackSecurityTest extends TestCase
             'subscription_id' => $subscription->id,
             'user_id' => 'user-a',
             'device_id' => $owner->device_token,
-            'device_type' => 'browser',
+            'device_type' => $deviceType,
         ]);
 
         $response = $this->controller()->renew($request);
@@ -663,6 +667,227 @@ class V4PlaybackSecurityTest extends TestCase
             'transaction_id' => 'failed-reset-1',
         ]);
         $this->assertNull($owner->fresh()->subscription_id);
+    }
+
+    public function test_desktop_login_keeps_existing_device_owners_and_shares_one_desktop_category(): void
+    {
+        Schema::table('n_devices', fn (Blueprint $table) => $table->string('platform')->nullable());
+        $user = new UserModel();
+        $user->uid = 'user-a';
+        $resolver = new class {
+            use ResolvesLoginDevices;
+
+            public function login(UserModel $user, string $id, string $type, ?string $platform = null): array
+            {
+                return $this->resolveLoginDevice($user, null, $id, $id, $type, $platform);
+            }
+        };
+
+        foreach (['mobile', 'browser', 'tv'] as $type) {
+            $this->assertTrue($resolver->login($user, $type.'-owner', $type)['is_owner_device']);
+        }
+        $legacyDevices = Devices::orderBy('id')->get()->toArray();
+
+        $windows = $resolver->login($user, 'windows-install-id', 'desktop', 'windows');
+        $mac = $resolver->login($user, 'mac-install-id', 'desktop', 'macos');
+        $this->assertTrue($windows['is_owner_device']);
+        $this->assertFalse($mac['is_owner_device']);
+        $this->assertSame('desktop', $windows['device']->device_type);
+        $this->assertSame('windows', $windows['device']->platform);
+        $this->assertSame('macos', $mac['device']->platform);
+        $this->assertSame('inactive', $mac['device']->status);
+
+        $mac['device']->update(['status' => 'active']);
+        $again = $resolver->login($user, 'mac-install-id', 'desktop');
+        $this->assertSame($mac['device']->id, $again['device']->id);
+        $this->assertSame('active', $again['device']->status);
+        $this->assertSame('macos', $again['device']->platform);
+        $this->assertSame($legacyDevices, Devices::whereIn('device_type', ['mobile', 'browser', 'tv'])->orderBy('id')->get()->toArray());
+    }
+
+    public function test_desktop_subscription_filter_does_not_return_a_mobile_plan(): void
+    {
+        foreach (['mobile', 'desktop'] as $type) {
+            $plan = Plan::create([
+                'name' => ucfirst($type).' plan', 'device_type' => $type,
+                'device_limit' => 1, 'price' => 100, 'duration_days' => 30,
+            ]);
+            Subscription::create([
+                'user_id' => 'user-a', 'plan_id' => $plan->id,
+                'start_at' => now()->subDay(), 'end_at' => now()->addDay(), 'is_active' => true,
+            ]);
+        }
+        Schema::create('n_plan_features', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('plan_id');
+            $table->boolean('is_active')->default(true);
+            $table->integer('sort_order')->default(0);
+        });
+        $subscriptions = new NewSubscriptionController(Mockery::mock(RazorpayController::class), $this->controller());
+        $response = $subscriptions->getByUser(Request::create('/', 'GET', ['device_type' => 'desktop']), 'user-a');
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertSame('desktop', $response->getData(true)['plan']['device_type']);
+        $this->assertSame(2, Subscription::count());
+    }
+
+    public function test_desktop_cannot_play_using_an_existing_mobile_subscription(): void
+    {
+        DB::table('movie')->insert(['id' => 'premium-movie', 'isPremium' => true, 'isPayPerView' => false]);
+        $plan = Plan::create([
+            'name' => 'Mobile plan', 'device_type' => 'mobile',
+            'device_limit' => 1, 'price' => 100, 'duration_days' => 30,
+        ]);
+        $subscription = Subscription::create([
+            'user_id' => 'user-a', 'plan_id' => $plan->id,
+            'start_at' => now()->subDay(), 'end_at' => now()->addDay(), 'is_active' => true,
+        ]);
+        $device = $this->device('user-a', 'desktop-install-id', 'active');
+        $device->update(['device_type' => 'desktop']);
+        $before = $device->fresh()->toArray();
+        $request = Request::create('/', 'POST', [
+            'auth_user_id' => 'user-a', 'user_id' => 'user-a',
+            'subscription_id' => $subscription->id, 'movie_id' => 'premium-movie',
+            'type' => 'movie', 'device_type' => 'desktop', 'platform' => 'windows',
+        ]);
+        $request->headers->set('Device-Token', $device->device_token);
+
+        $response = $this->controller()->start($request);
+        $this->assertSame(403, $response->getStatusCode());
+        $this->assertSame($before, $device->fresh()->toArray());
+        $this->assertSame(0, ActiveStream::count());
+    }
+
+    public function test_desktop_otp_login_persists_the_os_and_shares_a_desktop_owner(): void
+    {
+        Schema::table('n_devices', fn (Blueprint $table) => $table->string('platform')->nullable());
+        Schema::table('user', function (Blueprint $table) {
+            $table->string('device_id')->nullable();
+            $table->string('device_name')->nullable();
+            $table->timestamps();
+        });
+        Schema::create('otp_requests', function (Blueprint $table) {
+            $table->id();
+            $table->string('user_id');
+            $table->string('otp_code');
+            $table->dateTime('expires_at');
+        });
+        DB::table('user')->insert(['uid' => 'user-a']);
+        $tokens = Mockery::mock(TokenController::class);
+        $tokens->shouldReceive('generateTokens')->twice()->andReturn([
+            'access_token' => 'test-access', 'refresh_token' => 'test-refresh',
+        ]);
+        $otp = new \App\Http\Controllers\OTPController(
+            Mockery::mock(\App\Http\Controllers\WhatsAppController::class),
+            $tokens,
+            Mockery::mock(\App\Http\Controllers\New\DeviceController::class),
+        );
+        foreach (['windows', 'macos'] as $platform) {
+            DB::table('otp_requests')->insert([
+                'user_id' => 'user-a', 'otp_code' => \Illuminate\Support\Facades\Hash::make('765432'),
+                'expires_at' => now()->addMinutes(5),
+            ]);
+            $request = Request::create('/', 'POST', [
+                'user_id' => 'user-a', 'otp' => '765432',
+                'device_id' => $platform.'-install', 'device_name' => $platform,
+                'device_type' => 'desktop',
+            ]);
+            $request->headers->set('X-Client-Platform', $platform);
+            $response = $otp->verify($request);
+            $this->assertSame('success', $response->getData(true)['status']);
+            $this->assertDatabaseHas('n_devices', [
+                'device_token' => $platform.'-install', 'device_type' => 'desktop', 'platform' => $platform,
+            ]);
+        }
+        $this->assertSame(0, DB::table('otp_requests')->count());
+        $this->assertSame(1, Devices::where('device_type', 'desktop')->where('is_owner_device', true)->count());
+    }
+
+    public function test_desktop_playback_creates_a_desktop_stream_and_saves_progress_on_stop(): void
+    {
+        DB::table('movie')->insert(['id' => 'free-movie', 'isPremium' => false, 'isPayPerView' => false]);
+        $device = $this->device('user-a', 'windows-install', 'active');
+        $device->update(['device_type' => 'desktop']);
+        $movies = Mockery::mock(MovieController::class);
+        $movies->shouldReceive('getLink')->once()->andReturn(response()->json([
+            'status' => 'success', 'title' => 'Free movie',
+            'links' => ['dash_url' => 'https://media.example.test/movie/manifest.mpd'],
+        ]));
+        $watch = Mockery::mock(WatchPositionController::class);
+        $watch->shouldReceive('getWatchPosition')->once()->andReturn(response()->json([
+            'status' => 'success', 'watchPosition' => 15000,
+        ]));
+        $watch->shouldReceive('save')->once()->withArgs(fn (Request $request) =>
+            $request->input('user_id') === 'user-a' && $request->input('position') === 25000
+        )->andReturn(response()->json(['status' => 'success']));
+        $ads = Mockery::mock(\App\Http\Controllers\Api\V4\AdServingController::class);
+        $ads->shouldReceive('serve')->andReturn(response()->json(['success' => true, 'data' => null]));
+        $controller = new NewStreamController(Mockery::mock(HlsFolderController::class), $movies, $watch, $ads);
+        $request = Request::create('/', 'POST', [
+            'auth_user_id' => 'user-a', 'user_id' => 'user-a',
+            'movie_id' => 'free-movie', 'type' => 'movie', 'device_type' => 'desktop', 'platform' => 'windows',
+        ]);
+        $request->headers->set('Device-Token', $device->device_token);
+        $response = $controller->start($request);
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertSame('success', $response->getData(true)['status']);
+        $this->assertSame(15000, $response->getData(true)['watch_position']);
+        $this->assertDatabaseHas('n_active_streams', ['device_id' => $device->id, 'device_type' => 'desktop', 'status' => 'active']);
+
+        $stop = Request::create('/', 'POST', [
+            'auth_user_id' => 'user-a', 'stream_token' => $response->getData(true)['stream_token'],
+            'movie_id' => 'free-movie', 'content_type' => 'movie', 'watch_position' => 25000, 'duration' => 100000,
+        ]);
+        $stop->headers->set('Device-Token', $device->device_token);
+        $this->assertSame(200, $controller->stop($stop)->getStatusCode());
+        $this->assertDatabaseHas('n_active_streams', ['device_id' => $device->id, 'status' => 'stopped']);
+    }
+
+    public function test_qr_scanning_phone_cannot_replace_the_desktop_install_identity(): void
+    {
+        Schema::table('n_devices', fn (Blueprint $table) => $table->string('platform')->nullable());
+        Schema::table('user', function (Blueprint $table) {
+            $table->string('device_id')->nullable();
+            $table->string('device_name')->nullable();
+            $table->timestamps();
+        });
+        DB::table('user')->insert(['uid' => 'user-a']);
+        $class = \App\Http\Controllers\New\QRSessionController::class;
+        $controller = (new \ReflectionClass($class))->newInstanceWithoutConstructor();
+        $reference = Mockery::mock();
+        $reference->shouldReceive('getValue')->once()->andReturn([
+            'type' => 'login', 'device_type' => 'desktop', 'platform' => 'macos',
+            'device_id' => 'mac-install-id', 'device_name' => 'My Mac', 'expires_at' => time() + 120,
+        ]);
+        $reference->shouldReceive('update')->twice();
+        $database = Mockery::mock();
+        $database->shouldReceive('getReference')->once()->with('qr_sessions/test-token')->andReturn($reference);
+        $tokens = Mockery::mock(TokenController::class);
+        $tokens->shouldReceive('generateTokens')->once()->with('user-a', 'My Mac', 'mac-install-id')
+            ->andReturn(['access_token' => 'test-access', 'refresh_token' => 'test-refresh']);
+        (new \ReflectionProperty($class, 'database'))->setValue($controller, $database);
+        (new \ReflectionProperty($class, 'tokenController'))->setValue($controller, $tokens);
+        $request = Request::create('/', 'POST', [
+            'token' => 'test-token', 'user_id' => 'user-a',
+            'device_id' => 'scanning-phone-id', 'device_name' => 'My phone', 'device_type' => 'mobile',
+        ]);
+        $request->headers->set('X-Client-Platform', 'android');
+        $response = $controller->verify($request);
+        $this->assertSame('success', $response->getData(true)['status']);
+        $this->assertDatabaseHas('n_devices', [
+            'device_token' => 'mac-install-id', 'device_name' => 'My Mac',
+            'device_type' => 'desktop', 'platform' => 'macos',
+        ]);
+        $this->assertSame(0, Devices::where('device_token', 'scanning-phone-id')->count());
+    }
+
+    public static function playbackDeviceTypes(): array
+    {
+        return [['mobile', 'android'], ['browser', 'web'], ['tv', 'android-tv'], ['desktop', 'windows'], ['desktop', 'macos']];
+    }
+
+    public static function renewalDeviceTypes(): array
+    {
+        return [['mobile'], ['browser'], ['tv'], ['desktop']];
     }
 
     private function controller(?WatchPositionController $watchPositions = null): NewStreamController

@@ -357,6 +357,7 @@ class OTPController extends Controller
                 'device_id' => 'nullable|string',
                 'device_token' => 'nullable|string',
                 'device_type' => 'nullable|string',
+                'platform' => 'nullable|string',
                 'fcm_token' => 'nullable|string',
                 'token' => 'nullable|string',
             ]);
@@ -432,7 +433,10 @@ class OTPController extends Controller
                 ->orderByDesc('id')
                 ->first();
 
-            $deviceResult = $this->resolveLoginDevice($user, $subscription, $deviceId, $deviceName, $deviceType);
+            $deviceResult = $this->resolveLoginDevice(
+                $user, $subscription, $deviceId, $deviceName, $deviceType,
+                $request->input('platform') ?: $request->header('X-Client-Platform'),
+            );
             $isOwnerDevice = $deviceResult['is_owner_device'];
             $message = $deviceResult['message'];
 

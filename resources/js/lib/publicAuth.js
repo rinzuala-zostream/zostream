@@ -1,25 +1,39 @@
 const SESSION_KEY = 'zostream_public_session_v1';
 const DEVICE_KEY = 'zostream_public_device_id';
+// App bridge sign-in must keep working when private browser storage is denied.
+let memorySession = null;
+let memoryDeviceId = null;
+let sessionStorageUnavailable = false;
 
 export function getPublicSession() {
-    try { return JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); }
-    catch { return null; }
+    if (sessionStorageUnavailable) return memorySession;
+    try { memorySession = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); }
+    catch { sessionStorageUnavailable = true; }
+    return memorySession;
 }
 
 export function savePublicSession(session) {
-    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    memorySession = session;
+    try { localStorage.setItem(SESSION_KEY, JSON.stringify(session)); }
+    catch { sessionStorageUnavailable = true; }
 }
 
 export function clearPublicSession() {
-    localStorage.removeItem(SESSION_KEY);
+    memorySession = null;
+    try { localStorage.removeItem(SESSION_KEY); }
+    catch { sessionStorageUnavailable = true; }
 }
 
 export function publicDeviceId() {
-    let value = localStorage.getItem(DEVICE_KEY);
+    let value = memoryDeviceId;
+    try { value = localStorage.getItem(DEVICE_KEY) || value; }
+    catch { /* Use a stable device ID for this tab when storage is blocked. */ }
     if (!value) {
-        value = crypto.randomUUID?.() || `web-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-        localStorage.setItem(DEVICE_KEY, value);
+        value = globalThis.crypto?.randomUUID?.() || `web-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        try { localStorage.setItem(DEVICE_KEY, value); }
+        catch { /* Retain the ID in memory instead. */ }
     }
+    memoryDeviceId = value;
     return value;
 }
 

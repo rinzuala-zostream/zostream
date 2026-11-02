@@ -258,4 +258,81 @@ class CustomerDashboardTest extends TestCase
             ->assertJsonPath('data.stats.watch_seconds', 600)->assertJsonPath('data.stats.activity.0.seconds_watched', 600)
             ->assertJsonPath('data.stats.bandwidth_mb', 0);
     }
+    public function test_tab_filters_share_aggregation_but_users_and_dates_remain_separate(): void
+    {
+        $stats = app(\App\Http\Controllers\Api\V4\CustomerStatsController::class);
+        $db = DB::connection();
+        $db->enableQueryLog();
+        $first = $stats->dataForUser('alice', 1, 10, ['period' => 'today']);
+        $this->assertSame(540, $first['watch_seconds']);
+        $this->assertNotEmpty($db->getQueryLog());
+        $db->flushQueryLog();
+
+        Carbon::setTestNow(now()->addSecond());
+        $filtered = $stats->dataForUser('alice', 1, 1, ['period' => 'today', 'q' => 'beta']);
+        $this->assertSame([], $db->getQueryLog(), 'Changing tabs/search must not re-run aggregation queries.');
+        $this->assertSame('Beta', $filtered['content_usage'][0]['title']);
+        $this->assertSame(1, $filtered['content_pagination']['total']);
+        $this->assertSame(540, $filtered['watch_seconds']);
+        $this->assertSame(9999, $stats->dataForUser('bob', 1, 10, ['period' => 'today'])['watch_seconds']);
+        $this->assertSame(600, $stats->dataForUser('alice', 1, 10, ['period' => 'last_month'])['watch_seconds']);
+
+        DB::table('watch_sessions')->where('user_id', 'alice')->where('seconds_watched', 120)->update(['seconds_watched' => 180]);
+        $this->assertSame(540, $stats->dataForUser('alice', 1, 10, ['period' => 'today'])['watch_seconds']);
+        Carbon::setTestNow(now()->addSeconds(31));
+        $this->assertSame(600, $stats->dataForUser('alice', 1, 10, ['period' => 'today'])['watch_seconds']);
+        $db->disableQueryLog();
+    }
+
+    public function test_overview_reads_continue_watching_in_bounded_batches_and_skips_hidden_or_completed_titles(): void
+    {
+        Schema::table('movie', fn (Blueprint $t) => $t->boolean('isAgeRestricted')->default(false));
+        DB::table('movie')->insert(['id' => 'restricted', 'title' => 'Restricted', 'isAgeRestricted' => true]);
+        Schema::create('watch_position', function (Blueprint $t) {
+            $t->increments('num');
+            $t->string('user_id');
+            $t->string('movie_id');
+            $t->string('movie_type');
+            $t->integer('position');
+            $t->integer('duration')->nullable();
+            $t->timestamps();
+        });
+        foreach (range(1, 142) as $id) {
+            DB::table('watch_position')->insert(['num' => $id, 'user_id' => $id === 142 ? 'bob' : 'alice',
+                'movie_id' => $id > 100 && $id <= 140 ? 'restricted' : 'film-a', 'movie_type' => 'movie',
+                'position' => $id === 141 ? 90 : 20, 'duration' => 100, 'updated_at' => now()]);
+        }
+        DB::enableQueryLog();
+        $response = $this->withSession(['customer_web_user_id' => 'alice'])->getJson('/account/stats/overview?period=today')
+            ->assertOk()->assertJsonCount(4, 'continue_watching')->assertJsonPath('continue_unavailable', false);
+        $this->assertSame([100, 99, 98, 97], array_column($response->json('continue_watching'), 'id'));
+        $batches = collect(DB::getQueryLog())->filter(fn ($query) => str_contains($query['query'], 'from "watch_position"')
+            && str_contains($query['query'], 'limit 32'));
+        $this->assertCount(2, $batches, 'Stop loading history once four visible unfinished titles are found.');
+        DB::disableQueryLog();
+    }
+
+    public function test_stats_indexes_are_idempotent_and_rollback_only_their_own_indexes(): void
+    {
+        $migration = require database_path('migrations/2026_11_02_000001_add_customer_stats_indexes.php');
+        Schema::table('watch_sessions', fn (Blueprint $t) => $t->index(['user_id', 'created_at'], 'existing_watch_idx'));
+        $migration->up();
+        $migration->up();
+        $this->assertTrue(Schema::hasIndex('bandwidth_logs', 'stats_bandwidth_user_created_idx'));
+        $this->assertFalse(Schema::hasIndex('watch_sessions', 'stats_watch_user_created_idx'));
+        $migration->down();
+        $this->assertTrue(Schema::hasIndex('watch_sessions', 'existing_watch_idx'));
+        $this->assertFalse(Schema::hasIndex('bandwidth_logs', 'stats_bandwidth_user_created_idx'));
+
+        Schema::connection('analytics')->create('playback_sessions', function (Blueprint $t) {
+            $t->id(); $t->string('user_id'); $t->dateTime('ended_at');
+        });
+        $analyticsMigration = require database_path('migrations/2026_11_02_000002_add_customer_stats_analytics_index.php');
+        $analyticsMigration->up();
+        $analyticsMigration->up();
+        $this->assertTrue(Schema::connection('analytics')->hasIndex('playback_sessions', 'stats_playback_user_ended_idx'));
+        $analyticsMigration->down();
+        $this->assertFalse(Schema::connection('analytics')->hasIndex('playback_sessions', 'stats_playback_user_ended_idx'));
+    }
+
 }

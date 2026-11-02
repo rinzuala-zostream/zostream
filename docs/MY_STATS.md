@@ -66,11 +66,20 @@ prefers measured analytics bytes per title and falls back to legacy transfer
 records. Zero measured bytes and missing telemetry remain distinct. This page
 does not claim to measure all device/network traffic.
 
+Viewing aggregates are cached server-side for 30 seconds per account and resolved
+date range. Overview, Watching, searches and pagination reuse the same aggregate;
+filters still apply independently. Newly recorded viewing may take up to 30
+seconds to appear. Payments, current subscriptions and devices are not cached by
+this optimization. Continue Watching reads unfinished positions in batches of
+32 and stops once four visible titles are found, rather than loading the entire
+history before pagination. The existing mobile history endpoint keeps its full
+pagination behavior.
+
 ## Verification
 
 ```bash
 php vendor/bin/phpunit tests/Feature/CustomerDashboardTest.php tests/Feature/PublicPagesTest.php tests/Feature/V4ApiTest.php tests/Feature/V4MobileAdapterTest.php
-node --test tests/js/CustomerStats.test.js tests/js/NexframeDates.test.js
+node --test tests/js/CustomerStats.test.js tests/js/PublicAuth.test.js tests/js/NexframeDates.test.js
 npm run build
 ```
 
@@ -80,12 +89,20 @@ the isolated preview and the test in separate terminals:
 ```bash
 node node_modules/vite/bin/vite.js --config tests/browser/customer-stats.vite.config.js
 node tests/browser/customer-stats.mjs
+STATS_BROWSER=webkit node tests/browser/customer-stats.mjs
 ```
 
 For an external Playwright install, set `PLAYWRIGHT_MODULE` to its `index.mjs`
 and `PLAYWRIGHT_BROWSERS_PATH` to its browser cache. The test checks tabs, section
 retry, search, custom dates, payment filtering, PDF/CSV downloads, and mobile
 overflow. Mock screenshots are written to the OS temporary directory.
+
+The browser checks also cover app bridge sign-in with a stale browser token and
+with localStorage blocked. Storage access failures must not stop the initial
+cookie-authenticated stats requests. Browser OTP sessions and device IDs fall
+back to memory for the current tab when storage is unavailable. The stats HTML
+includes loading/reload content so failed JavaScript downloads leave a usable
+retry link.
 
 ## Deployment
 
@@ -96,10 +113,15 @@ cached routes/views:
 ```bash
 npm ci
 npm run build
+php artisan migrate --force
 php artisan optimize:clear
 ```
 
-This feature adds no database migration. It reads the existing watch, analytics,
-subscription, payment and device tables. It does not deploy itself or alter
-payment/subscription records. Verify one real account and its payment receipt
+The two `2026_11_02` migrations add user/date indexes on `watch_sessions`,
+`bandwidth_logs` and analytics `playback_sessions`. They skip missing tables and
+equivalent existing indexes. Use the configured shared cache store for reuse
+across requests; the `array` store is intended for tests and does not provide
+cross-request reuse. Index creation time depends on table size, so schedule the
+migrations through the normal production database rollout process. These changes
+do not alter payment/subscription records. Verify one real account and its payment receipt
 after deployment, including the app bridge and Safari/iOS download behavior.

@@ -9,6 +9,20 @@ use Tests\TestCase;
 
 class V4ApiTest extends TestCase
 {
+    public function test_desktop_platform_headers_are_preserved_without_changing_existing_clients(): void
+    {
+        foreach (['windows', 'macos', 'android', 'android-tv', 'ios', 'web', 'webos', 'tizen'] as $platform) {
+            $this->withHeaders([
+                'X-Client-Platform' => $platform,
+                'X-Device-Type' => in_array($platform, ['windows', 'macos'], true) ? 'desktop' : 'tv',
+                'X-Client-Version' => '1.0.0',
+            ])->getJson('/api/v4/system/health')
+                ->assertOk()
+                ->assertJsonPath('meta.client.platform', $platform)
+                ->assertJsonPath('meta.client.version', '1.0.0');
+        }
+    }
+
     public function test_otp_entry_points_use_separate_named_rate_limiters(): void
     {
         $expectedMiddleware = [

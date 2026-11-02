@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 use Kreait\Firebase\Factory;
 
 class AppUpdateController extends Controller
@@ -16,6 +17,8 @@ class AppUpdateController extends Controller
         'lg_tv_update' => 'version',
         'sam_tv_update' => 'version',
         'tv_update' => 'v',
+        'windows_update' => 'version',
+        'macos_update' => 'version',
     ];
 
     private $database;
@@ -29,8 +32,8 @@ class AppUpdateController extends Controller
             throw new \RuntimeException('FIREBASE_DATABASE_URL is missing in .env');
         }
 
-        if (empty($credentials) || !file_exists($credentials)) {
-            throw new \RuntimeException('Firebase credentials file not found: ' . $credentials);
+        if (empty($credentials) || ! file_exists($credentials)) {
+            throw new \RuntimeException('Firebase credentials file not found: '.$credentials);
         }
 
         $firebase = (new Factory)
@@ -64,14 +67,14 @@ class AppUpdateController extends Controller
 
     public function show(string $platform)
     {
-        if (!$this->isValidPlatform($platform)) {
+        if (! $this->isValidPlatform($platform)) {
             return $this->invalidPlatformResponse();
         }
 
         try {
             $value = $this->database->getReference($platform)->getValue();
 
-            if (!is_array($value)) {
+            if (! is_array($value)) {
                 return response()->json([
                     'status' => false,
                     'message' => 'App update configuration not found',
@@ -89,12 +92,13 @@ class AppUpdateController extends Controller
 
     public function update(Request $request, string $platform)
     {
-        if (!$this->isValidPlatform($platform)) {
+        if (! $this->isValidPlatform($platform)) {
             return $this->invalidPlatformResponse();
         }
 
         $versionField = self::VERSION_FIELDS[$platform];
         $numericVersion = in_array($platform, ['update', 'ios_update', 'tv_update'], true);
+        $desktop = in_array($platform, ['windows_update', 'macos_update'], true);
         $rules = [
             'enabled' => ['nullable', 'boolean'],
             'force' => ['required', 'boolean'],
@@ -103,6 +107,10 @@ class AppUpdateController extends Controller
                 ? ['required', 'integer', 'min:0']
                 : ['nullable', 'string', 'max:100'],
         ];
+        if ($desktop) {
+            $rules['version'] = ['required', 'string', 'max:100', 'regex:/\A\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?\z/'];
+            $rules['url'] = [Rule::requiredIf($request->boolean('force')), 'nullable', 'url:https', 'max:2048'];
+        }
 
         $validator = Validator::make($request->all(), $rules);
 

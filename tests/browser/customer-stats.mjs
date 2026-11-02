@@ -2,8 +2,8 @@
 import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
-const browser = await chromium.launch({ headless: true });
+const engines = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const browser = await engines[process.env.STATS_BROWSER || 'chromium'].launch({ headless: true });
 const context = await browser.newContext({ acceptDownloads: true });
 await context.addInitScript(() => localStorage.setItem('zostream_public_session_v1', JSON.stringify({ access_token: 'fixture-token' })));
 const page = await context.newPage();
@@ -18,7 +18,7 @@ const titles = [
 ];
 const stats = { period: { from: '2026-11-01', to: '2026-11-01' }, watch_seconds: 5880, viewed_titles: 3, bandwidth_mb: 512,
     most_watched: titles, activity: [{ date: '2026-11-01', seconds_watched: 5880 }] };
-await page.route('**/api/v4/account/stats/**', async route => {
+async function statsRoute(route) {
     const url = new URL(route.request().url());
     const path = url.pathname.split('/stats/')[1];
     if (path === 'payments/export') return route.fulfill({ contentType: 'text/csv', body: 'Plan,Amount\nWeekly Mobile,99\n' });
@@ -40,7 +40,8 @@ await page.route('**/api/v4/account/stats/**', async route => {
         data = { period: stats.period, items, pagination: { page: 1, last_page: 1, total: items.length } };
     }
     return route.fulfill({ json: { success: true, data, message: null, meta: {}, error: null } });
-});
+}
+await page.route('**/api/v4/account/stats/**', statsRoute);
 try {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto(process.env.STATS_PREVIEW_URL || 'http://127.0.0.1:5179/tests/browser/customer-stats.html');
@@ -81,6 +82,25 @@ try {
     await page.screenshot({ path: join(tmpdir(), 'zostream-stats-overview-mobile.png'), fullPage: true });
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'Mobile overview must not overflow');
     assert.deepEqual(errors, []);
+    for (const blockedStorage of [false, true]) {
+        const appContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+        await appContext.addInitScript(blocked => {
+            if (blocked) Object.defineProperty(window, 'localStorage', { get() { throw new DOMException('Storage blocked', 'SecurityError'); } });
+            else localStorage.setItem('zostream_public_session_v1', JSON.stringify({ access_token: 'stale-browser-token' }));
+        }, blockedStorage);
+        const appPage = await appContext.newPage();
+        const appErrors = [];
+        const apiRequests = [];
+        appPage.on('pageerror', error => appErrors.push(error.message));
+        appPage.on('request', request => { if (request.url().includes('/api/v4/account/stats/')) apiRequests.push(request.url()); });
+        await appPage.route('**/account/stats/**', statsRoute);
+        const preview = process.env.STATS_PREVIEW_URL || 'http://127.0.0.1:5179/tests/browser/customer-stats.html';
+        await appPage.goto(`${preview}?app=1`);
+        await appPage.getByText('Hello, Lalhminga').waitFor();
+        assert.deepEqual(appErrors, [], 'App sign-in must work when browser storage is blocked');
+        assert.deepEqual(apiRequests, [], 'App sign-in must use its server session instead of a stale browser token');
+        await appContext.close();
+    }
     console.log('Browser checks passed: tabs, retries, search, dates, payment filters, PDF/CSV downloads, and mobile layout.');
 } catch (error) {
     await page.screenshot({ path: join(tmpdir(), 'zostream-stats-test-failure.png'), fullPage: true });

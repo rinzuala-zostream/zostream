@@ -12,7 +12,7 @@ class AnalyticsPresenceStore
 
     private const USER_INDEX_KEY = 'analytics:presence:users';
 
-    private const PLATFORMS = ['ios', 'tvos', 'android', 'tv'];
+    private const PLATFORMS = ['ios', 'tvos', 'android', 'tv', 'windows', 'macos'];
 
     private const META_PREFIX = 'analytics:presence:device:';
 

@@ -21,7 +21,7 @@ final class CustomerStatsPeriod
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:20'],
             'status' => ['nullable', Rule::in(['all', 'paid', 'pending', 'failed', 'refunded'])],
-            'device' => ['nullable', Rule::in(['all', 'mobile', 'tv', 'browser'])],
+            'device' => ['nullable', Rule::in(['all', 'mobile', 'tv', 'browser', 'desktop'])],
         ]);
         [$from, $to] = self::range($filters);
         if ($from->diffInDays($to) > 366) {

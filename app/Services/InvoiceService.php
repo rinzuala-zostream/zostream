@@ -446,6 +446,7 @@ class InvoiceService
 
         return match ($deviceType) {
             'mobile' => 'Mobile',
+            'desktop' => 'Desktop (Windows / Mac)',
             'browser', 'web' => 'Web / Browser',
             'tv', 'android_tv' => 'Android TV',
             'samsung', 'samsung_tv' => 'Samsung TV',

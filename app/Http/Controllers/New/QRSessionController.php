@@ -56,6 +56,15 @@ class QRSessionController extends Controller
 
     public function create(Request $request)
     {
+        $isDesktop = strtolower(trim((string) $request->device_type)) === 'desktop';
+        if ($isDesktop) {
+            $request->validate([
+                'device_id' => 'required|string|max:255',
+                'device_name' => 'nullable|string|max:150',
+                'platform' => 'nullable|string|in:windows,macos',
+            ]);
+            $request->merge(['device_type' => 'desktop']);
+        }
         $token = Str::random(22);
         $type = $request->type ?? 'login';
 
@@ -81,6 +90,14 @@ class QRSessionController extends Controller
             'user_id' => $request->user_id ?? '',
             'expires_at' => time() + 120,
         ];
+
+        // Keep the desktop's OS from session creation, not the scanning phone.
+        if ($isDesktop) {
+            $platform = strtolower(trim((string) ($request->input('platform') ?: $request->header('X-Client-Platform'))));
+            if (in_array($platform, ['windows', 'macos'], true)) {
+                $data['platform'] = $platform;
+            }
+        }
 
         if ($type === 'admin_login') {
             $allowedUserIds = $this->getAdminQrAllowedUserIds();
@@ -368,7 +385,15 @@ class QRSessionController extends Controller
 
             $deviceName = $request->device_name ?? $session['device_name'] ?? 'Unknown Device';
             $deviceId = $request->device_id ?? $request->device_token ?? $session['device_id'] ?? $session['device_token'] ?? null;
-            $deviceType = $this->normalizeLoginDeviceType($request->device_type ?? $session['device_type'] ?? 'mobile');
+            if (($session['device_type'] ?? null) === 'desktop') {
+                $deviceName = $session['device_name'] ?? 'Desktop';
+                $deviceId = $session['device_id'] ?? $session['device_token'] ?? null;
+            }
+            $deviceType = $this->normalizeLoginDeviceType(
+                ($session['device_type'] ?? null) === 'desktop'
+                    ? 'desktop'
+                    : ($request->device_type ?? $session['device_type'] ?? 'mobile')
+            );
             $fcmToken = $request->fcm_token;
             $type = $session['type'] ?? 'login';
 
@@ -436,7 +461,10 @@ class QRSessionController extends Controller
                             ->orderByDesc('id')
                             ->first();
 
-                        $deviceResult = $this->resolveLoginDevice($user, $subscription, $deviceId, $deviceName, $deviceType);
+                        $deviceResult = $this->resolveLoginDevice(
+                            $user, $subscription, $deviceId, $deviceName, $deviceType,
+                            $session['platform'] ?? null,
+                        );
                         $isOwnerDevice = $deviceResult['is_owner_device'];
                         $message = $deviceResult['message'];
 

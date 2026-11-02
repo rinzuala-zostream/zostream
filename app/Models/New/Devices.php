@@ -16,6 +16,7 @@ class Devices extends Model
         'user_id',           // now VARCHAR(225)
         'device_name',
         'device_type',
+        'platform',
         'device_token',
         'is_owner_device',
         'last_activity',

@@ -12,6 +12,7 @@ use App\Support\Api\V4Response;
 use App\Support\CustomerStatsPeriod;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -32,6 +33,39 @@ class CustomerStatsController extends Controller
     }
 
     public function dataForUser(string $userId, int $page = 1, int $perPage = 10, array $filters = []): array
+    {
+        [$from, $to] = CustomerStatsPeriod::range($filters);
+        // Share the expensive aggregation across tabs, searches and pagination.
+        // Identity and resolved dates are part of the key; browser responses remain private.
+        $key = 'customer-stats:v1:'.hash('sha256', json_encode([$userId, $from->toDateString(), $to->toDateString(), $from->timezoneName]));
+        $data = Cache::remember($key, 30, fn () => $this->aggregateForUser($userId, $filters));
+        $contentUsage = collect($data['content_usage']);
+        $perPage = min(20, max(1, $perPage));
+        $contentUsage = $contentUsage->filter(function ($item) use ($filters) {
+            $type = $filters['type'] ?? 'all';
+            $q = trim((string) ($filters['q'] ?? ''));
+
+            return ($type === 'all' || $type === $item['type'])
+                && ($q === '' || mb_stripos($item['title'].' '.($item['subtitle'] ?? ''), $q) !== false);
+        });
+        $contentUsage = match ($filters['sort'] ?? 'latest') {
+            'watch_time' => $contentUsage->sortByDesc('seconds_watched'),
+            'data' => $contentUsage->sortByDesc(fn ($item) => $item['bandwidth_mb'] ?? -1),
+            default => $contentUsage->sortByDesc(fn ($item) => $item['last_watched_at'] ?? ''),
+        };
+        $contentUsage = $contentUsage->values();
+        $totalContent = $contentUsage->count();
+        $lastPage = max(1, (int) ceil($totalContent / $perPage));
+        $page = min(max(1, $page), $lastPage);
+        $pagedContentUsage = $contentUsage->forPage($page, $perPage)->values();
+
+        $data['content_usage'] = $pagedContentUsage;
+        $data['content_pagination'] = ['page' => $page, 'per_page' => $perPage, 'total' => $totalContent, 'last_page' => $lastPage];
+
+        return $data;
+    }
+
+    private function aggregateForUser(string $userId, array $filters): array
     {
         [$from, $to] = CustomerStatsPeriod::range($filters);
         $daily = [];
@@ -190,23 +224,6 @@ class CustomerStatsController extends Controller
         $totalBandwidth = $bandwidth || $analyticsBandwidthMb !== null ? round($contentUsage->sum('bandwidth_mb'), 1) : null;
         $viewedTitles = $sessions || $analyticsAvailable ? $contentUsage->where('seconds_watched', '>', 0)->count() : null;
         $mostWatched = $contentUsage->sortByDesc('seconds_watched')->take(5)->values();
-        $contentUsage = $contentUsage->filter(function ($item) use ($filters) {
-            $type = $filters['type'] ?? 'all';
-            $q = trim((string) ($filters['q'] ?? ''));
-
-            return ($type === 'all' || $type === $item['type'])
-                && ($q === '' || mb_stripos($item['title'].' '.($item['subtitle'] ?? ''), $q) !== false);
-        });
-        $contentUsage = match ($filters['sort'] ?? 'latest') {
-            'watch_time' => $contentUsage->sortByDesc('seconds_watched'),
-            'data' => $contentUsage->sortByDesc(fn ($item) => $item['bandwidth_mb'] ?? -1),
-            default => $contentUsage->sortByDesc(fn ($item) => $item['last_watched_at'] ?? ''),
-        };
-        $contentUsage = $contentUsage->values();
-        $totalContent = $contentUsage->count();
-        $lastPage = max(1, (int) ceil($totalContent / $perPage));
-        $page = min(max(1, $page), $lastPage);
-        $pagedContentUsage = $contentUsage->forPage($page, $perPage)->values();
 
         $recent = collect();
         if (Schema::hasTable('watch_position')) {
@@ -230,13 +247,7 @@ class CustomerStatsController extends Controller
             'completed_sessions' => $completed,
             'bandwidth_mb' => $totalBandwidth,
             'most_watched' => $mostWatched,
-            'content_usage' => $pagedContentUsage,
-            'content_pagination' => [
-                'page' => $page,
-                'per_page' => $perPage,
-                'total' => $totalContent,
-                'last_page' => $lastPage,
-            ],
+            'content_usage' => $contentUsage->all(),
             'recent_positions' => $recent,
         ];
     }

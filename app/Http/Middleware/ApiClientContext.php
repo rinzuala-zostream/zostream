@@ -16,6 +16,8 @@ class ApiClientContext
         'web',
         'webos',
         'tizen',
+        'windows',
+        'macos',
         'admin',
         'unknown',
     ];

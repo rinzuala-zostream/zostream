@@ -14,9 +14,12 @@ trait ResolvesLoginDevices
         ?Subscription $subscription,
         ?string $deviceId,
         ?string $deviceName,
-        ?string $deviceType
+        ?string $deviceType,
+        ?string $platform = null
     ): array {
         $deviceType = $this->normalizeLoginDeviceType($deviceType);
+        $platform = $deviceType === 'desktop' ? strtolower(trim((string) $platform)) : null;
+        $platform = in_array($platform, ['windows', 'macos'], true) ? $platform : null;
         $deviceName = $deviceName ?: 'Unknown Device';
 
         if (!$deviceId) {
@@ -27,7 +30,7 @@ trait ResolvesLoginDevices
             ];
         }
 
-        return DB::transaction(function () use ($user, $subscription, $deviceId, $deviceName, $deviceType) {
+        return DB::transaction(function () use ($user, $subscription, $deviceId, $deviceName, $deviceType, $platform) {
             $ownerDevice = Devices::where('user_id', $user->uid)
                 ->where('device_type', $deviceType)
                 ->where('is_owner_device', true)
@@ -41,7 +44,7 @@ trait ResolvesLoginDevices
             if (!$device) {
                 $isOwnerDevice = $ownerDevice === null;
 
-                $device = Devices::create([
+                $attributes = [
                     'user_id' => $user->uid,
                     'subscription_id' => $subscription?->id,
                     'device_token' => $deviceId,
@@ -49,7 +52,11 @@ trait ResolvesLoginDevices
                     'device_type' => $deviceType,
                     'status' => $isOwnerDevice ? 'active' : 'inactive',
                     'is_owner_device' => $isOwnerDevice,
-                ]);
+                ];
+                if ($platform !== null) {
+                    $attributes['platform'] = $platform;
+                }
+                $device = Devices::create($attributes);
 
                 return [
                     'device' => $device,
@@ -61,6 +68,9 @@ trait ResolvesLoginDevices
             }
 
             $updates = [];
+            if ($platform !== null && $device->platform !== $platform) {
+                $updates['platform'] = $platform;
+            }
             $isOwnerDevice = $ownerDevice === null || (int) $ownerDevice->id === (int) $device->id;
             $sameUser = (string) $device->user_id === (string) $user->uid;
             $targetStatus = $isOwnerDevice
@@ -112,7 +122,7 @@ trait ResolvesLoginDevices
     {
         $deviceType = strtolower(trim((string) ($deviceType ?: 'mobile')));
 
-        return in_array($deviceType, ['mobile', 'browser', 'tv'], true)
+        return in_array($deviceType, ['mobile', 'browser', 'tv', 'desktop'], true)
             ? $deviceType
             : 'mobile';
     }

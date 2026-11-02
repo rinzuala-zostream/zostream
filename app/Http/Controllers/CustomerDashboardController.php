@@ -23,8 +23,7 @@ class CustomerDashboardController extends Controller
         $historyError = false;
         if (Schema::hasTable('watch_position')) {
             try {
-                $historyRequest = Request::create('/', 'GET', ['userId' => $uid, 'per_page' => 8]);
-                $history = app(WatchPositionController::class)->getWatchContinue($historyRequest)->getData(true)['watch_history'] ?? [];
+                $history = app(WatchPositionController::class)->dashboardContinue($uid);
             } catch (\Throwable $exception) {
                 report($exception);
                 $historyError = true;
@@ -34,7 +33,7 @@ class CustomerDashboardController extends Controller
         return $this->json([
             'profile' => ['name' => $user?->name, 'username' => $user?->username],
             'stats' => $stats->dataForUser($uid, 1, 10, $filters),
-            'continue_watching' => collect($history)->filter(fn ($item) => ! $item['duration'] || $item['position'] / $item['duration'] < .9)->take(4)->values(),
+            'continue_watching' => collect($history),
             'continue_unavailable' => $historyError,
         ]);
     }

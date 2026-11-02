@@ -73,10 +73,10 @@ class SubscriptionController extends Controller
             }
 
             if ($deviceType !== '') {
-                if (!in_array($deviceType, ['mobile', 'browser', 'tv'], true)) {
+                if (!in_array($deviceType, ['mobile', 'browser', 'tv', 'desktop'], true)) {
                     return $this->respond([
                         'status' => 'error',
-                        'message' => 'Invalid device type. Allowed: mobile, browser, tv'
+                        'message' => 'Invalid device type. Allowed: mobile, browser, tv, desktop'
                     ], 422);
                 }
 
@@ -140,10 +140,10 @@ class SubscriptionController extends Controller
                 $sortBy = 'created_at';
             }
 
-            if ($deviceType !== '' && !in_array($deviceType, ['mobile', 'browser', 'tv'], true)) {
+            if ($deviceType !== '' && !in_array($deviceType, ['mobile', 'browser', 'tv', 'desktop'], true)) {
                 return $this->respond([
                     'status' => 'error',
-                    'message' => 'Invalid device type. Allowed: mobile, browser, tv'
+                    'message' => 'Invalid device type. Allowed: mobile, browser, tv, desktop'
                 ], 422);
             }
 
@@ -335,10 +335,10 @@ class SubscriptionController extends Controller
             // ✅ If device_type provided → return single object
             if (!empty($deviceType)) {
 
-                if (!in_array($deviceType, ['mobile', 'browser', 'tv'], true)) {
+                if (!in_array($deviceType, ['mobile', 'browser', 'tv', 'desktop'], true)) {
                     return $this->respond([
                         'status' => 'error',
-                        'message' => 'Invalid device type. Allowed: mobile, browser, tv'
+                        'message' => 'Invalid device type. Allowed: mobile, browser, tv, desktop'
                     ], 422);
                 }
 

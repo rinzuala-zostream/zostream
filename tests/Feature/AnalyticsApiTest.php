@@ -321,7 +321,7 @@ class AnalyticsApiTest extends TestCase
     {
         $controller = app(AnalyticsReportController::class);
 
-        foreach (['ios', 'tvos', 'android', 'tv', 'tizen', 'webos', 'web'] as $platform) {
+        foreach (['ios', 'tvos', 'android', 'tv', 'tizen', 'webos', 'web', 'windows', 'macos'] as $platform) {
             $response = $controller->overview(Request::create(
                 '/reports/overview',
                 'GET',
@@ -348,6 +348,21 @@ class AnalyticsApiTest extends TestCase
             if (str_contains($route->uri(), '/reports/')) {
                 $this->assertContains('admin.token', $route->gatherMiddleware(), $route->uri());
             }
+        }
+    }
+
+    public function test_windows_and_macos_playback_are_stored_as_separate_platforms(): void
+    {
+        foreach (['windows', 'macos'] as $platform) {
+            $payload = $this->playbackPayload();
+            $payload['context']['platform'] = $platform;
+            $request = $this->analyticsRequest($payload);
+            $request->headers->set('X-Platform', $platform);
+            $response = app(AnalyticsIngestionController::class)->upsertPlayback(
+                $request, (string) \Illuminate\Support\Str::uuid()
+            );
+            $this->assertSame(200, $response->getStatusCode());
+            $this->assertSame(1, DB::connection('analytics')->table('playback_sessions')->where('platform', $platform)->count());
         }
     }
 

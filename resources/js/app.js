@@ -13,5 +13,9 @@ if (isAdmin) {
         createApp(AdminApp).use(router).mount('#app');
     });
 } else {
-    import('./App.vue').then(({ default: App }) => createApp(App).mount('#app'));
+    import('./App.vue').then(({ default: App }) => createApp(App).mount('#app')).catch(error => {
+        const status = document.getElementById('stats-load-status');
+        if (status) status.textContent = 'Couldn’t load your account. Check your connection and reload to try again.';
+        console.error('Unable to load the website', error);
+    });
 }

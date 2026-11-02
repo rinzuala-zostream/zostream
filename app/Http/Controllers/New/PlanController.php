@@ -384,7 +384,7 @@ class PlanController extends Controller
 
         return [
             'name' => [$required, 'string', 'max:100'],
-            'device_type' => [$required, 'string', Rule::in(['mobile', 'tv', 'browser'])],
+            'device_type' => [$required, 'string', Rule::in(['mobile', 'tv', 'browser', 'desktop'])],
             'device_limit' => [$required, 'integer', 'min:1'],
             'price' => [$required, 'numeric', 'min:0'],
             'duration_days' => [$required, 'integer', 'min:1'],

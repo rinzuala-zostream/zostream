@@ -13,7 +13,7 @@ class Plan extends Model
 
     protected $fillable = [
         'name',
-        'device_type',      // mobile | tv | browser
+        'device_type',      // mobile | tv | browser | desktop
         'device_limit',     // number of streams allowed
         'price',
         'duration_days',

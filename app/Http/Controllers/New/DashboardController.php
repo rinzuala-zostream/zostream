@@ -28,11 +28,11 @@ class DashboardController extends Controller
                 'month' => 'nullable|date_format:Y-m',
                 'chart_month' => 'nullable|date_format:Y-m',
                 'comparison_month' => 'nullable|date_format:Y-m',
-                'chart_device_type' => ['nullable', 'string', Rule::in(['mobile', 'browser', 'tv'])],
+                'chart_device_type' => ['nullable', 'string', Rule::in(['mobile', 'browser', 'tv', 'desktop'])],
                 'year' => 'nullable|integer|min:2000|max:2100',
                 'start_date' => 'nullable|date_format:Y-m-d',
                 'end_date' => 'nullable|date_format:Y-m-d|after_or_equal:start_date',
-                'device_type' => ['nullable', 'string', Rule::in(['mobile', 'browser', 'tv'])],
+                'device_type' => ['nullable', 'string', Rule::in(['mobile', 'browser', 'tv', 'desktop'])],
                 'date_field' => ['nullable', 'string', Rule::in(['created_at', 'start_at', 'end_at'])],
             ]);
 

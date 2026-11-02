@@ -25,6 +25,15 @@
         @vite(['resources/css/app.css', 'resources/js/app.js'])
     </head>
     <body>
-        <div id="app"></div>
+        <div id="app">
+            @if (request()->is('account/stats'))
+                <main style="max-width:600px;margin:80px auto;padding:24px;font-family:system-ui;color:#eaf0f7;background:#101318;border-radius:16px">
+                    <h1>My Zo Stream</h1>
+                    <p id="stats-load-status" role="status">Loading your account… If this takes too long, reload to try again.</p>
+                    <a href="/account/stats{{ request()->query('app') === '1' ? '?app=1' : '' }}" style="color:#82dcf7">Reload My Zo Stream</a>
+                    <noscript><p>Enable JavaScript in your browser to view your account.</p></noscript>
+                </main>
+            @endif
+        </div>
     </body>
 </html>

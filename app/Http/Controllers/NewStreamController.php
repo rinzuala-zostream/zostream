@@ -1067,11 +1067,11 @@ class NewStreamController extends Controller
             ], 400);
         }
 
-        if (!in_array($deviceType, ['mobile', 'browser', 'tv'], true)) {
+        if (!in_array($deviceType, ['mobile', 'browser', 'tv', 'desktop'], true)) {
             return response()->json([
                 'status' => 'error',
                 'title' => 'Invalid Device Type',
-                'message' => 'Please provide a valid device type (mobile, browser, or tv).'
+                'message' => 'Please provide a valid device type (mobile, browser, tv, or desktop).'
             ], 422);
         }
 

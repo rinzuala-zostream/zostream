@@ -16,7 +16,7 @@ use Illuminate\Validation\ValidationException;
 
 class AnalyticsIngestionController extends Controller
 {
-    private const PLATFORMS = ['ios', 'tvos', 'android', 'tv', 'tizen', 'webos', 'web'];
+    private const PLATFORMS = ['ios', 'tvos', 'android', 'tv', 'tizen', 'webos', 'web', 'windows', 'macos'];
 
     private const EVENT_NAMES = [
         'chat_opened',

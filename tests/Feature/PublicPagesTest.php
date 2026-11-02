@@ -22,6 +22,7 @@ class PublicPagesTest extends TestCase
             '/advertising-terms',
             '/faq',
             '/advertise',
+            '/account/stats',
             '/analytics/nexframe',
             '/advertise/status/'.str_repeat('a', 48),
         ];
@@ -29,5 +30,13 @@ class PublicPagesTest extends TestCase
         foreach ($pages as $page) {
             $this->get($page)->assertOk();
         }
+    }
+
+    public function test_stats_page_has_a_retry_when_javascript_cannot_load(): void
+    {
+        $this->get('/account/stats?app=1')->assertOk()
+            ->assertSee('Loading your account')
+            ->assertSee('href="/account/stats?app=1"', false)
+            ->assertSee('Enable JavaScript in your browser');
     }
 }

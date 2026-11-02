@@ -119,6 +119,33 @@ class WatchPositionController extends Controller
             ->orderByDesc($orderColumn)
             ->get();
 
+        return $this->hydrateWatchContinue($watchData, $hasUpdatedAt, $hasCreatedAt, $includeAgeRestricted, $parentalMode);
+    }
+
+    public function dashboardContinue(string $userId, int $limit = 4): array
+    {
+        $hasUpdatedAt = Schema::hasColumn('watch_position', 'updated_at');
+        $hasCreatedAt = Schema::hasColumn('watch_position', 'created_at');
+        $orderColumn = $hasUpdatedAt ? 'updated_at' : ($hasCreatedAt ? 'created_at' : 'num');
+        $result = [];
+
+        // Read recent unfinished positions in small batches. Stop once enough
+        // visible titles are found, even for accounts with years of history.
+        WatchHistoryModel::where('user_id', $userId)->where('position', '>', 0)
+            ->where(fn ($query) => $query->whereNull('duration')->orWhere('duration', 0)
+                ->orWhereRaw('position < duration * 0.9'))
+            ->orderByDesc($orderColumn)->orderByDesc('num')
+            ->chunk(32, function ($rows) use (&$result, $limit, $hasUpdatedAt, $hasCreatedAt) {
+                $result = array_merge($result, $this->hydrateWatchContinue($rows, $hasUpdatedAt, $hasCreatedAt, false, 'adult'));
+
+                return count($result) < $limit;
+            });
+
+        return array_slice($result, 0, $limit);
+    }
+
+    private function hydrateWatchContinue($watchData, bool $hasUpdatedAt, bool $hasCreatedAt, bool $includeAgeRestricted, string $parentalMode): array
+    {
         $movieRows = $watchData->filter(fn($item) => $this->normalizeMovieType($item->movie_type) !== 'episode');
         $episodeRows = $watchData->filter(fn($item) => $this->normalizeMovieType($item->movie_type) === 'episode');
 
