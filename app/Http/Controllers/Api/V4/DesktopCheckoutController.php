@@ -7,6 +7,41 @@ use Illuminate\Http\Request;
 
 class DesktopCheckoutController extends Controller
 {
+    public function qr(Request $request)
+    {
+        // Public transport page, just like hosted checkout. No secret or access
+        // token is accepted here; only the owner-only verify API grants access.
+        $data = $request->validate([
+            'key_id' => ['required', 'string', 'regex:/^rzp_(test|live)_[A-Za-z0-9]+$/', 'max:128'],
+            'order_id' => ['required', 'string', 'regex:/^order_[A-Za-z0-9]+$/', 'max:128'],
+            'amount' => ['required', 'integer', 'min:1', 'max:1000000000'],
+            'currency' => ['required', 'in:INR'],
+        ]);
+        $nonce = base64_encode(random_bytes(18));
+        $options = [
+            'key' => $data['key_id'], 'order_id' => $data['order_id'],
+            'amount' => (int) $data['amount'], 'currency' => $data['currency'],
+            'name' => 'Zo Stream', 'description' => 'Scan and pay with any UPI app',
+            'config' => ['display' => [
+                'blocks' => ['upi_qr' => [
+                    'name' => 'Scan & pay with UPI',
+                    'instruments' => [['method' => 'upi', 'flows' => ['qr']]],
+                ]],
+                'sequence' => ['block.upi_qr'],
+                'preferences' => ['show_default_blocks' => false],
+            ]],
+        ];
+
+        return response()->view('payments.desktop-upi-qr', [
+            'options' => $options, 'nonce' => $nonce,
+            'returnUrl' => url('/api/v4/billing/payments/razorpay/desktop-return'),
+        ])
+            ->header('Cache-Control', 'no-store, private')
+            ->header('Referrer-Policy', 'no-referrer')
+            ->header('X-Content-Type-Options', 'nosniff')
+            ->header('Content-Security-Policy', "default-src 'none'; script-src 'nonce-{$nonce}' https://checkout.razorpay.com; style-src 'unsafe-inline'; img-src data: https:; connect-src 'self' https://*.razorpay.com https://razorpay.com; frame-src https://*.razorpay.com; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
+    }
+
     // Transport only. This public page never verifies or activates a purchase.
     // The signed-in native client submits these fields to the owner-only verify API.
     public function result(Request $request)

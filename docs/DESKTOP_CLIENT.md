@@ -139,13 +139,21 @@ it does not authenticate or change real admin settings/devices.
 
 ## Native Mac Razorpay checkout
 
-The Mac payment sheet has QR Code and Razorpay tabs. Direct checkout uses the
+The Mac payment sheet has Zo Stream QR and Razorpay tabs. Direct checkout uses the
 existing owner-only subscription-order API or validated PPV pending-purchase API,
 then the existing Razorpay verify API. The native client retains `desktop` and
 its installation token when creating and confirming purchases.
 
-Deploy `GET/POST /api/v4/billing/payments/razorpay/desktop-return` with the Mac
-update. Razorpay Hosted Checkout posts its result to this public HTML bridge;
+Deploy `POST /api/v4/billing/payments/razorpay/desktop-qr` and
+`GET/POST /api/v4/billing/payments/razorpay/desktop-return` with the Mac update.
+The QR page loads Razorpay Standard Checkout with a UPI instrument restricted to
+`flows: ["qr"]` and default payment blocks disabled. Customers scan using a UPI
+app on their phone; the Zo Stream phone app is not required for this tab. See
+[Razorpay's configuration documentation](https://razorpay.com/docs/payments/payment-gateway/web-integration/standard/configure-payment-methods/understand-configuration).
+Only the public key, server-created order ID, amount and INR currency are posted
+to this transport page. It never creates orders, accepts secret/access tokens,
+activates access or trusts an arbitrary callback URL. The Razorpay result is
+posted to the existing public HTML bridge;
 GET represents cancellation. The page has no database or gateway side effects
 and never claims a payment is verified. It escapes callback fields, disables
 caching and sends them to the native WebKit handler. The Mac checks the exact
@@ -154,4 +162,9 @@ Do not replace this URL with the Razorpay webhook URL.
 
 `DesktopCheckoutReturnTest` covers success-result transport, cancellation/failure,
 injection escaping and malformed input. Existing billing auth/owner protections
-remain in place. No real payment or production settings were changed.
+remain in place. Deploy the controller, route and
+`resources/views/payments/desktop-upi-qr.blade.php`, then run
+`php artisan optimize:clear` in the VPS Laravel directory to refresh cached routes
+and views. No migration or Vue build is needed. UPI must be enabled on the merchant
+account; actual scan/payment needs Live Mode testing. No real payment or
+production settings were changed.

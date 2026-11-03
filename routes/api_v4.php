@@ -138,6 +138,8 @@ Route::prefix('v4')
         Route::post('/webhooks/razorpay', [PaymentController::class, 'razorpayWebhook']);
         Route::match(['get', 'post'], '/billing/payments/razorpay/desktop-return', [\App\Http\Controllers\Api\V4\DesktopCheckoutController::class, 'result'])
             ->middleware('throttle:60,1');
+        Route::post('/billing/payments/razorpay/desktop-qr', [\App\Http\Controllers\Api\V4\DesktopCheckoutController::class, 'qr'])
+            ->middleware('throttle:60,1');
         Route::post('/webhooks/ads/razorpay', [AdPaymentController::class, 'webhook']);
         // The high-entropy payment token in the approved WhatsApp link is the
         // authorization for this narrowly scoped payment flow.
