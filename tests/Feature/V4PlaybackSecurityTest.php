@@ -615,6 +615,62 @@ class V4PlaybackSecurityTest extends TestCase
         ]);
     }
 
+    public function test_manual_desktop_subscription_creates_payment_and_runs_real_device_renewal(): void
+    {
+        DB::table('user')->insert(['uid' => 'desktop-user', 'auth_phone' => '9999999999']);
+        $plan = Plan::create([
+            'name' => 'Desktop plan', 'device_type' => 'desktop', 'device_limit' => 2,
+            'price' => 149, 'duration_days' => 30, 'quality' => 'FULL_HD', 'is_active' => true,
+        ]);
+        $owner = Devices::create([
+            'user_id' => 'desktop-user', 'device_name' => 'My Mac', 'device_type' => 'desktop',
+            'device_token' => 'desktop-owner', 'is_owner_device' => true, 'status' => 'active',
+        ]);
+        $sharedDesktop = Devices::create([
+            'user_id' => 'desktop-user', 'device_name' => 'Shared desktop', 'device_type' => 'desktop',
+            'device_token' => 'desktop-shared', 'is_owner_device' => false, 'status' => 'active',
+        ]);
+        $phone = Devices::create([
+            'user_id' => 'desktop-user', 'device_name' => 'Phone', 'device_type' => 'mobile',
+            'device_token' => 'mobile-owner', 'is_owner_device' => true, 'status' => 'active',
+        ]);
+        $controller = new NewSubscriptionController(Mockery::mock(RazorpayController::class), $this->controller());
+        $request = Request::create('/api/v4/admin/subscriptions/with-payment', 'POST', [
+            'user_id' => 'desktop-user', 'plan_id' => $plan->id,
+            'payment_type' => 'new', 'status' => 'success',
+            'transaction_id' => 'manual-desktop-test',
+        ]);
+
+        Schema::table('n_payment_histories', function (Blueprint $table) {
+            $table->enum('device_type', ['mobile', 'browser', 'tv'])->nullable()->change();
+        });
+        $failed = $controller->createSubscriptionWithPayment($request);
+        $this->assertSame(500, $failed->getStatusCode());
+        $this->assertStringContainsString('device_type', $failed->getData(true)['error']);
+        $this->assertDatabaseMissing('n_subscriptions', ['user_id' => 'desktop-user']);
+        $this->assertDatabaseMissing('n_payment_histories', ['transaction_id' => 'manual-desktop-test']);
+        $this->assertNull($owner->fresh()->subscription_id);
+        $this->assertDatabaseHas('n_devices', ['id' => $sharedDesktop->id]);
+
+        (require database_path('migrations/2026_11_03_000001_add_desktop_to_payment_history_device_type.php'))->up();
+        $response = $controller->createSubscriptionWithPayment($request);
+
+        $this->assertSame(201, $response->getStatusCode(), $response->getContent());
+        $subscription = Subscription::where('user_id', 'desktop-user')->firstOrFail();
+        $this->assertSame($plan->id, $subscription->plan_id);
+        $this->assertDatabaseHas('n_payment_histories', [
+            'subscription_id' => $subscription->id, 'plan_id' => $plan->id,
+            'device_type' => 'desktop', 'amount' => 149, 'status' => 'success',
+        ]);
+        $this->assertSame($subscription->id, $owner->fresh()->subscription_id);
+        $this->assertDatabaseMissing('n_devices', ['id' => $sharedDesktop->id]);
+        $this->assertDatabaseHas('n_devices', ['id' => $phone->id]);
+        $this->assertDatabaseHas('n_stream_events', [
+            'subscription_id' => $subscription->id, 'event_type' => 'renew',
+        ]);
+        $this->assertSame(0, DB::transactionLevel());
+    }
+
     public function test_successful_manual_subscription_rolls_back_when_device_reset_fails(): void
     {
         DB::table('user')->insert([

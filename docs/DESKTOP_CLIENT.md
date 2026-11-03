@@ -24,9 +24,33 @@ enum plan columns are expanded while retaining their current values/default.
 The migration does not create plans, set prices, assign subscriptions, or rewrite
 existing device types. Its rollback refuses to run while desktop records remain.
 
-Test this migration on a staging copy of the deployment database before release.
-Local migration regression tests use SQLite; a live MySQL migration has not been
-applied as part of this change.
+Payment history needs the follow-up migration
+`2026_11_03_000001_add_desktop_to_payment_history_device_type.php`. The first
+desktop migration did not cover legacy `n_payment_histories.device_type` enums;
+manual Desktop subscription creation could therefore fail with MySQL warning
+1265 / "Data truncated for column 'device_type'" while inserting payment history.
+The failed transaction rolls back subscription creation and device changes.
+
+Deploy the new migration file, then run from the VPS Laravel project directory:
+
+```sh
+php artisan migrate --path=database/migrations/2026_11_03_000001_add_desktop_to_payment_history_device_type.php --force
+```
+
+This expands only the existing payment-history device enum, preserving its
+current values, default, nullability, collation, comment, rows and indexes.
+Existing varchar columns already accept desktop and are left unchanged. Repeated
+execution is safe. Rollback intentionally retains the expanded enum so historical
+Desktop payments remain valid. No Vue rebuild is required for this database fix.
+Retry the admin subscription form after the migration completes.
+
+Regression coverage reproduces the enum failure and transaction rollback, then
+verifies successful Desktop subscription/payment creation and real device renewal
+after migration. The migration and playback regression suites pass (42 tests,
+259 assertions); PHP 8.5 emits existing framework/test-runner deprecations. Tests
+execute schema changes on isolated SQLite databases and compile the MySQL ALTER
+statement with preserved enum attributes. A live VPS migration has not been run
+from this session.
 
 ## Authentication and access
 
