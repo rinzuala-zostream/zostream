@@ -97,6 +97,13 @@ class HlsFolderController extends Controller
             return $this->error('Unsafe path.');
         }
 
+        // Trailer requests opt into their own source-specific cache. Keep the
+        // existing playback paths unchanged, even when manifests share a folder.
+        $isTrailer = $request->input('context') === 'trailer';
+        if ($isTrailer) {
+            $relativeDir = '_trailers/' . hash('sha256', $mpdUrl);
+        }
+
         // 3) Resolve HLS root and absolute output path
         $hlsRoot = rtrim(config('streaming.hls_root', public_path('hls')), DIRECTORY_SEPARATOR);
         $fullPath = $hlsRoot . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $relativeDir);
@@ -127,6 +134,7 @@ class HlsFolderController extends Controller
             'status' => ($masterExists ? 'success' : 'error'),
             'message' => ($masterExists ? ($needsBuild ? 'HLS generated.' : 'Folder exists.') : 'HLS generation failed.'),
             'data' => [
+                ...($isTrailer ? ['context' => 'trailer'] : []),
                 'source' => $source,            // plaintext | decrypted
                 'requested_raw' => $raw,
                 'resolved_mpd' => $mpdUrl,
