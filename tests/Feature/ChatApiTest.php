@@ -19,6 +19,31 @@ use Tests\TestCase;
 
 class ChatApiTest extends TestCase
 {
+    public function test_username_invitee_search_is_bounded_literal_and_omits_private_fields(): void
+    {
+        DB::table('user')->where('uid', 'alice')->update(['username' => 'zo_self']);
+        foreach (range(1, 12) as $n) {
+            DB::table('user')->insert(['uid' => 'viewer-'.$n, 'name' => 'Viewer '.$n,
+                'username' => 'zo_user_'.sprintf('%02d', $n), 'auth_phone' => '+919999999999', 'token' => 'private-token']);
+        }
+        DB::table('user')->insert(['uid' => 'other', 'name' => 'Other', 'username' => 'zoxuser']);
+        ChatDatabase::connection()->table('chat_blocks')->insert([
+            ['user_id' => 'alice', 'blocked_user_id' => 'viewer-1'],
+            ['user_id' => 'viewer-2', 'blocked_user_id' => 'alice'],
+        ]);
+        $result = $this->postJson('/api/v4/chat/invitees/search', $this->identity(['username' => 'zo_']))
+            ->assertOk()->assertJsonCount(8, 'data.users')->json('data.users');
+        $this->assertSame('viewer-3', $result[0]['user_id']);
+        $this->assertSame(['user_id', 'username', 'name'], array_keys($result[0]));
+        $this->assertNotContains('alice', array_column($result, 'user_id'));
+        $this->assertNotContains('other', array_column($result, 'user_id'));
+        $this->postJson('/api/v4/chat/invitees/search', $this->identity(['username' => 'missing']))
+            ->assertOk()->assertJsonCount(0, 'data.users');
+        foreach (['zo', 'zo%', 'zo user', str_repeat('x', 31)] as $invalid) {
+            $this->postJson('/api/v4/chat/invitees/search', $this->identity(['username' => $invalid]))->assertUnprocessable();
+        }
+    }
+
     private function addMembership(string $room, string $user, string $status = 'accepted'): int
     {
         return ChatDatabase::connection()->table('chat_room_invites')->insertGetId(['room_id' => $room, 'inviter_user_id' => 'alice',
@@ -836,6 +861,7 @@ class ChatApiTest extends TestCase
             $t->string('token')->nullable();
             $t->string('auth_phone')->nullable();
             $t->string('country_code')->nullable();
+            $t->string('username')->nullable()->unique();
         });
         Schema::create('n_devices', function (Blueprint $t) {
             $t->id();

@@ -82,6 +82,24 @@ final class ChatController extends Controller
         return V4Response::success(['registered' => true]);
     }
 
+    public function searchInvitees(Request $r)
+    {
+        $v = $r->validate(['username' => ['required', 'string', 'min:3', 'max:30', 'regex:/\A[a-z0-9_]+\z/']]);
+        $uid = (string) $r->input('auth_user_id');
+        $excluded = ChatDatabase::connection()->table('chat_blocks')->where('user_id', $uid)
+            ->orWhere('blocked_user_id', $uid)->get(['user_id', 'blocked_user_id'])
+            ->flatMap(fn ($block) => [$block->user_id, $block->blocked_user_id])->push($uid)->unique()->values();
+        // Underscores are literal username characters, never SQL wildcards.
+        $prefix = str_replace('_', '!_', $v['username']).'%';
+        $users = DB::table('user')->whereNotIn('uid', $excluded)
+            ->whereRaw("username LIKE ? ESCAPE '!'", [$prefix])->orderBy('username')->limit(8)
+            ->get(['uid', 'username', 'name'])->map(fn ($user) => [
+                'user_id' => (string) $user->uid, 'username' => $user->username, 'name' => $user->name ?: 'Viewer',
+            ]);
+
+        return V4Response::success(['users' => $users]);
+    }
+
     public function lookupInvitee(Request $r)
     {
         $v = $r->validate(['phone' => 'required|string|min:7|max:32']);
