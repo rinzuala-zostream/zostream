@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import PageHeader from '../components/PageHeader.vue';
 import StatusPanel from '../components/StatusPanel.vue';
+import SubscriptionCreateForm from '../components/SubscriptionCreateForm.vue';
 import { api, queryString } from '../lib/api';
 import { normalizeForSubmit, resources } from '../lib/resources';
 import { deviceTypeLabel, optionLabel } from '../lib/platforms';
@@ -10,6 +11,7 @@ import { deviceTypeLabel, optionLabel } from '../lib/platforms';
 const route = useRoute(); const router = useRouter();
 const key = computed(() => route.params.resource); const resource = computed(() => resources[key.value]);
 const editing = computed(() => route.params.id && route.params.id !== 'new');
+const creatingSubscription = computed(() => key.value === 'subscriptions' && !editing.value);
 const model = reactive({}); const loading = ref(false); const saving = ref(false); const error = ref(''); const notice = ref('');
 const relationQuery = ref(''); const relationBusy = ref(false); const relationResults = ref([]); const plans = ref([]);
 const existingFeatures = ref([]); const existingOptions = ref([]); let relationTimer;
@@ -306,10 +308,11 @@ onMounted(load);
 </script>
 
 <template>
-    <div v-if="resource" class="admin-page narrow">
-        <PageHeader :eyebrow="editing ? 'Edit record' : 'New record'" :title="`${editing ? 'Update' : 'Add'} ${resource.singular}`" description="Admin3-compatible workflow with validated relationships and nested records." :back="`/manage/${key}`" />
+    <div v-if="resource" class="admin-page" :class="{ narrow: !creatingSubscription }">
+        <PageHeader :eyebrow="creatingSubscription ? 'Subscriber management' : editing ? 'Edit record' : 'New record'" :title="`${editing ? 'Update' : 'Add'} ${resource.singular}`" :description="creatingSubscription ? 'Set up access, choose plans and record a payment in one place.' : 'Admin3-compatible workflow with validated relationships and nested records.'" :back="`/manage/${key}`" />
         <StatusPanel tone="success" :message="notice" /><StatusPanel tone="error" :message="error" />
         <div v-if="loading" class="admin-loading">Loading record…</div>
+        <SubscriptionCreateForm v-else-if="creatingSubscription" :model="model" :plans="plans" :saving="saving" @save="save" />
         <form v-else class="admin-editor admin-panel" @submit.prevent="save">
             <section v-if="relationContext" class="admin-current-record-section">
                 <article class="admin-current-record">
