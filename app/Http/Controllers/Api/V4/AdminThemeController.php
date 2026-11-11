@@ -31,6 +31,7 @@ class AdminThemeController extends Controller
 
         return V4Response::success([
             'themes' => AppTheme::orderBy('name')->get(),
+            'selected_theme_id' => DB::table('app_theme_controls')->where('id', 1)->value('selected_theme_id'),
             'active' => $resolver->resolve($platform),
             'override' => AppThemeOverride::whereNull('cancelled_at')->where('expires_at', '>', now('UTC'))->latest('id')->first(),
             'theme_presets' => app(ThemePresetCatalog::class)->all(),
@@ -61,6 +62,7 @@ class AdminThemeController extends Controller
             'key' => ['required_without:preset_key', 'string', 'max:80', 'regex:/^[a-z][a-z0-9_]*$/D', 'not_in:default', 'unique:app_themes,key'],
             'name' => 'required_without:preset_key|string|max:120',
             'document' => 'required_without:preset_key|array',
+            'reuse_preset' => 'sometimes|boolean',
             'preset_key' => ['sometimes', 'string', Rule::in(array_keys(app(ThemePresetCatalog::class)->all()))],
         ]);
         if (isset($input['preset_key'])) {
@@ -70,14 +72,26 @@ class AdminThemeController extends Controller
             $input['document'] = $input['document'] ?? $preset['document'];
         }
         $document = $this->schema->validate($input['document'], 0);
-        $theme = DB::transaction(function () use ($request, $input, $document) {
-            $theme = AppTheme::create(['key' => $input['key'], 'name' => $input['name'], 'draft' => $document, 'created_by' => $this->actor($request)]);
+        $reused = false;
+        $theme = DB::transaction(function () use ($request, $input, $document, &$reused) {
+            $this->lockControl();
+            if ($request->boolean('reuse_preset') && isset($input['preset_key'])) {
+                $existing = AppTheme::where('preset_key', $input['preset_key'])->orderByDesc('updated_at')->orderByDesc('id')->first();
+                if ($existing) {
+                    $reused = true;
+
+                    return $existing;
+                }
+                // Use/Edit/Add schedule start from the preset's appearance; scheduling is explicit.
+                $document['schedules'] = [];
+            }
+            $theme = AppTheme::create(['key' => $input['key'], 'name' => $input['name'], 'draft' => $document, 'created_by' => $this->actor($request), 'preset_key' => $input['preset_key'] ?? null]);
             $this->log($request, 'create', $theme->id, null, $theme->toArray());
 
             return $theme;
         });
 
-        return V4Response::success($theme, status: 201);
+        return V4Response::success($theme, status: $reused ? 200 : 201);
     }
 
     public function update(Request $request, AppTheme $theme)
@@ -91,6 +105,45 @@ class AdminThemeController extends Controller
             $this->log($request, 'save_draft', $locked->id, $before, $locked->toArray());
 
             return V4Response::success($locked);
+        });
+    }
+
+    public function saveSettings(Request $request, AppTheme $theme)
+    {
+        $input = $request->validate(['revision' => 'required|integer|min:1', 'name' => 'required|string|max:120', 'document' => 'required|array']);
+        $document = $this->schema->validate($input['document'], $theme->id);
+
+        return $this->mutate($request, $theme, function (AppTheme $locked) use ($request, $input, $document) {
+            $this->checkAssets($document);
+            $before = $locked->toArray();
+            $locked->name = $input['name'];
+            $version = $this->createVersion($request, $locked, $document);
+            // Editing a theme in a legacy timed override must update its appearance too.
+            AppThemeOverride::whereIn('version_id', $locked->versions()->select('id'))->whereNull('cancelled_at')
+                ->where('expires_at', '>', now('UTC'))->update(['version_id' => $version->id]);
+            $this->log($request, 'save_settings', $locked->id, $before, $locked->toArray());
+
+            return V4Response::success($locked->refresh(), 'Theme settings and schedules saved.');
+        });
+    }
+
+    public function useTheme(Request $request, AppTheme $theme)
+    {
+        $request->validate(['revision' => 'required|integer|min:1']);
+
+        return $this->mutate($request, $theme, function (AppTheme $locked) use ($request) {
+            $document = $this->schema->validate($locked->draft, $locked->id);
+            $this->checkAssets($document);
+            $before = ['selected_theme_id' => DB::table('app_theme_controls')->where('id', 1)->value('selected_theme_id')];
+            $current = $locked->published_version_id ? AppThemeVersion::find($locked->published_version_id) : null;
+            if (! $current || $current->document != $document) {
+                $this->createVersion($request, $locked, $document);
+            }
+            DB::table('app_theme_controls')->where('id', 1)->update(['selected_theme_id' => $locked->id]);
+            AppThemeOverride::whereNull('cancelled_at')->update(['cancelled_at' => now('UTC')]);
+            $this->log($request, 'use_theme', $locked->id, $before, ['selected_theme_id' => $locked->id]);
+
+            return V4Response::success($locked->refresh(), 'Theme selected. Schedules take precedence during their active windows.');
         });
     }
 
@@ -133,6 +186,7 @@ class AdminThemeController extends Controller
 
         return $this->mutate($request, $theme, function (AppTheme $locked) use ($request) {
             $before = $locked->toArray();
+            DB::table('app_theme_controls')->where('id', 1)->where('selected_theme_id', $locked->id)->update(['selected_theme_id' => null]);
             $locked->update(['published_version_id' => null, 'revision' => $locked->revision + 1]);
             AppThemeOverride::whereIn('version_id', $locked->versions()->select('id'))->whereNull('cancelled_at')->update(['cancelled_at' => now('UTC')]);
             $this->log($request, 'unpublish', $locked->id, $before, $locked->toArray());
@@ -256,7 +310,7 @@ class AdminThemeController extends Controller
         foreach ($document['assets'] as $id) {
             $asset = AppThemeAsset::findOrFail($id);
             if (! Storage::disk('r2')->exists($asset->path)) {
-                throw ValidationException::withMessages(['document.assets' => 'An uploaded asset is missing. Replace it before publishing.']);
+                throw ValidationException::withMessages(['document.assets' => 'An uploaded asset is missing. Replace it before saving or using this theme.']);
             }
         }
     }

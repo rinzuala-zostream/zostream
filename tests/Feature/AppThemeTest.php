@@ -19,6 +19,8 @@ class AppThemeTest extends TestCase
 {
     private $migration;
 
+    private $selectionMigration;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -26,12 +28,15 @@ class AppThemeTest extends TestCase
         \Carbon\Carbon::setTestNow(CarbonImmutable::now());
         $this->migration = require database_path('migrations/2026_11_11_000001_create_app_theme_tables.php');
         $this->migration->up();
+        $this->selectionMigration = require database_path('migrations/2026_11_11_000002_add_theme_selection.php');
+        $this->selectionMigration->up();
         $this->withoutMiddleware([AuthTokenMiddleware::class, AdminTokenMiddleware::class]);
         Storage::fake('r2');
     }
 
     protected function tearDown(): void
     {
+        $this->selectionMigration->down();
         $this->migration->down();
         CarbonImmutable::setTestNow();
         \Carbon\Carbon::setTestNow();
@@ -296,6 +301,83 @@ class AppThemeTest extends TestCase
         $window = $catalog['new_year']['document']['schedules'][0];
         $this->assertSame('2026-12-30T18:30:00+00:00', $window['start_at']);
         $this->assertSame('2027-01-07T18:30:00+00:00', $window['end_at']);
+    }
+
+    public function test_use_selects_a_preset_without_publication_or_expiry_and_reuses_edited_settings(): void
+    {
+        $theme = $this->postJson('/api/v4/admin/themes', ['preset_key' => 'christmas', 'reuse_preset' => true])->assertCreated()->json('data');
+        $this->assertSame([], $theme['draft']['schedules']);
+        $this->postJson("/api/v4/admin/themes/{$theme['id']}/use", ['revision' => 1, 'auth_user_id' => 'test-admin'])->assertOk();
+        $this->themeAt('2026-12-02T00:00:00+05:30', 'macos')->assertJsonPath('data.theme_key', $theme['key']);
+        $status = $this->getJson('/api/v4/admin/themes?platform=macos')->assertOk();
+        $status->assertJsonPath('data.selected_theme_id', $theme['id'])->assertJsonPath('data.themes.0.preset_key', 'christmas');
+        $this->themeAt('2027-02-02T00:00:00+05:30', 'macos')->assertJsonPath('data.theme_key', $theme['key']);
+        $this->postJson('/api/v4/admin/themes', ['preset_key' => 'christmas', 'reuse_preset' => true])->assertOk()->assertJsonPath('data.id', $theme['id']);
+        $this->assertDatabaseCount('app_themes', 1);
+        $this->assertDatabaseCount('app_theme_overrides', 0);
+        $this->assertDatabaseHas('app_theme_audit_logs', ['action' => 'use_theme', 'actor_id' => 'test-admin']);
+    }
+
+    public function test_settings_save_updates_active_theme_and_rejects_stale_revisions(): void
+    {
+        $theme = $this->createTheme('selected', ['schedules' => []]);
+        $theme = $this->postJson("/api/v4/admin/themes/{$theme['id']}/use", ['revision' => 1])->assertOk()->json('data');
+        $document = $theme['draft'];
+        $document['tokens']['primary'] = '#123456';
+        $input = ['revision' => $theme['revision'], 'name' => 'Edited theme', 'document' => $document];
+        $this->putJson("/api/v4/admin/themes/{$theme['id']}/settings", $input)->assertOk()->assertJsonPath('data.name', 'Edited theme');
+        $this->putJson("/api/v4/admin/themes/{$theme['id']}/settings", $input)->assertStatus(409);
+        $this->getJson('/api/v4/app/theme', ['X-Platform' => 'web'])->assertJsonPath('data.tokens.primary', '#123456');
+    }
+
+    public function test_saved_schedule_activates_without_publish_and_returns_to_selected_theme(): void
+    {
+        $base = $this->createTheme('base_theme', ['schedules' => []]);
+        $this->postJson("/api/v4/admin/themes/{$base['id']}/use", ['revision' => 1])->assertOk();
+        $scheduled = $this->createTheme('scheduled', ['schedules' => [['start_at' => '2026-12-02T00:00:00+05:30', 'end_at' => '2026-12-03T00:00:00+05:30']]]);
+        $this->putJson("/api/v4/admin/themes/{$scheduled['id']}/settings", ['revision' => 1, 'name' => 'Scheduled', 'document' => $scheduled['draft']])->assertOk();
+        $this->themeAt('2026-12-01T23:59:59+05:30')->assertJsonPath('data.theme_key', 'base_theme');
+        $this->themeAt('2026-12-02T00:00:00+05:30')->assertJsonPath('data.theme_key', 'scheduled');
+        $this->themeAt('2026-12-03T00:00:00+05:30')->assertJsonPath('data.theme_key', 'base_theme');
+    }
+
+    public function test_selection_migration_backfills_existing_generated_preset_keys_without_changing_settings(): void
+    {
+        $this->selectionMigration->down();
+        $document = $this->document();
+        foreach (['christmas_2026_abcdefgh', 'custom_christmas'] as $key) {
+            DB::table('app_themes')->insert(['key' => $key, 'name' => $key, 'draft' => json_encode($document), 'created_by' => 'test-admin']);
+        }
+        $this->selectionMigration->up();
+        $this->assertDatabaseHas('app_themes', ['key' => 'christmas_2026_abcdefgh', 'preset_key' => 'christmas']);
+        $this->assertDatabaseHas('app_themes', ['key' => 'custom_christmas', 'preset_key' => null]);
+        $theme = \App\Models\AppTheme::where('key', 'christmas_2026_abcdefgh')->firstOrFail();
+        $this->assertSame($document, $theme->draft);
+    }
+
+    public function test_use_clears_legacy_overrides_and_repeated_use_does_not_duplicate_versions(): void
+    {
+        $theme = $this->createTheme('selected', ['schedules' => []]);
+        $this->postJson('/api/v4/admin/theme-overrides', ['theme_id' => null, 'expires_at' => '2026-12-01T01:00:00+05:30', 'reason' => 'Old emergency'])->assertCreated();
+        $theme = $this->postJson("/api/v4/admin/themes/{$theme['id']}/use", ['revision' => 1])->assertOk()->json('data');
+        $this->getJson('/api/v4/app/theme', ['X-Platform' => 'macos'])->assertJsonPath('data.theme_key', 'selected');
+        $this->postJson("/api/v4/admin/themes/{$theme['id']}/use", ['revision' => $theme['revision']])->assertOk();
+        $this->assertDatabaseCount('app_theme_versions', 1);
+        $this->assertSame(0, \App\Models\AppThemeOverride::whereNull('cancelled_at')->count());
+    }
+
+    public function test_saving_schedule_removal_restores_selection_and_platform_exclusions_remain_safe(): void
+    {
+        $base = $this->createTheme('base_mac', ['platforms' => ['macos'], 'schedules' => []]);
+        $this->postJson("/api/v4/admin/themes/{$base['id']}/use", ['revision' => 1])->assertOk();
+        $this->getJson('/api/v4/app/theme', ['X-Platform' => 'web'])->assertJsonPath('data.theme_key', 'default');
+        $scheduled = $this->createTheme('scheduled');
+        $scheduled = $this->putJson("/api/v4/admin/themes/{$scheduled['id']}/settings", ['revision' => 1, 'name' => 'Scheduled', 'document' => $scheduled['draft']])->assertOk()->json('data');
+        $this->getJson('/api/v4/app/theme', ['X-Platform' => 'macos'])->assertJsonPath('data.theme_key', 'scheduled');
+        $document = $scheduled['draft'];
+        $document['schedules'] = [];
+        $this->putJson("/api/v4/admin/themes/{$scheduled['id']}/settings", ['revision' => $scheduled['revision'], 'name' => 'Scheduled', 'document' => $document])->assertOk();
+        $this->getJson('/api/v4/app/theme', ['X-Platform' => 'macos'])->assertJsonPath('data.theme_key', 'base_mac');
     }
 
     public function test_admin_routes_require_trusted_authentication(): void

@@ -1,76 +1,148 @@
-# Seasonal app themes — backend and Vue admin
+# Seasonal themes — Use, Add schedule, Edit
 
-The Laravel API and the Vue admin at `/admin/themes` implement the first release of the seasonal theme system. The standalone React admin directory is not involved. Default Zo Stream is bundled in code; Christmas is an editable starting template. No production theme is created or activated automatically by installing this feature.
+The Vue admin at `/admin/themes` provides twelve ready-made presets and editable
+custom themes. Administrators use **Use**, **Add schedule** and **Edit**. There
+is no preview approval, publication button or mandatory reason in this flow.
 
-## Installation
+## Deploy
 
-Deploy the code, run the new migration against the intended environment, and build the frontend:
+Deploy Laravel and the rebuilt Vue assets together. The initial theme-table
+migration must already exist; new installations run it first. This update adds
+persistent theme selection and preset identity:
 
 ```sh
-php artisan migrate --path=database/migrations/2026_11_11_000001_create_app_theme_tables.php
+php artisan migrate --path=database/migrations/2026_11_11_000002_add_theme_selection.php
+npm ci
 npm run build
+php artisan optimize:clear
 ```
 
-The development checkout currently has an empty `node_modules/.bin/vite` launcher. To build with its installed Vite package directly:
+The development checkout has an empty `node_modules/.bin/vite` launcher. Its
+installed Vite package can be invoked directly:
 
 ```sh
 node node_modules/vite/bin/vite.js build
 ```
 
-Use the existing configured application cache (Redis is supported) and `r2` disk. Its public URL must point to the approved CDN; the API never accepts arbitrary asset URLs. Uploaded PNG/JPEG/WebP images are limited to 2 MB and 4096 × 4096 pixels, use UUID filenames and immutable cache headers, and include SHA-256 integrity metadata. Configure the CDN to serve their actual image Content-Type. SVG/HTML uploads are rejected. Published assets are not overwritten or deleted by the manager.
+Do not run the initial table migration again if it has already been applied.
+The new migration backfills preset identity for existing generated preset keys,
+retains their settings/schedules and leaves the initial selection at Default.
+Existing scheduled versions and timed overrides remain valid. Deployments use
+the existing application cache (including Redis) and R2 disk.
 
-## Admin workflow
+## Admin behavior
 
-1. Open **Engagement → Seasonal themes** and create a draft with a unique key such as `christmas_2026`.
-2. Set colors, priority, platforms, Home-only effects and optional uploaded assets.
-3. Enter each schedule in **Asia/Kolkata (IST)**. Christmas 2026 is December 1, 2026 00:00 through January 1, 2027 00:00, with the end excluded. Dates are explicit yearly windows; automatic annual recurrence and movable-holiday calculations are not implemented in this release. With no schedule, a published theme is available only to manual overrides.
-4. Save, preview the saved draft on the desired platforms and approve it. The preview illustrates palette/assets and reports normalized effects; it does not reproduce each client's renderer or animate effects.
-5. Enter an operational reason and confirm publication. A server-generated token binds the approval to the saved revision. Edits invalidate approval; conflicting revisions return HTTP 409.
-6. Use **Restore Default** for an immediate global override, or select a published theme for a manual override. Overrides start immediately, pin the selected published version, require a reason and expire within 31 days. A new override replaces the old one. **Resume automatic schedules** cancels the override early.
+- **Use** selects the saved preset as the persistent base theme, without an
+  expiry or publication step. Use also clears any legacy timed override.
+  Active schedules take precedence; after their windows end the base returns.
+  The UI explains this precedence and reports the theme actually resolved for
+  the selected platform. Clients refresh at their next normal refresh.
+- **Add schedule** opens that preset's existing settings, adds an IST time window
+  and focuses its date fields. Fixed holidays suggest the ongoing/next window;
+  movable festivals and Anniversary require verified dates. **Save changes**
+  enables the schedule directly. Removing a window and saving disables it.
+- **Edit** opens the saved settings, retaining previous colors, assets, card
+  decorations and schedules. **Save changes** updates selected/scheduled
+  appearances directly. **Use this theme** saves pending edits first, then
+  selects the theme. Editing without saving changes no client output.
+- Presets reuse their existing saved instance rather than creating a duplicate
+  whenever Use/Edit/Add schedule is pressed. Custom themes remain supported.
+- The active preset has a colored frame and **✓ In use** badge, derived from
+  the API's actual resolved theme, not the editor selection. A different base
+  selection is marked **Selected between schedules**. Highlight state refreshes
+  after operations, platform changes and every minute while the page is visible.
+- Preview remains optional. Saved version history and actor audit records remain
+  available. Versions are stored internally for consistency; no approval action
+  is required to create or use them. Revision conflicts return HTTP 409.
 
-Draft edits never change the live version. Unpublish removes automatic eligibility and cancels overrides for that theme. Rollback republishes a selected historical document as a new version, retaining its original schedules; inspect those schedules before confirming. Historical publication documents remain intact. All operations record the trusted authenticated actor. Existing `auth.token` and `admin.token` middleware protect every admin endpoint; publication, override and uploads are rate limited.
+Default, Christmas, New Year, Valentine, Chapchar Kut, Easter, Independence Day,
+Diwali, Halloween, Pawl Kut, Anniversary and Mim Kut are built in. All preset
+settings remain editable; editing one saved instance does not mutate the catalog.
 
-## Public API and client contract
+## API
 
-`GET /api/v4/app/theme` is public. Send `X-Platform` or the existing `X-Client-Platform`; supported values are `web`, `android`, `ios`, `android-tv`, `webos`, `tizen`, `windows` and `macos`. Unknown platforms get Default.
+All admin endpoints require the existing authenticated administrator bearer token
+and are rate limited. Trusted actor identity comes from auth middleware.
 
-The normal v4 response envelope contains:
-
-- `data.schema_version` (currently 1), `theme_key`, immutable published `version`, `platform`.
-- `tokens`: background, primary, secondary, accent, each a six-digit hex color.
-- `effects.snowfall`: enabled and max_particles; `effects.animation`: enabled and allowlisted preset.
-- `assets`: slot → {url, checksum, width, height}. An empty asset map is `{}`.
-- `decoration_scope`: `home`.
-- `valid_until`, `next_refresh_at`: the next relevant schedule boundary or override expiry, in UTC; null if there is no future scheduled change.
-- `poll_interval_seconds`: 60. Polling also detects newly published themes and emergency overrides that were not known at the previous fetch.
-- `fallback`: complete Default theme config, for client-side recovery.
-
-Responses include a weak ETag, `Vary: X-Platform, X-Client-Platform`, `X-Server-Time` and `meta.server_time`. Send `If-None-Match` to get HTTP 304 when theme data is unchanged. Read the server clock header on 304 too. HTTP caches must revalidate; server-side resolved configurations are cached per platform and global publication generation for at most 60 seconds, never beyond the next known transition. Draft updates, publication, rollback, unpublish and override controls advance the generation transactionally, making the old cache inaccessible immediately after commit.
-
-An active override wins, including a Default override. Otherwise the highest-priority eligible published theme wins; ties use latest publication time then version ID. Overlapping windows within one theme are harmless. Time windows are `[start, end)` and stored in UTC through an explicit cast, independent of the application's IST default. Resolution uses the application server clock; keep deployment clocks synchronized. No cron task is needed for activation.
-
-Clients still need their own theme renderer. Fetch asynchronously without blocking startup, retain a bundled Default, refresh on foreground and at the supplied interval/boundary, and stop using an expired cached seasonal config while offline. Validate schema/tokens/presets; ignore unsupported optional fields, and fall back for failed asset downloads or invalid config. Use server time to account for device clock skew. Theme settings must not change artwork, player controls or payment screens. Decorative overlays must not capture touch, scroll or focus. Respect Reduce Motion, background state and power saving. TV responses disable motion initially; mobile particles are capped at 25, TV at 10, web at 35. Exact rendering and performance require client QA.
-
-Schema or database/cache resolution failures return bundled Default and emit a `Seasonal theme fallback` warning. Missing R2 objects block publication; runtime CDN failures must also be handled by clients. Real R2 delivery and browser/device visual QA have not been exercised by the automated tests.
-
-## Admin API
-
-All paths below are under `/api/v4/admin` and require a valid administrator bearer token.
-
-| Method | Path | Purpose |
+| Method | Path under `/api/v4/admin` | Behavior |
 | --- | --- | --- |
-| GET / POST | `/themes` | Library/config templates or create draft |
-| GET / PATCH | `/themes/{id}` | Detail/history/assets or save draft |
-| POST | `/themes/{id}/preview` | Validate saved revision and return platform preview/token |
-| POST | `/themes/{id}/publish` | Publish with revision, approval, preview token, reason |
-| POST | `/themes/{id}/unpublish` | Unpublish with revision and reason |
-| POST | `/themes/{id}/rollback` | Republish version_id with revision, approval and reason |
+| GET | `/themes?platform=macos` | Presets, saved themes, active config, selected_theme_id |
+| POST | `/themes` | Create preset/custom settings; reuse_preset reuses preset identity |
+| GET | `/themes/{id}` | Settings, assets, saved versions, audit |
+| PUT | `/themes/{id}/settings` | Save full name/document with current revision, including schedules |
+| POST | `/themes/{id}/use` | Select saved theme with current revision; no approval/reason/expiry |
+| POST | `/themes/{id}/preview` | Optional saved-config platform preview |
 | POST | `/themes/assets` | Multipart theme_id, asset_key, image |
-| GET | `/themes/audit?page=1` | Paginated operational audit log |
-| POST | `/theme-overrides` | theme_id (null = Default), expires_at, reason |
-| DELETE | `/theme-overrides` | Resume schedules with reason |
+| GET | `/themes/audit?page=1` | Paginated operational audit |
 
-The draft `document` contains `priority`, `platforms`, `tokens`, `effects`, asset slot IDs and `schedules`. Every schedule requires offset-qualified ISO start_at/end_at values. PATCH requires the full document, name and current revision. Asset IDs must belong to that theme and slot. Only known keys/presets are accepted; remote executable code, CSS expressions and arbitrary layouts are not accepted.
+`POST /themes` with `{"preset_key":"christmas","reuse_preset":true}` returns
+an existing instance or creates one with automatic name/key and no enabled
+schedule. Scheduling is explicit through Add schedule and Save changes. Without
+reuse_preset, legacy custom-draft creation behavior is retained. Optional explicit
+name/key/document can override creation defaults.
+
+The existing PATCH draft, publish/unpublish/rollback and expiring override routes
+remain for API compatibility. The current Vue interface does not require them.
+An outstanding legacy override can be cleared with **Resume schedules**; Use also
+clears it. Saving a theme used by a legacy override updates its pinned version.
+
+## Resolution, caching and offline use
+
+`GET /api/v4/app/theme` is public and uses `X-Platform` or `X-Client-Platform`.
+Platforms: web, android, ios, android-tv, webos, tizen, windows, macos. Unknown
+platforms safely receive bundled Default.
+
+Precedence is: active legacy timed override, highest-priority eligible scheduled
+version, persistent selected theme for that platform, bundled Default. Scheduled
+ties use latest saved-version timestamp then ID. Dates are `[start,end)` and
+stored in UTC using an explicit cast despite the app's IST timezone. Keep server
+clocks synchronized. No cron is needed for activation.
+
+The v4 envelope contains schema_version=1, theme_key, version, platform, tokens,
+effects, assets, cards, decoration_scope, valid_until, next_refresh_at,
+poll_interval_seconds=60 and a bundled fallback. Only known tokens, effect
+presets and asset slots are accepted. Tokens are six-digit hex colors; arbitrary
+CSS, HTML and remote executable layouts are rejected.
+
+A selected seasonal theme with no upcoming transition receives a renewable
+24-hour offline lease. This is a client cache bound, not an expiry on the stored
+selection. Scheduled configurations expire at the next relevant boundary;
+clients refresh on foreground, at the transition and at the polling interval.
+Invalid or expired offline config uses bundled Default. Initial UI must not
+wait on theme requests.
+
+Responses include weak ETag, Cache-Control requiring revalidation, platform Vary,
+X-Server-Time and meta.server_time. Clients handle HTTP 304 and use the server
+clock reference. Resolved configurations are cached per platform and mutation
+generation for at most 60 seconds, never beyond a known transition. Mutations
+advance that generation inside the transaction. Resolution failures return
+Default and emit a Seasonal theme fallback warning.
+
+## Decorations and assets
+
+`cards` is optional for older clients/documents:
+
+```json
+{"enabled":true,"preset":"snow","opacity":0.8,"movie_cards":true,"episode_cards":true}
+```
+
+Motifs: none, snow, stars, hearts, woven, petals, tricolor, lights, pumpkin, grain,
+confetti, maize. Movie and episode switches are independent. Old documents
+without cards normalize to disabled; unsupported client motifs remain static or
+disabled. Native Mac supports these corner/frame overlays on Home, browse,
+recommendation and episode cards, retaining artwork, metadata, access badges,
+layout and interaction. Home effects retain their Home-only scope. Player and
+payment controls are unaffected. TV motion is disabled initially; particle caps
+are 25 mobile/Mac, 35 web and 10 TV. Respect Reduce Motion/power saving and pause
+motion behind Details/player and in the background.
+
+R2 PNG/JPEG/WebP images are limited to 2 MB and 4096² pixels, validated on upload,
+UUID-versioned and served with immutable headers and SHA-256 integrity metadata.
+The disk URL must be the approved CDN. Arbitrary asset URLs and SVG uploads are
+not accepted. Saved/use configs check asset existence. Runtime CDN failures must
+also fall back safely on clients. Mac permits HTTPS zostream.in subdomains and
+checks decoded size and checksum. Cultural motifs are simple geometric samples;
+custom festival artwork should be reviewed separately.
 
 ## Verification
 
@@ -80,45 +152,9 @@ node --test tests/js/ThemesPage.test.mjs
 node node_modules/vite/bin/vite.js build
 ```
 
-Feature tests use an isolated in-memory SQLite database and fake R2 storage. They cover IST boundaries, cache invalidation, overlap/tie resolution, platform filtering, preview/revision conflicts, immutable rollback history, emergency expiry, validation, asset ownership/integrity, safe fallback and real auth middleware identity protection. Vue tests execute the actual setup script with Vue reactivity and intercepted API calls to exercise edit/save/preview/publish/override without touching live services.
-
-## Ready-made presets and card decoration
-
-The manager now lists twelve built-in presets: Default, Christmas, New Year,
-Valentine, Chapchar Kut, Easter, Independence Day, Diwali, Halloween, Pawl Kut,
-Zo Stream Anniversary and Mim Kut. **Use preset** creates an editable draft with
-an automatic unique key and display name. There is no need to enter colors or
-upload art first. Catalog defaults never mutate when a draft is edited. A preset
-never publishes itself. Fixed holiday windows are filled with the ongoing or
-next occurrence; festivals with movable/verified dates and Anniversary require
-an explicit schedule (or an expiring manual override).
-
-`GET /api/v4/admin/themes` adds `theme_presets` (key → name, description,
-requires_dates, document) and `card_presets`. `POST /api/v4/admin/themes` accepts
-`{"preset_key":"christmas"}` without name/key/document; optional explicit fields
-can override that starting draft. Existing custom-draft requests still work.
-
-Drafts and public payloads add optional `cards`:
-
-```json
-{"enabled":true,"preset":"snow","opacity":0.8,"movie_cards":true,"episode_cards":true}
-```
-
-Allowed motifs: none, snow, stars, hearts, woven, petals, tricolor, lights,
-pumpkin, grain, confetti, maize. The API validates all keys, opacity (0–1) and
-booleans. Existing documents without `cards` normalize to disabled, preserving
-their previous appearance. Schema version remains 1: older clients ignore this
-optional field. New Mac clients treat unsupported motifs as disabled.
-
-Mac movie and episode cards render static, pointer-transparent corner motifs
-and thin frames. These also apply to recommendation and episode shelves on
-Details; Home decorations retain their separate Home-only scope. This extends
-the initial document's artwork boundary as requested: source posters/thumbnails
-are retained, while card presentation now has a decorative overlay. Access
-badges, metadata, card dimensions, selection and playback/payment controls keep
-their existing behavior. Admin preview shows movie and episode examples with
-independent toggles. Woven/harvest motifs use simple geometric illustrations;
-review any custom festival artwork separately.
-
-No additional database migration is needed for presets/cards; deploy backend
-and rebuild Vue together. Deploy the updated Mac renderer to display cards.
+Feature tests use in-memory SQLite and fake R2, including migrations, UTC/IST
+boundaries, conflicts, selection persistence, direct saves, schedule fallback,
+cache invalidation, assets and trusted auth. Vue tests execute the real setup
+script with Vue reactivity and intercepted requests. They verify direct Use,
+schedule editing/saving, preset reuse, active highlighting and optional preview.
+Real VPS migration/deployment and real CDN delivery are separate deployment steps.

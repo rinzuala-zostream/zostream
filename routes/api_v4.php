@@ -386,6 +386,8 @@ Route::prefix('v4')
                         Route::post('/assets', [$controller, 'upload'])->middleware('throttle:10,1');
                         Route::get('/{theme}', [$controller, 'show'])->whereNumber('theme');
                         Route::patch('/{theme}', [$controller, 'update'])->whereNumber('theme');
+                        Route::put('/{theme}/settings', [$controller, 'saveSettings'])->whereNumber('theme');
+                        Route::post('/{theme}/use', [$controller, 'useTheme'])->whereNumber('theme');
                         Route::post('/{theme}/preview', [$controller, 'preview'])->whereNumber('theme');
                         Route::post('/{theme}/publish', [$controller, 'publish'])->whereNumber('theme');
                         Route::post('/{theme}/unpublish', [$controller, 'unpublish'])->whereNumber('theme');

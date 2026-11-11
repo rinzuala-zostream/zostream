@@ -18,7 +18,7 @@ final class ThemeResolver
         $now = $clock ?? CarbonImmutable::now('UTC');
         try {
             $generation = DB::table('app_theme_controls')->where('id', 1)->value('revision');
-            $cacheKey = 'app-themes:v2:'.$generation.':'.$platform;
+            $cacheKey = 'app-themes:v3:'.$generation.':'.$platform;
             $cached = Cache::get($cacheKey);
             if (is_array($cached) && ($cached['valid_until'] === null || CarbonImmutable::parse($cached['valid_until'])->greaterThan($now))) {
                 return $cached;
@@ -74,12 +74,23 @@ final class ThemeResolver
             usort($eligible, fn ($a, $b) => ($b->document['priority'] <=> $a->document['priority'])
                 ?: ($b->published_at->getTimestamp() <=> $a->published_at->getTimestamp()) ?: ($b->id <=> $a->id));
             $selected = $eligible[0] ?? null;
+            if (! $selected) {
+                $selectedId = DB::table('app_theme_controls')->where('id', 1)->value('selected_theme_id');
+                $theme = $selectedId ? \App\Models\AppTheme::find($selectedId) : null;
+                $candidate = $theme?->published_version_id ? AppThemeVersion::with('theme')->find($theme->published_version_id) : null;
+                if ($candidate && in_array($platform, $candidate->document['platforms'], true)) {
+                    $selected = $candidate;
+                    // A persistent selection gets a renewable offline lease, rather than an override expiry.
+                    $lease = $now->addDay();
+                    $validUntil = $next && $next->lessThan($lease) ? $next : $lease;
+                }
+            }
         }
         $payload = $selected ? $this->schema->payload($selected->theme->key, $selected->number, $this->schema->validate($selected->document, $selected->theme_id), $platform) : $fallback;
 
         return array_merge($payload, [
             'platform' => $platform,
-            'valid_until' => $next?->toIso8601String(),
+            'valid_until' => ($validUntil ?? $next)?->toIso8601String(),
             'next_refresh_at' => $next?->toIso8601String(),
             'poll_interval_seconds' => 60,
             'fallback' => $fallback,
