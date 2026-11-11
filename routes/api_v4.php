@@ -66,8 +66,6 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('v4')
     ->middleware(['api.client', 'api.v4'])
     ->group(function () {
-        Route::get('/app/theme', [\App\Http\Controllers\Api\V4\AppThemeController::class, 'show'])->middleware('throttle:120,1');
-
         Route::get('/system/health', fn () => V4Response::success([
             'service' => 'zostream-api',
             'status' => 'available',
@@ -377,24 +375,6 @@ Route::prefix('v4')
 
                     Route::get('/analytics/config', [AdminAnalyticsController::class, 'showConfig']);
                     Route::put('/analytics/config', [AdminAnalyticsController::class, 'updateConfig'])->middleware('admin.config-whitelist');
-
-                    Route::prefix('themes')->middleware('throttle:60,1')->group(function () {
-                        $controller = \App\Http\Controllers\Api\V4\AdminThemeController::class;
-                        Route::get('/', [$controller, 'index']);
-                        Route::get('/audit', [$controller, 'audit']);
-                        Route::post('/', [$controller, 'store']);
-                        Route::post('/assets', [$controller, 'upload'])->middleware('throttle:10,1');
-                        Route::get('/{theme}', [$controller, 'show'])->whereNumber('theme');
-                        Route::patch('/{theme}', [$controller, 'update'])->whereNumber('theme');
-                        Route::put('/{theme}/settings', [$controller, 'saveSettings'])->whereNumber('theme');
-                        Route::post('/{theme}/use', [$controller, 'useTheme'])->whereNumber('theme');
-                        Route::post('/{theme}/preview', [$controller, 'preview'])->whereNumber('theme');
-                        Route::post('/{theme}/publish', [$controller, 'publish'])->whereNumber('theme');
-                        Route::post('/{theme}/unpublish', [$controller, 'unpublish'])->whereNumber('theme');
-                        Route::post('/{theme}/rollback', [$controller, 'rollback'])->whereNumber('theme');
-                    });
-                    Route::post('/theme-overrides', [\App\Http\Controllers\Api\V4\AdminThemeController::class, 'override'])->middleware('throttle:20,1');
-                    Route::delete('/theme-overrides', [\App\Http\Controllers\Api\V4\AdminThemeController::class, 'clearOverride'])->middleware('throttle:20,1');
 
                     Route::get('/home-sections', [AdminHomeSectionController::class, 'index']);
                     Route::put('/home-sections', [AdminHomeSectionController::class, 'update']);

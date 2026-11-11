@@ -48,7 +48,6 @@ const router = createRouter({
                 { path: 'analytics', component: AnalyticsPage },
                 { path: 'chat', component: ChatPage },
                 { path: 'home/sections', component: HomeSectionsPage },
-                { path: 'themes', component: () => import('./pages/ThemesPage.vue') },
                 { path: 'trailers', component: TrailersPage },
                 { path: 'ppv', component: PpvPage },
                 { path: 'ppv/:type/:id', component: PpvDetailPage },
