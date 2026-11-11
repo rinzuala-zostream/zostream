@@ -23,6 +23,7 @@ const groups = [
         { label: 'Notifications', to: '/tools/notifications', icon: 'bell' },
         { label: 'Chat moderation', to: '/chat', icon: 'message' },
         { label: 'WhatsApp Inbox', to: '/whatsapp', icon: 'message' },
+        { label: 'Seasonal themes', to: '/themes', icon: 'layers' },
         { label: 'App releases', to: '/tools/app-releases', icon: 'settings' },
         { label: 'Official clients', to: '/tools/official-clients', icon: 'monitor' },
         { label: 'Admin tools', to: '/tools/operations', icon: 'settings' },
