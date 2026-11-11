@@ -81,3 +81,44 @@ node node_modules/vite/bin/vite.js build
 ```
 
 Feature tests use an isolated in-memory SQLite database and fake R2 storage. They cover IST boundaries, cache invalidation, overlap/tie resolution, platform filtering, preview/revision conflicts, immutable rollback history, emergency expiry, validation, asset ownership/integrity, safe fallback and real auth middleware identity protection. Vue tests execute the actual setup script with Vue reactivity and intercepted API calls to exercise edit/save/preview/publish/override without touching live services.
+
+## Ready-made presets and card decoration
+
+The manager now lists twelve built-in presets: Default, Christmas, New Year,
+Valentine, Chapchar Kut, Easter, Independence Day, Diwali, Halloween, Pawl Kut,
+Zo Stream Anniversary and Mim Kut. **Use preset** creates an editable draft with
+an automatic unique key and display name. There is no need to enter colors or
+upload art first. Catalog defaults never mutate when a draft is edited. A preset
+never publishes itself. Fixed holiday windows are filled with the ongoing or
+next occurrence; festivals with movable/verified dates and Anniversary require
+an explicit schedule (or an expiring manual override).
+
+`GET /api/v4/admin/themes` adds `theme_presets` (key → name, description,
+requires_dates, document) and `card_presets`. `POST /api/v4/admin/themes` accepts
+`{"preset_key":"christmas"}` without name/key/document; optional explicit fields
+can override that starting draft. Existing custom-draft requests still work.
+
+Drafts and public payloads add optional `cards`:
+
+```json
+{"enabled":true,"preset":"snow","opacity":0.8,"movie_cards":true,"episode_cards":true}
+```
+
+Allowed motifs: none, snow, stars, hearts, woven, petals, tricolor, lights,
+pumpkin, grain, confetti, maize. The API validates all keys, opacity (0–1) and
+booleans. Existing documents without `cards` normalize to disabled, preserving
+their previous appearance. Schema version remains 1: older clients ignore this
+optional field. New Mac clients treat unsupported motifs as disabled.
+
+Mac movie and episode cards render static, pointer-transparent corner motifs
+and thin frames. These also apply to recommendation and episode shelves on
+Details; Home decorations retain their separate Home-only scope. This extends
+the initial document's artwork boundary as requested: source posters/thumbnails
+are retained, while card presentation now has a decorative overlay. Access
+badges, metadata, card dimensions, selection and playback/payment controls keep
+their existing behavior. Admin preview shows movie and episode examples with
+independent toggles. Woven/harvest motifs use simple geometric illustrations;
+review any custom festival artwork separately.
+
+No additional database migration is needed for presets/cards; deploy backend
+and rebuild Vue together. Deploy the updated Mac renderer to display cards.

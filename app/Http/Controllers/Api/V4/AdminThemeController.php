@@ -8,6 +8,7 @@ use App\Models\AppThemeAsset;
 use App\Models\AppThemeAuditLog;
 use App\Models\AppThemeOverride;
 use App\Models\AppThemeVersion;
+use App\Services\Themes\ThemePresetCatalog;
 use App\Services\Themes\ThemeResolver;
 use App\Services\Themes\ThemeSchema;
 use App\Support\Api\V4Response;
@@ -32,6 +33,8 @@ class AdminThemeController extends Controller
             'themes' => AppTheme::orderBy('name')->get(),
             'active' => $resolver->resolve($platform),
             'override' => AppThemeOverride::whereNull('cancelled_at')->where('expires_at', '>', now('UTC'))->latest('id')->first(),
+            'theme_presets' => app(ThemePresetCatalog::class)->all(),
+            'card_presets' => ThemeSchema::CARD_PRESETS,
             'templates' => ['default' => $this->schema->defaults(), 'christmas' => $this->schema->christmas()],
             'platforms' => ThemeSchema::PLATFORMS, 'presets' => ThemeSchema::PRESETS,
         ])->header('Cache-Control', 'no-store');
@@ -55,10 +58,17 @@ class AdminThemeController extends Controller
     public function store(Request $request)
     {
         $input = $request->validate([
-            'key' => ['required', 'string', 'max:80', 'regex:/^[a-z][a-z0-9_]*$/D', 'not_in:default', 'unique:app_themes,key'],
-            'name' => 'required|string|max:120',
-            'document' => 'required|array',
+            'key' => ['required_without:preset_key', 'string', 'max:80', 'regex:/^[a-z][a-z0-9_]*$/D', 'not_in:default', 'unique:app_themes,key'],
+            'name' => 'required_without:preset_key|string|max:120',
+            'document' => 'required_without:preset_key|array',
+            'preset_key' => ['sometimes', 'string', Rule::in(array_keys(app(ThemePresetCatalog::class)->all()))],
         ]);
+        if (isset($input['preset_key'])) {
+            $preset = app(ThemePresetCatalog::class)->all()[$input['preset_key']];
+            $input['name'] = $input['name'] ?? $preset['name'];
+            $input['key'] = $input['key'] ?? $preset['key'].'_'.now('Asia/Kolkata')->year.'_'.Str::lower(Str::random(8));
+            $input['document'] = $input['document'] ?? $preset['document'];
+        }
         $document = $this->schema->validate($input['document'], 0);
         $theme = DB::transaction(function () use ($request, $input, $document) {
             $theme = AppTheme::create(['key' => $input['key'], 'name' => $input['name'], 'draft' => $document, 'created_by' => $this->actor($request)]);

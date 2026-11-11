@@ -240,6 +240,64 @@ class AppThemeTest extends TestCase
         $this->getJson('/api/v4/admin/themes/audit')->assertOk()->assertJsonPath('data.data.0.created_at', '2026-11-30T18:30:00.000000Z');
     }
 
+    public function test_catalog_provides_complete_presets_without_creating_or_publishing_themes(): void
+    {
+        $catalog = $this->getJson('/api/v4/admin/themes')->assertOk()->json('data.theme_presets');
+        $this->assertCount(12, $catalog);
+        $this->assertSame('snow', $catalog['christmas']['document']['cards']['preset']);
+        $this->assertSame('woven', $catalog['chapchar_kut']['document']['cards']['preset']);
+        $this->assertTrue($catalog['chapchar_kut']['requires_dates']);
+        $this->assertSame([], $catalog['chapchar_kut']['document']['schedules']);
+        $this->assertDatabaseCount('app_themes', 0);
+        foreach ($catalog as $preset) {
+            app(ThemeSchema::class)->validate($preset['document'], 0);
+        }
+    }
+
+    public function test_preset_creates_an_editable_draft_with_no_manual_name_or_key(): void
+    {
+        $theme = $this->postJson('/api/v4/admin/themes', ['preset_key' => 'christmas', 'auth_user_id' => 'test-admin'])
+            ->assertCreated()->assertJsonPath('data.name', 'Christmas')->assertJsonPath('data.draft.cards.preset', 'snow')->json('data');
+        $this->assertStringStartsWith('christmas_2026_', $theme['key']);
+        $this->getJson('/api/v4/app/theme', ['X-Platform' => 'macos'])->assertJsonPath('data.theme_key', 'default');
+        $document = $theme['draft'];
+        $document['cards']['preset'] = 'stars';
+        $document['cards']['episode_cards'] = false;
+        $document['tokens']['accent'] = '#112233';
+        $this->patchJson("/api/v4/admin/themes/{$theme['id']}", ['revision' => 1, 'name' => 'My Christmas', 'document' => $document])->assertOk()->assertJsonPath('data.draft.cards.preset', 'stars');
+        $catalog = $this->getJson('/api/v4/admin/themes')->assertOk();
+        $catalog->assertJsonPath('data.theme_presets.christmas.document.cards.preset', 'snow')->assertJsonPath('data.theme_presets.christmas.document.tokens.accent', '#D4AF37');
+        $this->postJson('/api/v4/admin/themes', ['preset_key' => 'unknown'])->assertUnprocessable();
+    }
+
+    public function test_card_config_is_validated_and_reaches_preview_and_publication(): void
+    {
+        $theme = $this->createTheme();
+        $document = $theme['draft'];
+        $document['cards'] = ['enabled' => true, 'preset' => 'hearts', 'opacity' => 0.65, 'movie_cards' => false, 'episode_cards' => true];
+        $theme = $this->patchJson("/api/v4/admin/themes/{$theme['id']}", ['revision' => 1, 'name' => 'Cards', 'document' => $document])->assertOk()->json('data');
+        $this->postJson("/api/v4/admin/themes/{$theme['id']}/preview", ['revision' => $theme['revision'], 'platform' => 'macos'])->assertOk()->assertJsonPath('data.preview.cards.preset', 'hearts');
+        $this->publish($theme);
+        $this->getJson('/api/v4/app/theme', ['X-Platform' => 'macos'])->assertJsonPath('data.cards.preset', 'hearts')->assertJsonPath('data.cards.movie_cards', false)->assertJsonPath('data.cards.episode_cards', true);
+        foreach ([['preset' => '<script>'], ['opacity' => 2], ['arbitrary_html' => 'bad']] as $invalid) {
+            $document['cards'] = array_replace(['enabled' => true, 'preset' => 'hearts', 'opacity' => 0.65, 'movie_cards' => false, 'episode_cards' => true], $invalid);
+            $this->postJson('/api/v4/admin/themes', ['key' => 'bad_card', 'name' => 'Bad', 'document' => $document])->assertUnprocessable();
+        }
+    }
+
+    public function test_old_documents_keep_undecorated_cards_and_cross_year_presets_include_current_window(): void
+    {
+        $document = $this->document();
+        unset($document['cards']);
+        $normalized = app(ThemeSchema::class)->validate($document, 0);
+        $this->assertFalse($normalized['cards']['enabled']);
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2027-01-01T00:00:00+05:30'));
+        $catalog = app(\App\Services\Themes\ThemePresetCatalog::class)->all();
+        $window = $catalog['new_year']['document']['schedules'][0];
+        $this->assertSame('2026-12-30T18:30:00+00:00', $window['start_at']);
+        $this->assertSame('2027-01-07T18:30:00+00:00', $window['end_at']);
+    }
+
     public function test_admin_routes_require_trusted_authentication(): void
     {
         $this->withMiddleware([AuthTokenMiddleware::class, AdminTokenMiddleware::class]);

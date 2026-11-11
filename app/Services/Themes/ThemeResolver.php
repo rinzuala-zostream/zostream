@@ -18,7 +18,7 @@ final class ThemeResolver
         $now = $clock ?? CarbonImmutable::now('UTC');
         try {
             $generation = DB::table('app_theme_controls')->where('id', 1)->value('revision');
-            $cacheKey = 'app-themes:v1:'.$generation.':'.$platform;
+            $cacheKey = 'app-themes:v2:'.$generation.':'.$platform;
             $cached = Cache::get($cacheKey);
             if (is_array($cached) && ($cached['valid_until'] === null || CarbonImmutable::parse($cached['valid_until'])->greaterThan($now))) {
                 return $cached;

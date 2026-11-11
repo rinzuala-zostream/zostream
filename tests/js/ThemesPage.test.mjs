@@ -5,7 +5,7 @@ import { parse } from '@vue/compiler-sfc';
 import { computed, ref, watch, nextTick } from 'vue';
 
 const source = parse(readFileSync(new URL('../../resources/js/admin/pages/ThemesPage.vue', import.meta.url), 'utf8')).descriptor.scriptSetup.content;
-const setup = new Function('computed', 'ref', 'watch', 'onMounted', 'api', 'window', `${source.replace(/^import .+;\n/gm, '')}\nreturn { form, library, detail, dirty, error, notice, preview, approved, reason, platform, selectTheme, saveDraft, previewDraft, mutateTheme, overrideExpiry, overrideTheme, setOverride, toIst, fromIst };`);
+const setup = new Function('computed', 'ref', 'watch', 'onMounted', 'api', 'window', `${source.replace(/^import .+;\n/gm, '')}\nreturn { form, library, detail, dirty, error, notice, preview, approved, reason, platform, selectTheme, saveDraft, previewDraft, mutateTheme, overrideExpiry, overrideTheme, setOverride, createPreset, toIst, fromIst };`);
 const clone = value => JSON.parse(JSON.stringify(value));
 const document = {
     priority: 80, platforms: ['web', 'ios'],
@@ -78,4 +78,31 @@ test('theme dates remain IST regardless of the host timezone, and edits invalida
     await nextTick();
     assert.equal(vm.preview.value, null);
     assert.equal(vm.approved.value, false);
+});
+
+
+test('ready-made preset creates a draft without a manually entered key, and old drafts get safe card controls', async () => {
+    let created = false;
+    const mounted = [];
+    const api = async (path, options = {}) => {
+        if (path.startsWith('/admin/themes?')) return { themes: [], theme_presets: {}, templates: {}, platforms: ['web'], presets: [], card_presets: ['none', 'snow'] };
+        if (path.startsWith('/admin/themes/audit')) return { data: [], current_page: 1, last_page: 1 };
+        if (path === '/admin/themes') {
+            assert.deepEqual(options.body, { preset_key: 'christmas' });
+            created = true;
+            return { id: 7 };
+        }
+        if (path === '/admin/themes/7') return { theme: { id: 7, name: 'Christmas', revision: 1, draft: clone(document) }, versions: [], assets: [], audit: [] };
+        throw Error(`Unexpected path ${path}`);
+    };
+    const vm = setup(computed, ref, watch, callback => mounted.push(callback), api, { confirm: () => true });
+    await mounted[0]();
+    await vm.createPreset('christmas');
+    assert.equal(vm.error.value, '');
+    assert.equal(created, true);
+    assert.equal(vm.form.value.name, 'Christmas');
+    assert.equal(vm.form.value.document.cards.enabled, false);
+    vm.form.value.document.cards.enabled = true;
+    vm.form.value.document.cards.preset = 'snow';
+    assert.equal(vm.dirty.value, true);
 });
