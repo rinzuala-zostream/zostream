@@ -2,8 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Http\Controllers\Api\V4\DesktopReleaseUploadController;
 use App\Http\Controllers\New\AppUpdateController;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Mockery;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
@@ -64,6 +67,26 @@ class DesktopAppReleaseTest extends TestCase
         $controller = $this->controller($values);
         $this->assertSame(404, $controller->show('windows_update')->getStatusCode());
         $this->assertSame(['tv_update' => ['v' => 42]], $values);
+    }
+
+    public function test_uploaded_installer_url_is_published_only_when_the_release_is_saved(): void
+    {
+        config(['filesystems.disks.r2.url' => 'https://downloads.example.test']);
+        Storage::fake('r2', ['url' => 'https://downloads.example.test']);
+        $values = [];
+        $controller = $this->controller($values);
+        $response = (new DesktopReleaseUploadController)(Request::create('/', 'POST', [], [], [
+            'file' => UploadedFile::fake()->create('ZoStream.dmg', 10),
+        ]), 'macos_update');
+        $this->assertSame(201, $response->getStatusCode());
+        $url = $response->getData(true)['data']['url'];
+        $this->assertSame([], $values);
+        $saved = $controller->update(Request::create('/', 'PUT', [
+            'version' => '1.2.3', 'url' => $url, 'force' => true, 'enabled' => true,
+        ]), 'macos_update');
+        $this->assertSame(200, $saved->getStatusCode());
+        $this->assertSame($url, $controller->show('macos_update')->getData(true)['data']['url']);
+        $this->assertArrayNotHasKey('windows_update', $values);
     }
 
     public function test_desktop_versions_and_forced_download_urls_are_validated_before_writing(): void

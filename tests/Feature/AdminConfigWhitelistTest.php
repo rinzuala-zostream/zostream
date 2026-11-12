@@ -98,7 +98,8 @@ class AdminConfigWhitelistTest extends TestCase
             $action = $route->getActionName();
             $writesConfig = str_contains($action, 'AdminRealtimeConfigController@')
                 || str_ends_with($action, 'AdminAnalyticsController@updateConfig')
-                || str_ends_with($action, 'AppUpdateController@update');
+                || str_ends_with($action, 'AppUpdateController@update')
+                || str_ends_with($action, 'DesktopReleaseUploadController');
             if (! $writesConfig || ! array_intersect(['PUT', 'POST', 'DELETE'], $route->methods())) {
                 continue;
             }
@@ -106,6 +107,6 @@ class AdminConfigWhitelistTest extends TestCase
             $this->assertContains('auth.token', $route->gatherMiddleware(), $route->uri());
             $this->assertContains('admin.config-whitelist', $route->gatherMiddleware(), $route->uri());
         }
-        $this->assertSame(11, $count);
+        $this->assertSame(12, $count);
     }
 }

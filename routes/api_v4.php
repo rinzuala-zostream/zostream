@@ -467,6 +467,8 @@ Route::prefix('v4')
                     Route::delete('/poll-options/{optionId}', [PollController::class, 'destroyOption']);
 
                     Route::put('/app-releases/{platform}', [AppUpdateController::class, 'update'])->middleware('admin.config-whitelist');
+                    Route::post('/app-releases/{platform}/upload', \App\Http\Controllers\Api\V4\DesktopReleaseUploadController::class)
+                        ->middleware('admin.config-whitelist');
                     Route::post('/notifications/push', [FCMNotificationController::class, 'send']);
                     Route::post('/whatsapp/send', [AdminWhatsAppController::class, 'send']);
                     Route::get('/whatsapp/settings', [AdminWhatsAppInboxController::class, 'settings']);

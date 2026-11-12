@@ -1,10 +1,11 @@
 <script setup>
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import PageHeader from '../components/PageHeader.vue';
 import StatusPanel from '../components/StatusPanel.vue';
 import { api } from '../lib/api';
 import { deviceTypes, desktopPlatforms, platformLabel } from '../lib/platforms';
+import { releaseFileError, releaseUploadExtensions } from '../lib/releases';
 
 const route = useRoute(); const tool = computed(() => route.params.tool);
 const busy = ref(false); const releaseLoading = ref(false); const error = ref(''); const notice = ref(''); const clients = ref([]);
@@ -14,6 +15,10 @@ const otpDiagnostic = reactive({ phone_number: '', country_code: '+91', user_id:
 const revealedOtp = ref('');
 const push = reactive({ title: '', body: '', topic: 'all', token: '', image: '', key: '', data: '{}' });
 const release = reactive({ platform: 'update', version: '', enabled: true, force: false, url: '' });
+const releaseFile = ref(null); const releaseFileInput = ref(null); const releaseUploading = ref(false);
+let releaseUploadAbort = null;
+const releaseExtensions = computed(() => releaseUploadExtensions[release.platform] || []);
+const releaseAccept = computed(() => releaseExtensions.value.map(value => `.${value}`).join(','));
 const wa = reactive({ to: '', type: 'text', message: '', template_name: '', template_params: '' });
 const warning = reactive({ txt: '', platform: 'all', isShow: false, isCancelable: true, isShowInLatest: false });
 const scroll = reactive({ text: '', show: false });
@@ -41,6 +46,8 @@ async function loadNotifications() {
     catch (reason) { error.value = reason.message; }
 }
 async function loadRelease() {
+    releaseFile.value = null;
+    if (releaseFileInput.value) releaseFileInput.value.value = '';
     releaseLoading.value = true; error.value = '';
     const platform = release.platform;
     Object.assign(release, { version: '', enabled: true, force: false, url: '' });
@@ -49,7 +56,8 @@ async function loadRelease() {
     finally { releaseLoading.value = false; }
 }
 const saveRelease = () => {
-    if (busy.value || releaseLoading.value) return;
+    if (busy.value || releaseLoading.value || releaseUploading.value) return;
+    if (releaseFile.value) { error.value = 'Upload the selected installer before saving the release.'; return; }
     return run(async () => {
     const versionField = { update: 'v_code', ios_update: 'v_code', lg_tv_update: 'version', sam_tv_update: 'version', tv_update: 'v', windows_update: 'version', macos_update: 'version' }[release.platform];
     const numeric = ['update', 'ios_update', 'tv_update'].includes(release.platform);
@@ -60,6 +68,40 @@ const saveRelease = () => {
     return r?.message || 'Release saved to Firebase.';
     });
 };
+function chooseReleaseFile(event) {
+    const file = event.target.files?.[0] || null;
+    error.value = file ? releaseFileError(release.platform, file) : '';
+    releaseFile.value = error.value ? null : file;
+    if (error.value) event.target.value = '';
+}
+async function uploadRelease() {
+    if (busy.value || releaseLoading.value || releaseUploading.value) return;
+    error.value = releaseFileError(release.platform, releaseFile.value);
+    if (error.value) return;
+    const platform = release.platform;
+    const abort = new AbortController(); releaseUploadAbort = abort;
+    const form = new FormData(); form.append('file', releaseFile.value);
+    releaseUploading.value = true; notice.value = '';
+    try {
+        const result = await api(`/admin/app-releases/${platform}/upload`, { method: 'POST', body: form, signal: abort.signal });
+        if (release.platform !== platform || tool.value !== 'app-releases' || abort.signal.aborted) return;
+        const url = result?.url;
+        if (!url || new URL(url).protocol !== 'https:') throw new Error('The upload did not return a download URL. Please try again.');
+        release.url = url;
+        releaseFile.value = null;
+        if (releaseFileInput.value) releaseFileInput.value.value = '';
+        notice.value = 'Installer uploaded. Download URL is ready. Save the release to publish it.';
+    } catch (reason) {
+        if (!abort.signal.aborted) error.value = reason.status === 413 ? 'The server upload limit was exceeded. Choose a smaller installer or increase the server upload limit.' : reason.message;
+    } finally {
+        if (releaseUploadAbort === abort) { releaseUploading.value = false; releaseUploadAbort = null; }
+    }
+}
+async function copyReleaseUrl() {
+    try { await navigator.clipboard.writeText(release.url); notice.value = 'Download URL copied.'; }
+    catch { error.value = 'Could not copy automatically. Select and copy the Download URL above.'; }
+}
+onBeforeUnmount(() => releaseUploadAbort?.abort());
 async function loadClients() { try { clients.value = await api('/admin/official-clients') || []; } catch (reason) { error.value = reason.message; } }
 function editClient(value) { Object.assign(client, value, { verification_enabled: value.verification_enabled !== false, certificate_sha256: Array.isArray(value.certificate_sha256) ? value.certificate_sha256.join('\n') : value.certificate_sha256 || '', allowed_origins: Array.isArray(value.allowed_origins) ? value.allowed_origins.join('\n') : '', metadata: JSON.stringify(value.metadata || {}, null, 2) }); }
 function resetClient() { Object.assign(client, { id: '', platform: 'android', name: '', enabled: true, verification_enabled: true, verification_mode: 'manual', app_identifier: '', certificate_sha256: '', team_id: '', key_id: '', build_id: '', min_version: '', latest_version: '', api_base_url: '', api_version: '4', allowed_origins: '', metadata: '{}' }); }
@@ -72,6 +114,7 @@ const deleteClient = (id) => run(async () => { if (!confirm('Delete this officia
 watch(() => release.platform, loadRelease);
 watch(() => device.device_type, () => { device.platform = ''; });
 watch(tool, async () => {
+    releaseUploadAbort?.abort();
     error.value = ''; notice.value = '';
     if (tool.value === 'app-releases') await loadRelease();
     if (tool.value === 'notifications') await loadNotifications();
@@ -94,7 +137,28 @@ watch(tool, async () => {
             <form class="admin-panel admin-tool" @submit.prevent="saveWarning"><header><div><p>IN-APP WARNING</p><h2>Warning banner</h2></div></header><label>HTML / message<textarea v-model="warning.txt" required /></label><label>Platform<select v-model="warning.platform"><option>all</option><option>android</option><option>ios</option><option v-for="item in desktopPlatforms" :key="item.value" :value="item.value">{{ item.label }}</option></select></label><label><input v-model="warning.isShow" type="checkbox"> Show warning</label><label><input v-model="warning.isCancelable" type="checkbox"> User can dismiss</label><label><input v-model="warning.isShowInLatest" type="checkbox"> Show in latest version</label><div class="admin-tool-actions"><button type="button" class="admin-danger" :disabled="busy" @click="deleteWarning">Delete</button><button class="admin-primary" :disabled="busy">Save warning</button></div></form>
             <form class="admin-panel admin-tool" @submit.prevent="saveScroll"><header><div><p>SCROLLING TEXT</p><h2>App ticker</h2></div></header><label>Text<textarea v-model="scroll.text" required /></label><label><input v-model="scroll.show" type="checkbox"> Show scrolling text</label><div class="admin-tool-actions"><button type="button" class="admin-danger" :disabled="busy" @click="deleteScroll">Delete</button><button class="admin-primary" :disabled="busy">Save scrolling text</button></div></form>
         </div>
-        <form v-else-if="tool === 'app-releases'" class="admin-panel admin-editor" @submit.prevent="saveRelease"><div class="admin-form-grid"><label><span>Platform</span><select v-model="release.platform" :disabled="busy || releaseLoading"><option value="update">Android</option><option value="ios_update">iOS</option><option value="lg_tv_update">LG TV</option><option value="sam_tv_update">Samsung TV</option><option value="tv_update">Android TV</option><option value="windows_update">Windows</option><option value="macos_update">Mac (macOS)</option></select></label><label><span>Version</span><input v-model="release.version" :disabled="releaseLoading" :placeholder="['windows_update', 'macos_update'].includes(release.platform) ? 'e.g. 0.1.0' : 'Version'" required></label><label class="wide"><span>Download URL</span><input v-model="release.url" :disabled="releaseLoading" type="url"></label><label class="check"><input v-model="release.enabled" type="checkbox" :disabled="busy || releaseLoading" @change="saveRelease"><span>Enabled</span></label><label class="check"><input v-model="release.force" type="checkbox" :disabled="busy || releaseLoading"><span>Force update</span></label></div><footer><button class="admin-primary" :disabled="busy || releaseLoading">{{ releaseLoading ? 'Loading…' : busy ? 'Saving…' : 'Save release' }}</button></footer></form>
+        <form v-else-if="tool === 'app-releases'" class="admin-panel admin-editor" @submit.prevent="saveRelease">
+            <div class="admin-form-grid">
+                <label><span>Platform</span><select v-model="release.platform" :disabled="busy || releaseLoading || releaseUploading"><option value="update">Android</option><option value="ios_update">iOS</option><option value="lg_tv_update">LG TV</option><option value="sam_tv_update">Samsung TV</option><option value="tv_update">Android TV</option><option value="windows_update">Windows</option><option value="macos_update">Mac (macOS)</option></select></label>
+                <label><span>Version</span><input v-model="release.version" :disabled="busy || releaseLoading || releaseUploading" :placeholder="releaseExtensions.length ? 'e.g. 0.1.0' : 'Version'" required></label>
+                <div v-if="releaseExtensions.length" class="wide">
+                    <label><span>Installer file</span><input ref="releaseFileInput" type="file" :accept="releaseAccept" :disabled="busy || releaseLoading || releaseUploading" @change="chooseReleaseFile"></label>
+                    <p class="admin-tool-note">{{ releaseExtensions.map(value => `.${value}`).join(', ') }} · Up to 512 MB</p>
+                    <div class="admin-tool-actions">
+                        <button type="button" class="admin-secondary" :disabled="!releaseFile || busy || releaseLoading || releaseUploading" @click="uploadRelease">{{ releaseUploading ? 'Uploading…' : 'Upload installer' }}</button>
+                        <span v-if="releaseFile" role="status">{{ releaseFile.name }} · {{ (releaseFile.size / 1024 / 1024).toFixed(1) }} MB</span>
+                    </div>
+                </div>
+                <label class="wide"><span>Download URL</span><input v-model="release.url" :disabled="busy || releaseLoading || releaseUploading" type="url"></label>
+                <div v-if="releaseExtensions.length && release.url.startsWith('https://')" class="wide admin-tool-actions">
+                    <button type="button" class="admin-secondary" :disabled="busy || releaseLoading || releaseUploading" @click="copyReleaseUrl">Copy URL</button>
+                    <a :href="release.url" target="_blank" rel="noopener noreferrer">Download installer</a>
+                </div>
+                <label class="check"><input v-model="release.enabled" type="checkbox" :disabled="busy || releaseLoading || releaseUploading" @change="saveRelease"><span>Enabled</span></label>
+                <label class="check"><input v-model="release.force" type="checkbox" :disabled="busy || releaseLoading || releaseUploading"><span>Force update</span></label>
+            </div>
+            <footer><button class="admin-primary" :disabled="busy || releaseLoading || releaseUploading">{{ releaseLoading ? 'Loading…' : releaseUploading ? 'Uploading…' : busy ? 'Saving…' : 'Save release' }}</button></footer>
+        </form>
         <div v-else class="admin-clients-layout">
             <form class="admin-panel admin-editor" @submit.prevent="saveClient"><div class="admin-form-grid"><label><span>Platform</span><input v-model="client.platform" list="official-client-platforms" required><datalist id="official-client-platforms"><option value="android"/><option value="android-tv"/><option value="ios"/><option value="web"/><option value="webos"/><option value="tizen"/><option value="windows"/><option value="macos"/></datalist></label><label><span>Name</span><input v-model="client.name" required></label><label><span>Verification mode</span><input v-model="client.verification_mode" required></label><label><span>App identifier</span><input v-model="client.app_identifier"></label><label><span>Team ID</span><input v-model="client.team_id"></label><label><span>Key ID</span><input v-model="client.key_id"></label><label><span>Build ID</span><input v-model="client.build_id"></label><label><span>Minimum version</span><input v-model="client.min_version"></label><label><span>Latest version</span><input v-model="client.latest_version"></label><label><span>API version</span><input v-model="client.api_version"></label><label class="wide"><span>Certificate SHA-256 (one per line)</span><textarea v-model="client.certificate_sha256" /></label><label class="wide"><span>Allowed origins (one per line)</span><textarea v-model="client.allowed_origins" /></label><label class="wide"><span>API base URL</span><input v-model="client.api_base_url" type="url"></label><label class="wide"><span>Metadata JSON</span><textarea v-model="client.metadata" /></label><label class="check"><input v-model="client.enabled" type="checkbox"><span>Client configuration enabled</span></label><label class="check"><input v-model="client.verification_enabled" type="checkbox"><span>Enforce app verification</span></label></div><footer><button v-if="client.id" type="button" class="admin-secondary" @click="resetClient">Cancel edit</button><button class="admin-primary" :disabled="busy">{{ client.id ? 'Save changes' : 'Add official client' }}</button></footer></form>
             <section class="admin-panel admin-client-list"><article v-for="item in clients" :key="item.id"><div><p>{{ platformLabel(item.platform) }}</p><h3>{{ item.name }}</h3><span>{{ item.app_identifier || item.verification_mode }}</span></div><div><button class="admin-secondary" @click="editClient(item)">Edit</button><button class="admin-danger" @click="deleteClient(item.id)">Delete</button></div></article><p v-if="!clients.length" class="admin-empty">No official clients configured.</p></section>
