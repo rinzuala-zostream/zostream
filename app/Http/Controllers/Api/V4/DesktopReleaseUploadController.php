@@ -23,6 +23,19 @@ class DesktopReleaseUploadController extends Controller
             return V4Response::error('INVALID_RELEASE_PLATFORM', 'Installer uploads are available for Mac and Windows only.', 422);
         }
 
+        $file = $request->file('file');
+        if ($file && ! $file->isValid()) {
+            if (in_array($file->getError(), [UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE], true)) {
+                return V4Response::error(
+                    'RELEASE_UPLOAD_LIMIT_EXCEEDED',
+                    'The server rejected this installer because it exceeds the configured upload limit. Set PHP upload_max_filesize to at least 512M and post_max_size to at least 520M.',
+                    413,
+                );
+            }
+
+            return V4Response::error('RELEASE_UPLOAD_FAILED', 'The installer did not reach the server intact. Check the connection and server upload configuration, then try again.', 422);
+        }
+
         $validator = Validator::make($request->all(), [
             // Installer MIME types vary across OS/browser combinations. Restrict
             // the extension and size, and serve from object storage as a download.

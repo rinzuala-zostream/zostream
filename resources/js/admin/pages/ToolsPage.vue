@@ -92,7 +92,7 @@ async function uploadRelease() {
         if (releaseFileInput.value) releaseFileInput.value.value = '';
         notice.value = 'Installer uploaded. Download URL is ready. Save the release to publish it.';
     } catch (reason) {
-        if (!abort.signal.aborted) error.value = reason.status === 413 ? 'The server upload limit was exceeded. Choose a smaller installer or increase the server upload limit.' : reason.message;
+        if (!abort.signal.aborted) error.value = reason.message;
     } finally {
         if (releaseUploadAbort === abort) { releaseUploading.value = false; releaseUploadAbort = null; }
     }
