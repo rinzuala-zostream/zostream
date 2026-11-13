@@ -1,6 +1,19 @@
 <script setup>
+import { onMounted, ref } from 'vue';
 import AppIcon from '../AppIcon.vue';
 import { links } from '../../data/landing';
+import { api } from '../../admin/lib/api';
+
+const macRelease = ref(null);
+
+onMounted(async () => {
+    try {
+        const response = await api('/app-releases/macos_update');
+        macRelease.value = response?.data || response;
+    } catch {
+        macRelease.value = null;
+    }
+});
 </script>
 
 <template>
@@ -14,7 +27,7 @@ import { links } from '../../data/landing';
 
         <section class="device-options section-pad">
             <div class="device-heading" data-reveal><span>WATCH YOUR WAY</span><h2>Device tinah.<br /><b>Experience pakhat.</b></h2></div>
-            <div class="device-option-grid" data-reveal><article class="available"><i>✓</i><span>AVAILABLE NOW</span><h3>Android</h3><p>Phone leh tablet atan official Zo Stream app.</p><a :href="links.playStore" target="_blank" rel="noreferrer">Open Google Play ↗</a></article><article><i>◌</i><span>APP STORE</span><h3>iPhone & iPad</h3><p>iOS download link update turin kan buatsaih mek.</p><small>Coming soon</small></article><article><i>↗</i><span>NO INSTALL NEEDED</span><h3>Web browser</h3><p>Modern browser atangin Zo Stream service access rawh.</p><a href="/">Explore Zo Stream ↗</a></article><article><i>▣</i><span>BIG SCREEN</span><h3>Smart TV</h3><p>Supported TV devices-ah account hmangin sign in rawh.</p><a href="/contact-us">Get setup help ↗</a></article></div>
+            <div class="device-option-grid" data-reveal><article class="available"><i>✓</i><span>AVAILABLE NOW</span><h3>Android</h3><p>Phone leh tablet atan official Zo Stream app.</p><a :href="links.playStore" target="_blank" rel="noreferrer">Open Google Play ↗</a></article><article><i>◌</i><span>APP STORE</span><h3>iPhone & iPad</h3><p>iOS download link update turin kan buatsaih mek.</p><small>Coming soon</small></article><article><i>↗</i><span>NO INSTALL NEEDED</span><h3>Web browser</h3><p>Modern browser atangin Zo Stream service access rawh.</p><a href="/">Explore Zo Stream ↗</a></article><article><i>▣</i><span>BIG SCREEN</span><h3>Smart TV</h3><p>Supported TV devices-ah account hmangin sign in rawh.</p><a href="/contact-us">Get setup help ↗</a></article><article :class="{ available: macRelease?.enabled && macRelease?.url }"><i>{{ macRelease?.enabled && macRelease?.url ? '✓' : '' }}</i><span>{{ macRelease?.enabled && macRelease?.url ? 'AVAILABLE NOW' : 'MACOS APP' }}</span><h3>Mac</h3><p>Mac computer-ah Zo Stream app install la, i account hmangin en rawh.</p><a v-if="macRelease?.enabled && macRelease?.url" :href="macRelease.url">Download macOS app{{ macRelease.version ? ` · v${macRelease.version}` : '' }} ↗</a><small v-else>Coming soon</small></article></div>
         </section>
 
         <section class="install-guide section-pad" data-reveal><header><span>QUICK START</span><h2>Minute khat lek.</h2></header><ol><li><span>01</span><div><h3>Store open rawh</h3><p>Google Play-ah Zo Stream page open rawh.</p></div></li><li><span>02</span><div><h3>Install rawh</h3><p>Install button hmet la, download zawh nghak rawh.</p></div></li><li><span>03</span><div><h3>Sign in & enjoy</h3><p>I phone number hmangin sign in la, streaming tan rawh.</p></div></li></ol></section>
