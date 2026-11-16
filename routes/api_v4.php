@@ -30,7 +30,8 @@ use App\Http\Controllers\Api\V4\QrSessionController as V4QrSessionController;
 use App\Http\Controllers\Api\V4\SupportController;
 use App\Http\Controllers\Api\V4\WebSessionController;
 use App\Http\Controllers\Api\V4\WhatsAppWebhookController;
-use App\Http\Controllers\Channel\ChannelController;
+use App\Http\Controllers\Api\V4\AdminChannelController;
+use App\Http\Controllers\Api\V4\ChannelCatalogController;
 use App\Http\Controllers\FCMNotificationController;
 use App\Http\Controllers\HlsFolderController;
 use App\Http\Controllers\New\AdminWhatsAppController;
@@ -154,10 +155,12 @@ Route::prefix('v4')
         Route::post('/webhooks/whatsapp', [WhatsAppWebhookController::class, 'receive'])
             ->middleware('throttle:300,1');
 
-        Route::get('/channels', [ChannelController::class, 'index']);
-        Route::get('/channels/{channelId}', [ChannelController::class, 'show']);
-        Route::get('/channels/{channelId}/plans', [ChannelController::class, 'plans']);
-        Route::get('/channels/{channelId}/contents', [ChannelController::class, 'contents']);
+        Route::get('/channels', [ChannelCatalogController::class, 'index']);
+        Route::get('/channels/{channelId}', [ChannelCatalogController::class, 'show']);
+        Route::get('/channels/{channelId}/plans', [ChannelCatalogController::class, 'plans']);
+        Route::get('/channels/{channelId}/contents', [ChannelCatalogController::class, 'contents']);
+        Route::get('/channel-plans/{planId}', [ChannelCatalogController::class, 'showPlan']);
+        Route::get('/channel-contents/{contentId}', [ChannelCatalogController::class, 'showContent']);
 
         // A TV creates and polls a login session before it has an access token.
         // Possession of the high-entropy QR token authorizes these two operations.
@@ -169,6 +172,17 @@ Route::prefix('v4')
             ->middleware('throttle:20,1');
 
         Route::middleware('auth.token')->group(function () {
+            Route::prefix('creator')->middleware('throttle:60,1')->group(function () {
+                Route::get('/channels', [\App\Http\Controllers\Api\V4\CreatorChannelController::class, 'index']);
+                Route::get('/channels/{channelId}', [\App\Http\Controllers\Api\V4\CreatorChannelController::class, 'show']);
+                Route::put('/channels/{channelId}', [\App\Http\Controllers\Api\V4\CreatorChannelController::class, 'update']);
+                Route::get('/channels/{channelId}/plans', [\App\Http\Controllers\Api\V4\CreatorChannelController::class, 'plans']);
+                Route::get('/channels/{channelId}/contents', [\App\Http\Controllers\Api\V4\CreatorChannelController::class, 'contents']);
+                Route::post('/channels/{channelId}/contents', [\App\Http\Controllers\Api\V4\CreatorChannelController::class, 'storeContent']);
+                Route::put('/channels/{channelId}/contents/{contentId}', [\App\Http\Controllers\Api\V4\CreatorChannelController::class, 'updateContent']);
+                Route::delete('/channels/{channelId}/contents/{contentId}', [\App\Http\Controllers\Api\V4\CreatorChannelController::class, 'withdrawContent']);
+            });
+
             Route::post('/account/push-token', [\App\Http\Controllers\Api\V4\ChatController::class, 'registerPushToken'])->middleware('throttle:30,1');
             Route::prefix('chat')->group(function () {
                 Route::get('/invitation-links/{token}', [\App\Http\Controllers\Api\V4\ChatInvitationLinkController::class, 'show'])->where('token', '[A-Za-z0-9]{64}')->middleware(\App\Http\Middleware\ChatThrottle::class.':30');
@@ -342,6 +356,8 @@ Route::prefix('v4')
 
             Route::get('/offline/access', [OfflineController::class, 'requestAccess']);
 
+            Route::get('/channels/{channelId}/subscription', [ChannelSubscriptionController::class, 'show']);
+
             Route::post('/channels/{channelId}/subscriptions', [ChannelSubscriptionController::class, 'store'])
                 ->middleware('owner.device');
             Route::delete('/channels/{channelId}/subscriptions', [ChannelSubscriptionController::class, 'destroy'])
@@ -494,15 +510,31 @@ Route::prefix('v4')
 
                     Route::get('/payments/user/{userId}', [PaymentHistoryController::class, 'getByUser']);
 
-                    Route::post('/channels', [ChannelController::class, 'store']);
-                    Route::put('/channels/{channelId}', [ChannelController::class, 'update']);
-                    Route::delete('/channels/{channelId}', [ChannelController::class, 'destroy']);
-                    Route::post('/channels/{channelId}/plans', [ChannelController::class, 'storePlan']);
-                    Route::put('/channel-plans/{planId}', [ChannelController::class, 'updatePlan']);
-                    Route::delete('/channel-plans/{planId}', [ChannelController::class, 'destroyPlan']);
-                    Route::post('/channels/{channelId}/contents', [ChannelController::class, 'storeContent']);
-                    Route::put('/channel-contents/{contentId}', [ChannelController::class, 'updateContent']);
-                    Route::delete('/channel-contents/{contentId}', [ChannelController::class, 'destroyContent']);
+                    Route::get('/channels', [AdminChannelController::class, 'index']);
+                    Route::get('/channels/{channelId}', [AdminChannelController::class, 'show']);
+                    Route::get('/channels/{channelId}/plans', [AdminChannelController::class, 'plans']);
+                    Route::get('/channels/{channelId}/contents', [AdminChannelController::class, 'contents']);
+                    Route::get('/channels/{channelId}/subscribers', [AdminChannelController::class, 'subscribers']);
+                    Route::get('/channels/{channelId}/subscription-history', [AdminChannelController::class, 'subscriptionHistory']);
+                    Route::delete('/channels/{channelId}/subscribers/{userId}', [AdminChannelController::class, 'cancelSubscription']);
+                    Route::post('/channels', [AdminChannelController::class, 'store']);
+                    Route::put('/channels/{channelId}', [AdminChannelController::class, 'update']);
+                    Route::delete('/channels/{channelId}', [AdminChannelController::class, 'destroy']);
+                    Route::post('/channels/{channelId}/plans', [AdminChannelController::class, 'storePlan']);
+                    Route::get('/channel-plans/{planId}', [AdminChannelController::class, 'showPlan']);
+                    Route::put('/channel-plans/{planId}', [AdminChannelController::class, 'updatePlan']);
+                    Route::delete('/channel-plans/{planId}', [AdminChannelController::class, 'destroyPlan']);
+                    Route::post('/channels/{channelId}/contents', [AdminChannelController::class, 'storeContent']);
+                    Route::get('/channel-contents/{contentId}', [AdminChannelController::class, 'showContent']);
+                    Route::put('/channel-contents/{contentId}', [AdminChannelController::class, 'updateContent']);
+                    Route::delete('/channel-contents/{contentId}', [AdminChannelController::class, 'destroyContent']);
+                    Route::post('/channel-contents/{contentId}/media', [AdminChannelController::class, 'storeMedia']);
+                    Route::put('/channel-media/{mediaId}', [AdminChannelController::class, 'updateMedia']);
+                    Route::delete('/channel-media/{mediaId}', [AdminChannelController::class, 'destroyMedia']);
+                    Route::put('/channel-contents/{contentId}/ppv', [AdminChannelController::class, 'upsertPpv']);
+                    Route::delete('/channel-contents/{contentId}/ppv', [AdminChannelController::class, 'destroyPpv']);
+                    Route::get('/channel-contents/{contentId}/rental-history', [AdminChannelController::class, 'rentalHistory']);
+                    Route::delete('/channel-contents/{contentId}/rentals/{userId}', [AdminChannelController::class, 'cancelRental']);
 
                     Route::put('/support/tickets/{id}/status', [CustomerSupportController::class, 'updateStatus']);
                     Route::get('/support/tickets', [CustomerSupportController::class, 'index']);

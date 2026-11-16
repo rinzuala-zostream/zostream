@@ -20,6 +20,9 @@ import TrailersPage from './pages/TrailersPage.vue';
 import PpvPage from './pages/PpvPage.vue';
 import PpvDetailPage from './pages/PpvDetailPage.vue';
 
+const ChannelsPage = () => import('./pages/ChannelsPage.vue');
+const ChannelDetailPage = () => import('./pages/ChannelDetailPage.vue');
+
 const AnalyticsPage = () => import('./pages/AnalyticsPage.vue');
 const ChatPage = () => import('./pages/ChatPage.vue');
 
@@ -49,6 +52,8 @@ const router = createRouter({
                 { path: 'chat', component: ChatPage },
                 { path: 'home/sections', component: HomeSectionsPage },
                 { path: 'trailers', component: TrailersPage },
+                { path: 'channels', component: ChannelsPage },
+                { path: 'channels/:id', component: ChannelDetailPage },
                 { path: 'ppv', component: PpvPage },
                 { path: 'ppv/:type/:id', component: PpvDetailPage },
                 { path: 'manage/:resource', component: ResourceListPage },

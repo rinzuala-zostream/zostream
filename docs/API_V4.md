@@ -98,6 +98,11 @@ playback, billing or channel-subscription operations.
 | `/admin` | protected operational APIs |
 | `/webhooks` | signed provider callbacks |
 
+Channel discovery, membership state and administrator operations are documented
+in [CHANNEL_API_V4.md](CHANNEL_API_V4.md). Channel responses now use native V4
+`data` payloads. New channel purchases remain disabled until verified channel
+checkout is integrated; main Zo Stream billing is unaffected.
+
 ## Playback lifecycle
 
 Playback uses one authenticated lifecycle across Android, iOS and Web:

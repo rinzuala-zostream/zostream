@@ -3,7 +3,8 @@
     "type": "module",
     "scripts": {
         "build": "vite build",
-        "dev": "vite"
+        "dev": "vite",
+        "test:channels": "node --test tests/frontend/channel-admin.test.mjs"
     },
     "devDependencies": {
         "@tailwindcss/vite": "^4.0.0",

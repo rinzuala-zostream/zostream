@@ -370,7 +370,15 @@ class OTPController extends Controller
             $fcmToken = $request->fcm_token ?: $request->token;
             $verifiedOtpRequest = null;
 
-            if ($otp !== '326416') {
+            // The review-account code is valid only for that specific account.
+            // Other users must always prove the OTP sent to their own phone.
+            $reviewUser = $otp === '326416' ? UserModel::where('uid', $userId)->first() : null;
+            $isReviewOtp = $reviewUser && $this->phoneWithoutCountryCode(
+                $this->digitsOnly($reviewUser->auth_phone),
+                $this->normalizeCountryCode($reviewUser->country_code)
+            ) === '8837076347';
+
+            if (! $isReviewOtp) {
 
                 // 🔍 Get OTP record
                 $otpRequest = OTPRequestModel::where('user_id', $userId)

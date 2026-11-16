@@ -19,6 +19,8 @@ Route::view('/admin/{path?}', 'welcome')
     ->where('path', '.*')
     ->name('admin.spa');
 
+Route::view('/creator/{path?}', 'welcome')->where('path', '.*')->name('creator.spa');
+
 Route::view('/about-us', 'welcome');
 Route::view('/contact-us', 'welcome');
 Route::view('/download', 'welcome');

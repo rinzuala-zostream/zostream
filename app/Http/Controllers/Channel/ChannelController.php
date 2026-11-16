@@ -12,9 +12,9 @@ use App\Models\Channel\ChannelContentRentalHistory;
 use App\Models\Channel\ChannelSubscriber;
 use App\Models\Channel\ChannelSubscriptionHistory;
 use App\Models\Channel\ChannelSubscriptionPlan;
+use App\Support\Api\V4Response;
 use Exception;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -207,7 +207,7 @@ class ChannelController extends Controller
             return $this->notFound('Channel not found');
         }
 
-        $query = $channel->subscribers()->with(['plan', 'user'])->latest();
+        $query = $channel->subscribers()->with(['plan', 'user:uid,name,img'])->latest();
 
         if ($request->filled('status')) {
             $query->where('status', $request->get('status'));
@@ -218,70 +218,13 @@ class ChannelController extends Controller
 
     public function subscribe(Request $request, $channelId)
     {
-        try {
-            $channel = Channel::find($channelId);
-
-            if (!$channel) {
-                return $this->notFound('Channel not found');
-            }
-
-            $validated = $request->validate([
-                'user_id' => ['required', 'string', 'exists:user,uid'],
-                'plan_id' => ['required', 'integer', 'exists:channel_subscription_plans,id'],
-                'transaction_id' => ['nullable', 'string', 'max:255'],
-                'payment_method' => ['nullable', 'string', 'max:50'],
-                'status' => ['nullable', Rule::in(['pending', 'success', 'failed', 'refunded'])],
-            ]);
-
-            $plan = ChannelSubscriptionPlan::where('channel_id', $channel->id)
-                ->where('is_active', true)
-                ->find($validated['plan_id']);
-
-            if (!$plan) {
-                return $this->notFound('Active plan not found for this channel');
-            }
-
-            $subscriber = DB::transaction(function () use ($validated, $channel, $plan) {
-                $start = now();
-                $end = $start->copy()->addDays($plan->duration_days);
-                $historyStatus = $validated['status'] ?? 'success';
-
-                ChannelSubscriptionHistory::create([
-                    'channel_id' => $channel->id,
-                    'user_id' => $validated['user_id'],
-                    'plan_id' => $plan->id,
-                    'amount' => $plan->final_price ?? $plan->price,
-                    'transaction_id' => $validated['transaction_id'] ?? null,
-                    'payment_method' => $validated['payment_method'] ?? null,
-                    'start_date' => $start,
-                    'end_date' => $end,
-                    'status' => $historyStatus,
-                    'created_at' => now(),
-                ]);
-
-                if ($historyStatus !== 'success') {
-                    return null;
-                }
-
-                return ChannelSubscriber::updateOrCreate(
-                    ['channel_id' => $channel->id, 'user_id' => $validated['user_id']],
-                    [
-                        'plan_id' => $plan->id,
-                        'subscribed_at' => $start,
-                        'expires_at' => $end,
-                        'status' => 'active',
-                    ]
-                );
-            });
-
-            return $this->success(
-                $subscriber?->load('plan') ?? null,
-                $subscriber ? 'Subscription activated successfully' : 'Subscription payment history recorded',
-                201
-            );
-        } catch (Exception $e) {
-            return $this->fail('Failed to subscribe', $e);
-        }
+        // Client status/transaction IDs are never proof of a captured payment.
+        // Enable purchases only when a dedicated verified channel checkout exists.
+        return V4Response::error(
+            'CHANNEL_PAYMENT_NOT_AVAILABLE',
+            'Channel purchases are not available yet.',
+            409
+        );
     }
 
     public function cancelSubscription($channelId, $userId)
@@ -292,14 +235,16 @@ class ChannelController extends Controller
             return $this->notFound('Subscription not found');
         }
 
-        $subscriber->update(['status' => 'cancelled']);
+        // This administrative action revokes access immediately. Customer
+        // cancellation is separate and preserves the purchased end date.
+        $subscriber->update(['status' => 'expired']);
 
         return $this->success($subscriber->fresh(), 'Subscription cancelled successfully');
     }
 
     public function subscriptionHistory(Request $request, $channelId)
     {
-        $query = ChannelSubscriptionHistory::with(['plan', 'user'])
+        $query = ChannelSubscriptionHistory::with(['plan', 'user:uid,name,img'])
             ->where('channel_id', $channelId)
             ->latest('created_at');
 
@@ -386,7 +331,8 @@ class ChannelController extends Controller
             return $this->notFound('Content not found');
         }
 
-        $content->delete();
+        // Retain media and financial references while withdrawing public discovery.
+        $content->update(['status' => 'private']);
 
         return $this->success(null, 'Content deleted successfully');
     }
@@ -484,63 +430,11 @@ class ChannelController extends Controller
 
     public function rentContent(Request $request, $contentId)
     {
-        try {
-            $content = ChannelContent::with('ppv')->find($contentId);
-
-            if (!$content) {
-                return $this->notFound('Content not found');
-            }
-
-            if (!$content->ppv || !$content->ppv->is_active) {
-                return response()->json(['status' => 'error', 'message' => 'PPV is not active for this content'], 422);
-            }
-
-            $validated = $request->validate([
-                'user_id' => ['required', 'string', 'exists:user,uid'],
-                'transaction_id' => ['nullable', 'string', 'max:255'],
-                'payment_method' => ['nullable', 'string', 'max:50'],
-                'status' => ['nullable', Rule::in(['pending', 'success', 'failed', 'refunded'])],
-            ]);
-
-            $rental = DB::transaction(function () use ($validated, $content) {
-                $start = now();
-                $end = $start->copy()->addDays($content->ppv->rental_days);
-                $historyStatus = $validated['status'] ?? 'success';
-
-                ChannelContentRentalHistory::create([
-                    'user_id' => $validated['user_id'],
-                    'content_id' => $content->id,
-                    'amount' => $content->ppv->price,
-                    'transaction_id' => $validated['transaction_id'] ?? null,
-                    'payment_method' => $validated['payment_method'] ?? null,
-                    'rented_at' => $start,
-                    'expires_at' => $end,
-                    'status' => $historyStatus,
-                    'created_at' => now(),
-                ]);
-
-                if ($historyStatus !== 'success') {
-                    return null;
-                }
-
-                return ChannelContentRental::updateOrCreate(
-                    ['user_id' => $validated['user_id'], 'content_id' => $content->id],
-                    [
-                        'rented_at' => $start,
-                        'expires_at' => $end,
-                        'status' => 'active',
-                    ]
-                );
-            });
-
-            return $this->success(
-                $rental,
-                $rental ? 'Content rental activated successfully' : 'Rental payment history recorded',
-                201
-            );
-        } catch (Exception $e) {
-            return $this->fail('Failed to rent content', $e);
-        }
+        return V4Response::error(
+            'CHANNEL_PAYMENT_NOT_AVAILABLE',
+            'Channel purchases are not available yet.',
+            409
+        );
     }
 
     public function cancelRental($contentId, $userId)
@@ -558,7 +452,7 @@ class ChannelController extends Controller
 
     public function rentalHistory(Request $request, $contentId)
     {
-        $query = ChannelContentRentalHistory::with('user')
+        $query = ChannelContentRentalHistory::with('user:uid,name,img')
             ->where('content_id', $contentId)
             ->latest('created_at');
 
@@ -659,7 +553,7 @@ class ChannelController extends Controller
         return min(max((int) $request->get('per_page', 15), 1), 100);
     }
 
-    private function success($data = null, string $message = 'OK', int $code = 200)
+    protected function success($data = null, string $message = 'OK', int $code = 200)
     {
         return response()->json([
             'status' => 'success',
@@ -668,7 +562,7 @@ class ChannelController extends Controller
         ], $code);
     }
 
-    private function notFound(string $message)
+    protected function notFound(string $message)
     {
         return response()->json([
             'status' => 'error',

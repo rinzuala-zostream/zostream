@@ -4,7 +4,13 @@ import { createApp } from 'vue';
 const isAdmin = window.location.pathname === '/admin'
     || window.location.pathname.startsWith('/admin/');
 
-if (isAdmin) {
+const isCreator = window.location.pathname === '/creator' || window.location.pathname.startsWith('/creator/');
+
+if (isCreator) {
+    Promise.all([import('./creator/CreatorApp.vue'), import('../css/admin.css')]).then(([{ default: CreatorApp }]) => {
+        createApp(CreatorApp).mount('#app');
+    });
+} else if (isAdmin) {
     Promise.all([
         import('./admin/AdminApp.vue'),
         import('./admin/router.js'),

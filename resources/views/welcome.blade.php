@@ -10,7 +10,7 @@
         @if (request()->is('analytics/nexframe'))
             <meta name="nexframe-partnership-start" content="{{ config('services.nexframe_dashboard.partnership_started_at') }}" />
         @endif
-        <title>{{ request()->is('admin', 'admin/*') ? 'Zo Stream Admin' : 'Zo Stream — All in Mizo' }}</title>
+        <title>{{ request()->is('admin', 'admin/*') ? 'Zo Stream Admin' : (request()->is('creator', 'creator/*') ? 'Zo Stream Creator Studio' : 'Zo Stream — All in Mizo') }}</title>
         <link rel="icon" href="/images/zostream-logo.jpg" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
