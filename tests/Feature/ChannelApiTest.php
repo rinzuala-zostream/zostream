@@ -64,6 +64,10 @@ class ChannelApiTest extends TestCase
             $table->string('status');
         });
         (require database_path('migrations/2026_01_01_000001_create_channel_tables.php'))->up();
+        (require database_path('migrations/2026_11_16_000002_create_channel_uploads_table.php'))->up();
+        \Illuminate\Support\Facades\Storage::fake('channel_uploads');
+        \Illuminate\Support\Facades\Storage::fake('r2');
+        config(['channel_uploads.chunk_bytes' => 16, 'filesystems.disks.r2.url' => 'https://artwork.example.test']);
     }
 
     protected function tearDown(): void
@@ -392,13 +396,126 @@ class ChannelApiTest extends TestCase
         $this->assertDatabaseCount('session_tokens', 0);
     }
 
+    public function test_owner_uploads_private_mp4_in_chunks_and_only_admin_can_download(): void
+    {
+        $channel = $this->channel();
+        $video = $this->content($channel);
+        $bytes = $this->mp4Bytes();
+        $base = '/api/v4/creator/channels/'.$channel->id.'/uploads';
+        $headers = $this->headers('owner');
+        $upload = $this->postJson($base, ['filename' => 'video.mp4', 'kind' => 'source', 'size' => strlen($bytes), 'content_id' => $video->id], $headers)->assertCreated()->json('data');
+        $this->putChunks($base.'/'.$upload['id'], $bytes, $headers);
+        $completed = $this->postJson($base.'/'.$upload['id'].'/complete', [], $headers)->assertOk()->assertJsonPath('data.status', 'ready')->assertJsonPath('data.url', null);
+        $this->assertSame('draft', $video->fresh()->status);
+        $this->assertDatabaseCount('channel_content_media', 0);
+        $this->postJson($base.'/'.$upload['id'].'/complete', [], $headers)->assertOk();
+        $this->assertDatabaseCount('channel_uploads', 1);
+        $this->getJson($base.'/'.$upload['id'], $this->headers('other'))->assertNotFound();
+        $this->getJson('/api/v4/channels/'.$channel->id.'/contents')->assertOk()->assertJsonPath('data.total', 0);
+        $download = '/api/v4/admin/channels/'.$channel->id.'/uploads/'.$upload['id'].'/download';
+        $this->getJson($download)->assertUnauthorized();
+        $this->getJson($download, $headers)->assertForbidden();
+        $response = $this->get($download, $this->headers('admin'))->assertOk()->assertHeader('X-Content-Type-Options', 'nosniff');
+        $this->assertSame($bytes, $response->streamedContent());
+        $this->assertNull($completed->json('data.source_object_key'));
+    }
+
+    public function test_uploads_reject_spoofed_types_and_incomplete_chunks_without_publishing(): void
+    {
+        $channel = $this->channel();
+        $video = $this->content($channel);
+        $base = '/api/v4/creator/channels/'.$channel->id.'/uploads';
+        $headers = $this->headers('owner');
+        $body = ['filename' => 'fake.mp4', 'kind' => 'source', 'size' => 16, 'content_id' => $video->id];
+        $this->postJson($base, array_merge($body, ['filename' => '../fake.mp4']), $headers)->assertUnprocessable();
+        $this->postJson($base, array_merge($body, ['filename' => 'fake.exe']), $headers)->assertUnprocessable();
+        $id = $this->postJson($base, $body, $headers)->assertCreated()->json('data.id');
+        $this->postJson($base.'/'.$id.'/complete', [], $headers)->assertUnprocessable();
+        $this->post($base.'/'.$id.'/parts/0', ['file' => \Illuminate\Http\UploadedFile::fake()->createWithContent('chunk.bin', 'short')], $headers)->assertUnprocessable();
+        $this->putChunks($base.'/'.$id, str_repeat('X', 16), $headers);
+        $this->postJson($base.'/'.$id.'/complete', [], $headers)->assertUnprocessable();
+        $this->assertSame('published', $video->fresh()->status);
+        $this->assertDatabaseMissing('channel_uploads', ['status' => 'ready']);
+    }
+
+    public function test_upload_authorization_is_rechecked_after_suspension_and_chunk_retries_are_safe(): void
+    {
+        $channel = $this->channel();
+        $video = $this->content($channel);
+        $bytes = $this->mp4Bytes();
+        $base = '/api/v4/creator/channels/'.$channel->id.'/uploads';
+        $headers = $this->headers('owner');
+        $id = $this->postJson($base, ['filename' => 'video.mp4', 'kind' => 'source', 'size' => strlen($bytes), 'content_id' => $video->id], $headers)->assertCreated()->json('data.id');
+        $this->putChunks($base.'/'.$id, $bytes, $headers);
+        $this->putChunks($base.'/'.$id, $bytes, $headers);
+        $channel->update(['status' => 'suspended']);
+        $this->postJson($base.'/'.$id.'/complete', [], $headers)->assertForbidden();
+        $channel->update(['status' => 'active', 'user_id' => 'other']);
+        $this->postJson($base.'/'.$id.'/complete', [], $headers)->assertNotFound();
+        $this->assertSame('published', $video->fresh()->status);
+    }
+
+    public function test_artwork_is_validated_converted_to_webp_and_not_applied_until_profile_save(): void
+    {
+        $channel = $this->channel();
+        $headers = $this->headers('owner');
+        $file = \Illuminate\Http\UploadedFile::fake()->image('cover.png', 40, 40);
+        $bytes = file_get_contents($file->getRealPath());
+        config(['channel_uploads.chunk_bytes' => 1048576]);
+        $base = '/api/v4/creator/channels/'.$channel->id.'/uploads';
+        $id = $this->postJson($base, ['filename' => 'cover.png', 'kind' => 'artwork', 'size' => strlen($bytes)], $headers)->assertCreated()->json('data.id');
+        $this->post($base.'/'.$id.'/parts/0', ['file' => $file], $headers)->assertOk();
+        $response = $this->postJson($base.'/'.$id.'/complete', [], $headers)->assertOk();
+        $url = $response->json('data.url');
+        $this->assertStringStartsWith('https://artwork.example.test/channels/'.$channel->id.'/artwork/', $url);
+        $this->assertStringEndsWith('.webp', $url);
+        \Illuminate\Support\Facades\Storage::disk('r2')->assertExists('channels/'.$channel->id.'/artwork/'.$id.'.webp');
+        $this->assertNull($channel->fresh()->logo);
+        $this->putJson('/api/v4/creator/channels/'.$channel->id, ['logo' => $url], $headers)->assertOk();
+        $this->assertSame($url, $channel->fresh()->logo);
+    }
+
+    public function test_upload_quota_cancel_and_expired_session_cleanup_preserve_completed_sources(): void
+    {
+        $channel = $this->channel();
+        $video = $this->content($channel);
+        $headers = $this->headers('owner');
+        $base = '/api/v4/creator/channels/'.$channel->id.'/uploads';
+        $body = ['filename' => 'video.mp4', 'kind' => 'source', 'size' => strlen($this->mp4Bytes()), 'content_id' => $video->id];
+        config(['channel_uploads.max_pending_per_channel' => 1]);
+        $id = $this->postJson($base, $body, $headers)->assertCreated()->json('data.id');
+        $this->postJson($base, $body, $headers)->assertUnprocessable();
+        $this->deleteJson($base.'/'.$id, [], $headers)->assertOk();
+        $this->deleteJson($base.'/'.$id, [], $headers)->assertOk();
+        $readyId = $this->postJson($base, $body, $headers)->assertCreated()->json('data.id');
+        $this->putChunks($base.'/'.$readyId, $this->mp4Bytes(), $headers);
+        $this->postJson($base.'/'.$readyId.'/complete', [], $headers)->assertOk();
+        \App\Models\Channel\ChannelUpload::query()->update(['expires_at' => now()->subHour()]);
+        $this->artisan('channel-uploads:prune')->assertExitCode(0);
+        $this->assertDatabaseCount('channel_uploads', 1);
+        \Illuminate\Support\Facades\Storage::disk('channel_uploads')->assertExists($channel->id.'/'.$readyId.'/source');
+    }
+
+    private function mp4Bytes(): string
+    {
+        return pack('N', 24).'ftypisom'.pack('N', 0).'isomiso2';
+    }
+
+    private function putChunks(string $base, string $bytes, array $headers): void
+    {
+        $chunkSize = config('channel_uploads.chunk_bytes');
+        foreach (str_split($bytes, $chunkSize) as $part => $chunk) {
+            $this->post($base.'/parts/'.$part, ['file' => \Illuminate\Http\UploadedFile::fake()->createWithContent('chunk.bin', $chunk)], $headers)->assertOk();
+        }
+    }
+
     private function headers(string $uid): array
     {
         SessionTokenModel::firstOrCreate(['access_token' => SessionTokenModel::digest('test-'.$uid)],
             ['user_id' => $uid, 'device_id' => 'device-'.$uid, 'access_expires_at' => now()->addHour()]);
         DB::table('n_devices')->updateOrInsert(['user_id' => $uid, 'device_token' => 'device-'.$uid], ['is_owner_device' => true, 'status' => 'active']);
 
-        return ['Authorization' => 'Bearer test-'.$uid];
+        return ['Authorization' => 'Bearer test-'.$uid, 'Accept' => 'application/json'];
     }
 
     private function channel(string $status = 'active'): Channel

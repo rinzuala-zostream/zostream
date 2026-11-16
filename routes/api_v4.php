@@ -173,6 +173,12 @@ Route::prefix('v4')
 
         Route::middleware('auth.token')->group(function () {
             Route::prefix('creator')->middleware('throttle:60,1')->group(function () {
+                Route::get('/channels/{channelId}/uploads', [\App\Http\Controllers\Api\V4\ChannelUploadController::class, 'index']);
+                Route::post('/channels/{channelId}/uploads', [\App\Http\Controllers\Api\V4\ChannelUploadController::class, 'start']);
+                Route::get('/channels/{channelId}/uploads/{uploadId}', [\App\Http\Controllers\Api\V4\ChannelUploadController::class, 'show']);
+                Route::post('/channels/{channelId}/uploads/{uploadId}/parts/{part}', [\App\Http\Controllers\Api\V4\ChannelUploadController::class, 'chunk'])->withoutMiddleware('throttle:60,1')->middleware('throttle:600,1');
+                Route::post('/channels/{channelId}/uploads/{uploadId}/complete', [\App\Http\Controllers\Api\V4\ChannelUploadController::class, 'complete']);
+                Route::delete('/channels/{channelId}/uploads/{uploadId}', [\App\Http\Controllers\Api\V4\ChannelUploadController::class, 'cancel']);
                 Route::get('/channels', [\App\Http\Controllers\Api\V4\CreatorChannelController::class, 'index']);
                 Route::get('/channels/{channelId}', [\App\Http\Controllers\Api\V4\CreatorChannelController::class, 'show']);
                 Route::put('/channels/{channelId}', [\App\Http\Controllers\Api\V4\CreatorChannelController::class, 'update']);
@@ -510,6 +516,13 @@ Route::prefix('v4')
 
                     Route::get('/payments/user/{userId}', [PaymentHistoryController::class, 'getByUser']);
 
+                    Route::get('/channels/{channelId}/uploads', [\App\Http\Controllers\Api\V4\AdminChannelUploadController::class, 'index']);
+                    Route::post('/channels/{channelId}/uploads', [\App\Http\Controllers\Api\V4\AdminChannelUploadController::class, 'start']);
+                    Route::get('/channels/{channelId}/uploads/{uploadId}', [\App\Http\Controllers\Api\V4\AdminChannelUploadController::class, 'show']);
+                    Route::post('/channels/{channelId}/uploads/{uploadId}/parts/{part}', [\App\Http\Controllers\Api\V4\AdminChannelUploadController::class, 'chunk'])->withoutMiddleware('throttle:60,1')->middleware('throttle:600,1');
+                    Route::post('/channels/{channelId}/uploads/{uploadId}/complete', [\App\Http\Controllers\Api\V4\AdminChannelUploadController::class, 'complete']);
+                    Route::delete('/channels/{channelId}/uploads/{uploadId}', [\App\Http\Controllers\Api\V4\AdminChannelUploadController::class, 'cancel']);
+                    Route::get('/channels/{channelId}/uploads/{uploadId}/download', [\App\Http\Controllers\Api\V4\AdminChannelUploadController::class, 'download']);
                     Route::get('/channels', [AdminChannelController::class, 'index']);
                     Route::get('/channels/{channelId}', [AdminChannelController::class, 'show']);
                     Route::get('/channels/{channelId}/plans', [AdminChannelController::class, 'plans']);

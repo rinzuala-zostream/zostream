@@ -5,10 +5,12 @@ import PageHeader from '../components/PageHeader.vue';
 import StatusPanel from '../components/StatusPanel.vue';
 import ChannelForm from '../components/channels/ChannelForm.vue';
 import ChannelTable from '../components/channels/ChannelTable.vue';
-import { api, queryString } from '../lib/api';
+import FileDropzone from '../components/channels/FileDropzone.vue';
+import { api, apiBlob, queryString } from '../lib/api';
 import { channelFields, planFields, contentFields, mediaFields, ppvFields } from '../lib/channels';
 
 const route = useRoute(); const router = useRouter();
+const sources = ref([]); const sourcePage = ref(1); const sourceLastPage = ref(1); const sourceTotal = ref(0);
 const channel = ref(null); const content = ref(null); const editor = ref(null); const mediaEditor = ref(null);
 const loading = ref(false); const saving = ref(false); const contentLoading = ref(false);
 const error = ref(''); const notice = ref(''); const rows = ref([]); const page = ref(1); const lastPage = ref(1); const total = ref(0);
@@ -91,8 +93,32 @@ async function openContent(row) {
         if (current !== contentGeneration) return;
         if (String(record.channel_id) !== String(route.params.id)) throw new Error('This content belongs to another channel.');
         content.value = record;
+        await loadSources(1, current);
     } catch (reason) { if (current === contentGeneration) error.value = reason.message; }
     finally { if (current === contentGeneration) contentLoading.value = false; }
+}
+async function loadSources(nextPage = 1, current = contentGeneration) {
+    if (!content.value) return;
+    try {
+        const uploaded = await api(`${base.value}/uploads?content_id=${content.value.id}&page=${nextPage}`);
+        if (current !== contentGeneration) return;
+        sources.value = uploaded.data || []; sourcePage.value = uploaded.current_page || 1;
+        sourceLastPage.value = uploaded.last_page || 1; sourceTotal.value = uploaded.total || 0;
+    } catch (reason) { if (current === contentGeneration) error.value = reason.message; }
+}
+async function sourceUploaded() {
+    const videoId = content.value.id;
+    await openContent({ id: videoId });
+    await load(page.value);
+    notice.value = 'Source uploaded privately for staff review. Content is a draft.';
+}
+async function downloadSource(row) {
+    await mutate(async () => {
+        const blob = await apiBlob(`${base.value}/uploads/${row.id}/download`);
+        const url = URL.createObjectURL(blob); const link = document.createElement('a');
+        link.href = url; link.download = row.filename; link.click();
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+    }, 'Source downloaded.');
 }
 async function saveMedia(body) {
     const selected = mediaEditor.value; const videoId = content.value.id;
@@ -159,7 +185,7 @@ onBeforeUnmount(() => { generation++; contentGeneration++; historyGeneration++; 
         <div v-if="loading" class="admin-loading">Loading channel…</div>
         <template v-else-if="channel">
             <template v-if="tab === 'profile'">
-                <ChannelForm :key="channel.updated_at" :fields="channelFields" :record="channel" :busy="saving" title="Channel profile" @save="saveProfile" @cancel="router.push('/channels')" />
+                <ChannelForm :key="channel.updated_at" :fields="channelFields" :record="channel" :channel-id="channel.id" :busy="saving" title="Channel profile" @save="saveProfile" @cancel="router.push('/channels')" />
                 <button class="admin-danger channel-remove" type="button" :disabled="saving || channel.status === 'deleted'" @click="removeChannel">Remove channel from discovery</button>
             </template>
             <template v-else>
@@ -171,7 +197,7 @@ onBeforeUnmount(() => { generation++; contentGeneration++; historyGeneration++; 
                         <button class="admin-secondary" type="submit" :disabled="saving">Apply</button>
                     </form>
                 </div>
-                <ChannelForm v-if="editor" :key="`${editor.type}-${editor.record.id || 'new'}`" :fields="editorFields" :record="editor.record" :busy="saving" :title="`${editor.record.id ? 'Edit' : 'Add'} ${editor.type}`" @save="saveRecord" @cancel="editor = null" />
+                <ChannelForm v-if="editor" :key="`${editor.type}-${editor.record.id || 'new'}`" :fields="editorFields" :record="editor.record" :channel-id="channel.id" :content-id="editor.type === 'content' ? editor.record.id : undefined" :busy="saving" :title="`${editor.record.id ? 'Edit' : 'Add'} ${editor.type}`" @save="saveRecord" @cancel="editor = null" />
                 <ChannelTable :rows="rows" :columns="columns" :page="page" :last-page="lastPage" :total="total" @page="load">
                     <template v-if="tab !== 'history'" #actions="{ row }">
                         <template v-if="tab === 'plans'"><button type="button" :disabled="saving" @click="openEditor('plan', row)">Edit</button><button type="button" :disabled="saving || !row.is_active" @click="removeRecord(row, 'plan')">Deactivate</button></template>
@@ -182,6 +208,11 @@ onBeforeUnmount(() => { generation++; contentGeneration++; historyGeneration++; 
                 <div v-if="contentLoading" class="admin-loading">Loading content details…</div>
                 <section v-if="content" class="channel-content-detail">
                     <header class="channel-controls"><h2>{{ content.title || `Content ${content.id}` }}</h2><button class="admin-secondary" type="button" :disabled="saving" @click="content = null">Close details</button></header>
+                    <h3>Source files for review</h3>
+                    <FileDropzone :api="api" :channel-id="channel.id" :content-id="content.id" kind="source" label="Upload source file" :disabled="saving" @busy="saving = $event" @uploaded="sourceUploaded" />
+                    <ChannelTable :rows="sources" :page="sourcePage" :last-page="sourceLastPage" :total="sourceTotal" @page="loadSources" :columns="[{ key: 'filename', label: 'Filename' }, { key: 'size', label: 'Bytes' }, { key: 'mime', label: 'Type' }]">
+                        <template #actions="{ row }"><button type="button" :disabled="saving" @click="downloadSource(row)">Download source</button></template>
+                    </ChannelTable>
                     <h3>Media</h3><button class="admin-secondary" type="button" :disabled="saving" @click="mediaEditor = {}">Attach media</button>
                     <ChannelForm v-if="mediaEditor" :key="mediaEditor.id || 'new-media'" :fields="mediaFields" :record="mediaEditor" :busy="saving" title="Media reference" @save="saveMedia" @cancel="mediaEditor = null" />
                     <ChannelTable :rows="content.media || []" :columns="mediaColumns"><template #actions="{ row }"><button type="button" :disabled="saving" @click="mediaEditor = { ...row }">Edit</button><button type="button" :disabled="saving" @click="removeMedia(row)">Remove</button></template></ChannelTable>

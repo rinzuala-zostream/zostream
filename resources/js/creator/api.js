@@ -12,11 +12,12 @@ export function deviceId() {
 // Existing Zo Stream auth tokens; separate browser storage keeps admin sessions intact.
 export async function api(path, options = {}, retry = true) {
     const session = getSession();
+    const multipart = options.body instanceof FormData;
     const response = await fetch(`/api/v4${path}`, {
         ...options,
-        headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Client-Platform': 'web', 'X-Device-Type': 'browser', 'X-Client-Version': '1.0',
+        headers: { Accept: 'application/json', ...(multipart ? {} : { 'Content-Type': 'application/json' }), 'X-Client-Platform': 'web', 'X-Device-Type': 'browser', 'X-Client-Version': '1.0',
             ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) },
-        ...(options.body ? { body: JSON.stringify(options.body) } : {}),
+        ...(options.body ? { body: multipart ? options.body : JSON.stringify(options.body) } : {}),
     });
     const payload = await response.json().catch(() => null);
     if (response.status === 401 && retry && session?.refresh_token && !path.startsWith('/auth/')) {

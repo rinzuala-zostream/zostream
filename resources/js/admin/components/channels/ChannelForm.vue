@@ -1,11 +1,12 @@
 <script setup>
 import { onBeforeUnmount, ref, watch } from 'vue';
 import { api, queryString } from '../../lib/api';
+import FileDropzone from './FileDropzone.vue';
 import { formValues, formPayload } from '../../lib/channels';
 
-const props = defineProps({ fields: Array, record: Object, busy: Boolean, title: String, submitLabel: { type: String, default: 'Save' } });
+const props = defineProps({ fields: Array, record: Object, busy: Boolean, title: String, submitLabel: { type: String, default: 'Save' }, channelId: [String, Number], contentId: [String, Number], uploadApi: { type: Function, default: api }, audience: { type: String, default: 'admin' } });
 const emit = defineEmits(['save', 'cancel']);
-const values = ref({});
+const values = ref({}); const uploading = ref(false);
 const search = ref(''); const results = ref([]); const searchError = ref(''); const searching = ref(false);
 let generation = 0; let timer;
 watch(() => [props.fields, props.record], () => { values.value = formValues(props.fields, props.record); }, { immediate: true });
@@ -41,6 +42,7 @@ function selectUser(user) { values.value.user_id = user.uid; search.value = ''; 
                         <option v-for="option in field.options" :key="option" :value="option">{{ option.replaceAll('_', ' ') }}</option>
                     </select>
                     <input v-else v-model="values[field.name]" :type="field.type === 'user' ? 'text' : field.type" :required="field.required" :min="field.min" :max="field.type === 'number' ? field.max : undefined" :maxlength="field.type !== 'number' ? field.max : undefined" :step="field.step || (field.type === 'datetime-local' ? '1' : undefined)">
+                    <FileDropzone v-if="channelId && ['logo', 'banner', 'thumbnail'].includes(field.name)" :api="uploadApi" :channel-id="channelId" :content-id="contentId" :audience="audience" :disabled="busy || uploading" :label="`Upload ${field.label}`" @busy="uploading = $event" @uploaded="values[field.name] = $event.url" />
                     <template v-if="field.type === 'user'">
                         <input v-model="search" type="search" aria-label="Find channel owner" placeholder="Find owner by name, phone, email or UID" autocomplete="off">
                         <small v-if="searching">Searching users…</small>
@@ -52,7 +54,7 @@ function selectUser(user) { values.value.user_id = user.uid; search.value = ''; 
                 </label>
             </div>
         </fieldset>
-        <footer><button type="button" class="admin-secondary" :disabled="busy" @click="emit('cancel')">Cancel</button><button type="submit" class="admin-primary" :disabled="busy">{{ busy ? 'Saving…' : submitLabel }}</button></footer>
+        <footer><button type="button" class="admin-secondary" :disabled="busy || uploading" @click="emit('cancel')">Cancel</button><button type="submit" class="admin-primary" :disabled="busy || uploading">{{ busy ? 'Saving…' : submitLabel }}</button></footer>
     </form>
 </template>
 <style scoped>

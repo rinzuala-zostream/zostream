@@ -12,6 +12,13 @@ return [
             'serve' => true,
         ],
 
+        'channel_uploads' => [
+            'driver' => 'local',
+            'root' => storage_path('app/channel-private'),
+            'serve' => false,
+            'throw' => true,
+        ],
+
         'public' => [
             'driver' => 'local',
             'root' => storage_path('app/public'),

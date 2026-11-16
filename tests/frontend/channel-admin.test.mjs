@@ -16,6 +16,7 @@ await build({
     stdin: { contents: `
         export { createRenderer, nextTick, h } from 'vue';
         export { route, router } from 'vue-router';
+        export { default as FileDropzone } from './resources/js/admin/components/channels/FileDropzone.vue';
         export { default as CreatorApp } from './resources/js/creator/CreatorApp.vue';
         export { default as ChannelsPage } from './resources/js/admin/pages/ChannelsPage.vue';
         export { default as ChannelDetailPage } from './resources/js/admin/pages/ChannelDetailPage.vue';
@@ -34,6 +35,7 @@ await build({
         `, resolveDir: resolve('.') }));
         builder.onLoad({ filter: /[/\\]admin[/\\]lib[/\\]api\.js$/ }, () => ({ contents: `
             export const api = (path, options = {}) => globalThis.__channelApi(path, options);
+            export const apiBlob = path => globalThis.__channelApi(path, {});
             export const queryString = values => '?' + new URLSearchParams(Object.entries(values).filter(([, value]) => value !== '' && value != null));
         ` }));
         builder.onLoad({ filter: /[/\\]creator[/\\]api\.js$/ }, () => ({ contents: `
@@ -50,7 +52,7 @@ await build({
         });
     } }],
 });
-const { createRenderer, nextTick, h, route, router, ChannelsPage, ChannelDetailPage, CreatorApp } = await import(pathToFileURL(outfile));
+const { createRenderer, nextTick, h, route, router, ChannelsPage, ChannelDetailPage, CreatorApp, FileDropzone } = await import(pathToFileURL(outfile));
 globalThis.Document = class {};
 globalThis.ShadowRoot = class {};
 globalThis.document = Object.assign(new Document(), { activeElement: null });
@@ -120,6 +122,7 @@ test('detail UI saves plans, media, rental settings and loads both history types
     globalThis.__channelApi = async (path, options) => {
         calls.push({ path, ...options });
         if (path === '/admin/channels/1') return { ...channel };
+        if (path.includes('/uploads?')) return list([]);
         if (path.startsWith('/admin/channels/1/plans')) return options.method ? { id: 2 } : list([{ id: 2, name: 'Monthly', price: 88, duration_days: 30, is_active: true }]);
         if (path.startsWith('/admin/channels/1/contents')) return list([video]);
         if (path.startsWith('/admin/channels/1/subscription-history')) return list([{ id: 9, user_id: 'viewer', status: 'success', amount: 88 }]);
@@ -170,6 +173,7 @@ test('revocation requires confirmation and affects only the selected channel mem
     globalThis.__channelApi = async (path, options) => {
         calls.push({ path, ...options });
         if (path === '/admin/channels/1') return { ...channel };
+        if (path.includes('/uploads?')) return list([]);
         if (options.method) return { status: 'expired' };
         return list([{ id: 12, user_id: 'member/one', user: { name: 'Member One' }, status: 'active', expires_at: '2030-01-01' }]);
     };
@@ -243,4 +247,51 @@ test('creator API refresh uses its own session without overwriting admin login',
         assert.equal(actual.getSession().uid, 'owner');
         assert.equal(JSON.parse(calls[1].body).refresh_token, 'owner-refresh');
     } finally { globalThis.fetch = originalFetch; }
+});
+
+
+test('drag-and-drop uploads chunks and emits a completed private source', async () => {
+    const calls = []; let uploaded = null;
+    const api = async (path, options = {}) => {
+        calls.push({ path, ...options });
+        if (path.endsWith('/uploads')) return { id: 'upload-one', chunk_size: 3 };
+        if (path.includes('/parts/')) return {};
+        if (path.endsWith('/complete')) return { id: 'upload-one', status: 'ready', url: null };
+        throw new Error(`Unexpected upload: ${path}`);
+    };
+    const { root, app } = mount({ render: () => h(FileDropzone, { api, channelId: 1, contentId: 3, kind: 'source', audience: 'creator', onUploaded: value => uploaded = value }) });
+    try {
+        const dropzone = find(root, el => typeof el.props.onDrop === 'function');
+        dropzone.props.onDrop({ preventDefault() {}, dataTransfer: { files: [new File(['abcdefg'], 'source.mp4', { type: 'video/mp4' })] } });
+        await settle(); await click(root, 'Upload selected file');
+        assert.equal(calls[0].path, '/creator/channels/1/uploads');
+        assert.equal(calls[0].body.content_id, 3); assert.equal(calls[0].body.size, 7);
+        const chunks = calls.filter(call => call.path.includes('/parts/'));
+        assert.equal(chunks.length, 3);
+        assert.deepEqual(await Promise.all(chunks.map(call => call.body.get('file').text())), ['abc', 'def', 'g']);
+        assert.equal(uploaded.status, 'ready'); assert.equal(uploaded.url, null);
+        assert.match(text(root), /Source uploaded for staff review/);
+    } finally { app.unmount(); }
+});
+
+test('file picker retry reuses its session and does not create duplicate uploads', async () => {
+    const calls = []; let fail = true;
+    const api = async (path, options = {}) => {
+        calls.push({ path, ...options });
+        if (path.endsWith('/uploads')) return { id: 'upload-retry', chunk_size: 10 };
+        if (path.endsWith('/upload-retry')) return { status: 'uploading' };
+        if (path.includes('/parts/') && fail) { fail = false; throw new Error('Connection interrupted'); }
+        if (path.endsWith('/complete')) return { status: 'ready', url: 'https://art.example/image.webp' };
+        return {};
+    };
+    const { root, app } = mount({ render: () => h(FileDropzone, { api, channelId: 1 }) });
+    try {
+        const picker = find(root, el => el.tag === 'input' && el.props.type === 'file');
+        picker.props.onChange({ target: { files: [new File(['image'], 'cover.png')] } });
+        await settle(); await click(root, 'Upload selected file'); assert.match(text(root), /Connection interrupted/);
+        await click(root, 'Retry upload');
+        assert.equal(calls.filter(call => call.path.endsWith('/uploads')).length, 1);
+        assert.equal(calls.filter(call => call.path.includes('/parts/')).length, 2);
+        assert.match(text(root), /Image uploaded/);
+    } finally { app.unmount(); }
 });

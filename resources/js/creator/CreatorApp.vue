@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, ref } from 'vue';
 import StatusPanel from '../admin/components/StatusPanel.vue';
+import FileDropzone from '../admin/components/channels/FileDropzone.vue';
 import ChannelForm from '../admin/components/channels/ChannelForm.vue';
 import ChannelTable from '../admin/components/channels/ChannelTable.vue';
 import { channelFields, contentFields } from '../admin/lib/channels';
@@ -8,6 +9,7 @@ import { api, authData, clearSession, deviceId, getSession, saveSession } from '
 
 const session = ref(getSession()); const channels = ref([]); const selected = ref(''); const detail = ref(null);
 const tab = ref('profile'); const rows = ref([]); const page = ref(1); const lastPage = ref(1); const total = ref(0);
+const sourceVideo = ref(null);
 const loading = ref(false); const busy = ref(false); const error = ref(''); const notice = ref(''); const editor = ref(null);
 const phone = ref(''); const country = ref('+91'); const otp = ref(''); const loginUid = ref('');
 const listPage = ref(1); const listLastPage = ref(1);
@@ -55,7 +57,7 @@ async function loadChannels(nextPage = 1) {
 async function loadChannel(nextPage = 1) {
     if (!selected.value) return;
     const current = ++generation; const id = encodeURIComponent(selected.value);
-    loading.value = true; error.value = ''; rows.value = []; editor.value = null;
+    loading.value = true; error.value = ''; rows.value = []; editor.value = null; sourceVideo.value = null;
     try {
         const result = await api(`/creator/channels/${id}`);
         if (current !== generation) return;
@@ -115,16 +117,17 @@ if (session.value) loadChannels();
                     <div class="creator-stats"><article class="admin-panel"><strong>{{ detail.summary.contents }}</strong><span>Videos / content</span></article><article class="admin-panel"><strong>{{ detail.summary.published }}</strong><span>Published</span></article><article class="admin-panel"><strong>{{ detail.summary.active_members }}</strong><span>Active members</span></article></div>
                     <nav class="creator-tabs" aria-label="Studio sections"><button v-for="item in ['profile', 'contents', 'plans']" :key="item" :aria-pressed="tab === item" :class="{ active: tab === item }" :disabled="busy" @click="changeTab(item)">{{ item === 'contents' ? 'Video drafts' : item }}</button></nav>
                     <StatusPanel v-if="!writable" message="This channel is suspended. You can view your records; contact Zo Stream support to restore editing." />
-                    <ChannelForm v-if="tab === 'profile'" :fields="profileFields" :record="detail.channel" :busy="busy || !writable" title="Channel profile" @save="saveProfile" @cancel="loadChannel()" />
+                    <ChannelForm v-if="tab === 'profile'" :fields="profileFields" :record="detail.channel" :busy="busy || !writable" :upload-api="api" audience="creator" :channel-id="selected" title="Channel profile" @save="saveProfile" @cancel="loadChannel()" />
                     <template v-else>
                         <template v-if="tab === 'contents'">
-                            <p class="creator-muted">Prepare video details here. MP4 uploads are not enabled yet. Staff review, media processing and publication are handled by Zo Stream. Editing published metadata returns it to draft.</p>
+                            <p class="creator-muted">Save video details, then choose Upload MP4 to add your private source. Staff review, media processing and publication are handled by Zo Stream. Editing published metadata returns it to draft.</p>
                             <button class="admin-primary" :disabled="busy || !writable" @click="editor = {}">New video draft</button>
-                            <ChannelForm v-if="editor" :key="editor.id || 'new'" :fields="videoFields" :record="editor" :busy="busy || !writable" title="Video details" @save="saveVideo" @cancel="editor = null" />
+                            <ChannelForm v-if="editor" :key="editor.id || 'new'" :fields="videoFields" :record="editor" :busy="busy || !writable" :upload-api="api" audience="creator" :channel-id="selected" :content-id="editor.id" title="Video details" @save="saveVideo" @cancel="editor = null" />
                         </template>
                         <p v-else class="creator-muted">Your channel membership plans. Contact Zo Stream Admin for pricing changes. New membership purchases are currently unavailable.</p>
+                        <FileDropzone v-if="sourceVideo && tab === 'contents'" :key="sourceVideo.id" :api="api" audience="creator" :channel-id="selected" :content-id="sourceVideo.id" kind="source" :label="`Upload MP4 · ${sourceVideo.title}`" :disabled="busy || !writable" @busy="busy = $event" @uploaded="loadChannel(page); notice = 'MP4 uploaded privately for Zo Stream review.'" />
                         <ChannelTable :rows="rows" :columns="columns" :page="page" :last-page="lastPage" :total="total" @page="loadChannel">
-                            <template v-if="tab === 'contents'" #actions="{ row }"><button :disabled="busy || !writable" @click="editor = { ...row }">Edit details</button><button :disabled="busy || !writable" @click="withdraw(row)">Withdraw</button></template>
+                            <template v-if="tab === 'contents'" #actions="{ row }"><button :disabled="busy || !writable" @click="editor = { ...row }">Edit details</button><button :disabled="busy || !writable" @click="sourceVideo = row">Upload MP4</button><button :disabled="busy || !writable" @click="withdraw(row)">Withdraw</button></template>
                         </ChannelTable>
                     </template>
                 </template>

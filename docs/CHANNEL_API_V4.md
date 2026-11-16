@@ -1,7 +1,7 @@
 # Channel API v4: security and management foundation
 
 This change hardens the existing channel module. It is not the complete Creator
-Channel specification: private multipart ingest, staff DASH QA, creator studio,
+Channel specification: staff DASH QA,
 verified checkout, revenue split, wallet and payouts are separate work.
 
 ## Creator Studio (owner access)
@@ -21,9 +21,8 @@ WhatsApp messages are created by this code change itself.
 
 Owners can edit their profile, list plans, see content/member counts, create
 video metadata drafts, edit their metadata and withdraw their content. Pricing
-is read-only until creator pricing policy limits are implemented. There are no
-owner media URLs, payment activation, banking or payout controls. MP4 file upload
-is not implemented by this phase.
+is read-only until creator pricing policy limits are implemented. There are no owner playback URL, payment activation, banking or payout controls.
+Owners can upload private MP4 sources and upload logo/banner/thumbnail images.
 
 | Method | `/api/v4/creator` path | Operation |
 |---|---|---|
@@ -40,7 +39,7 @@ publish content, attach media, or read another owner's records. Editing
 published metadata returns it to draft for staff review. Suspended channels are
 read-only; deleted channels are unavailable. Writes lock the channel inside a
 database transaction so suspension and ownership changes serialize with owner
-mutations. No schema migration is required.
+mutations. The upload feature adds the migration described below.
 
 ## Contract and access
 
@@ -99,8 +98,9 @@ content metadata and visibility, media references, rental settings/history and
 immediate membership/rental revocation. Lists are paginated and writes show
 server validation errors without clearing entered form values.
 
-Artwork and media are URL references in this phase. This UI does not upload
-source MP4 files, perform DASH packaging, or certify staff playback QA. It does
+Artwork supports URL entry or file upload. Private review sources support file
+upload; streaming media references are still attached separately by staff. This
+UI does not perform DASH packaging or certify playback QA. It does
 not offer payment activation or payout actions while verified channel billing
 is unavailable. Existing admin login, session refresh, theme and shell are reused.
 
@@ -150,12 +150,13 @@ intentionally closed. New integrations should use V4 exclusively.
 
 ## Deployment and validation
 
-No database migration, destructive SQL, environment change or data conversion is
-part of this change. Existing channel tables and identifiers are reused. Main
+Existing channel tables and identifiers are reused. The upload feature adds a
+new `channel_uploads` table using a reversible migration; it does not convert or
+delete existing channel data. Main
 movie/episode playback, billing/webhooks, subscription tables, device middleware
 and R2/CDN configuration are not changed.
 
-Before production rollout, confirm the existing channel migration has already
+Before production rollout, confirm the channel tables and upload migration have
 been applied and point staging/admin clients at the native V4 response shape.
 Smoke-test public discovery, admin editing and membership cancellation on
 staging. Do not deploy a code rollback that restores the unauthenticated channel
@@ -175,3 +176,61 @@ payloads, media/settings/history interactions and error retention. They are not
 browser or live staging tests. Build with `npm run build`; if the installed
 `node_modules/.bin/vite` launcher is empty, the equivalent direct command is
 `node node_modules/vite/bin/vite.js build`.
+
+
+## Drag-and-drop uploads
+
+Admin and Creator Studio image fields accept JPG, JPEG, PNG and WebP (up to
+10 MB, maximum 4096 × 4096). Save the channel first so artwork can be scoped to
+its ID. Uploaded artwork is converted to WebP using the existing image helper,
+stored under `channels/{channel}/artwork/` in the configured public R2 disk, and
+applied only when the profile/content form is saved. R2 must have a configured
+public HTTPS URL and working credentials.
+
+Save a content draft before uploading a source. Creators choose **Video drafts
+→ Upload MP4**. Admins use **Contents → Media & details → Source files for
+review**; they can also upload MP3, M4A, WAV, VTT and SRT review files. Uploading
+or replacing a source returns content to draft. It never creates a public
+playback target or a streaming media record. Admins download original sources
+through an authenticated, non-cacheable endpoint.
+
+Source files are stored on the server's dedicated private `channel_uploads`
+local disk at `storage/app/channel-private`, outside public storage and without
+Laravel file serving. Sources are not put into the existing public R2 bucket;
+a public CDN prefix cannot ensure privacy. Back up this directory and use shared
+private storage or sticky routing for multi-server deployments. This phase does
+not implement direct-to-private-R2 source ingest or automated duration/malware
+inspection; staff processing and QA remain required.
+
+Files transfer in 1 MB chunks, with progress, cancellation and retry of the same
+selected file. Chunk replay and completion are idempotent. Retry is within the
+current page/session; reload recovery is not provided. Actual MIME, extension,
+size, channel/content ownership and current suspension state are enforced by the
+server. Missing chunks cannot finalize. A changed channel owner cannot finalize
+the previous owner's session. Completed source URLs and disk paths are never
+returned in public/owner catalog responses.
+
+Default limits: 512 MB per source, 10 GB source capacity per channel, 3 unfinished
+sessions per channel, 24-hour session lifetime. Override source limits with
+`CHANNEL_SOURCE_MAX_BYTES` and `CHANNEL_SOURCE_QUOTA_BYTES`; the other limits are
+in `config/channel_uploads.php`. Completed sources are retained and count toward
+capacity. `channel-uploads:prune` runs hourly via the existing scheduler and removes
+expired unfinished uploads only. Ready sources are not deleted by cleanup.
+
+Apply this additive migration before testing upload controls:
+
+```sh
+php artisan migrate --path=database/migrations/2026_11_16_000002_create_channel_uploads_table.php
+```
+
+The existing channel tables must already exist. The migration rollback drops
+only upload metadata; preserve private source files and metadata backups before
+rolling it back. No production migration or live R2 transfer is performed by the
+implementation tests.
+
+V4 upload routes are under both `/api/v4/admin/channels/{channelId}/uploads` and
+`/api/v4/creator/channels/{channelId}/uploads`: `POST` starts a session, `GET`
+lists ready sources for `?content_id=...`, `GET /{id}` checks a session,
+`POST /{id}/parts/{index}` accepts a multipart `file`, `POST /{id}/complete`
+validates/finalizes, and `DELETE /{id}` cancels unfinished uploads. Only the admin
+boundary exposes `GET /{id}/download` for completed source files.
