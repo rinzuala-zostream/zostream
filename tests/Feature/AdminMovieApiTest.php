@@ -4,8 +4,10 @@ namespace Tests\Feature;
 
 use App\Models\SessionTokenModel;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class AdminMovieApiTest extends TestCase
@@ -41,6 +43,9 @@ class AdminMovieApiTest extends TestCase
             $table->string('duration')->nullable();
             $table->string('cover_img')->nullable();
             $table->string('poster')->nullable();
+            $table->text('hero_img')->nullable();
+            $table->text('title_img')->nullable();
+            $table->date('create_date')->nullable();
             $table->string('genre')->nullable();
             $table->text('url')->nullable();
             $table->text('dash_url')->nullable();
@@ -306,6 +311,64 @@ class AdminMovieApiTest extends TestCase
                 'trailer' => 'https://cdn.zostream.in/trailers/missing.m3u8',
             ])
             ->assertNotFound();
+    }
+
+    public function test_movie_artwork_uploads_are_optimized_on_create_and_update(): void
+    {
+        Storage::fake('r2');
+        config(['filesystems.disks.r2.url' => 'https://images.example.test']);
+
+        $files = fn () => [
+            'poster' => UploadedFile::fake()->image('poster.jpg', 800, 1200),
+            'cover_img' => UploadedFile::fake()->image('cover.jpg', 1600, 900),
+            'hero_img' => UploadedFile::fake()->image('hero.png', 1920, 1080),
+            'title_img' => UploadedFile::fake()->image('title.png', 1000, 300),
+        ];
+        $this->withHeaders($this->adminHeaders())->post('/api/v4/admin/catalog/items', [
+            'title' => 'Artwork movie', 'duration' => '90', 'status' => 'Draft', ...$files(),
+        ])->assertCreated();
+
+        $movie = DB::table('movie')->first();
+        $originalHero = $movie->hero_img;
+        foreach (['poster', 'cover_img', 'hero_img', 'title_img'] as $field) {
+            $path = str_replace('https://images.example.test/', '', $movie->$field);
+            Storage::disk('r2')->assertExists($path);
+            $contents = Storage::disk('r2')->get($path);
+            $this->assertStringEndsWith('.webp', $path);
+            $this->assertSame('WEBP', substr($contents, 8, 4));
+            $this->assertLessThanOrEqual(500 * 1024, strlen($contents));
+        }
+        $this->withHeaders($this->adminHeaders())->post('/api/v4/admin/catalog/items/'.$movie->id, [
+            '_method' => 'PUT', 'duration' => '90', ...$files(),
+        ])->assertOk();
+        $updated = DB::table('movie')->first();
+        $this->assertNotSame($originalHero, $updated->hero_img);
+        $this->withHeaders($this->adminHeaders())
+            ->getJson('/api/v4/admin/catalog/items/'.$movie->id)
+            ->assertOk()->assertJsonPath('data.hero_img', $updated->hero_img)
+            ->assertJsonPath('data.title_img', $updated->title_img);
+
+        $this->withHeaders($this->adminHeaders())->putJson('/api/v4/admin/catalog/items/'.$movie->id, [
+            'hero_img' => 'https://images.example.test/custom-hero.webp',
+            'title_img' => 'https://images.example.test/custom-title.webp',
+        ])->assertOk();
+        $this->assertDatabaseHas('movie', [
+            'id' => $movie->id,
+            'hero_img' => 'https://images.example.test/custom-hero.webp',
+            'title_img' => 'https://images.example.test/custom-title.webp',
+        ]);
+    }
+
+    public function test_hero_and_title_uploads_reject_non_images_and_files_over_10_mb(): void
+    {
+        foreach (['hero_img', 'title_img'] as $field) {
+            foreach ([UploadedFile::fake()->create('bad.txt', 1, 'text/plain'),
+                UploadedFile::fake()->image('large.png')->size(10241)] as $file) {
+                $this->withHeaders([...$this->adminHeaders(), 'Accept' => 'application/json'])
+                    ->post('/api/v4/admin/catalog/items', ['title' => 'Invalid artwork', $field => $file])
+                    ->assertUnprocessable()->assertJsonValidationErrors($field, 'error.details');
+            }
+        }
     }
 
     private function adminHeaders(): array

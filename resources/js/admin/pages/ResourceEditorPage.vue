@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import ArtworkUpload from '../components/ArtworkUpload.vue';
 import PageHeader from '../components/PageHeader.vue';
 import StatusPanel from '../components/StatusPanel.vue';
 import SubscriptionCreateForm from '../components/SubscriptionCreateForm.vue';
@@ -46,6 +47,10 @@ function storedDateInputValue(value, includeTime = false) {
     const hours = String(date.getHours()).padStart(2, '0');
     const minutes = String(date.getMinutes()).padStart(2, '0');
     return includeTime ? `${year}-${month}-${day}T${hours}:${minutes}` : `${year}-${month}-${day}`;
+}
+function setUpload(name, file) {
+    if (file) files[name] = file;
+    else delete files[name];
 }
 function init() {
     Object.keys(model).forEach(name => delete model[name]); Object.keys(files).forEach(name => delete files[name]);
@@ -345,7 +350,7 @@ onMounted(load);
                                     </div>
                                 </div>
                                 <select v-else-if="field.type==='select'" v-model="model[field.name]" :required="field.required"><option value="">Choose…</option><option v-for="option in field.options" :key="option" :value="option">{{ optionLabel(field, option) }}</option></select>
-                                <template v-else-if="field.upload"><input v-model="model[field.name]" :type="field.type" :readonly="field.readOnly" :required="field.required && !files[field.name]" placeholder="https://…"><input type="file" accept="image/*" @change="files[field.name] = $event.target.files?.[0]"><small v-if="files[field.name]">Selected: {{files[field.name].name}}</small></template>
+                                <ArtworkUpload v-else-if="field.upload" v-model="model[field.name]" :field="field" :file="files[field.name]" @file-change="setUpload(field.name, $event)" />
                                 <input v-else v-model="model[field.name]" :type="field.type" :readonly="field.readOnly" :required="field.required" :placeholder="field.placeholder" :step="field.type==='number'?'any':undefined" :min="field.min" :max="field.max">
                             </template>
                         </div>
@@ -369,7 +374,7 @@ onMounted(load);
                         </div>
                         <select v-else-if="field.relation === 'plan'" v-model="model[field.name]" :required="field.required"><option value="">Choose a plan…</option><option v-for="plan in plans" :key="plan.id" :value="plan.id">{{ plan.name }} · {{ deviceTypeLabel(plan.device_type) }} · ₹{{ plan.price }}</option></select>
                         <select v-else-if="field.type==='select'" v-model="model[field.name]" :required="field.required"><option value="">Choose…</option><option v-for="option in field.options" :key="option" :value="option">{{ optionLabel(field, option) }}</option></select>
-                        <template v-else-if="field.upload"><input v-model="model[field.name]" :type="field.type" :readonly="field.readOnly" :required="field.required && !files[field.name]" placeholder="https://…"><input type="file" accept="image/*" @change="files[field.name] = $event.target.files?.[0]"><small v-if="files[field.name]">Selected: {{files[field.name].name}}</small></template>
+                        <ArtworkUpload v-else-if="field.upload" v-model="model[field.name]" :field="field" :file="files[field.name]" @file-change="setUpload(field.name, $event)" />
                         <input v-else v-model="model[field.name]" :type="field.type" :readonly="field.readOnly" :required="field.required" :placeholder="field.placeholder" :step="field.type==='number'?'any':undefined" :min="field.min" :max="field.max">
                     </template>
                 </label>

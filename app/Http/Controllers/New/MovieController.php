@@ -254,8 +254,8 @@ class MovieController extends Controller
     }
 
     /**
-     * Create a movie. Uploaded poster/cover images are always stored as WebP
-     * and are limited to 500 KiB after processing.
+     * Create a movie. Uploaded movie artwork is always stored as WebP
+     * and is limited to 500 KiB per image after processing.
      */
     public function store(Request $request)
     {
@@ -323,7 +323,7 @@ class MovieController extends Controller
     }
 
     /**
-     * Update a movie and process newly uploaded poster/cover images.
+     * Update a movie and process newly uploaded movie artwork.
      */
     public function update(Request $request, $id)
     {
@@ -603,7 +603,8 @@ class MovieController extends Controller
             'poster' => $imageOrUrl('poster'),
             'opt_cover_url' => 'nullable|string|max:2048',
             'opt_poster_url' => 'nullable|string|max:2048',
-            'title_img' => 'nullable|string',
+            'title_img' => $imageOrUrl('title_img'),
+            'hero_img' => $imageOrUrl('hero_img'),
             'url' => 'nullable|string',
             'dash_url' => 'nullable|string',
             'hls_url' => 'nullable|string',
@@ -728,6 +729,15 @@ class MovieController extends Controller
                 $request->file('poster'),
                 'thumbnail/movie/poster'
             );
+        }
+
+        foreach (['hero_img' => 'hero', 'title_img' => 'title'] as $field => $directory) {
+            if ($request->hasFile($field)) {
+                $movieData[$field] = $this->imageUploader->upload(
+                    $request->file($field),
+                    'thumbnail/movie/' . $directory
+                );
+            }
         }
 
         $coverField = $request->hasFile('cover_img') ? 'cover_img' : 'cover';

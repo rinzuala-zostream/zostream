@@ -40,6 +40,7 @@ class MovieModel extends Model
         'cover_img',
         'opt_cover_url',
         'title_img',
+        'hero_img',
         'create_date',
         'description',
         'director',

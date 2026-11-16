@@ -31,6 +31,29 @@ class WebpImageUploaderTest extends TestCase
         $this->assertSame('WEBP', substr($contents, 8, 4));
     }
 
+    public function test_transparent_title_png_keeps_alpha_when_converted_to_webp(): void
+    {
+        $path = tempnam(sys_get_temp_dir(), 'title-alpha-');
+        $image = imagecreatetruecolor(400, 100);
+        imagealphablending($image, false);
+        imagesavealpha($image, true);
+        imagefill($image, 0, 0, imagecolorallocatealpha($image, 0, 0, 0, 127));
+        imagefilledrectangle($image, 100, 25, 300, 75, imagecolorallocatealpha($image, 255, 255, 255, 0));
+        imagepng($image, $path);
+
+        try {
+            $file = new UploadedFile($path, 'title.png', 'image/png', null, true);
+            $contents = (new WebpImageUploader)->webpContents($file);
+            $decoded = imagecreatefromstring($contents);
+            $this->assertNotFalse($decoded);
+            $this->assertLessThanOrEqual(WebpImageUploader::MAX_BYTES, strlen($contents));
+            $this->assertSame(127, imagecolorsforindex($decoded, imagecolorat($decoded, 0, 0))['alpha']);
+            $this->assertSame(0, imagecolorsforindex($decoded, imagecolorat($decoded, 200, 50))['alpha']);
+        } finally {
+            @unlink($path);
+        }
+    }
+
     public function test_it_does_not_reencode_an_already_small_webp_image(): void
     {
         $path = tempnam(sys_get_temp_dir(), 'webp-test-');
