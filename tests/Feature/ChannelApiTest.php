@@ -367,6 +367,10 @@ class ChannelApiTest extends TestCase
         $channel = $this->channel();
         $plan = $this->plan($channel);
         $this->content($channel);
+        $this->content($channel, ['status' => 'draft']);
+        $this->content($channel, ['status' => 'draft']);
+        $this->content($channel, ['status' => 'private']);
+        $this->content($this->channel(), ['status' => 'draft']);
         foreach (['owner', 'viewer', 'other'] as $uid) {
             ChannelSubscriber::create(['channel_id' => $channel->id, 'plan_id' => $plan->id, 'user_id' => $uid,
                 'status' => 'active', 'subscribed_at' => $uid === 'other' ? now()->addDay() : now()->subDay(),
@@ -375,7 +379,8 @@ class ChannelApiTest extends TestCase
         $path = '/api/v4/creator/channels/'.$channel->id;
         $headers = $this->headers('owner');
         $this->getJson($path, $headers)->assertOk()->assertJsonPath('data.summary.active_members', 1)
-            ->assertJsonPath('data.summary.published', 1)->assertJsonPath('data.summary.contents', 1)
+            ->assertJsonPath('data.summary.published', 1)->assertJsonPath('data.summary.contents', 4)
+            ->assertJsonPath('data.summary.drafts', 2)->assertJsonPath('data.summary.private', 1)
             ->assertJsonMissingPath('data.subscribers');
         $this->getJson($path.'/plans', $headers)->assertOk()->assertJsonPath('data.data.0.price', '88.00');
         $this->postJson($path.'/plans', ['price' => 1], $headers)->assertStatus(405);

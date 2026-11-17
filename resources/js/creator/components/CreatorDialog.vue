@@ -18,7 +18,7 @@ onBeforeUnmount(() => {
     dialog.value?.close?.();
     if (document.body) document.body.style.overflow = previousOverflow;
     if (previousFocus?.isConnected) previousFocus.focus?.({ preventScroll: true });
-    else document.querySelector?.('.cs-library-bar button')?.focus?.({ preventScroll: true });
+    else document.querySelector?.('.cs-library-bar button, .cs-recent-edit, .cs-topbar button')?.focus?.({ preventScroll: true });
 });
 </script>
 <template>

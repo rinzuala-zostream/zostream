@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, ref } from 'vue';
 import CreatorForm from './components/CreatorForm.vue';
+import CreatorOverview from './components/CreatorOverview.vue';
 import CreatorDialog from './components/CreatorDialog.vue';
 import CreatorUpload from './components/CreatorUpload.vue';
 import CreatorIcon from './components/CreatorIcon.vue';
@@ -9,7 +10,7 @@ import { money, formatBytes } from '../admin/lib/channels';
 import { api, authData, clearSession, deviceId, getSession, saveSession } from './api';
 
 const session = ref(getSession()); const channels = ref([]); const selected = ref(''); const detail = ref(null);
-const tab = ref('contents'); const rows = ref([]); const page = ref(1); const lastPage = ref(1); const total = ref(0);
+const tab = ref('overview'); const rows = ref([]); const page = ref(1); const lastPage = ref(1); const total = ref(0);
 const sourceVideo = ref(null); const sources = ref([]); const sourcesLoading = ref(false); const sourcesError = ref('');
 const sourcePage = ref(1); const sourceLastPage = ref(1); const sourceTotal = ref(0); const contentStatus = ref('');
 const formUploading = ref(false); const locked = computed(() => busy.value || formUploading.value);
@@ -31,7 +32,7 @@ const videoFields = [
     { name: 'thumbnail', label: 'Cover image', type: 'url', max: 500 },
 ];
 const writable = computed(() => ['active', 'pending'].includes(detail.value?.channel?.status));
-const heading = computed(() => ({ contents: 'Your stories start here.', profile: 'Make yourself at home.', plans: 'Your community, growing.' })[tab.value]);
+const heading = computed(() => ({ overview: 'Your channel, at a glance.', contents: 'Your stories start here.', profile: 'Make yourself at home.', plans: 'Your community, growing.' })[tab.value]);
 const failedArtwork = ref({});
 function dateLabel(value) { if (!value) return 'Not recorded'; const date = new Date(value); return Number.isNaN(date.getTime()) ? 'Not recorded' : new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }).format(date); }
 async function act(action) {
@@ -79,8 +80,9 @@ async function loadChannel(nextPage = 1, { background = false } = {}) {
         const result = await api(`/creator/channels/${id}`);
         if (current !== generation) return;
         detail.value = result;
-        if (tab.value !== 'profile') {
-            const data = await api(`/creator/channels/${id}/${tab.value}?page=${nextPage}&per_page=20${tab.value === 'contents' && contentStatus.value ? `&status=${contentStatus.value}` : ''}`);
+        if (['overview', 'contents', 'plans'].includes(tab.value)) {
+            const collection = tab.value === 'overview' ? 'contents' : tab.value;
+            const data = await api(`/creator/channels/${id}/${collection}?page=${nextPage}&per_page=${tab.value === 'overview' ? 5 : 20}${tab.value === 'contents' && contentStatus.value ? `&status=${contentStatus.value}` : ''}`);
             if (current !== generation) return;
             rows.value = data.data || []; page.value = data.current_page; lastPage.value = data.last_page; total.value = data.total;
         }
@@ -131,7 +133,7 @@ async function sourceUploaded() {
     await loadSources();
     notice.value = 'MP4 uploaded privately for Zo Stream review.';
 }
-function changeTab(value) { if (locked.value || loading.value) return; tab.value = value; loadChannel(); }
+function changeTab(value, status = '') { if (locked.value || loading.value) return; tab.value = value; if (value === 'contents') contentStatus.value = status; loadChannel(); }
 async function startVideo() {
     if (locked.value || !writable.value) return;
     const channelId = selected.value; tab.value = 'contents'; await loadChannel();
@@ -166,22 +168,22 @@ if (session.value) loadChannels();
         <template v-else>
             <aside class="cs-sidebar"><a class="cs-brand" href="/creator"><span class="cs-brand-mark">z<span>o</span></span><span>Zo Stream <b>CREATOR STUDIO</b></span></a>
                 <div class="cs-channel-switcher"><label>My channel<select v-model="selected" :disabled="locked || loading || !channels.length" @change="loadChannel()"><option v-if="!channels.length" value="">No channel assigned</option><option v-for="channel in channels" :key="channel.id" :value="String(channel.id)">{{ channel.name }}</option></select></label><div v-if="listLastPage > 1" class="cs-channel-pages"><button :disabled="locked || loading || listPage <= 1" @click="loadChannels(listPage - 1)">Previous channels</button><button :disabled="locked || loading || listPage >= listLastPage" @click="loadChannels(listPage + 1)">More channels</button></div></div>
-                <nav class="cs-navigation" aria-label="Studio sections"><button :class="{ active: tab === 'contents' }" :aria-current="tab === 'contents' ? 'page' : undefined" :disabled="locked || loading" @click="changeTab('contents')"><CreatorIcon name="video" /><span>Videos</span></button><button :class="{ active: tab === 'profile' }" :aria-current="tab === 'profile' ? 'page' : undefined" :disabled="locked || loading" @click="changeTab('profile')"><CreatorIcon name="channel" /><span>Channel settings</span></button><button :class="{ active: tab === 'plans' }" :aria-current="tab === 'plans' ? 'page' : undefined" :disabled="locked || loading" @click="changeTab('plans')"><CreatorIcon name="members" /><span>Membership</span></button></nav>
+                <nav class="cs-navigation" aria-label="Studio sections"><button :class="{ active: tab === 'overview' }" :aria-current="tab === 'overview' ? 'page' : undefined" :disabled="locked || loading" @click="changeTab('overview')"><CreatorIcon name="overview" /><span>Overview</span></button><button :class="{ active: tab === 'contents' }" :aria-current="tab === 'contents' ? 'page' : undefined" :disabled="locked || loading" @click="changeTab('contents')"><CreatorIcon name="video" /><span>Videos</span></button><button :class="{ active: tab === 'profile' }" :aria-current="tab === 'profile' ? 'page' : undefined" :disabled="locked || loading" @click="changeTab('profile')"><CreatorIcon name="channel" /><span>Channel settings</span></button><button :class="{ active: tab === 'plans' }" :aria-current="tab === 'plans' ? 'page' : undefined" :disabled="locked || loading" @click="changeTab('plans')"><CreatorIcon name="members" /><span>Membership</span></button></nav>
                 <div class="cs-sidebar-note"><span class="cs-note-dot"></span><strong>A little help along the way</strong><p>Save a draft, upload your video, and Zo Stream staff will handle review and publication.</p></div>
                 <button class="cs-signout" :disabled="locked" @click="logout"><CreatorIcon name="logout" />Sign out</button>
             </aside>
             <div id="studio-content" class="cs-workspace">
-                <header class="cs-topbar"><span>YOUR CREATIVE SPACE</span><button class="cs-button cs-button-quiet" :disabled="locked || loading" @click="loadChannels(listPage)">Refresh</button></header>
+                <header class="cs-topbar"><div><span>CREATOR STUDIO</span><strong>{{ { overview: 'Overview', contents: 'Videos', profile: 'Channel settings', plans: 'Membership' }[tab] }}</strong></div><button class="cs-button cs-button-quiet" :disabled="locked || loading" @click="loadChannels(listPage)">Refresh</button></header>
                 <p v-if="error && !editor && !sourceVideo" class="cs-message cs-message-error" role="alert">{{ error }}</p><p v-if="notice && !editor && !sourceVideo" class="cs-message cs-message-success" role="status">{{ notice }}</p>
                 <div v-if="loading" class="cs-loading" role="status"><span class="cs-loader"></span>Getting your studio ready…</div>
                 <section v-else-if="!channels.length" class="cs-empty cs-empty-large"><div class="cs-empty-icon"><CreatorIcon name="channel" /></div><span class="cs-eyebrow">LET’S GET YOU SET UP</span><h1>No channel assigned</h1><p>Ask Zo Stream Admin to link your account to your channel.</p><div class="cs-account-uid">Your UID: <strong>{{ session.uid || 'Check your Zo Stream account' }}</strong></div><p>Already have a channel? Sign in with the number linked to its owner account.</p></section>
                 <template v-else-if="detail">
-                    <header class="cs-page-heading"><div><p class="cs-eyebrow">{{ detail.channel.name }} <span class="cs-status" :data-status="detail.channel.status">{{ detail.channel.status }}</span></p><h1>{{ heading }}</h1><p>{{ tab === 'contents' ? 'A home for everything you’re making.' : tab === 'profile' ? 'Give your channel a personality that’s all yours.' : 'See the plans that bring your audience closer.' }}</p></div><button v-if="tab !== 'contents'" class="cs-button cs-button-primary" :disabled="locked || !writable" @click="startVideo"><CreatorIcon name="plus" />Create a video</button></header>
-                    <div class="cs-stats"><article><CreatorIcon name="video" /><div><strong>{{ detail.summary.contents }}</strong><span>Total videos / content</span></div></article><article><CreatorIcon name="check" /><div><strong>{{ detail.summary.published }}</strong><span>Published</span></div></article><article><CreatorIcon name="members" /><div><strong>{{ detail.summary.active_members }}</strong><span>Active members</span></div></article></div>
+                    <header class="cs-page-heading"><div><p class="cs-eyebrow">{{ detail.channel.name }} <span class="cs-status" :data-status="detail.channel.status">{{ detail.channel.status }}</span></p><h1>{{ heading }}</h1><p>{{ tab === 'overview' ? 'Check in on your channel and choose what to work on next.' : tab === 'contents' ? 'A home for everything you’re making.' : tab === 'profile' ? 'Give your channel a personality that’s all yours.' : 'See the plans that bring your audience closer.' }}</p></div><button v-if="tab !== 'contents'" class="cs-button cs-button-primary" :disabled="locked || !writable" @click="startVideo"><CreatorIcon name="plus" />Create a video</button></header>
                     <p v-if="!writable" class="cs-message cs-message-info" role="status">This channel is suspended. You can view your records; contact Zo Stream support to restore editing.</p>
-                    <template v-if="tab === 'contents'">
+                    <CreatorOverview v-if="tab === 'overview'" :detail="detail" :recent="rows" :busy="locked || loading" :writable="writable" @create="startVideo" @edit="editVideo" @navigate="changeTab" />
+                    <template v-else-if="tab === 'contents'">
                         <div class="cs-library-bar"><div><h2>Your video library <span>{{ total }}</span></h2><p>Make something your audience will love.</p></div><label>Visibility<select v-model="contentStatus" :disabled="locked" @change="loadChannel()"><option value="">All videos</option><option value="draft">Drafts</option><option value="published">Published</option><option value="private">Withdrawn / private</option></select></label><button class="cs-button cs-button-primary" :disabled="locked || !writable" @click="newVideo"><CreatorIcon name="plus" />New video draft</button></div>
-                        <div v-if="rows.length" class="cs-video-grid"><article v-for="video in rows" :key="video.id" class="cs-video-card"><div class="cs-video-art"><img v-if="video.thumbnail && !failedArtwork[video.id]" :src="video.thumbnail" :alt="video.title || 'Video thumbnail'" loading="lazy" referrerpolicy="no-referrer" @error="failedArtwork[video.id] = true"><div v-else class="cs-video-placeholder"><CreatorIcon name="video" /><span>{{ video.title || 'Your next story' }}</span></div><span class="cs-status" :data-status="video.status">{{ video.status === 'private' ? 'Private' : video.status }}</span></div><div class="cs-video-body"><h3>{{ video.title || 'Untitled video' }}</h3><p>{{ video.status === 'published' ? 'Published · available from its release date' : video.status === 'draft' ? 'Draft · prepare details and a source for review' : 'Hidden from your public channel' }}</p><small>Updated {{ dateLabel(video.updated_at) }}</small><div class="cs-video-actions"><button class="cs-button cs-button-quiet" :disabled="locked || !writable" @click="editVideo(video)">Edit details</button><button class="cs-button cs-button-outline" :disabled="locked" @click="openSources(video)">{{ writable ? 'Upload MP4' : 'Source files' }}</button><button class="cs-text-danger" :disabled="locked || !writable || video.status === 'private'" @click="withdraw(video)">Withdraw</button></div></div></article></div>
+                        <div v-if="rows.length" class="cs-video-grid"><article v-for="video in rows" :key="video.id" class="cs-video-card"><div class="cs-video-art"><img v-if="video.thumbnail && !failedArtwork[video.id]" :src="video.thumbnail" :alt="video.title || 'Video thumbnail'" loading="lazy" referrerpolicy="no-referrer" @error="failedArtwork[video.id] = true"><div v-else class="cs-video-placeholder"><CreatorIcon name="video" /><span>{{ video.title || 'Your next story' }}</span></div><span class="cs-status" :data-status="video.status">{{ video.status === 'private' ? 'Private' : video.status }}</span></div><div class="cs-video-body"><h3 :title="video.title">{{ video.title || 'Untitled video' }}</h3><p>{{ video.status === 'published' ? 'Published · available from its release date' : video.status === 'draft' ? 'Draft · prepare details and a source for review' : 'Hidden from your public channel' }}</p><small>Updated {{ dateLabel(video.updated_at) }}</small><div class="cs-video-actions"><button class="cs-button cs-button-quiet" :disabled="locked || !writable" @click="editVideo(video)">Edit details</button><button class="cs-button cs-button-outline" :disabled="locked" @click="openSources(video)">{{ writable ? 'Upload MP4' : 'Source files' }}</button><button class="cs-text-danger" :disabled="locked || !writable || video.status === 'private'" @click="withdraw(video)">Withdraw</button></div></div></article></div>
                         <section v-else class="cs-empty"><div class="cs-empty-icon"><CreatorIcon name="video" /></div><h2>{{ contentStatus ? 'No videos with this visibility.' : 'Your first story belongs here.' }}</h2><p>{{ contentStatus ? 'Try another visibility filter to find your videos.' : 'Start with a title and thumbnail. Then upload an MP4 for staff review.' }}</p><button v-if="!contentStatus" class="cs-button cs-button-outline" :disabled="locked || !writable" @click="newVideo">Create your first video<CreatorIcon name="arrow" /></button></section>
                         <CreatorPagination :page="page" :last-page="lastPage" :total="total" :disabled="locked" @page="loadChannel" />
                         <details class="cs-workflow"><summary>How does publishing work?</summary><ol><li><span>1</span><div><strong>Make a draft</strong><p>Title, description, thumbnail.</p></div></li><li><span>2</span><div><strong>Upload your MP4</strong><p>Your original, kept private.</p></div></li><li><span>3</span><div><strong>We’ll handle review</strong><p>Staff process and publish.</p></div></li></ol></details>
@@ -196,7 +198,7 @@ if (session.value) loadChannels();
                 <CreatorForm :key="editor.id || 'new'" :fields="videoFields" :record="editor" :busy="busy || !writable" :api="api" :channel-id="selected" :content-id="editor.id" title="Video details" @busy="formUploading = $event" @save="saveVideo" @cancel="closeEditor" />
             </CreatorDialog>
             <CreatorDialog v-else-if="sourceVideo" :title="sourceVideo.title || 'Video source files'" close-label="Close uploads" :busy="locked" @close="closeSources">
-                <p v-if="notice && !editor && !sourceVideo" class="cs-message cs-message-success" role="status">{{ notice }}</p>
+                <p v-if="notice" class="cs-message cs-message-success" role="status">{{ notice }}</p>
                 <p v-if="error" class="cs-message cs-message-error" role="alert">{{ error }}</p>
                 <section class="cs-source-panel"><header><div><p class="cs-eyebrow">STEP 02 / YOUR VIDEO FILE</p><p>Add the original MP4. Zo Stream staff will take it from here.</p></div></header><p v-if="sourcesError" class="cs-message cs-message-error" role="alert">{{ sourcesError }}</p>
                             <CreatorUpload :key="sourceVideo.id" :api="api" :channel-id="selected" :content-id="sourceVideo.id" kind="source" label="Upload MP4" :disabled="locked || !writable" @busy="busy = $event" @uploaded="sourceUploaded" />

@@ -1,6 +1,7 @@
 <script setup>
 defineProps({ name: String });
 const paths = {
+    overview: ['M3 3h7v7H3z', 'M14 3h7v7h-7z', 'M3 14h7v7H3z', 'M14 14h7v7h-7z'],
     video: ['M4 4h16v16H4z', 'm10 8 6 4-6 4z'],
     upload: ['M12 16V3', 'm7 8 5-5 5 5', 'M4 15v6h16v-6'],
     channel: ['M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8', 'M4 21v-2a8 6 0 0 1 16 0v2'],

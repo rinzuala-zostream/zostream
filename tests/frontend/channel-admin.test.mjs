@@ -332,6 +332,7 @@ test('profile artwork upload locks studio navigation while keeping cancellation 
         calls.push({ path, ...options });
         if (path.startsWith('/creator/channels?')) return list([channel]);
         if (path === '/creator/channels/1') return { channel, summary: { contents: 0, published: 0, active_members: 0 } };
+        if (path.includes('/contents?')) return list([]);
         if (path.endsWith('/uploads')) return { id: 'artwork-lock', chunk_size: 100 };
         if (path.includes('/parts/')) return chunk;
         if (options.method === 'DELETE') return {};
@@ -390,7 +391,7 @@ test('creator draft flows directly into private MP4 upload and unlocks navigatio
     };
     const { root, app } = mount(CreatorApp);
     try {
-        await settle(); await click(root, 'New video draft');
+        await settle(); await click(root, 'Videos'); await click(root, 'New video draft');
         input(root, 'Title', 'My new story'); await submit(root, 'Video details');
         assert.match(text(root), /STEP 02 \/ YOUR VIDEO FILE/);
         const picker = find(root, el => el.tag === 'input' && el.props.type === 'file');
@@ -422,6 +423,7 @@ test('creator video tasks stay in one dialog and failed saves keep entered value
     const { root, app } = mount(CreatorApp);
     try {
         await settle();
+        await click(root, 'Videos');
         const workspace = find(root, el => el.props.id === 'studio-content');
         assert.equal(find(workspace, el => el.tag === 'form'), undefined);
         await click(root, 'Edit details');
@@ -441,5 +443,35 @@ test('creator video tasks stay in one dialog and failed saves keep entered value
         assert.equal(find(workspace, el => el.props.class === 'cs-source-panel'), undefined);
         dialog.props.onCancel({ preventDefault() {} }); await settle();
         assert.equal(find(root, el => el.tag === 'dialog'), undefined);
+    } finally { app.unmount(); }
+});
+
+test('creator overview uses channel totals and opens the full library with the requested filter', async () => {
+    globalThis.__creatorSession = { access_token: 'owner-token', uid: 'owner' };
+    const calls = [];
+    globalThis.__creatorApi = async (path, options = {}) => {
+        calls.push({ path, ...options });
+        if (path.startsWith('/creator/channels?')) return list([channel]);
+        if (path === '/creator/channels/1') return { channel, summary: { contents: 57, published: 38, drafts: 12, private: 7, active_members: 123 } };
+        if (path.includes('/contents?')) return list([video], { total: 57, last_page: 12 });
+        throw new Error(`Unexpected request: ${path}`);
+    };
+    const { root, app } = mount(CreatorApp);
+    try {
+        await settle();
+        assert.equal(button(root, 'Overview').props['aria-current'], 'page');
+        const metrics = find(root, el => el.props.class === 'cs-overview-metrics');
+        assert.match(text(metrics), /57/); assert.match(text(metrics), /38/);
+        assert.match(text(metrics), /12/); assert.match(text(metrics), /123/);
+        assert.ok(calls.some(call => call.path.endsWith('/contents?page=1&per_page=5')));
+        assert.equal(find(root, el => el.props.class === 'cs-video-grid'), undefined);
+        await click(root, 'Review drafts');
+        assert.equal(button(root, 'Videos').props['aria-current'], 'page');
+        assert.ok(calls.at(-1).path.includes('per_page=20&status=draft'));
+        await click(root, 'Overview');
+        assert.ok(calls.at(-1).path.endsWith('/contents?page=1&per_page=5'));
+        await click(root, 'Edit');
+        assert.ok(find(root, el => el.tag === 'dialog'));
+        assert.equal(find(find(root, el => el.props.class === 'cs-overview'), el => el.tag === 'form'), undefined);
     } finally { app.unmount(); }
 });

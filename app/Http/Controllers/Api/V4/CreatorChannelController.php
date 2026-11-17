@@ -21,12 +21,15 @@ class CreatorChannelController extends Controller
     public function show(Request $request, string $channelId)
     {
         $channel = $this->owned($request, $channelId);
+        $contentCounts = $channel->contents()->selectRaw('status, COUNT(*) as total')->groupBy('status')->pluck('total', 'status');
 
         return V4Response::success([
             'channel' => $channel,
             'summary' => [
-                'contents' => $channel->contents()->count(),
-                'published' => $channel->contents()->where('status', 'published')->count(),
+                'contents' => (int) $contentCounts->sum(),
+                'published' => (int) ($contentCounts['published'] ?? 0),
+                'drafts' => (int) ($contentCounts['draft'] ?? 0),
+                'private' => (int) ($contentCounts['private'] ?? 0),
                 'active_members' => $channel->subscribers()->where('status', 'active')
                     ->where('subscribed_at', '<=', now())->where('expires_at', '>', now())->count(),
             ],

@@ -244,7 +244,7 @@ profile preview, form guidance and actionable empty states.
 Creator Studio has an independent warm light theme, a responsive navigation
 sidebar, thumbnail video cards and its own forms, upload and pagination
 components. It loads `resources/css/creator.css` instead of the admin stylesheet.
-Videos are the initial view, and saving a new draft opens its MP4 upload step.
+Overview is the initial view, and saving a new draft opens its MP4 upload step.
 Channel selection is preserved on refresh. The studio also includes a
 publishing guide, visibility filters and a paginated
 private source history panel for each video. Suspended owners can inspect this
@@ -271,3 +271,23 @@ inert background, lock page scrolling, and restore focus when closed. Escape,
 backdrop and close controls dismiss an idle dialog. Saving or uploading disables
 dismissal until the operation finishes or the upload is cancelled. The publishing
 guide is a disclosure rather than a permanently expanded library section.
+
+
+## Creator overview dashboard
+
+Overview is the studio landing view, with channel identity/status, total content,
+published entries (including scheduled releases), drafts and currently entitled
+memberships. Creator detail responses now include `summary.drafts` and
+`summary.private`; all content totals use grouped counts scoped to the selected
+owned channel. They are independent of pagination and visibility filters.
+
+Recently added shows up to five metadata records from the existing content API.
+Creators can edit those records in a dialog, open the full library, review the
+draft filter or complete their channel profile. The checklist reflects stored
+name, logo, banner and description fields. No revenue, view or growth figures
+are inferred. The existing member access date/status conditions are preserved.
+
+The studio also aligns filter/action controls and video card action rows, uses a
+full-width title field, and arranges mobile navigation in two columns. Dashboard
+metrics use four desktop columns and two mobile columns. The dialog workflow
+and read-only behavior for suspended creators remain in place.
