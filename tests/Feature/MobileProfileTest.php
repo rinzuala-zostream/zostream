@@ -102,14 +102,46 @@ class MobileProfileTest extends TestCase
         $this->assertNull(DB::table('user')->where('uid', 'alice')->value('username'));
     }
 
-    public function test_directory_contains_all_eleven_districts_and_887_distinct_villages(): void
+    public function test_directory_preserves_lgd_villages_and_includes_each_district_capital_once(): void
     {
         $districts = $this->withToken('alice-token')->getJson('/api/v4/account/mobile-profile/locations')
             ->assertOk()->json('data.districts');
         $this->assertCount(11, $districts);
         $villages = collect($districts)->flatMap(fn ($district) => $district['villages']);
-        $this->assertCount(887, $villages);
-        $this->assertCount(887, $villages->unique('lgd_code'));
+        $this->assertCount(898, $villages);
+        $this->assertCount(898, $villages->unique('lgd_code'));
+
+        $register = json_decode(file_get_contents(base_path('Library/mizoram-districts-villages.json')), true);
+        foreach ($districts as $index => $district) {
+            $this->assertSame(count($district['villages']), $district['village_count']);
+            $this->assertSame($register['districts'][$index]['villages'], array_slice($district['villages'], 1));
+            $capitals = array_filter($district['villages'], fn ($village) => $village['name'] === $district['name']);
+            $this->assertCount(1, $capitals);
+            $this->assertSame('capital-'.$district['lgd_code'], reset($capitals)['lgd_code']);
+        }
+    }
+
+    public function test_district_capitals_can_be_saved_and_read_back_but_not_under_another_district(): void
+    {
+        $districts = $this->withToken('alice-token')->getJson('/api/v4/account/mobile-profile/locations')
+            ->assertOk()->json('data.districts');
+
+        foreach ($districts as $district) {
+            $code = 'capital-'.$district['lgd_code'];
+            $this->postJson('/api/v4/account/mobile-profile', [
+                ...$this->validProfile(), 'district_code' => $district['lgd_code'], 'village_code' => $code,
+            ])->assertOk()->assertJsonPath('data.complete', true)
+                ->assertJsonPath('data.village', $district['name']);
+            $this->getJson('/api/v4/account/mobile-profile')->assertOk()
+                ->assertJsonPath('data.district', $district['name'])
+                ->assertJsonPath('data.village', $district['name'])
+                ->assertJsonPath('data.village_code', $code)->assertJsonPath('data.complete', true);
+        }
+
+        $this->postJson('/api/v4/account/mobile-profile', [
+            ...$this->validProfile(), 'district_code' => '266', 'village_code' => 'capital-261',
+        ])->assertUnprocessable()->assertJsonStructure(['error' => ['details' => ['village_code']]]);
+        $this->assertSame('capital-267', DB::table('user')->where('uid', 'alice')->value('profile_village_code'));
     }
 
     private function validProfile(): array
