@@ -3,7 +3,11 @@ defineProps({ name: { type: String, required: true } });
 </script>
 
 <template>
-    <svg v-if="name === 'phone'" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M10 18h4"/></svg>
+    <svg v-if="name === 'desktop'" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8m-4-4v4"/></svg>
+    <svg v-else-if="name === 'windows'" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 5 8-1v7H3V5Zm10-1.3L21 2v9h-8V3.7ZM3 13h8v7l-8-1v-6Zm10 0h8v9l-8-1.7V13Z"/></svg>
+    <svg v-else-if="name === 'tv'" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M8 22h8M8 2l4 3 4-3"/></svg>
+    <svg v-else-if="name === 'download'" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M4 15v5h16v-5"/></svg>
+    <svg v-else-if="name === 'phone'" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M10 18h4"/></svg>
     <svg v-else-if="name === 'apple'" viewBox="0 0 24 24" aria-hidden="true"><path d="M15.7 12.8c0-2.1 1.7-3.1 1.8-3.2a4 4 0 0 0-3.2-1.7c-1.3-.1-2.6.8-3.3.8-.7 0-1.7-.8-2.8-.8-1.4 0-2.8.9-3.6 2.2-1.6 2.7-.4 6.7 1.1 8.9.8 1.1 1.7 2.3 2.9 2.2 1.1-.1 1.6-.7 3-.7s1.8.7 3 .7c1.3 0 2.1-1.1 2.8-2.2.9-1.3 1.2-2.6 1.2-2.7-.1 0-2.9-1.1-2.9-3.5ZM13.5 6.5a4 4 0 0 0 .9-2.9 4.2 4.2 0 0 0-2.7 1.4 3.8 3.8 0 0 0-1 2.8c1 .1 2-.5 2.8-1.3Z"/></svg>
     <svg v-else-if="name === 'globe'" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.5 3 14 0 18M12 3c-3 3.5-3 14 0 18"/></svg>
     <svg v-else-if="name === 'message'" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v12H9l-5 4V5Z"/><path d="M8 9h8M8 13h5"/></svg>
