@@ -1,42 +1,57 @@
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import AppIcon from '../AppIcon.vue';
-import { links } from '../../data/landing';
-import { detectDownloadDevice, macInstallStep, releaseDownloadUrl } from '../../lib/downloadDevice';
+import { downloadPlatforms, tvPlatforms } from '../../data/downloads';
+import { detectDownloadDevice, detectTvRelease, installerFormat, macInstallStep, releaseDownloadUrl, releaseVersionLabel, unwrapAppRelease } from '../../lib/downloadDevice';
 
-const platforms = [
-    { key: 'mac', name: 'Mac', icon: 'desktop', releaseKey: 'macos_update', note: 'macOS 14 or later', description: 'I Mac-ah Zo Stream. Screen lian zawkah, kan stories chu enjoy rawh.', action: 'Download for Mac' },
-    { key: 'windows', name: 'Windows', icon: 'windows', releaseKey: 'windows_update', note: 'Windows PC', description: 'I PC-ah Zo Stream install la, i movie duh ber nen chawlh hahdam rawh.', action: 'Download for Windows' },
-    { key: 'android', name: 'Android', icon: 'phone', note: 'Phones & tablets', description: 'I phone leh tablet-ah Zo Stream. I kalna apiangah kan stories chu kalpui rawh.', action: 'Get it on Google Play', url: links.playStore },
-    { key: 'ios', name: 'iPhone & iPad', icon: 'apple', note: 'iOS & iPadOS', description: 'iPhone leh iPad atan download link kan buatsaih mek. A awm hunah hetah i hmu ang.' },
-    { key: 'tv', name: 'Smart TV', icon: 'tv', note: 'Watch on the big screen', description: 'I chhungkua nen screen lianah en rawh. I TV mil setup tanpui i mamawh em?', action: 'Get TV setup help', url: '/contact-us' },
-];
 const detected = ref(null);
 const selected = ref(null);
+const tvRelease = ref(null);
 const downloadHeading = ref(null);
 const releases = ref({});
 const states = ref({});
 const controllers = new Set();
-const active = computed(() => platforms.find(device => device.key === selected.value));
-const otherPlatforms = computed(() => platforms.filter(device => device.key !== selected.value));
-const activeRelease = computed(() => releases.value[active.value?.releaseKey]);
-const downloadUrl = computed(() => active.value?.url || releaseDownloadUrl(activeRelease.value));
-const loading = computed(() => active.value?.releaseKey && states.value[active.value.releaseKey] === 'loading');
-const failed = computed(() => active.value?.releaseKey && states.value[active.value.releaseKey] === 'error');
+const active = computed(() => downloadPlatforms.find(device => device.key === selected.value));
+const otherPlatforms = computed(() => downloadPlatforms.filter(device => device.key !== selected.value));
+const releaseKey = computed(() => active.value?.key === 'tv' ? tvRelease.value : active.value?.releaseKey);
+const activeRelease = computed(() => releases.value[releaseKey.value]);
+const status = computed(() => states.value[releaseKey.value] || 'loading');
+const downloadUrl = computed(() => status.value === 'ready' ? releaseDownloadUrl(activeRelease.value) : null);
+const versionLabel = computed(() => releaseVersionLabel(activeRelease.value));
+const format = computed(() => installerFormat(downloadUrl.value));
+const tvName = computed(() => tvPlatforms.find(platform => platform.key === tvRelease.value)?.name);
+const deviceName = computed(() => tvName.value && active.value?.key === 'tv' ? tvName.value : active.value?.name);
+const isStore = computed(() => {
+    if (!downloadUrl.value) return false;
+    return ['play.google.com', 'apps.apple.com', 'apps.microsoft.com', 'www.microsoft.com', 'www.lgappstv.com', 'lgappstv.com'].includes(new URL(downloadUrl.value).hostname);
+});
+const actionLabel = computed(() => {
+    if (!isStore.value) return `Download for ${deviceName.value}`;
+    const host = new URL(downloadUrl.value).hostname;
+    if (host === 'play.google.com') return 'Get it on Google Play';
+    if (host === 'apps.apple.com') return 'Get it on the App Store';
+    return 'Open app store';
+});
+const actionIcon = computed(() => {
+    if (!isStore.value) return 'download';
+    return new URL(downloadUrl.value).hostname === 'play.google.com' ? 'play-store' : active.value.icon;
+});
 const steps = computed(() => {
-    if (!active.value) return [];
-    const install = {
-        mac: ['Download rawh', 'I Mac atan installer download rawh.', 'Install rawh', macInstallStep(downloadUrl.value)],
-        windows: ['Download rawh', 'Windows installer download rawh.', 'Install rawh', 'Installer hawng la, a hrilh angin install rawh.'],
-        android: ['Google Play open rawh', 'A chunga Google Play button hmet rawh.', 'Install rawh', 'Zo Stream app page-ah Install hmet rawh.'],
-        ios: ['Link lo nghak rawh', 'App Store download link kan buatsaih mek.', 'Device dang hmang rawh', 'A hnuaia Other devices atangin thlang rawh.'],
-        tv: ['I TV check rawh', 'I TV model leh platform hriat chian rawh.', 'Setup help la rawh', 'Supported TV leh installation chungchangah min rawn rawh.'],
-    }[active.value.key];
-    return [{ title: install[0], text: install[1] }, { title: install[2], text: install[3] }, { title: 'Sign in & enjoy', text: 'I Zo Stream account hmangin sign in la, en tan rawh.' }];
+    if (!downloadUrl.value) return [];
+    let install = ['File hawng rawh', 'Download zawh file hawng la, a hrilh angin install rawh.'];
+    if (isStore.value) install = ['Install hmet rawh', 'Store-ah Zo Stream app install rawh.'];
+    else if (active.value?.key === 'mac') install = ['App install rawh', macInstallStep(downloadUrl.value)];
+    else if (format.value === 'ZIP') install = ['ZIP extract rawh', 'ZIP file extract la, chhunga installation instructions zawm rawh.'];
+    else if (active.value?.key === 'tv') install = ['I TV-ah install rawh', 'I TV mil installation tanpui i mamawh chuan min rawn rawh.'];
+    return [
+        { title: isStore.value ? 'App store open rawh' : 'App download rawh', text: isStore.value ? 'A chunga button hmet la, app store a inhawng ang.' : 'Download button hmet la, file download zawh nghak rawh.' },
+        { title: install[0], text: install[1] },
+        { title: 'Sign in la, en tan rawh', text: 'Zo Stream app hawng la, i account hmangin sign in rawh.' },
+    ];
 });
 
-async function loadRelease(key) {
-    if (states.value[key] === 'loading') return;
+async function loadRelease(key, retry = false) {
+    if (!key || states.value[key] === 'loading' || (!retry && states.value[key] === 'ready')) return;
     states.value[key] = 'loading';
     const controller = new AbortController();
     controllers.add(controller);
@@ -46,13 +61,11 @@ async function loadRelease(key) {
             headers: { Accept: 'application/json', 'X-Client-Platform': 'web', 'X-Client-Version': '1.0' },
             signal: controller.signal,
         });
-        if (response.status === 404) {
-            releases.value[key] = null;
-        } else {
+        if (response.status === 404) releases.value[key] = null;
+        else {
             if (!response.ok) throw new Error('Release unavailable');
             const payload = await response.json();
-            if (payload.status === false || payload.success === false) throw new Error('Release unavailable');
-            releases.value[key] = payload.data || payload;
+            releases.value[key] = unwrapAppRelease(payload);
         }
         states.value[key] = 'ready';
     } catch {
@@ -63,10 +76,11 @@ async function loadRelease(key) {
     }
 }
 
+watch(releaseKey, key => loadRelease(key));
 onMounted(() => {
     detected.value = detectDownloadDevice(navigator);
+    tvRelease.value = detectTvRelease(navigator.userAgent);
     selected.value = detected.value;
-    platforms.filter(device => device.releaseKey).forEach(device => loadRelease(device.releaseKey));
 });
 onBeforeUnmount(() => controllers.forEach(controller => controller.abort()));
 
@@ -79,63 +93,68 @@ async function selectDevice(key) {
 </script>
 
 <template>
-    <main class="get-app section-pad">
-        <section class="get-app-hero" aria-labelledby="download-title">
-            <div class="get-app-copy">
-                <a class="download-breadcrumb" href="/">Home <span aria-hidden="true">/</span> <b>Download</b></a>
-                <div class="download-eyebrow"><span></span> YOUR STORIES. YOUR SCREEN.</div>
-                <h1 id="download-title">Kan stories.<br /><span>I screen-ah.</span></h1>
-                <p class="get-app-intro">I device duh berah Zo Stream install la.<br />Mizo entertainment chu i bulah a awm reng ang.</p>
-                <div v-if="active" class="recommended-download" aria-live="polite" :aria-busy="Boolean(loading)">
-                    <div class="recommended-heading">
-                        <div class="platform-symbol"><AppIcon :name="active.icon" /></div>
-                        <div><span>{{ selected === detected ? 'FOR YOUR DEVICE' : 'SELECTED DEVICE' }}</span><h2 ref="downloadHeading" tabindex="-1">Zo Stream for {{ active.name }}</h2></div>
-                        <span v-if="selected === detected" class="detected-mark" aria-label="Device detected">✓</span>
-                    </div>
-                    <p>{{ active.description }}</p>
-                    <a v-if="downloadUrl" class="download-primary" :href="downloadUrl" :target="active.key === 'android' ? '_blank' : undefined" :rel="active.key === 'android' ? 'noopener noreferrer' : undefined">
-                        <AppIcon :name="active.key === 'android' ? 'play-store' : active.key === 'tv' ? 'tv' : 'download'" />
-                        {{ active.action }} <span aria-hidden="true">↗</span>
-                    </a>
-                    <button v-else-if="loading" class="download-primary" disabled><span class="download-spinner" aria-hidden="true"></span>Checking download…</button>
-                    <button v-else-if="failed" class="download-primary" @click="loadRelease(active.releaseKey)">Try again <span aria-hidden="true">↻</span></button>
-                    <button v-else class="download-primary" disabled>Download coming soon</button>
-                    <div class="download-caption">
-                        <span v-if="failed" role="status">Download link load a ni lo. Try again hmet rawh.</span>
-                        <template v-else><span>{{ active.note }}</span><span v-if="downloadUrl && activeRelease?.version">v{{ activeRelease.version }}</span><span v-if="downloadUrl && active.key !== 'tv'">Official Zo Stream app</span></template>
-                    </div>
+    <main class="download-center section-pad">
+        <div class="download-topline"><a href="/">Home</a><span aria-hidden="true">/</span><span>Download</span><a class="topline-help" href="/contact-us">Need help? <span aria-hidden="true">↗</span></a></div>
+        <header class="download-intro">
+            <span class="download-kicker">ZO STREAM APP</span>
+            <h1>Download la.<br class="mobile-break" /> En tan rawh.</h1>
+            <p>I device atan app download la, i Zo Stream account hmangin sign in rawh.</p>
+        </header>
+
+        <section v-if="active" class="download-workspace" aria-labelledby="selected-device-title" :aria-busy="status === 'loading' && Boolean(releaseKey)">
+            <div class="download-main">
+                <div class="download-selection"><span class="device-pill"><AppIcon :name="active.icon" />{{ active.name }}</span><span v-if="selected === detected" class="auto-detected"><span aria-hidden="true">✓</span> I device atan</span><span v-else class="selection-note">I device thlan</span></div>
+                <img class="download-app-logo" :src="'/images/zostream-logo.jpg'" alt="Zo Stream" width="64" height="64" />
+                <h2 id="selected-device-title" ref="downloadHeading" tabindex="-1">Zo Stream for {{ deviceName }}</h2>
+                <p class="download-device-note">{{ active.note }}</p>
+
+                <label v-if="active.key === 'tv'" class="tv-choice"><span>I TV platform thlang rawh</span><select v-model="tvRelease"><option :value="null" disabled>Choose your TV</option><option v-for="platform in tvPlatforms" :key="platform.key" :value="platform.key">{{ platform.name }}</option></select></label>
+
+                <div class="download-action-area" aria-live="polite" aria-atomic="true">
+                    <template v-if="downloadUrl">
+                        <a class="download-primary" :href="downloadUrl" :target="isStore ? '_blank' : undefined" :rel="isStore ? 'noopener noreferrer' : undefined"><AppIcon :name="actionIcon" /><span>{{ actionLabel }}</span><span class="cta-arrow" aria-hidden="true">{{ isStore ? '↗' : '↓' }}</span></a>
+                        <div class="download-file-info"><span v-if="versionLabel">{{ versionLabel }}</span><span v-if="format">{{ format }} file</span><span v-else>{{ isStore ? 'App store-ah install rawh' : 'Official download' }}</span></div>
+                    </template>
+                    <template v-else-if="!releaseKey"><p class="download-status">I TV platform thlang la, a mil download link i hmu ang.</p></template>
+                    <template v-else-if="status === 'loading'"><button class="download-primary" disabled><span class="download-spinner" aria-hidden="true"></span>Download link kan zawng mek…</button><p class="download-status">Lo nghak lawk rawh.</p></template>
+                    <template v-else-if="status === 'error'"><p class="download-status error" role="status">Download link load a ni lo. Check leh rawh.</p><button class="download-primary" @click="loadRelease(releaseKey, true)"><span aria-hidden="true">↻</span>Try again</button></template>
+                    <template v-else><div class="unavailable-label">Tunah download a la awm lo</div><p class="download-status">{{ deviceName }} atan link a awm hunah hetah a lang ang. Device dang i thlang thei bawk.</p></template>
                 </div>
-                <div v-else class="choose-device-prompt"><AppIcon name="download" /><div><strong>I device thlang rawh.</strong><p>I device OS kan hre thei lo. A hnuaiah thlang la, download link i hmu ang.</p></div></div>
-                <a class="other-devices-link" href="#other-devices">{{ active ? 'Looking for another device?' : 'Choose your device' }} <span aria-hidden="true">↓</span></a>
+                <a class="change-device-link" href="#other-devices">Device dang atan i duh em? <span aria-hidden="true">↓</span></a>
             </div>
-            <div class="download-art" aria-hidden="true">
-                <div class="art-orbit orbit-one"></div><div class="art-orbit orbit-two"></div>
-                <div class="art-label"><span></span> ALL IN MIZO</div>
-                <div class="preview-laptop">
-                    <div class="preview-screen">
-                        <div class="preview-toolbar"><i></i><i></i><i></i><span>ZO STREAM</span></div>
-                        <div class="preview-feature"><img :src="'/images/featured-poster.jpg'" alt="" fetchpriority="high" /><div><span>STORIES THAT FEEL LIKE HOME</span><h2>Kan tawng.<br />Kan entertainment.</h2><b>▶ &nbsp; Zo Stream</b></div></div>
-                        <div class="preview-bottom"><span>Movies</span><span>Series</span><span>More to discover ↗</span></div>
-                    </div>
-                    <div class="preview-base"></div>
-                </div>
-                <div class="preview-mobile"><div class="mobile-camera"></div><img :src="'/images/featured-poster.jpg'" alt="" /><div><img :src="'/images/zostream-logo.jpg'" alt="" /><strong>Zo Stream</strong><span>Entertainment.<br />I kutphahah.</span><b>▶</b></div></div>
-                <div class="art-footnote"><span>One account.</span> A screen for every story.</div>
-            </div>
+
+            <aside class="download-instructions" aria-labelledby="install-title">
+                <template v-if="downloadUrl">
+                    <div class="instructions-label"><span aria-hidden="true">01 — 03</span> TAN DAN</div>
+                    <h3 id="install-title">Install dan a awlsam.</h3>
+                    <ol><li v-for="(step, index) in steps" :key="`${releaseKey}-${index}`"><span class="instruction-number">{{ index + 1 }}</span><div><h4>{{ step.title }}</h4><p>{{ step.text }}</p></div></li></ol>
+                    <p v-if="active.key === 'mac'" class="installer-note"><strong>DMG leh PKG</strong> chu install dan chi hnih a ni. I download file mil instructions zawm rawh.</p>
+                </template>
+                <template v-else>
+                    <div class="instructions-label">ZO STREAM DOWNLOAD</div>
+                    <h3 id="install-title">I device mil app.</h3>
+                    <p class="instructions-placeholder">{{ status === 'loading' && releaseKey ? 'Download link a ready hunah install dan hetah a lang ang.' : 'Device dang thlang la, a mil download link leh install dan i hmu ang.' }}</p>
+                    <a class="instructions-help" href="#other-devices">Device options en rawh <span aria-hidden="true">↓</span></a>
+                </template>
+                <a class="installation-help" href="/contact-us"><AppIcon name="message" /><span><strong>Tanpui i mamawh em?</strong><small>Installation-ah kan pui thei che.</small></span><span aria-hidden="true">↗</span></a>
+            </aside>
         </section>
+
+        <section v-else class="device-picker-empty" aria-labelledby="choose-device-title"><AppIcon name="desktop" /><h2 id="choose-device-title">I device thlang rawh.</h2><p>I device OS kan hre thei lo. A hnuaiah thlang la, download link i hmu ang.</p></section>
+
         <section id="other-devices" class="other-devices" aria-labelledby="other-devices-title">
-            <div class="other-devices-heading"><h2 id="other-devices-title">{{ active ? 'Other devices' : 'Choose your device' }}</h2><p>I enna tur device thlang rawh.</p></div>
-            <div class="other-device-list">
-                <button v-for="device in otherPlatforms" :key="device.key" class="other-device" @click="selectDevice(device.key)">
-                    <AppIcon :name="device.icon" /><span><strong>{{ device.name }}</strong><small>{{ device.key === 'ios' ? 'Coming soon' : device.note }}</small></span><span class="device-arrow" aria-hidden="true">↗</span>
-                </button>
+            <div class="other-devices-heading"><h2 id="other-devices-title">{{ active ? 'Device dang atan' : 'Choose your device' }}</h2><p>{{ active ? 'I download duh chu thlang rawh.' : 'App install-na tur device thlang rawh.' }}</p></div>
+            <div class="other-device-list"><button v-for="device in otherPlatforms" :key="device.key" class="other-device" @click="selectDevice(device.key)"><AppIcon :name="device.icon" /><span>{{ device.name }}</span><span aria-hidden="true">↗</span></button></div>
+        </section>
+
+        <section class="download-faq" aria-labelledby="download-faq-title">
+            <div><span class="download-kicker">HELP & SUPPORT</span><h2 id="download-faq-title">Hriat tur tlem.</h2><p>Download leh installation chungchang.</p></div>
+            <div class="download-questions">
+                <details><summary>Device dangah install ka duh chuan?<span aria-hidden="true">+</span></summary><p>“Device dang atan” atangin i install-na tur device thlang rawh. A mil download button leh install dan a lang ang.</p></details>
+                <details><summary>Download button ka hmu lo a.<span aria-hidden="true">+</span></summary><p>I device atan download link a la awm loh chuan device dang thlang rawh. Link load a nih loh chuan “Try again” hmet la, check leh rawh.</p></details>
+                <details><summary>Installation-ah ka buai a.<span aria-hidden="true">+</span></summary><p>I device hming leh i harsatna min hrilh rawh. <a href="/contact-us">Support rawn rawh ↗</a></p></details>
             </div>
         </section>
-        <section v-if="active" class="download-steps" aria-labelledby="install-title">
-            <div class="steps-heading"><span>READY WHEN YOU ARE</span><h2 id="install-title">Install. Sign in. <b>Enjoy.</b></h2><p>{{ active.name }}-ah tan a awlsam.</p></div>
-            <ol><li v-for="(step, index) in steps" :key="`${selected}-${index}`"><span class="step-number">0{{ index + 1 }}</span><h3>{{ step.title }}</h3><p>{{ step.text }}</p></li></ol>
-        </section>
-        <div class="download-support"><span>Installation-ah tanpui i mamawh em?</span><a href="/contact-us">We're here to help <span aria-hidden="true">↗</span></a></div>
     </main>
 </template>
 
