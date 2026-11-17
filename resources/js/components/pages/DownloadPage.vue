@@ -128,7 +128,7 @@ async function selectDevice(key) {
                     <div class="instructions-label"><span aria-hidden="true">01 — 03</span> TAN DAN</div>
                     <h3 id="install-title">Install dan a awlsam.</h3>
                     <ol><li v-for="(step, index) in steps" :key="`${releaseKey}-${index}`"><span class="instruction-number">{{ index + 1 }}</span><div><h4>{{ step.title }}</h4><p>{{ step.text }}</p></div></li></ol>
-                    <p v-if="active.key === 'mac'" class="installer-note"><strong>DMG leh PKG</strong> chu install dan chi hnih a ni. I download file mil instructions zawm rawh.</p>
+                    <p v-if="active.key === 'mac'" class="installer-note">Apple notarization a tel lo; block a nih chuan <strong>System Settings → Privacy &amp; Security → Open Anyway</strong> hmang rawh.</p>
                 </template>
                 <template v-else>
                     <div class="instructions-label">ZO STREAM DOWNLOAD</div>
