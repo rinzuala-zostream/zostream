@@ -1,5 +1,6 @@
 <script setup>
 import { onBeforeUnmount, ref } from 'vue';
+import AdminIcon from '../AdminIcon.vue';
 import { uploadChannelFile } from '../../lib/channelUploads';
 const props = defineProps({ api: Function, channelId: [String, Number], contentId: [String, Number], audience: { type: String, default: 'admin' }, kind: { type: String, default: 'artwork' }, disabled: Boolean, label: { type: String, default: 'Upload file' } });
 const emit = defineEmits(['uploaded', 'busy']);
@@ -10,6 +11,7 @@ async function select(files) {
     if (busy.value || props.disabled) return;
     if (files?.length !== 1) { error.value = 'Choose one file at a time.'; return; }
     const next = files[0];
+    if (props.kind === 'artwork' && next.size > 10 * 1024 * 1024) { error.value = 'Choose an image smaller than 10 MB.'; return; }
     const extension = '.' + next.name.split('.').pop().toLowerCase();
     if (!accept.split(',').includes(extension) || next.size <= 0) { error.value = 'Choose a supported, non-empty file.'; return; }
     if (session) {
@@ -22,12 +24,14 @@ async function select(files) {
 async function upload() {
     if (!file.value || busy.value || props.disabled) return;
     busy.value = true; cancelled = false; error.value = ''; done.value = ''; emit('busy', true);
+    let completed = null;
     try {
         const result = await uploadChannelFile({ api: props.api, channelId: props.channelId, contentId: props.contentId, audience: props.audience, kind: props.kind, file: file.value, previous: session, progress: value => percent.value = value, isCancelled: () => cancelled });
         session = null;
-        if (result && mounted) { busy.value = false; emit('busy', false); done.value = props.kind === 'source' ? 'Source uploaded for staff review.' : 'Image uploaded. Save the form to apply it.'; file.value = null; if (input.value) input.value.value = ''; emit('uploaded', result); }
+        if (result && mounted) { completed = result; done.value = props.kind === 'source' ? 'Source uploaded for staff review.' : 'Image uploaded. Save the form to apply it.'; file.value = null; if (input.value) input.value.value = ''; }
     } catch (reason) { session = reason.uploadSession || session; if (mounted) error.value = reason.message; }
     finally { if (mounted) { busy.value = false; emit('busy', false); } }
+    if (completed && mounted) emit('uploaded', completed);
 }
 async function discard() {
     if (busy.value) return;
@@ -45,13 +49,16 @@ onBeforeUnmount(() => { mounted = false; cancelled = true; });
 </script>
 <template>
     <div class="channel-dropzone" :class="{ dragging: drag }" @dragover.prevent="drag = true" @dragleave.prevent="drag = false" @drop.prevent="drag = false; select($event.dataTransfer.files)">
-        <span>{{ label }}</span><small>Drag a file here or choose from your device · {{ accept }}</small>
+        <AdminIcon class="dropzone-icon" :name="kind === 'artwork' ? 'image' : 'film'" /><strong>{{ label }}</strong><small>Drag a file here or choose from your device · {{ accept }}</small>
         <input ref="input" type="file" :accept="accept" :disabled="disabled || busy" :aria-label="label" @change="select($event.target.files)">
         <template v-if="file"><small>{{ file.name }} · {{ (file.size / 1024 / 1024).toFixed(1) }} MB</small><button class="admin-secondary" type="button" :disabled="disabled || busy" @click="upload">{{ session ? 'Retry upload' : 'Upload selected file' }}</button><button v-if="!busy" class="admin-secondary" type="button" :disabled="disabled" @click="discard">Discard selection</button></template>
         <template v-if="busy"><progress :value="percent" max="100" :aria-label="`${label} progress`" /><small>{{ percent }}% · {{ percent >= 95 ? 'Validating file…' : 'Uploading…' }}</small><button class="admin-secondary" type="button" @click="cancelled = true">Cancel upload</button></template>
-        <small v-if="error" role="alert">{{ error }}</small><small v-if="done" role="status">{{ done }}</small>
+        <small v-if="error" class="upload-error" role="alert">{{ error }}</small><small v-if="done" role="status">{{ done }}</small>
     </div>
 </template>
 <style scoped>
+.dropzone-icon{width:26px;height:26px;color:var(--a-cyan)}.channel-dropzone .upload-error{color:#e98787}.channel-dropzone:focus-within{outline:2px solid var(--a-cyan);outline-offset:3px}
+.dropzone-icon{width:26px;height:26px;color:var(--a-cyan)}.channel-dropzone strong{font-size:13px}.channel-dropzone .upload-error{color:#e98787}.channel-dropzone:focus-within{border-color:var(--a-cyan)}
+
 .channel-dropzone{display:grid;gap:10px;padding:16px;margin:10px 0;border:1px dashed var(--a-muted);border-radius:10px;background:var(--a-panel);color:var(--a-text)}.channel-dropzone.dragging{border-color:var(--a-cyan);background:rgba(53,213,208,.08)}.channel-dropzone small{color:var(--a-muted);font-size:11px;overflow-wrap:anywhere}.channel-dropzone input{max-width:100%;font-size:12px}.channel-dropzone progress{width:100%;accent-color:var(--a-cyan)}.channel-dropzone button{justify-self:start}
 </style>

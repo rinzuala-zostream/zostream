@@ -65,3 +65,12 @@ export function formPayload(fields, values) {
     }));
 }
 export const money = value => value == null ? '—' : new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(Number(value));
+
+export function formatBytes(value) {
+    if (value == null) return '—';
+    const bytes = Number(value);
+    if (!Number.isFinite(bytes) || bytes < 0) return '—';
+    if (bytes < 1024) return `${bytes} B`;
+    const unit = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), 3);
+    return `${(bytes / 1024 ** unit).toFixed(1)} ${['B', 'KB', 'MB', 'GB'][unit]}`;
+}

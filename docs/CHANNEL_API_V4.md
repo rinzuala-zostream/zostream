@@ -234,3 +234,20 @@ lists ready sources for `?content_id=...`, `GET /{id}` checks a session,
 `POST /{id}/parts/{index}` accepts a multipart `file`, `POST /{id}/complete`
 validates/finalizes, and `DELETE /{id}` cancels unfinished uploads. Only the admin
 boundary exposes `GET /{id}/download` for completed source files.
+
+## Channel workspace improvements
+
+The admin channel directory now shows the matching result count and clearly
+labels page-level active/pending counts, with resettable filters and channel
+identity links. Admin detail and Creator Studio share a banner/logo overview,
+status badges, profile preview, form guidance and actionable empty states.
+The studio includes a publishing guide, visibility filters and a paginated
+private source history panel for each video. Suspended owners can inspect this
+history while upload and editing controls remain disabled.
+
+Artwork uploads lock surrounding navigation and pagination until they finish
+or are cancelled; the active upload remains cancellable. Upload completion
+releases its busy state before notifying its parent, so a parent refresh does
+not receive a second stale busy event. Image selections over 10 MB are rejected
+before transfer. Source histories display readable file sizes. These changes
+reuse the existing API and do not activate checkout or channel playback.
