@@ -1,16 +1,17 @@
 <script setup>
-import { computed, onBeforeUnmount, ref } from 'vue';
-import StatusPanel from '../admin/components/StatusPanel.vue';
-import FileDropzone from '../admin/components/channels/FileDropzone.vue';
-import ChannelForm from '../admin/components/channels/ChannelForm.vue';
-import ChannelTable from '../admin/components/channels/ChannelTable.vue';
-import ChannelIdentity from '../admin/components/channels/ChannelIdentity.vue';
-import AdminIcon from '../admin/components/AdminIcon.vue';
-import { channelFields, contentFields } from '../admin/lib/channels';
+import { computed, nextTick, onBeforeUnmount, ref } from 'vue';
+import CreatorForm from './components/CreatorForm.vue';
+import CreatorUpload from './components/CreatorUpload.vue';
+import CreatorIcon from './components/CreatorIcon.vue';
+import CreatorPagination from './components/CreatorPagination.vue';
+import { money, formatBytes } from '../admin/lib/channels';
 import { api, authData, clearSession, deviceId, getSession, saveSession } from './api';
 
 const session = ref(getSession()); const channels = ref([]); const selected = ref(''); const detail = ref(null);
-const tab = ref('profile'); const rows = ref([]); const page = ref(1); const lastPage = ref(1); const total = ref(0);
+const tab = ref('contents'); const rows = ref([]); const page = ref(1); const lastPage = ref(1); const total = ref(0);
+const editorView = ref(null); const sourceView = ref(null);
+async function revealEditor() { await nextTick(); const element = editorView.value?.$el; element?.scrollIntoView?.({ behavior: 'auto', block: 'start' }); element?.querySelector?.('input')?.focus?.({ preventScroll: true }); }
+async function revealSource() { await nextTick(); sourceView.value?.scrollIntoView?.({ behavior: 'auto', block: 'start' }); }
 const sourceVideo = ref(null); const sources = ref([]); const sourcesLoading = ref(false); const sourcesError = ref('');
 const sourcePage = ref(1); const sourceLastPage = ref(1); const sourceTotal = ref(0); const contentStatus = ref('');
 const formUploading = ref(false); const locked = computed(() => busy.value || formUploading.value);
@@ -19,12 +20,22 @@ const loading = ref(false); const busy = ref(false); const error = ref(''); cons
 const phone = ref(''); const country = ref('+91'); const otp = ref(''); const loginUid = ref('');
 const listPage = ref(1); const listLastPage = ref(1);
 let generation = 0;
-const profileFields = channelFields.filter(field => ['name', 'slug', 'description', 'logo', 'banner'].includes(field.name));
-const videoFields = contentFields.filter(field => ['title', 'description', 'thumbnail'].includes(field.name)).map(field => ({ ...field, required: field.name === 'title' }));
+const profileFields = [
+    { name: 'name', label: 'Channel name', type: 'text', required: true, max: 255 },
+    { name: 'slug', label: 'Channel handle', type: 'text', max: 255 },
+    { name: 'description', label: 'Description', type: 'textarea', max: 10000 },
+    { name: 'logo', label: 'Channel logo', type: 'url', max: 500 },
+    { name: 'banner', label: 'Channel banner', type: 'url', max: 500 },
+];
+const videoFields = [
+    { name: 'title', label: 'Title', type: 'text', required: true, max: 255 },
+    { name: 'description', label: 'Description', type: 'textarea', max: 10000 },
+    { name: 'thumbnail', label: 'Cover image', type: 'url', max: 500 },
+];
 const writable = computed(() => ['active', 'pending'].includes(detail.value?.channel?.status));
-const columns = computed(() => tab.value === 'contents'
-    ? [{ key: 'title', label: 'Video' }, { key: 'status', label: 'Visibility' }, { key: 'updated_at', label: 'Updated', date: true }]
-    : [{ key: 'name', label: 'Plan' }, { key: 'price', label: 'Price', money: true }, { key: 'duration_days', label: 'Days' }, { key: 'is_active', label: 'Active' }]);
+const heading = computed(() => ({ contents: 'Your stories start here.', profile: 'Make yourself at home.', plans: 'Your community, growing.' })[tab.value]);
+const failedArtwork = ref({});
+function dateLabel(value) { if (!value) return 'Not recorded'; const date = new Date(value); return Number.isNaN(date.getTime()) ? 'Not recorded' : new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }).format(date); }
 async function act(action) {
     if (busy.value) return;
     busy.value = true; error.value = ''; notice.value = '';
@@ -54,7 +65,7 @@ async function loadChannels(nextPage = 1) {
         const result = await api(`/creator/channels?page=${nextPage}&per_page=20`);
         if (current !== generation) return;
         channels.value = result.data || []; listPage.value = result.current_page; listLastPage.value = result.last_page;
-        selected.value = channels.value[0] ? String(channels.value[0].id) : '';
+        selected.value = channels.value.some(channel => String(channel.id) === selected.value) ? selected.value : channels.value[0] ? String(channels.value[0].id) : '';
         if (selected.value) await loadChannel();
     } catch (reason) { if (current === generation) error.value = reason.message; }
     finally { if (current === generation) loading.value = false; }
@@ -85,8 +96,10 @@ async function saveProfile(body) {
 async function saveVideo(body) {
     const video = editor.value;
     await act(async () => {
-        await api(`/creator/channels/${selected.value}/contents${video.id ? `/${video.id}` : ''}`, { method: video.id ? 'PUT' : 'POST', body });
-        await loadChannel(page.value); notice.value = 'Video draft saved. Zo Stream staff control publication.';
+        const saved = await api(`/creator/channels/${selected.value}/contents${video.id ? `/${video.id}` : ''}`, { method: video.id ? 'PUT' : 'POST', body });
+        await loadChannel(video.id ? page.value : 1);
+        if (!video.id && saved?.id) { sourceVideo.value = saved; await revealSource(); await loadSources(); }
+        notice.value = video.id ? 'Video details saved.' : 'Draft saved. Add your MP4 below to send a source for staff review.';
     });
 }
 async function withdraw(row) {
@@ -98,7 +111,7 @@ async function withdraw(row) {
 }
 async function openSources(row) {
     if (locked.value) return;
-    sourceVideo.value = row; sources.value = []; sourcePage.value = 1; sourceLastPage.value = 1; sourceTotal.value = 0; await loadSources();
+    editor.value = null; sourceVideo.value = row; sources.value = []; sourcePage.value = 1; sourceLastPage.value = 1; sourceTotal.value = 0; await revealSource(); await loadSources();
 }
 async function loadSources(nextPage = 1) {
     if (!sourceVideo.value) return;
@@ -116,67 +129,69 @@ async function sourceUploaded() {
     if (video) await openSources(video);
     notice.value = 'MP4 uploaded privately for Zo Stream review.';
 }
-function changeTab(value) { if (locked.value) return; tab.value = value; loadChannel(); }
+function changeTab(value) { if (locked.value || loading.value) return; tab.value = value; loadChannel(); }
 async function startVideo() {
     if (locked.value || !writable.value) return;
     const channelId = selected.value; tab.value = 'contents'; await loadChannel();
     if (selected.value === channelId && tab.value === 'contents' && detail.value && writable.value) newVideo();
 }
-function newVideo() { if (locked.value) return; sourceVideo.value = null; sourceGeneration++; editor.value = {}; }
-function editVideo(row) { if (locked.value) return; sourceVideo.value = null; sourceGeneration++; editor.value = { ...row }; }
+function newVideo() { if (locked.value) return; sourceVideo.value = null; sourceGeneration++; editor.value = {}; revealEditor(); }
+function editVideo(row) { if (locked.value) return; sourceVideo.value = null; sourceGeneration++; editor.value = { ...row }; revealEditor(); }
 function closeSources() { sourceGeneration++; sourceVideo.value = null; sourcesLoading.value = false; }
 function expired() { generation++; sourceGeneration++; sourceVideo.value = null; formUploading.value = false; session.value = null; channels.value = []; selected.value = ''; detail.value = null; rows.value = []; editor.value = null; loading.value = false; }
 async function logout() { await act(async () => { try { await api('/auth/logout', { method: 'POST' }); } finally { clearSession(); expired(); } }); }
 window.addEventListener('zostream:creator-expired', expired);
 onBeforeUnmount(() => { generation++; sourceGeneration++; window.removeEventListener('zostream:creator-expired', expired); });
 if (session.value) loadChannels();
+
 </script>
 <template>
-    <main class="admin-root creator-root">
-        <div class="creator-workspace admin-page">
-            <header class="creator-header"><a href="/creator" class="creator-brand"><img :src="'/images/zostream-logo.jpg'" alt="Zo Stream"><span>ZO STREAM<small>CREATOR STUDIO</small></span></a><button v-if="session" class="admin-secondary" :disabled="locked" @click="logout">Sign out</button></header>
-            <StatusPanel tone="error" :message="error" /><StatusPanel tone="success" :message="notice" />
-            <section v-if="!session" class="admin-panel creator-login">
-                <h1>Welcome to Creator Studio</h1><p>Sign in with the WhatsApp number linked to your Zo Stream channel owner account.</p>
-                <form v-if="!loginUid" class="admin-form-grid" @submit.prevent="requestOtp"><label>Country code<input v-model="country" required maxlength="10" autocomplete="tel-country-code"></label><label>WhatsApp number<input v-model="phone" required inputmode="tel" autocomplete="tel-national"></label><button class="admin-primary" :disabled="locked">{{ busy ? 'Sending…' : 'Send login code' }}</button></form>
-                <form v-else class="admin-form-grid" @submit.prevent="verifyOtp"><label>Verification code<input v-model="otp" required pattern="[0-9]{6}" maxlength="6" inputmode="numeric" autocomplete="one-time-code"></label><button class="admin-primary" :disabled="locked">{{ busy ? 'Verifying…' : 'Sign in' }}</button><button type="button" class="admin-secondary" :disabled="locked" @click="loginUid = ''; otp = ''">Change number / resend</button></form>
-            </section>
-            <template v-else>
-                <div class="creator-channel-picker"><label>My channel<select v-model="selected" :disabled="locked || loading" @change="loadChannel()"><option v-for="item in channels" :key="item.id" :value="String(item.id)">{{ item.name }} · {{ item.status }}</option></select></label><button class="admin-secondary" :disabled="locked || loading || listPage <= 1" @click="loadChannels(listPage - 1)">Previous channels</button><button class="admin-secondary" :disabled="locked || loading || listPage >= listLastPage" @click="loadChannels(listPage + 1)">More channels</button><button class="admin-secondary" :disabled="locked || loading" @click="loadChannels(listPage)">Refresh</button></div>
-                <div v-if="loading" class="admin-loading">Loading your studio…</div>
-                <section v-else-if="!channels.length" class="admin-panel creator-login"><h2>No channel assigned</h2><p>Ask Zo Stream Admin to assign your account UID as the channel owner.</p><p>Your UID: <strong>{{ session.uid || 'Check your Zo Stream account' }}</strong></p><p>Existing owners should sign in with the number linked to their assigned account.</p></section>
+    <main class="creator-studio" :class="{ 'is-signed-in': session }">
+        <a class="cs-skip" href="#studio-content">Skip to content</a>
+        <template v-if="!session">
+            <header class="cs-login-header"><a class="cs-brand" href="/creator"><span class="cs-brand-mark">z<span>o</span></span><span>Zo Stream <b>for creators</b></span></a><span>A space for your next story.</span></header>
+            <div class="cs-login-layout">
+                <section class="cs-login-story"><span class="cs-eyebrow">CREATE. SHARE. CONNECT.</span><h1>Big ideas.<br>Your own<br><em>little studio.</em></h1><p>Your videos, your channel, your community. Bring your next story to Zo Stream.</p><div class="cs-story-art" aria-hidden="true"><span class="cs-art-orbit"></span><div class="cs-art-frame"><CreatorIcon name="video" /><span>YOUR NEXT<br>GREAT STORY</span></div><span class="cs-art-sticker">Made by you.</span></div></section>
+                <section id="studio-content" class="cs-login-card"><span class="cs-step-label">{{ loginUid ? 'STEP 02 / VERIFY' : 'STEP 01 / SIGN IN' }}</span><h2>{{ loginUid ? 'Check your WhatsApp.' : 'Welcome, creator.' }}</h2><p>{{ loginUid ? 'Enter the six-digit code sent to your number.' : 'Sign in with the WhatsApp number linked to your channel owner account.' }}</p>
+                    <p v-if="error" class="cs-message cs-message-error" role="alert">{{ error }}</p><p v-if="notice" class="cs-message cs-message-success" role="status">{{ notice }}</p>
+                    <form v-if="!loginUid" class="cs-login-form" @submit.prevent="requestOtp"><div class="cs-phone-fields"><label>Country code<input v-model="country" required maxlength="10" autocomplete="tel-country-code" :disabled="busy"></label><label>WhatsApp number<input v-model="phone" required inputmode="tel" autocomplete="tel-national" placeholder="Your phone number" :disabled="busy"></label></div><button class="cs-button cs-button-primary" :disabled="busy">{{ busy ? 'Sending…' : 'Send login code' }}<CreatorIcon name="arrow" /></button></form>
+                    <form v-else class="cs-login-form" @submit.prevent="verifyOtp"><label>Verification code<input v-model="otp" class="cs-otp" required pattern="[0-9]{6}" maxlength="6" inputmode="numeric" autocomplete="one-time-code" placeholder="000000" :disabled="busy"></label><button class="cs-button cs-button-primary" :disabled="busy">{{ busy ? 'Verifying…' : 'Sign in' }}<CreatorIcon name="arrow" /></button><button type="button" class="cs-button cs-button-quiet" :disabled="busy" @click="loginUid = ''; otp = ''">Change number / resend</button></form>
+                    <small class="cs-login-footnote">Use your existing Zo Stream account. Your channel assignment stays with your account.</small>
+                </section>
+            </div>
+        </template>
+        <template v-else>
+            <aside class="cs-sidebar"><a class="cs-brand" href="/creator"><span class="cs-brand-mark">z<span>o</span></span><span>Zo Stream <b>CREATOR STUDIO</b></span></a>
+                <div class="cs-channel-switcher"><label>My channel<select v-model="selected" :disabled="locked || loading || !channels.length" @change="loadChannel()"><option v-if="!channels.length" value="">No channel assigned</option><option v-for="channel in channels" :key="channel.id" :value="String(channel.id)">{{ channel.name }}</option></select></label><div v-if="listLastPage > 1" class="cs-channel-pages"><button :disabled="locked || loading || listPage <= 1" @click="loadChannels(listPage - 1)">Previous channels</button><button :disabled="locked || loading || listPage >= listLastPage" @click="loadChannels(listPage + 1)">More channels</button></div></div>
+                <nav class="cs-navigation" aria-label="Studio sections"><button :class="{ active: tab === 'contents' }" :aria-current="tab === 'contents' ? 'page' : undefined" :disabled="locked || loading" @click="changeTab('contents')"><CreatorIcon name="video" /><span>Videos</span></button><button :class="{ active: tab === 'profile' }" :aria-current="tab === 'profile' ? 'page' : undefined" :disabled="locked || loading" @click="changeTab('profile')"><CreatorIcon name="channel" /><span>Channel settings</span></button><button :class="{ active: tab === 'plans' }" :aria-current="tab === 'plans' ? 'page' : undefined" :disabled="locked || loading" @click="changeTab('plans')"><CreatorIcon name="members" /><span>Membership</span></button></nav>
+                <div class="cs-sidebar-note"><span class="cs-note-dot"></span><strong>A little help along the way</strong><p>Save a draft, upload your video, and Zo Stream staff will handle review and publication.</p></div>
+                <button class="cs-signout" :disabled="locked" @click="logout"><CreatorIcon name="logout" />Sign out</button>
+            </aside>
+            <div id="studio-content" class="cs-workspace">
+                <header class="cs-topbar"><span>YOUR CREATIVE SPACE</span><button class="cs-button cs-button-quiet" :disabled="locked || loading" @click="loadChannels(listPage)">Refresh</button></header>
+                <p v-if="error" class="cs-message cs-message-error" role="alert">{{ error }}</p><p v-if="notice" class="cs-message cs-message-success" role="status">{{ notice }}</p>
+                <div v-if="loading" class="cs-loading" role="status"><span class="cs-loader"></span>Getting your studio ready…</div>
+                <section v-else-if="!channels.length" class="cs-empty cs-empty-large"><div class="cs-empty-icon"><CreatorIcon name="channel" /></div><span class="cs-eyebrow">LET’S GET YOU SET UP</span><h1>No channel assigned</h1><p>Ask Zo Stream Admin to link your account to your channel.</p><div class="cs-account-uid">Your UID: <strong>{{ session.uid || 'Check your Zo Stream account' }}</strong></div><p>Already have a channel? Sign in with the number linked to its owner account.</p></section>
                 <template v-else-if="detail">
-                    <ChannelIdentity :channel="detail.channel" />
-                    <div class="creator-stats"><article class="admin-panel"><strong>{{ detail.summary.contents }}</strong><span>Videos / content</span></article><article class="admin-panel"><strong>{{ detail.summary.published }}</strong><span>Published</span></article><article class="admin-panel"><strong>{{ detail.summary.active_members }}</strong><span>Active members</span></article></div>
-                    <section v-if="tab === 'profile'" class="studio-guide admin-panel" aria-label="Publishing workflow">
-                        <div class="studio-guide-heading"><div><span class="studio-eyebrow">YOUR NEXT RELEASE</span><h2>From first draft to your audience</h2><p>Prepare your video here. Zo Stream staff handle review and publication.</p></div><button class="admin-primary" :disabled="locked || !writable" @click="startVideo">Create a video</button></div>
-                        <ol class="studio-steps"><li><span>01</span><strong>Add video details</strong><p>Start with a title, description and thumbnail.</p></li><li><span>02</span><strong>Upload your MP4</strong><p>Save the draft, then upload its private source file.</p></li><li><span>03</span><strong>Staff review</strong><p>Zo Stream processes the video and manages its release.</p></li></ol>
-                    </section>
-                    <nav class="creator-tabs" aria-label="Studio sections"><button v-for="item in ['profile', 'contents', 'plans']" :key="item" :aria-pressed="tab === item" :class="{ active: tab === item }" :disabled="locked" @click="changeTab(item)">{{ item === 'contents' ? 'Video drafts' : item }}</button></nav>
-                    <StatusPanel v-if="!writable" message="This channel is suspended. You can view your records; contact Zo Stream support to restore editing." />
-                    <ChannelForm @busy="formUploading = $event" v-if="tab === 'profile'" :fields="profileFields" :record="detail.channel" :busy="busy || !writable" :upload-api="api" audience="creator" :channel-id="selected" title="Channel profile" @save="saveProfile" @cancel="loadChannel()" />
-                    <template v-else>
-                        <template v-if="tab === 'contents'">
-                            <p class="creator-muted">Save video details, then choose Upload MP4 to add your private source. Staff review, media processing and publication are handled by Zo Stream. Editing published metadata returns it to draft.</p>
-                            <div class="studio-library-toolbar"><div><h2>Your video library</h2><p class="creator-muted">Manage drafts, review files and published videos.</p></div><label>Visibility<select v-model="contentStatus" :disabled="locked || loading" @change="loadChannel()"><option value="">All videos</option><option value="draft">Drafts</option><option value="published">Published</option><option value="private">Withdrawn / private</option></select></label><button class="admin-primary" :disabled="locked || !writable" @click="newVideo">New video draft</button></div>
-                            <ChannelForm @busy="formUploading = $event" v-if="editor" :key="editor.id || 'new'" :fields="videoFields" :record="editor" :busy="busy || !writable" :upload-api="api" audience="creator" :channel-id="selected" :content-id="editor.id" title="Video details" @save="saveVideo" @cancel="editor = null" />
-                        </template>
-                        <p v-else class="creator-muted">Your channel membership plans. Contact Zo Stream Admin for pricing changes. New membership purchases are currently unavailable.</p>
-                        <section v-if="sourceVideo && tab === 'contents'" class="studio-source-panel admin-panel"><header><div><span class="studio-eyebrow">PRIVATE SOURCE</span><h2>{{ sourceVideo.title || 'Untitled video' }}</h2><p class="creator-muted">Upload the original MP4 for staff review. Completed files are listed below.</p></div><button class="admin-secondary" :disabled="locked" @click="closeSources">Close uploads</button></header><StatusPanel tone="error" :message="sourcesError" />
-                        <FileDropzone :key="sourceVideo.id" :api="api" audience="creator" :channel-id="selected" :content-id="sourceVideo.id" kind="source" :label="`Upload MP4 · ${sourceVideo.title}`" :disabled="locked || !writable" @busy="busy = $event" @uploaded="sourceUploaded" />
-                        <ChannelTable :disabled="locked" :rows="sources" :loading="sourcesLoading" :page="sourcePage" :last-page="sourceLastPage" :total="sourceTotal" :columns="[{ key: 'filename', label: 'Uploaded file' }, { key: 'size', label: 'Size', bytes: true }, { key: 'created_at', label: 'Uploaded', date: true }]" empty-title="No source uploaded yet" empty-description="Choose your MP4 above and upload it to submit a source for staff review." @page="loadSources" /></section>
-                        <ChannelTable :disabled="locked" :empty-title="tab === 'contents' ? 'Your video library starts here' : 'No membership plans yet'" :empty-description="tab === 'contents' ? 'Create a video draft, add its details and upload an MP4 for review. You can also change the visibility filter.' : 'Zo Stream Admin manages plan availability and pricing for your channel.'" :rows="rows" :columns="columns" :page="page" :last-page="lastPage" :total="total" @page="loadChannel">
-                            <template #cell-title="{ row }"><div class="studio-video-title"><AdminIcon name="film" /><div><strong>{{ row.title || 'Untitled video' }}</strong><small>{{ row.status === 'draft' ? 'Prepare details and upload a source' : row.status === 'published' ? 'Available when its release date is reached' : 'Hidden from the public catalog' }}</small></div></div></template>
-                            <template v-if="tab === 'contents'" #actions="{ row }"><button :disabled="locked || !writable" @click="editVideo(row)">Edit details</button><button :disabled="locked" @click="openSources(row)">{{ writable ? 'Upload MP4' : 'Source files' }}</button><button :disabled="locked || !writable" @click="withdraw(row)">Withdraw</button></template>
-                        </ChannelTable>
+                    <header class="cs-page-heading"><div><p class="cs-eyebrow">{{ detail.channel.name }} <span class="cs-status" :data-status="detail.channel.status">{{ detail.channel.status }}</span></p><h1>{{ heading }}</h1><p>{{ tab === 'contents' ? 'A home for everything you’re making.' : tab === 'profile' ? 'Give your channel a personality that’s all yours.' : 'See the plans that bring your audience closer.' }}</p></div><button v-if="tab !== 'contents'" class="cs-button cs-button-primary" :disabled="locked || !writable" @click="startVideo"><CreatorIcon name="plus" />Create a video</button></header>
+                    <div class="cs-stats"><article><CreatorIcon name="video" /><div><strong>{{ detail.summary.contents }}</strong><span>Total videos / content</span></div></article><article><CreatorIcon name="check" /><div><strong>{{ detail.summary.published }}</strong><span>Published</span></div></article><article><CreatorIcon name="members" /><div><strong>{{ detail.summary.active_members }}</strong><span>Active members</span></div></article></div>
+                    <p v-if="!writable" class="cs-message cs-message-info" role="status">This channel is suspended. You can view your records; contact Zo Stream support to restore editing.</p>
+                    <template v-if="tab === 'contents'">
+                        <div class="cs-library-bar"><div><h2>Your video library <span>{{ total }}</span></h2><p>Make something your audience will love.</p></div><label>Visibility<select v-model="contentStatus" :disabled="locked" @change="loadChannel()"><option value="">All videos</option><option value="draft">Drafts</option><option value="published">Published</option><option value="private">Withdrawn / private</option></select></label><button class="cs-button cs-button-primary" :disabled="locked || !writable" @click="newVideo"><CreatorIcon name="plus" />New video draft</button></div>
+                        <CreatorForm ref="editorView" v-if="editor" :key="editor.id || 'new'" :fields="videoFields" :record="editor" :busy="busy || !writable" :api="api" :channel-id="selected" :content-id="editor.id" title="Video details" @busy="formUploading = $event" @save="saveVideo" @cancel="editor = null" />
+                        <section ref="sourceView" v-if="sourceVideo" class="cs-source-panel"><header><div><p class="cs-eyebrow">STEP 02 / YOUR VIDEO FILE</p><h2>{{ sourceVideo.title || 'Untitled video' }}</h2><p>Add the original MP4. Zo Stream staff will take it from here.</p></div><button class="cs-button cs-button-quiet" :disabled="locked" @click="closeSources">Close uploads</button></header><p v-if="sourcesError" class="cs-message cs-message-error" role="alert">{{ sourcesError }}</p>
+                            <CreatorUpload :key="sourceVideo.id" :api="api" :channel-id="selected" :content-id="sourceVideo.id" kind="source" label="Upload MP4" :disabled="locked || !writable" @busy="busy = $event" @uploaded="sourceUploaded" />
+                            <h3>Previously uploaded</h3><p v-if="sourcesLoading" class="cs-muted" role="status">Loading source files…</p><ul v-else-if="sources.length" class="cs-source-list"><li v-for="source in sources" :key="source.id"><CreatorIcon name="video" /><div><strong>{{ source.filename }}</strong><small>{{ formatBytes(source.size) }} · {{ dateLabel(source.created_at) }}</small></div><span class="cs-status" data-status="ready">Uploaded</span></li></ul><p v-else class="cs-muted">No source uploaded yet. Choose an MP4 above to get started.</p><CreatorPagination :page="sourcePage" :last-page="sourceLastPage" :total="sourceTotal" :disabled="locked || sourcesLoading" @page="loadSources" />
+                        </section>
+                        <div v-if="rows.length" class="cs-video-grid"><article v-for="video in rows" :key="video.id" class="cs-video-card"><div class="cs-video-art"><img v-if="video.thumbnail && !failedArtwork[video.id]" :src="video.thumbnail" :alt="video.title || 'Video thumbnail'" loading="lazy" referrerpolicy="no-referrer" @error="failedArtwork[video.id] = true"><div v-else class="cs-video-placeholder"><CreatorIcon name="video" /><span>{{ video.title || 'Your next story' }}</span></div><span class="cs-status" :data-status="video.status">{{ video.status === 'private' ? 'Private' : video.status }}</span></div><div class="cs-video-body"><h3>{{ video.title || 'Untitled video' }}</h3><p>{{ video.status === 'published' ? 'Published · available from its release date' : video.status === 'draft' ? 'Draft · prepare details and a source for review' : 'Hidden from your public channel' }}</p><small>Updated {{ dateLabel(video.updated_at) }}</small><div class="cs-video-actions"><button class="cs-button cs-button-quiet" :disabled="locked || !writable" @click="editVideo(video)">Edit details</button><button class="cs-button cs-button-outline" :disabled="locked" @click="openSources(video)">{{ writable ? 'Upload MP4' : 'Source files' }}</button><button class="cs-text-danger" :disabled="locked || !writable || video.status === 'private'" @click="withdraw(video)">Withdraw</button></div></div></article></div>
+                        <section v-else class="cs-empty"><div class="cs-empty-icon"><CreatorIcon name="video" /></div><h2>{{ contentStatus ? 'No videos with this visibility.' : 'Your first story belongs here.' }}</h2><p>{{ contentStatus ? 'Try another visibility filter to find your videos.' : 'Start with a title and thumbnail. Then upload an MP4 for staff review.' }}</p><button v-if="!contentStatus" class="cs-button cs-button-outline" :disabled="locked || !writable" @click="newVideo">Create your first video<CreatorIcon name="arrow" /></button></section>
+                        <CreatorPagination :page="page" :last-page="lastPage" :total="total" :disabled="locked" @page="loadChannel" />
+                        <section class="cs-workflow"><span class="cs-eyebrow">A SIMPLE PATH TO PUBLISHED</span><ol><li><span>1</span><div><strong>Make a draft</strong><p>Title, description, thumbnail.</p></div></li><li><span>2</span><div><strong>Upload your MP4</strong><p>Your original, kept private.</p></div></li><li><span>3</span><div><strong>We’ll handle review</strong><p>Staff process and publish.</p></div></li></ol></section>
                     </template>
+                    <template v-else-if="tab === 'profile'"><div class="cs-profile-preview"><img v-if="detail.channel.banner" class="cs-profile-banner" :src="detail.channel.banner" alt="Channel banner" referrerpolicy="no-referrer"><div class="cs-profile-summary"><img v-if="detail.channel.logo" :src="detail.channel.logo" alt="Channel logo" referrerpolicy="no-referrer"><span v-else class="cs-profile-initial">{{ detail.channel.name.slice(0, 1) }}</span><div><h2>{{ detail.channel.name }}</h2><p>/{{ detail.channel.slug }}</p></div><span v-if="detail.channel.is_verified" class="cs-status" data-status="ready">Verified</span></div></div><CreatorForm :fields="profileFields" :record="detail.channel" :busy="busy || !writable" :api="api" :channel-id="selected" title="Channel profile" @busy="formUploading = $event" @save="saveProfile" @cancel="loadChannel()" /></template>
+                    <template v-else><div class="cs-membership-note"><CreatorIcon name="members" /><div><h2>A closer connection with your audience.</h2><p>Zo Stream Admin manages your plan pricing. New membership purchases are currently unavailable.</p></div></div><div v-if="rows.length" class="cs-plan-grid"><article v-for="plan in rows" :key="plan.id" class="cs-plan-card"><span class="cs-status" :data-status="plan.is_active ? 'active' : 'private'">{{ plan.is_active ? 'Active plan' : 'Inactive' }}</span><h2>{{ plan.name || 'Channel membership' }}</h2><strong>{{ money(plan.final_price ?? plan.price) }}</strong><p>for {{ plan.duration_days }} days</p><small v-if="Number(plan.discount_percent) > 0">{{ plan.discount_percent }}% discount · Regular price {{ money(plan.price) }}</small></article></div><section v-else class="cs-empty"><div class="cs-empty-icon"><CreatorIcon name="members" /></div><h2>No membership plans yet</h2><p>Contact Zo Stream Admin to set up plans for your channel.</p></section><CreatorPagination :page="page" :last-page="lastPage" :total="total" :disabled="locked" @page="loadChannel" /></template>
                 </template>
-            </template>
-        </div>
+            </div>
+        </template>
     </main>
 </template>
-<style scoped>
-.studio-eyebrow{font-size:10px;letter-spacing:2px;color:var(--a-cyan);font-weight:600}.studio-guide{padding:24px;margin:24px 0}.studio-guide-heading,.studio-library-toolbar,.studio-source-panel header{display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap}.studio-guide h2,.studio-source-panel h2,.studio-library-toolbar h2{font-size:19px;margin:8px 0}.studio-guide-heading p{color:var(--a-muted);font-size:12px;line-height:1.7}.studio-steps{list-style:none;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;margin:24px 0 0;padding:24px 0 0;border-top:1px solid var(--a-line)}.studio-steps li{display:grid;align-content:start;gap:10px}.studio-steps li>span{color:var(--a-cyan);font-size:12px;font-weight:700}.studio-steps strong{font-size:13px}.studio-steps p{color:var(--a-muted);font-size:12px;line-height:1.7;margin:0}.studio-library-toolbar{margin:24px 0}.studio-library-toolbar>div{flex:1}.studio-library-toolbar label{display:grid;gap:6px;font-size:11px;color:var(--a-muted)}.studio-library-toolbar select{padding:11px;border:1px solid var(--a-line);border-radius:9px;background:var(--a-panel);color:var(--a-text)}.studio-source-panel{padding:22px;margin:20px 0}.studio-video-title{display:flex;align-items:center;gap:12px}.studio-video-title>svg{width:34px;height:34px;flex-shrink:0;padding:7px;background:rgba(53,213,208,.08);color:var(--a-cyan);border-radius:8px}.studio-video-title strong{font-size:13px}.studio-video-title small{display:block;font-size:11px;margin-top:6px;color:var(--a-muted);line-height:1.6}.creator-stats article{border-top:2px solid var(--a-cyan)}@media(max-width:650px){.studio-steps{grid-template-columns:1fr;gap:20px}.studio-guide,.studio-source-panel{padding:18px}.studio-library-toolbar>div{flex-basis:100%}}
-
-.creator-root{min-height:100vh;padding:28px 20px;display:block}.creator-workspace{max-width:1100px;margin:auto}.creator-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:32px;gap:14px}.creator-brand{display:flex;align-items:center;gap:12px;color:var(--a-text);text-decoration:none;font-weight:800}.creator-brand img{width:46px;height:46px;border-radius:12px}.creator-brand small{display:block;color:var(--a-cyan);font-size:10px;letter-spacing:2px;margin-top:4px}.creator-login{max-width:650px;margin:30px auto;padding:30px}.creator-login p,.creator-muted{color:var(--a-muted);line-height:1.7;font-size:13px}.creator-login h1{font-size:24px}.creator-channel-picker{display:flex;align-items:end;gap:12px;flex-wrap:wrap;margin:20px 0}.creator-channel-picker label{display:grid;gap:7px;color:var(--a-muted);font-size:12px;flex:1}.creator-channel-picker select{padding:12px;background:var(--a-panel);color:var(--a-text);border:1px solid var(--a-line);border-radius:9px}.creator-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:20px 0}.creator-stats article{padding:20px}.creator-stats strong,.creator-stats span{display:block}.creator-stats strong{font-size:27px}.creator-stats span{font-size:12px;color:var(--a-muted);margin-top:5px}.creator-tabs{display:flex;gap:10px;margin:20px 0}.creator-tabs button{padding:12px 18px;border:1px solid var(--a-line);border-radius:9px;background:transparent;color:var(--a-muted);text-transform:capitalize}.creator-tabs button.active{color:var(--a-cyan);border-color:var(--a-cyan)}.creator-workspace :deep(.channel-form){margin:18px 0}button:disabled{opacity:.5}@media(max-width:600px){.creator-stats{grid-template-columns:1fr}.creator-root{padding:18px 10px}.creator-login{padding:20px}.creator-tabs{flex-wrap:wrap}}
-</style>

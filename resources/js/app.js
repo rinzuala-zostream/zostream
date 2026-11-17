@@ -7,7 +7,7 @@ const isAdmin = window.location.pathname === '/admin'
 const isCreator = window.location.pathname === '/creator' || window.location.pathname.startsWith('/creator/');
 
 if (isCreator) {
-    Promise.all([import('./creator/CreatorApp.vue'), import('../css/admin.css')]).then(([{ default: CreatorApp }]) => {
+    Promise.all([import('./creator/CreatorApp.vue'), import('../css/creator.css')]).then(([{ default: CreatorApp }]) => {
         createApp(CreatorApp).mount('#app');
     });
 } else if (isAdmin) {

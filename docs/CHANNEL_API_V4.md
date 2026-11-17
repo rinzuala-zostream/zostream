@@ -239,9 +239,14 @@ boundary exposes `GET /{id}/download` for completed source files.
 
 The admin channel directory now shows the matching result count and clearly
 labels page-level active/pending counts, with resettable filters and channel
-identity links. Admin detail and Creator Studio share a banner/logo overview,
-status badges, profile preview, form guidance and actionable empty states.
-The studio includes a publishing guide, visibility filters and a paginated
+identity links. Admin detail includes a banner/logo overview, status badges,
+profile preview, form guidance and actionable empty states.
+Creator Studio has an independent warm light theme, a responsive navigation
+sidebar, thumbnail video cards and its own forms, upload and pagination
+components. It loads `resources/css/creator.css` instead of the admin stylesheet.
+Videos are the initial view, and saving a new draft opens its MP4 upload step.
+Channel selection is preserved on refresh. The studio also includes a
+publishing guide, visibility filters and a paginated
 private source history panel for each video. Suspended owners can inspect this
 history while upload and editing controls remain disabled.
 

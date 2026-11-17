@@ -197,16 +197,18 @@ test('creator studio edits own profile and creates drafts without administrative
         if (path.startsWith('/creator/channels?')) return list([channel]);
         if (path === '/creator/channels/1') return options.method ? channel : { channel, summary: { contents: 0, published: 0, active_members: 0 } };
         if (path.startsWith('/creator/channels/1/contents')) return options.method ? { ...video, status: 'draft' } : list([]);
+        if (path.includes('/creator/channels/1/uploads?')) return list([]);
         throw new Error(`Unexpected creator request: ${path}`);
     };
     const { root, app } = mount(CreatorApp);
     try {
         await settle(); assert.match(text(root), /Sample Channel/);
+        await click(root, 'Channel settings');
         input(root, 'Channel name', 'Owner updated'); await submit(root, 'Channel profile');
         const profile = calls.find(call => call.method === 'PUT');
         assert.equal(profile.path, '/creator/channels/1'); assert.equal(profile.body.name, 'Owner updated');
         assert.equal(Object.hasOwn(profile.body, 'user_id'), false); assert.equal(Object.hasOwn(profile.body, 'status'), false);
-        await click(root, 'Video drafts'); await click(root, 'New video draft');
+        await click(root, 'Videos'); await click(root, 'New video draft');
         input(root, 'Title', 'My draft'); await submit(root, 'Video details');
         const draft = calls.find(call => call.method === 'POST');
         assert.equal(draft.path, '/creator/channels/1/contents'); assert.equal(draft.body.title, 'My draft');
@@ -309,7 +311,7 @@ test('creator can filter drafts and inspect paginated private source history', a
     };
     const { root, app } = mount(CreatorApp);
     try {
-        await settle(); await click(root, 'Video drafts');
+        await settle(); await click(root, 'Videos');
         const filter = find(root, el => el.tag === 'select' && el.props['onUpdate:modelValue'] && el.children.some(child => text(child) === 'Drafts'));
         filter.props['onUpdate:modelValue']('draft'); await nextTick(); filter.props.onChange(); await settle();
         assert.ok(calls.some(call => call.path.includes('/contents?') && call.path.includes('status=draft')));
@@ -337,11 +339,11 @@ test('profile artwork upload locks studio navigation while keeping cancellation 
     };
     const { root, app } = mount(CreatorApp);
     try {
-        await settle();
+        await settle(); await click(root, 'Channel settings');
         const picker = find(root, el => el.tag === 'input' && el.props.type === 'file');
         picker.props.onChange({ target: { files: [new File(['image'], 'logo.png')] } });
         await settle(); await click(root, 'Upload selected file');
-        assert.equal(button(root, 'Video drafts').props.disabled, true);
+        assert.equal(button(root, 'Videos').props.disabled, true);
         assert.equal(button(root, 'Refresh').props.disabled, true);
         const cancel = button(root, 'Cancel upload');
         for (let parent = cancel.parent; parent; parent = parent.parent) {
@@ -349,7 +351,7 @@ test('profile artwork upload locks studio navigation while keeping cancellation 
         }
         await click(root, 'Cancel upload'); finishChunk({}); await settle();
         assert.ok(calls.some(call => call.method === 'DELETE' && call.path.endsWith('/artwork-lock')));
-        assert.equal(button(root, 'Video drafts').props.disabled, false);
+        assert.equal(button(root, 'Videos').props.disabled, false);
         assert.equal(button(root, 'Refresh').props.disabled, false);
     } finally { finishChunk({}); app.unmount(); }
 });
@@ -367,5 +369,36 @@ test('admin filters can be cleared without retaining the previous page or status
         await click(root, 'Clear filters');
         assert.match(calls.at(-1), /page=1/);
         assert.doesNotMatch(calls.at(-1), /status=/);
+    } finally { app.unmount(); }
+});
+
+test('creator draft flows directly into private MP4 upload and unlocks navigation after completion', async () => {
+    globalThis.__creatorSession = { access_token: 'owner-token', uid: 'owner' };
+    const calls = []; let ready = false;
+    globalThis.__creatorApi = async (path, options = {}) => {
+        calls.push({ path, ...options });
+        if (path.startsWith('/creator/channels?')) return list([channel]);
+        if (path === '/creator/channels/1') return { channel, summary: { contents: 1, published: 0, active_members: 0 } };
+        if (path.includes('/contents?')) return list([video]);
+        if (path.endsWith('/contents') && options.method === 'POST') return { ...video, title: 'My new story' };
+        if (path.includes('/uploads?')) return list(ready ? [{ id: 'private-mp4', filename: 'new_story.mp4', size: 7 }] : []);
+        if (path.endsWith('/uploads') && options.method === 'POST') return { id: 'private-mp4', chunk_size: 4 };
+        if (path.includes('/parts/')) return {};
+        if (path.endsWith('/complete')) { ready = true; return { status: 'ready', url: null }; }
+        throw new Error(`Unexpected request: ${path}`);
+    };
+    const { root, app } = mount(CreatorApp);
+    try {
+        await settle(); await click(root, 'New video draft');
+        input(root, 'Title', 'My new story'); await submit(root, 'Video details');
+        assert.match(text(root), /STEP 02 \/ YOUR VIDEO FILE/);
+        const picker = find(root, el => el.tag === 'input' && el.props.type === 'file');
+        picker.props.onChange({ target: { files: [new File(['abcdefg'], 'new_story.mp4')] } });
+        await settle(); await click(root, 'Upload selected file');
+        assert.match(text(root), /new_story\.mp4/);
+        assert.equal(calls.filter(call => call.path.includes('/parts/')).length, 2);
+        assert.equal(button(root, 'Videos').props.disabled, false);
+        assert.equal(button(root, 'Channel settings').props.disabled, false);
+        assert.equal(calls.some(call => call.path.startsWith('/admin/')), false);
     } finally { app.unmount(); }
 });
