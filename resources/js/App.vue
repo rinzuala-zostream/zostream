@@ -105,6 +105,6 @@ onBeforeUnmount(() => {
         <AdvertisePage v-else-if="currentPath === '/advertise'" />
         <AdSubmissionStatusPage v-else-if="isAdStatusPage" />
         <PolicyPage v-else-if="isLegalPage" :page="livePolicyPage" />
-        <AppFooter @navigate="navigate" />
+        <AppFooter :english="currentPath === '/download'" @navigate="navigate" />
     </div>
 </template>

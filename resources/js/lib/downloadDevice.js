@@ -29,10 +29,10 @@ export function unwrapAppRelease(payload) {
 export function macInstallStep(url) {
     let path = '';
     try { path = new URL(url).pathname.toLowerCase(); } catch { /* No published installer yet. */ }
-    if (path.endsWith('.pkg')) return 'PKG file hawng la, installer-in a hrilh angin install rawh.';
-    if (path.endsWith('.zip')) return 'ZIP file extract la, Zo Stream app chu Applications-ah dah rawh.';
-    if (path.endsWith('.dmg')) return 'DMG file hawng la, Zo Stream chu Applications-ah drag rawh.';
-    return 'Download file hawng la, installer instructions zawm rawh. DMG a nih chuan app chu Applications-ah drag rawh.';
+    if (path.endsWith('.pkg')) return 'Open the PKG file and follow the installer’s instructions.';
+    if (path.endsWith('.zip')) return 'Open the ZIP file to extract the app, then move Zo Stream to Applications.';
+    if (path.endsWith('.dmg')) return 'Open the DMG file and drag Zo Stream to Applications.';
+    return 'Open the downloaded file and follow the installation instructions. For a DMG file, drag Zo Stream to Applications.';
 }
 
 export function detectTvRelease(userAgent = '') {
