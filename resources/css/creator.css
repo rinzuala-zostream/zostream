@@ -258,3 +258,41 @@
 .cs-image-link { margin-top: 12px; font-size: 11px; color: var(--cs-muted); }
 .cs-image-link summary { cursor: pointer; }
 .cs-image-link label { margin-top: 12px; }
+
+/* Focused tasks open above the library without changing its layout. */
+.cs-dialog {
+    width: min(760px, calc(100% - 40px));
+    max-height: calc(100svh - 64px);
+    margin: auto;
+    padding: 0;
+    border: 1px solid var(--cs-line);
+    border-radius: 20px;
+    background: #fff;
+    color: var(--cs-ink);
+    overflow: auto;
+    overscroll-behavior: contain;
+    box-shadow: 0 24px 100px #22291e38;
+}
+.cs-dialog::backdrop { background: #20271e70; backdrop-filter: blur(4px); }
+.cs-dialog-surface { padding: 28px; }
+.cs-dialog-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding-bottom: 22px; margin-bottom: 22px; border-bottom: 1px solid var(--cs-line); }
+.cs-dialog-heading h2 { font-size: 23px; letter-spacing: -.5px; margin-top: 7px; overflow-wrap: anywhere; }
+.cs-dialog-close { flex-shrink: 0; font-size: 11px; }
+.cs-dialog-close>span:first-child { font-size: 22px; line-height: 1; margin-right: 7px; }
+.cs-dialog .cs-editor, .cs-dialog .cs-source-panel { border: 0; padding: 0; margin: 0; border-radius: 0; }
+.cs-dialog .cs-editor>header { display: none; }
+.cs-dialog .cs-source-panel>header { margin-bottom: 20px; }
+.cs-dialog .cs-source-panel>header h2 { font-size: 18px; }
+.cs-workflow summary { cursor: pointer; color: var(--cs-muted); font-size: 12px; width: fit-content; }
+.cs-workflow[open] summary { margin-bottom: 20px; }
+@media (max-width: 600px) {
+    .cs-dialog { width: calc(100% - 20px); max-height: calc(100svh - 24px); border-radius: 15px; }
+    .cs-dialog-surface { padding: 20px 16px; }
+    .cs-dialog-heading { gap: 12px; align-items: flex-start; }
+    .cs-dialog-heading h2 { font-size: 20px; }
+    .cs-dialog-close>span:last-child { display: none; }
+    .cs-dialog-close { padding: 0 12px; min-height: 40px; }
+    .cs-dialog-close>span:first-child { margin: 0; }
+}
+.cs-dialog-heading { position: sticky; top: 0; background: #fff; z-index: 2; }
+.cs-dialog .cs-editor footer { position: sticky; bottom: 0; z-index: 1; background: #fff; padding: 16px 0 12px; }

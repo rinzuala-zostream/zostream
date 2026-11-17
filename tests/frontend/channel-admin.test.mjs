@@ -318,7 +318,7 @@ test('creator can filter drafts and inspect paginated private source history', a
         await click(root, 'Upload MP4');
         assert.match(text(root), /original_source\.mp4/);
         assert.ok(calls.some(call => call.path === '/creator/channels/1/uploads?content_id=3&page=1'));
-        await click(root, 'Next');
+        await click(find(root, el => el.tag === 'dialog'), 'Next');
         assert.ok(calls.some(call => call.path === '/creator/channels/1/uploads?content_id=3&page=2'));
         assert.equal(calls.some(call => call.path.includes('/download') || call.path.startsWith('/admin/')), false);
     } finally { app.unmount(); }
@@ -375,6 +375,7 @@ test('admin filters can be cleared without retaining the previous page or status
 test('creator draft flows directly into private MP4 upload and unlocks navigation after completion', async () => {
     globalThis.__creatorSession = { access_token: 'owner-token', uid: 'owner' };
     const calls = []; let ready = false;
+    let finishChunk; const chunk = new Promise(resolve => { finishChunk = resolve; });
     globalThis.__creatorApi = async (path, options = {}) => {
         calls.push({ path, ...options });
         if (path.startsWith('/creator/channels?')) return list([channel]);
@@ -383,7 +384,7 @@ test('creator draft flows directly into private MP4 upload and unlocks navigatio
         if (path.endsWith('/contents') && options.method === 'POST') return { ...video, title: 'My new story' };
         if (path.includes('/uploads?')) return list(ready ? [{ id: 'private-mp4', filename: 'new_story.mp4', size: 7 }] : []);
         if (path.endsWith('/uploads') && options.method === 'POST') return { id: 'private-mp4', chunk_size: 4 };
-        if (path.includes('/parts/')) return {};
+        if (path.includes('/parts/')) return chunk;
         if (path.endsWith('/complete')) { ready = true; return { status: 'ready', url: null }; }
         throw new Error(`Unexpected request: ${path}`);
     };
@@ -395,10 +396,50 @@ test('creator draft flows directly into private MP4 upload and unlocks navigatio
         const picker = find(root, el => el.tag === 'input' && el.props.type === 'file');
         picker.props.onChange({ target: { files: [new File(['abcdefg'], 'new_story.mp4')] } });
         await settle(); await click(root, 'Upload selected file');
+        const activeDialog = find(root, el => el.tag === 'dialog');
+        assert.equal(find(activeDialog, el => el.tag === 'button' && el.props['aria-label'] === 'Close uploads').props.disabled, true);
+        activeDialog.props.onCancel({ preventDefault() {} }); await settle();
+        assert.equal(find(root, el => el.tag === 'dialog'), activeDialog);
+        finishChunk({}); await settle();
         assert.match(text(root), /new_story\.mp4/);
         assert.equal(calls.filter(call => call.path.includes('/parts/')).length, 2);
         assert.equal(button(root, 'Videos').props.disabled, false);
         assert.equal(button(root, 'Channel settings').props.disabled, false);
         assert.equal(calls.some(call => call.path.startsWith('/admin/')), false);
+    } finally { finishChunk({}); app.unmount(); }
+});
+
+test('creator video tasks stay in one dialog and failed saves keep entered values there', async () => {
+    globalThis.__creatorSession = { access_token: 'owner-token', uid: 'owner' };
+    globalThis.__creatorApi = async (path, options = {}) => {
+        if (path.startsWith('/creator/channels?')) return list([channel]);
+        if (path === '/creator/channels/1') return { channel, summary: { contents: 1, published: 0, active_members: 0 } };
+        if (path.includes('/contents?')) return list([video]);
+        if (options.method === 'PUT') throw new Error('Please choose a different title.');
+        if (path.includes('/uploads?')) return list([]);
+        throw new Error(`Unexpected request: ${path}`);
+    };
+    const { root, app } = mount(CreatorApp);
+    try {
+        await settle();
+        const workspace = find(root, el => el.props.id === 'studio-content');
+        assert.equal(find(workspace, el => el.tag === 'form'), undefined);
+        await click(root, 'Edit details');
+        let dialog = find(root, el => el.tag === 'dialog');
+        assert.ok(dialog);
+        assert.equal(dialog.props['aria-label'], 'Video details');
+        assert.equal(find(workspace, el => el.tag === 'form'), undefined);
+        input(dialog, 'Title', 'Entered title'); await submit(dialog, 'Video details');
+        assert.match(text(dialog), /Please choose a different title/);
+        assert.equal(find(dialog, el => el.tag === 'input').value, 'Entered title');
+        await click(dialog, 'Cancel');
+        assert.equal(find(root, el => el.tag === 'dialog'), undefined);
+        assert.ok(find(root, el => el.props.class === 'cs-video-grid'));
+        await click(root, 'Upload MP4');
+        dialog = find(root, el => el.tag === 'dialog');
+        assert.ok(find(dialog, el => el.props.class === 'cs-source-panel'));
+        assert.equal(find(workspace, el => el.props.class === 'cs-source-panel'), undefined);
+        dialog.props.onCancel({ preventDefault() {} }); await settle();
+        assert.equal(find(root, el => el.tag === 'dialog'), undefined);
     } finally { app.unmount(); }
 });

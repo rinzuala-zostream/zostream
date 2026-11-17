@@ -256,3 +256,18 @@ releases its busy state before notifying its parent, so a parent refresh does
 not receive a second stale busy event. Image selections over 10 MB are rejected
 before transfer. Source histories display readable file sizes. These changes
 reuse the existing API and do not activate checkout or channel playback.
+
+
+## Focused creator dialogs
+
+The video library keeps its card grid and filters in place. New video metadata
+and edits open in a modal dialog; private MP4 uploads and source history use a
+separate dialog. Saving a new draft advances to its source dialog. Successful
+saves and uploads refresh the library in the background. Errors stay inside the
+active dialog, with entered metadata retained on failed saves.
+
+Dialogs use the browser's native modal behavior for focus containment and an
+inert background, lock page scrolling, and restore focus when closed. Escape,
+backdrop and close controls dismiss an idle dialog. Saving or uploading disables
+dismissal until the operation finishes or the upload is cancelled. The publishing
+guide is a disclosure rather than a permanently expanded library section.
