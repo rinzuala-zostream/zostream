@@ -85,10 +85,6 @@
 .cs-workspace { margin-left: 240px; padding: 0 clamp(24px, 4vw, 64px) 50px; max-width: 1750px; }
 .cs-topbar { min-height: 88px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--cs-line); margin-bottom: 32px; }
 .cs-topbar>span { color: #8a907f; font-size: 9px; letter-spacing: 2px; }
-.cs-page-heading { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 28px; }
-.cs-page-heading .cs-eyebrow { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; }
-.cs-page-heading h1 { font-family: Georgia, serif; font-weight: 400; font-size: clamp(30px, 3.8vw, 47px); letter-spacing: -1.4px; margin: 13px 0 9px; line-height: 1.15; }
-.cs-page-heading>div>p:last-child { color: var(--cs-muted); font-size: 13px; }
 .cs-status { display: inline-flex; align-items: center; padding: 4px 9px; background: #eeeee8; color: #656c60; border-radius: 6px; font-size: 10px; letter-spacing: 0; text-transform: capitalize; font-weight: 500; white-space: nowrap; }
 .cs-status[data-status=active], .cs-status[data-status=published], .cs-status[data-status=ready] { background: #e8efde; color: #496231; }
 .cs-status[data-status=draft], .cs-status[data-status=pending] { background: #f9edd3; color: #836322; }
@@ -223,8 +219,6 @@
     .cs-sidebar { padding: 18px 16px 0; }
     .cs-navigation { gap: 0; justify-content: space-between; }
     .cs-navigation button { font-size: 11px; gap: 6px; padding: 10px; }
-    .cs-page-heading { align-items: flex-start; flex-direction: column; gap: 18px; }
-    .cs-page-heading h1 { font-size: 33px; }
     .cs-stats { gap: 0; margin-bottom: 26px; }
     .cs-stats article { display: block; padding: 16px 12px; }
     .cs-stats article>svg { display: none; }
@@ -303,8 +297,6 @@
 .cs-topbar>div { display: grid; gap: 4px; }
 .cs-topbar>div>span { color: #8a907f; font-size: 9px; letter-spacing: 1.7px; }
 .cs-topbar>div>strong { font-size: 13px; font-weight: 600; }
-.cs-page-heading>div { min-width: 0; }
-.cs-page-heading>div>p:last-child { line-height: 1.7; }
 .cs-library-bar { align-items: flex-end; gap: 16px; }
 .cs-library-bar>div { padding-bottom: 2px; }
 .cs-library-bar select { min-height: 44px; }

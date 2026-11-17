@@ -32,7 +32,6 @@ const videoFields = [
     { name: 'thumbnail', label: 'Cover image', type: 'url', max: 500 },
 ];
 const writable = computed(() => ['active', 'pending'].includes(detail.value?.channel?.status));
-const heading = computed(() => ({ overview: 'Your channel, at a glance.', contents: 'Your stories start here.', profile: 'Make yourself at home.', plans: 'Your community, growing.' })[tab.value]);
 const failedArtwork = ref({});
 function dateLabel(value) { if (!value) return 'Not recorded'; const date = new Date(value); return Number.isNaN(date.getTime()) ? 'Not recorded' : new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }).format(date); }
 async function act(action) {
@@ -178,7 +177,6 @@ if (session.value) loadChannels();
                 <div v-if="loading" class="cs-loading" role="status"><span class="cs-loader"></span>Getting your studio ready…</div>
                 <section v-else-if="!channels.length" class="cs-empty cs-empty-large"><div class="cs-empty-icon"><CreatorIcon name="channel" /></div><span class="cs-eyebrow">LET’S GET YOU SET UP</span><h1>No channel assigned</h1><p>Ask Zo Stream Admin to link your account to your channel.</p><div class="cs-account-uid">Your UID: <strong>{{ session.uid || 'Check your Zo Stream account' }}</strong></div><p>Already have a channel? Sign in with the number linked to its owner account.</p></section>
                 <template v-else-if="detail">
-                    <header class="cs-page-heading"><div><p class="cs-eyebrow">{{ detail.channel.name }} <span class="cs-status" :data-status="detail.channel.status">{{ detail.channel.status }}</span></p><h1>{{ heading }}</h1><p>{{ tab === 'overview' ? 'Check in on your channel and choose what to work on next.' : tab === 'contents' ? 'A home for everything you’re making.' : tab === 'profile' ? 'Give your channel a personality that’s all yours.' : 'See the plans that bring your audience closer.' }}</p></div><button v-if="tab !== 'contents'" class="cs-button cs-button-primary" :disabled="locked || !writable" @click="startVideo"><CreatorIcon name="plus" />Create a video</button></header>
                     <p v-if="!writable" class="cs-message cs-message-info" role="status">This channel is suspended. You can view your records; contact Zo Stream support to restore editing.</p>
                     <CreatorOverview v-if="tab === 'overview'" :detail="detail" :recent="rows" :busy="locked || loading" :writable="writable" @create="startVideo" @edit="editVideo" @navigate="changeTab" />
                     <template v-else-if="tab === 'contents'">
