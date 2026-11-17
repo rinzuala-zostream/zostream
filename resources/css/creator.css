@@ -156,12 +156,12 @@
 .cs-editor footer small { flex: 1; color: var(--cs-muted); font-size: 11px; }
 .cs-upload { margin-top: 15px; padding: 26px 20px; display: grid; justify-items: center; gap: 10px; text-align: center; border: 1px dashed #cdd4bf; border-radius: 12px; background: #fafbf6; }
 .cs-upload.is-dragging, .cs-upload:focus-within { border-color: #b7472b; background: #fff9f3; }
-.cs-upload-symbol { color: #97a17f; }
+.cs-upload-symbol { display: grid; place-items: center; color: #97a17f; }
 .cs-upload-symbol svg { width: 26px; height: 26px; }
 .cs-upload>strong { font-size: 13px; }
 .cs-upload>p { color: var(--cs-muted); font-size: 11px; max-width: 350px; }
-.cs-upload input[type=file] { border: 0; background: transparent; max-width: 290px; padding: 6px 0; font-size: 11px; min-height: 32px; }
-.cs-upload input::file-selector-button { border: 1px solid #d6d9cb; background: #fff; border-radius: 6px; padding: 7px 10px; color: #5d6952; cursor: pointer; margin-right: 10px; }
+.cs-upload .cs-upload-input { display: none; }
+.cs-upload-choose { justify-self: center; min-width: 120px; margin-top: 4px; background: #fff; }
 .cs-file-selection { width: 100%; display: flex; justify-content: center; flex-wrap: wrap; align-items: center; gap: 14px; }
 .cs-file-selection>span { font-size: 12px; overflow-wrap: anywhere; }
 .cs-file-selection small { display: block; color: var(--cs-muted); }

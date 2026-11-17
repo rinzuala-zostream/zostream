@@ -11,7 +11,7 @@ onMounted(async () => {
     if (document.body) document.body.style.overflow = 'hidden';
     dialog.value?.showModal?.();
     await nextTick();
-    if (mounted) (dialog.value?.querySelector?.('input:not([disabled]), textarea:not([disabled])') || dialog.value?.querySelector?.('h2'))?.focus?.();
+    if (mounted) (dialog.value?.querySelector?.('input:not([disabled]):not([type=file]), textarea:not([disabled])') || dialog.value?.querySelector?.('h2'))?.focus?.();
 });
 onBeforeUnmount(() => {
     mounted = false;

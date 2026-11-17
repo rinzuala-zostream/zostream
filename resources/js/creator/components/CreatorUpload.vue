@@ -43,7 +43,8 @@ onBeforeUnmount(() => { mounted = false; cancelled = true; });
         <div class="cs-upload-symbol"><CreatorIcon :name="kind === 'source' ? 'upload' : 'image'" /></div>
         <strong>{{ label || (kind === 'source' ? 'Drop your MP4 here' : 'Choose your artwork') }}</strong>
         <p>{{ kind === 'source' ? 'Your original video stays private for Zo Stream staff review.' : 'JPG, PNG or WebP · up to 10 MB' }}</p>
-        <input ref="picker" type="file" :accept="accept" :disabled="disabled || busy" :aria-label="label || 'Choose file'" @change="select($event.target.files)">
+        <input ref="picker" class="cs-upload-input" type="file" :accept="accept" :disabled="disabled || busy" :aria-label="label || 'Choose file'" @change="select($event.target.files)">
+        <button type="button" class="cs-button cs-button-quiet cs-upload-choose" :disabled="disabled || busy" @click="picker?.click()">{{ file ? 'Change file' : 'Choose file' }}</button>
         <div v-if="file" class="cs-file-selection"><span>{{ file.name }} <small>{{ formatBytes(file.size) }}</small></span><button type="button" class="cs-button cs-button-primary" :disabled="disabled || busy" @click="upload">{{ session ? 'Retry upload' : 'Upload selected file' }}</button></div>
         <div v-if="busy" class="cs-upload-progress" role="status"><progress :value="progress" max="100" aria-label="Upload progress" /><span>{{ progress }}% · {{ progress >= 95 ? 'Checking your file…' : 'Uploading…' }}</span><button type="button" class="cs-button cs-button-quiet" @click="cancelled = true">Cancel upload</button></div>
         <p v-if="error" class="cs-inline-error" role="alert">{{ error }}</p><p v-if="done" class="cs-inline-success" role="status">{{ done }}</p>
