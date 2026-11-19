@@ -4,7 +4,7 @@
 @section('content')
 <div class="page-actions"><a class="button secondary" href="{{ route('isp.bandwidth-invoices.index') }}">← Bandwidth invoices</a><a class="button secondary" href="{{ $publicUrl }}" target="_blank" rel="noopener">Operator invoice view</a><a class="button secondary" href="{{ $pdfUrl }}">Download PDF</a><button class="button secondary" onclick="window.print()" type="button">Print invoice</button></div>
 <section class="form-card bandwidth-invoice">
-    <h2>ZoStream — Bandwidth invoice {{ $invoice->number() }}</h2>
+    <h2>Zo Stream WIFI — Bandwidth invoice {{ $invoice->number() }}</h2>
     <p>Bill to: <strong>{{ $invoice->branch_name }}</strong></p>
     <p>Service month: {{ $invoice->billing_month->format('F Y') }} · Issued: {{ $invoice->issued_on->format('d M Y') }} · Due: {{ $invoice->due_date->format('d M Y') }}</p>
     <div class="table-wrap"><table>

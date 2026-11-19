@@ -504,7 +504,7 @@ class IspBandwidthBillingTest extends TestCase
         $this->get(route('invoice.bandwidth.pdf', $invoice))->assertForbidden();
         $this->get($links->viewUrl($invoice))->assertOk()->assertViewIs('invoices.bandwidth_show')
             ->assertSee('Business Bandwidth')->assertSee('99,120.00')->assertSee('GST')->assertSee('Please settle this invoice by')
-            ->assertDontSee('Mark as Paid')->assertDontSee('Zo Stream WIFI');
+            ->assertDontSee('Mark as Paid')->assertSee('Zo Stream WIFI')->assertDontSee('ZoStream');
         $this->get($links->viewUrl($invoice).'&extra=tampered')->assertForbidden();
         $this->view('invoices.bandwidth_pdf', ['invoice' => $invoice])->assertSee('Please settle by');
         $pdf = $this->get($links->pdfUrl($invoice))->assertOk()->assertHeader('Content-Type', 'application/pdf');
