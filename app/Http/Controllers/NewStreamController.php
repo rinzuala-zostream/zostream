@@ -1008,10 +1008,12 @@ class NewStreamController extends Controller
                     'movie_id' => $movieId,
                     'position' => $watchPosition,
                     'user_id' => $userId,
+                    'auth_user_id' => $userId,
                     'duration' => $duration,
                     'movie_type' => $contentType,
                 ]);
 
+                $fakeRequest->attributes->set('engagement_trusted_progress', true);
                 $watchResponse = $this->watchPositionController->save($fakeRequest);
 
                 if ($watchResponse && method_exists($watchResponse, 'getContent')) {

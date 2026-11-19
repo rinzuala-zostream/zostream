@@ -190,6 +190,8 @@ Route::prefix('v4')
             });
 
             Route::post('/account/push-token', [\App\Http\Controllers\Api\V4\ChatController::class, 'registerPushToken'])->middleware('throttle:30,1');
+            Route::get('/account/engagement-preferences', [\App\Http\Controllers\Api\V4\EngagementPreferenceController::class, 'show']);
+            Route::put('/account/engagement-preferences', [\App\Http\Controllers\Api\V4\EngagementPreferenceController::class, 'update'])->middleware('throttle:30,1');
             Route::prefix('chat')->group(function () {
                 Route::get('/invitation-links/{token}', [\App\Http\Controllers\Api\V4\ChatInvitationLinkController::class, 'show'])->where('token', '[A-Za-z0-9]{64}')->middleware(\App\Http\Middleware\ChatThrottle::class.':30');
                 Route::post('/invitation-links/{token}/respond', [\App\Http\Controllers\Api\V4\ChatInvitationLinkController::class, 'respond'])->where('token', '[A-Za-z0-9]{64}')->middleware(\App\Http\Middleware\ChatThrottle::class.':20');

@@ -43,6 +43,20 @@ class WatchPositionController extends Controller
                 ]
             );
 
+            // Trusted V4/stream identities only. Keep the legacy response and storage unchanged.
+            $trustedProgress = $request->attributes->get('auth_session_token_id') !== null
+                || $request->attributes->get('engagement_trusted_progress') === true;
+            if ($trustedProgress && (string) $request->input('auth_user_id', '') === (string) $userId) {
+                app(\App\Services\Engagement\EngagementTracker::class)->playback((string) $userId, 'progress:'.now('UTC')->format('Y-m-d-H'), [
+                    'started_at' => now('UTC')->toIso8601String(),
+                    'content' => ['type' => strtolower(trim((string) ($request->input('movie_type') ?: 'movie'))), 'id' => (string) $movieId],
+                    'timing' => ['watched_ms' => max(0, (int) $request->input('position')) * 1000,
+                        'watch_position_ms' => max(0, (int) $request->input('position')) * 1000,
+                        'duration_ms' => max(0, (int) $request->input('duration')) * 1000],
+                    'result' => [],
+                ]);
+            }
+
             return response()->json([
                 'status' => 'success',
                 'message' => 'Record saved successfully',

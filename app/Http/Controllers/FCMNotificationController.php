@@ -92,6 +92,10 @@ class FCMNotificationController extends Controller
                 ->createMessaging()
                 ->send($message);
 
+            if (($data['type'] ?? null) !== 'smart_engagement') {
+                app(\App\Services\Engagement\ExistingPushActivity::class)->record($token);
+            }
+
             return [
                 'success' => true,
                 'status' => 200,
@@ -169,6 +173,18 @@ class FCMNotificationController extends Controller
 
         if ($messageData !== []) {
             $message = $message->withData($messageData);
+        }
+
+        if (($messageData['type'] ?? null) === 'smart_engagement') {
+            // Do not keep an offline phone's reminder queued past tonight's quiet hours.
+            $local = now('Asia/Kolkata');
+            $expires = $local->copy()->setTime(21, 0);
+            $ttl = max(1, min(3600, $expires->timestamp - $local->timestamp));
+            $payload = $message->jsonSerialize();
+            $payload['android']['ttl'] = $ttl.'s';
+            $payload['apns']['headers']['apns-expiration'] = (string) ($local->timestamp + $ttl);
+            $payload['webpush']['headers']['TTL'] = (string) $ttl;
+            $message = CloudMessage::fromArray($payload);
         }
 
         return $token !== null && $token !== ''

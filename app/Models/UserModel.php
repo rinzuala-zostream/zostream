@@ -6,6 +6,13 @@ use Illuminate\Database\Eloquent\Model;
 
 class UserModel extends Model
 {
+    protected static function booted(): void
+    {
+        static::deleted(function (self $user): void {
+            app(\App\Services\Engagement\EngagementTracker::class)->eraseUser((string) $user->uid);
+        });
+    }
+
     protected $table = 'user';
     protected $primaryKey = 'num';
     public $incrementing = true;

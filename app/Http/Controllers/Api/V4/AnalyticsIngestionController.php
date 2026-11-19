@@ -307,6 +307,14 @@ class AnalyticsIngestionController extends Controller
             }
         }
 
+        app(\App\Services\Engagement\EngagementTracker::class)->events(
+            (string) $request->input('auth_user_id'),
+            array_values(array_map(
+                fn ($event) => array_replace($event, ['properties' => $this->sanitizeProperties($event['properties'])]),
+                array_filter($data['events'], fn ($event) => in_array($event['event_id'], $accepted, true))
+            ))
+        );
+
         return V4Response::success([
             'accepted' => $accepted,
             'ignored' => $ignored,
@@ -443,10 +451,16 @@ class AnalyticsIngestionController extends Controller
             ->update(Arr::except($row, ['session_id']));
 
         if ($updated === 1) {
+            app(\App\Services\Engagement\EngagementTracker::class)->playback($row['user_id'], $sessionId, $payload);
+
             return ['stored' => true, 'revision' => $revision];
         }
 
         $inserted = $query->insertOrIgnore($row + ['created_at' => $now]);
+
+        if ($inserted === 1) {
+            app(\App\Services\Engagement\EngagementTracker::class)->playback($row['user_id'], $sessionId, $payload);
+        }
 
         return ['stored' => $inserted === 1, 'revision' => $revision];
     }

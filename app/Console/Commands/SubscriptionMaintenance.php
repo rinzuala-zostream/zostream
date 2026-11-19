@@ -168,6 +168,8 @@ class SubscriptionMaintenance extends Command
                 'whatsapp_reminder_days_left' => $daysLeft,
             ])->save();
 
+            app(\App\Services\Engagement\ExistingPushActivity::class)->record(userId: (string) $subscription->user_id);
+
             $this->info("Reminder sent for subscription #{$subscription->id}.");
         } catch (\Throwable $e) {
             $this->warn("Reminder failed for subscription #{$subscription->id}: {$e->getMessage()}");

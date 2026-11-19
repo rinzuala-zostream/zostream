@@ -69,3 +69,8 @@ Schedule::command('home:warm-monthly-top-ten')
 Schedule::command('chat:prune')->dailyAt('04:15')->withoutOverlapping();
 
 Schedule::command('channel-uploads:prune')->hourly()->withoutOverlapping();
+
+Schedule::command('engagement:queue')
+    ->everyFiveMinutes()
+    ->timezone('Asia/Kolkata')
+    ->withoutOverlapping(5);
