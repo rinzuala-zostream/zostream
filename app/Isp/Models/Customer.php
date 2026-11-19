@@ -49,6 +49,11 @@ class Customer extends Model
         return $this->hasOne(CustomerRouterPayment::class);
     }
 
+    public function bandwidthBlocked(): bool
+    {
+        return $this->branch_id && ($this->branch?->hasOverdueBandwidthInvoice() ?? false);
+    }
+
     public static function initialExpiryDate(): Carbon
     {
         return today()->addDays(self::ACCESS_PERIOD_DAYS);

@@ -766,7 +766,7 @@ class CustomerController extends Controller
             ],
             'password' => [$customer ? 'nullable' : 'required', 'string', 'max:255'],
             'status' => ['required', Rule::in(['active', 'suspended', 'expired'])],
-            'expires_at' => $request->user()->isAdmin()
+            'expires_at' => ($request->user()->isAdmin() || $request->user()->branch?->isBandwidthOnly())
                 ? ['nullable', 'date']
                 : ['prohibited'],
             'router_device_condition' => ['required', Rule::in(['old', 'new'])],

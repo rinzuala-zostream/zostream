@@ -1,6 +1,7 @@
 <?php
 
 use App\Isp\Http\Controllers\Auth\LoginController;
+use App\Isp\Http\Controllers\BandwidthInvoiceController;
 use App\Isp\Http\Controllers\BranchController;
 use App\Isp\Http\Controllers\CustomerController;
 use App\Isp\Http\Controllers\CustomerImportController;
@@ -40,6 +41,11 @@ Route::prefix('isp')->name('isp.')->group(function (): void {
             Route::resource('branches', BranchController::class)->only(['index', 'create', 'store', 'update', 'destroy']);
             Route::resource('users', UserController::class)->except('show');
         });
+
+        Route::get('/bandwidth-invoices', [BandwidthInvoiceController::class, 'index'])->name('bandwidth-invoices.index');
+        Route::get('/bandwidth-invoices/{bandwidthInvoice}', [BandwidthInvoiceController::class, 'show'])->name('bandwidth-invoices.show');
+        Route::put('/bandwidth-invoices/{bandwidthInvoice}', [BandwidthInvoiceController::class, 'update'])->middleware('isp.admin')->name('bandwidth-invoices.update');
+        Route::post('/bandwidth-invoices/{bandwidthInvoice}/paid', [BandwidthInvoiceController::class, 'paid'])->middleware('isp.admin')->name('bandwidth-invoices.paid');
 
         Route::get('/customers/export', [CustomerController::class, 'export'])->name('customers.export');
         Route::post('/customers/sync-all', [CustomerController::class, 'syncAll'])->name('customers.sync-all');

@@ -9,6 +9,7 @@ class CustomerObserver
 {
     private const RADIUS_FIELDS = [
         'router_id',
+        'branch_id',
         'package_id',
         'username',
         'password',

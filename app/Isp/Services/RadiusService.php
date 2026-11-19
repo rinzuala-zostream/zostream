@@ -24,7 +24,7 @@ class RadiusService
         }
 
         $expired = $customer->expires_at?->lt(today()) ?? false;
-        $active = $customer->status === 'active' && ! $expired;
+        $active = $customer->status === 'active' && ! $expired && ! $customer->bandwidthBlocked();
 
         DB::transaction(function () use ($customer, $active): void {
             DB::table('radcheck')->where('username', $customer->username)

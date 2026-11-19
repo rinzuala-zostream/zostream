@@ -30,6 +30,10 @@ class ZoStreamSubscriptionService
         $ottDeduction = max(0, (float) ($customer->branch?->ott_deduction ?? 0));
         $operatorPercentage = min(100, max(0, (float) ($customer->branch?->operator_percentage
             ?? config('services.zostream_subscription.operator_percentage', 20))));
+        if ($customer->branch?->isBandwidthOnly()) {
+            $ottDeduction = 0;
+            $operatorPercentage = 0;
+        }
         $distributableAmount = $packageAmount - $ottDeduction;
         $operatorCommission = $distributableAmount * ($operatorPercentage / 100);
         $wifiShare = $distributableAmount - $operatorCommission;

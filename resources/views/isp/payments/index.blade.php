@@ -22,7 +22,7 @@
     <section class="payment-entry-card">
         <div class="payment-section-head"><span>01</span><div><h3>Customer & payment</h3><p>Choose the subscriber and how the payment was received.</p></div></div>
         <div class="payment-fields">
-            <label class="payment-field full"><span>Customer</span><select id="paymentCustomer" name="customer_id" required><option value="">Search or choose a customer</option>@foreach($customers as $customer)<option value="{{ $customer->id }}" data-package-id="{{ $customer->package_id }}" data-package-ids='@json($customer->branch?->packages->pluck("id")->values() ?? [])' data-branch="{{ $customer->branch?->name }}" data-operator-percentage="{{ $customer->branch?->operator_percentage ?? config('services.zostream_subscription.operator_percentage', 20) }}" data-ott-deduction="{{ $customer->branch?->ott_deduction ?? 0 }}" @selected(old('customer_id', $selectedCustomer) == $customer->id)>{{ $customer->name }} · {{ $customer->username }}</option>@endforeach</select></label>
+            <label class="payment-field full"><span>Customer</span><select id="paymentCustomer" name="customer_id" required><option value="">Search or choose a customer</option>@foreach($customers as $customer)<option value="{{ $customer->id }}" data-package-id="{{ $customer->package_id }}" data-package-ids='@json($customer->branch?->packages->pluck("id")->values() ?? [])' data-bandwidth-only="{{ $customer->branch?->isBandwidthOnly() ? '1' : '0' }}" data-branch="{{ $customer->branch?->name }}" data-operator-percentage="{{ $customer->branch?->isBandwidthOnly() ? 0 : ($customer->branch?->operator_percentage ?? config('services.zostream_subscription.operator_percentage', 20)) }}" data-ott-deduction="{{ $customer->branch?->isBandwidthOnly() ? 0 : ($customer->branch?->ott_deduction ?? 0) }}" @selected(old('customer_id', $selectedCustomer) == $customer->id)>{{ $customer->name }} · {{ $customer->username }}</option>@endforeach</select></label>
             <label class="payment-field full"><span>Package</span><select id="paymentPackage" name="package_id" required disabled><option value="">Select a customer first</option>@foreach($packages as $package)<option value="{{ $package->id }}" data-price="{{ $package->price }}" data-package="{{ $package->name }}">{{ $package->name }} · ₹{{ number_format($package->price, 0) }} · {{ \App\Isp\Models\Customer::ACCESS_PERIOD_DAYS }} days</option>@endforeach</select><small id="paymentPackageHelp">The customer's current package will be selected automatically.</small></label>
             <input id="paymentMethod" type="hidden" name="method" value="cashfree">
             <label class="payment-field full"><span>Notes</span><textarea name="notes" placeholder="Add an optional note for this collection">{{ old('notes') }}</textarea></label>
@@ -205,6 +205,12 @@
         const price = Number(packageOption?.dataset.price || 0);
         const ottDeduction = Number(option?.dataset.ottDeduction || defaultOttDeduction);
         const operatorPercentage = Number(option?.dataset.operatorPercentage || defaultOperatorPercentage);
+        const bandwidthOnly = option?.dataset.bandwidthOnly === '1';
+        ['summaryOtt', 'summaryDistributable', 'summaryOperator', 'summaryWifi', 'confirmOtt', 'confirmDistributable', 'confirmCommission', 'confirmWifiShare', 'confirmOttAdded'].forEach(id => {
+            const element = document.getElementById(id);
+            if (element) element.parentElement.hidden = bandwidthOnly;
+        });
+        document.querySelector('.confirmation-note').hidden = bandwidthOnly;
         const wifiPercentage = 100 - operatorPercentage;
         const distributable = Math.max(0, price - ottDeduction);
         const commission = distributable * (operatorPercentage / 100);
@@ -300,6 +306,12 @@
         const option = customer.selectedOptions[0];
         const ottDeduction = Number(option?.dataset.ottDeduction || defaultOttDeduction);
         const operatorPercentage = Number(option?.dataset.operatorPercentage || defaultOperatorPercentage);
+        const bandwidthOnly = option?.dataset.bandwidthOnly === '1';
+        ['summaryOtt', 'summaryDistributable', 'summaryOperator', 'summaryWifi', 'confirmOtt', 'confirmDistributable', 'confirmCommission', 'confirmWifiShare', 'confirmOttAdded'].forEach(id => {
+            const element = document.getElementById(id);
+            if (element) element.parentElement.hidden = bandwidthOnly;
+        });
+        document.querySelector('.confirmation-note').hidden = bandwidthOnly;
         const wifiPercentage = 100 - operatorPercentage;
         document.getElementById('confirmCustomer').textContent = option.textContent.trim();
         document.getElementById('confirmPackage').textContent = packageSelect.selectedOptions[0]?.dataset.package || 'No package';

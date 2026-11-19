@@ -9,6 +9,7 @@
 <form id="customerForm" class="form-card form-grid customer-form" method="POST" enctype="multipart/form-data" action="{{ $customer->exists ? route('isp.customers.update', $customer) : route('isp.customers.store') }}" data-complete-url="{{ route('isp.customers.onboarding.cashfree.complete') }}">@csrf @if($customer->exists) @method('PUT') @endif
     @if($customer->exists)<input type="hidden" name="return_to" value="{{ old('return_to', $returnTo ?? route('isp.customers.index')) }}">@endif
 
+    @if($customer->exists && $customer->bandwidthBlocked())<div class="alert warning full">This branch has an overdue bandwidth invoice. Customer activation and expiry changes cannot restore internet until the branch invoices are settled.</div>@endif
     <section class="customer-form-section">
         <div class="customer-form-section-head"><span>01</span><div><strong>Customer details</strong><small>Basic identity and service area information.</small></div></div>
         <div class="customer-form-section-grid">
@@ -30,8 +31,11 @@
             <label>PPPoE username<input name="username" value="{{ old('username', $customer->username) }}" required autocomplete="off" placeholder="customer001">@if($customer->exists)<small class="form-help">Changing this updates the customer's RADIUS login when you save.</small>@endif</label>
             <label>PPPoE password<input type="password" name="password" {{ $customer->exists ? '' : 'required' }} autocomplete="new-password" placeholder="{{ $customer->exists ? 'Leave blank to keep current password' : 'PPPoE password' }}"></label>
             <label>Administrative status<select name="status"><option value="active" @selected($formStatus === 'active')>Active</option><option value="suspended" @selected($formStatus === 'suspended')>Suspended</option><option value="expired" @selected($formStatus === 'expired')>Expired</option></select><small class="form-help">Expired immediately ends access by setting the plan expiry date.</small></label>
-            @if(auth()->user()->isAdmin())
-                <label>Expiry date<input type="date" name="expires_at" value="{{ old('expires_at', $customer->expires_at?->toDateString()) }}"><small class="form-help">Administrator only. The selected date remains active through the end of that day.</small></label>
+            @if(auth()->user()->isAdmin() || auth()->user()->branch?->isBandwidthOnly())
+                <label>Expiry date<input type="date" name="expires_at" value="{{ old('expires_at', $customer->expires_at?->toDateString()) }}"><small class="form-help">The selected date remains active through the end of that day.</small></label>
+            @endif
+            @if($customer->branch?->isBandwidthOnly() || auth()->user()->branch?->isBandwidthOnly())
+                <div class="form-help full">Bandwidth Only: activate and set expiry without recording a payment. Overdue branch invoices still block internet access.</div>
             @endif
             <div class="form-help full">New customers receive 30 days automatically unless an administrator selects an expiry date. Future payments extend an active plan from its current expiry date.</div>
         </div>

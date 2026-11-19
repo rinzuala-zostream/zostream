@@ -4,9 +4,13 @@ namespace App\Isp\Http\Controllers;
 
 use App\Isp\Models\Branch;
 use App\Isp\Models\User;
+use App\Isp\Services\BandwidthBillingService;
+use App\Isp\Services\BranchBillingSettings;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
@@ -29,7 +33,7 @@ class UserController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
-        User::create($this->validated($request));
+        $this->saveUser($this->validated($request));
 
         return redirect()->route('isp.users.index')->with('success', 'Admin user created successfully.');
     }
@@ -57,7 +61,7 @@ class UserController extends Controller
             return back()->withInput()->with('error', 'At least one active administrator is required.');
         }
 
-        $user->update($data);
+        $this->saveUser($data, $user);
 
         return redirect()->route('isp.users.index')->with('success', 'Admin user updated successfully.');
     }
@@ -81,6 +85,32 @@ class UserController extends Controller
         return back()->with('success', 'Admin user deleted.');
     }
 
+    private function saveUser(array $data, ?User $user = null): void
+    {
+        $billingKeys = array_keys(BranchBillingSettings::rules());
+        $branch = null;
+        $syncBilling = false;
+        DB::transaction(function () use ($data, $user, $billingKeys, &$branch, &$syncBilling): void {
+            if ($data['role'] === 'branch_operator' && isset($data['billing_type'])) {
+                $branch = Branch::lockForUpdate()->findOrFail($data['branch_id']);
+                $syncBilling = $branch->isBandwidthOnly() || $data['billing_type'] === 'bandwidth_only';
+                $branch->update(BranchBillingSettings::prepare(Arr::only($data, $billingKeys), $branch));
+            }
+            $attributes = Arr::except($data, $billingKeys);
+            if ($user) {
+                $user->update($attributes);
+            } else {
+                User::create($attributes);
+            }
+        });
+        if ($branch && $syncBilling) {
+            $failed = app(BandwidthBillingService::class)->reconcile($branch);
+            if ($failed) {
+                session()->flash('warning', 'User and branch settings saved. Some internet access updates need a retry.');
+            }
+        }
+    }
+
     private function validated(Request $request, ?User $user = null): array
     {
         $data = $request->validate([
@@ -90,7 +120,7 @@ class UserController extends Controller
             'role' => ['required', Rule::in(['admin', 'branch_operator'])],
             'branch_id' => [Rule::requiredIf($request->input('role') === 'branch_operator'), 'nullable', 'exists:branches,id'],
             'is_active' => ['nullable', 'boolean'],
-        ]);
+        ] + BranchBillingSettings::rules());
         $data['branch_id'] = $data['role'] === 'branch_operator' ? ($data['branch_id'] ?? null) : null;
         $data['is_active'] = $request->boolean('is_active');
 

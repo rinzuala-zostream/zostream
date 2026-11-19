@@ -63,6 +63,7 @@
                     <small>Configure the operator share and optional OTT deduction.</small>
                 </div>
             </div>
+            @include('isp.branches.billing-fields')
             <div class="branch-fields">
                 <label class="branch-field">
                     <span>Operator share</span>
@@ -134,6 +135,7 @@
 @endsection
 
 @push('scripts')
+@include('isp.branches.billing-script')
 <script>
 document.querySelectorAll('[data-package-group]').forEach(function (group) {
     const inputs = Array.from(group.querySelectorAll('input[name="package_ids[]"]'));

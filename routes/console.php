@@ -74,3 +74,9 @@ Schedule::command('engagement:queue')
     ->everyFiveMinutes()
     ->timezone('Asia/Kolkata')
     ->withoutOverlapping(5);
+
+// Runs at midnight on the first and catches up safely after scheduler downtime.
+Schedule::command('isp:bandwidth-billing')
+    ->everyFiveMinutes()
+    ->timezone('Asia/Kolkata')
+    ->withoutOverlapping();

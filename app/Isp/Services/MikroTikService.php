@@ -119,7 +119,7 @@ class MikroTikService
         );
         $existing = collect($secrets)->firstWhere('name', $customer->username);
         $expired = $customer->expires_at && $customer->expires_at->lt(today());
-        $disabled = $customer->status !== 'active' || $expired;
+        $disabled = $customer->status !== 'active' || $expired || $customer->bandwidthBlocked();
         $payload = [
             'name' => $customer->username,
             'password' => $customer->password,

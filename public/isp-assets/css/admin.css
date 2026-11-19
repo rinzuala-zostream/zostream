@@ -544,3 +544,15 @@
 .payment-history>.isp-pagination{margin-top:0;border-width:1px 0 0;border-radius:0;background:#fbfdfc;box-shadow:none}
 @media(max-width:760px){.isp-pagination{align-items:stretch;flex-direction:column;gap:12px;padding:13px}.isp-pagination__summary{justify-content:center}.isp-pagination__controls{width:100%;justify-content:center}.isp-pagination__pages{min-width:0;overflow-x:auto;overscroll-behavior-inline:contain;scrollbar-width:none}.isp-pagination__pages::-webkit-scrollbar{display:none}}
 @media(max-width:480px){.isp-pagination__summary-icon,.isp-pagination__page-count{display:none}.isp-pagination__summary{justify-content:flex-start;padding:0 2px}.isp-pagination__button{width:38px;padding:0}.isp-pagination__button>span{display:none}.isp-pagination__controls{justify-content:space-between}.isp-pagination__pages{justify-content:flex-start}.isp-pagination__number{width:34px;height:34px}.isp-pagination__ellipsis{width:20px}}
+
+/* Bandwidth billing controls share the branch configuration across operator forms. */
+[data-billing-settings]{grid-column:1/-1;width:100%}
+[data-bandwidth-fields]{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+[data-bandwidth-fields]>small,[data-bandwidth-preview]{grid-column:1/-1;color:var(--muted);line-height:1.6}
+[data-bandwidth-preview]{font-weight:700;color:var(--ink);margin:0}
+[data-billing-settings] [hidden],#operatorBillingSection[hidden],#branchField[hidden],.payment-workspace [hidden],#paymentConfirmation [hidden]{display:none!important}
+@media(max-width:600px){[data-bandwidth-fields]{grid-template-columns:1fr}}
+@media print{.bandwidth-invoice-page .sidebar,.bandwidth-invoice-page .topbar,.bandwidth-invoice-page .page-actions,.bandwidth-invoice-page form{display:none!important}.bandwidth-invoice-page .main{margin:0}.bandwidth-invoice-page .form-card{max-width:none;box-shadow:none;border:0}}
+#operatorBillingSection[hidden],[data-bandwidth-fields][hidden],[data-billing-settings] label[hidden],.payment-workspace [hidden],.confirmation-dialog [hidden]{display:none!important}
+@media(max-width:640px){[data-bandwidth-fields]{grid-template-columns:1fr}}
+@media print{body:has(.bandwidth-invoice) .sidebar,body:has(.bandwidth-invoice) .topbar,body:has(.bandwidth-invoice) .page-actions,.bandwidth-invoice form{display:none!important}body:has(.bandwidth-invoice) .main{margin:0!important}.bandwidth-invoice{max-width:none;border:0;box-shadow:none}}

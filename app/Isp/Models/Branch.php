@@ -12,15 +12,36 @@ class Branch extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['name', 'router_id', 'operator_percentage', 'ott_deduction', 'is_active'];
+    protected $fillable = ['name', 'router_id', 'operator_percentage', 'ott_deduction', 'is_active', 'billing_type', 'bandwidth_mbps', 'bandwidth_rate', 'bandwidth_gst', 'bandwidth_due_day', 'bandwidth_started_at'];
 
     protected function casts(): array
     {
         return [
+            'bandwidth_mbps' => 'decimal:2',
+            'bandwidth_rate' => 'decimal:2',
+            'bandwidth_gst' => 'decimal:2',
+            'bandwidth_due_day' => 'integer',
+            'bandwidth_started_at' => 'date',
             'operator_percentage' => 'decimal:2',
             'ott_deduction' => 'decimal:2',
             'is_active' => 'boolean',
         ];
+    }
+
+    public function isBandwidthOnly(): bool
+    {
+        return $this->billing_type === 'bandwidth_only';
+    }
+
+    public function bandwidthInvoices(): HasMany
+    {
+        return $this->hasMany(BandwidthInvoice::class);
+    }
+
+    public function hasOverdueBandwidthInvoice(): bool
+    {
+        return $this->isBandwidthOnly() && $this->bandwidthInvoices()
+            ->whereNull('paid_at')->whereDate('due_date', '<', today())->exists();
     }
 
     public function customers(): HasMany

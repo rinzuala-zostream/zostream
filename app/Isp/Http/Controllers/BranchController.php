@@ -5,6 +5,8 @@ namespace App\Isp\Http\Controllers;
 use App\Isp\Models\Branch;
 use App\Isp\Models\Package;
 use App\Isp\Models\Router;
+use App\Isp\Services\BandwidthBillingService;
+use App\Isp\Services\BranchBillingSettings;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -38,17 +40,28 @@ class BranchController extends Controller
         return to_route('isp.branches.index')->with('success', 'Branch added successfully.');
     }
 
-    public function update(Request $request, Branch $branch): RedirectResponse
+    public function update(Request $request, Branch $branch, BandwidthBillingService $billing): RedirectResponse
     {
         [$data, $packageIds] = $this->validated($request, $branch);
+        $wasBandwidthOnly = $branch->isBandwidthOnly();
         $branch->update($data);
         $branch->packages()->sync($packageIds);
+
+        if ($wasBandwidthOnly || $branch->isBandwidthOnly()) {
+            $failed = $billing->reconcile($branch);
+            if ($failed) {
+                return back()->with('warning', 'Branch saved. Some access updates failed; use customer Sync to retry.');
+            }
+        }
 
         return back()->with('success', 'Branch updated successfully.');
     }
 
     public function destroy(Branch $branch): RedirectResponse
     {
+        if ($branch->bandwidthInvoices()->exists()) {
+            return back()->with('error', 'Branches with bandwidth invoice history cannot be deleted.');
+        }
         if ($branch->customers()->exists()) {
             return back()->with('error', 'This branch is assigned to customers. Move those customers before deleting it.');
         }
@@ -63,6 +76,7 @@ class BranchController extends Controller
 
     private function validated(Request $request, ?Branch $branch = null): array
     {
+        $request->mergeIfMissing(['billing_type' => $branch?->billing_type ?? 'standard']);
         $data = $request->validate([
             'name' => ['required', 'string', 'max:100', Rule::unique('branches', 'name')->ignore($branch)],
             'router_id' => ['nullable', Rule::exists('routers', 'id')->where(fn ($query) => $query->where('is_active', true))],
@@ -71,7 +85,8 @@ class BranchController extends Controller
             'package_ids' => ['nullable', 'array'],
             'package_ids.*' => ['integer', 'distinct', 'exists:packages,id'],
             'is_active' => ['nullable', 'boolean'],
-        ]);
+        ] + BranchBillingSettings::rules());
+        $data = BranchBillingSettings::prepare($data, $branch);
         $packageIds = $data['package_ids'] ?? [];
         unset($data['package_ids']);
 

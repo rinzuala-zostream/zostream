@@ -82,7 +82,7 @@ class PaymentController extends Controller
                 ->paginate(20)
                 ->withQueryString(),
             'customers' => Customer::when($branchId, fn ($query) => $query->where('branch_id', $branchId))
-                ->with(['package:id,name,price,validity_days', 'branch:id,name,operator_percentage,ott_deduction', 'branch.packages:id'])
+                ->with(['package:id,name,price,validity_days', 'branch', 'branch.packages:id'])
                 ->orderBy('name')->get(['id', 'package_id', 'branch_id', 'name', 'phone', 'username']),
             'packages' => Package::where('is_active', true)->orderBy('name')->get(),
             'routers' => $request->user()->isAdmin()
@@ -538,6 +538,10 @@ class PaymentController extends Controller
         $ottDeduction = round(max(0, (float) ($customer->branch?->ott_deduction ?? 0)), 2);
         $operatorPercentage = round(min(100, max(0, (float) ($customer->branch?->operator_percentage
             ?? config('services.zostream_subscription.operator_percentage', 20)))), 2);
+        if ($customer->branch?->isBandwidthOnly()) {
+            $ottDeduction = 0;
+            $operatorPercentage = 0;
+        }
         $distributableAmount = round($packageAmount - $ottDeduction, 2);
         $commission = round($distributableAmount * ($operatorPercentage / 100), 2);
         $wifiShare = round($distributableAmount - $commission, 2);

@@ -10,7 +10,7 @@
     <script>try{if(localStorage.getItem('zostream.sidebar.collapsed')==='1')document.documentElement.classList.add('nav-collapsed')}catch(e){}</script>
     <link rel="stylesheet" href="{{ asset('isp-assets/css/admin.css') }}?v={{ filemtime(public_path('isp-assets/css/admin.css')) }}">
 </head>
-<body>
+<body @class(['bandwidth-invoice-page' => request()->routeIs('isp.bandwidth-invoices.show')])>
 <div class="app-shell">
     <aside class="sidebar" id="sidebar">
         <a class="brand" href="{{ route('isp.dashboard') }}">
@@ -25,6 +25,9 @@
             <a class="{{ request()->routeIs('isp.packages.*') ? 'active' : '' }}" href="{{ route('isp.packages.index') }}" title="Packages"><span class="nav-icon">◇</span><span class="nav-label">Packages</span></a>
             @endif
             <a class="{{ request()->routeIs('isp.payments.*') ? 'active' : '' }}" href="{{ route('isp.payments.index') }}" title="Payments"><span class="nav-icon">₹</span><span class="nav-label">Payments</span></a>
+            @if(auth()->user()->isAdmin() || auth()->user()->branch?->isBandwidthOnly())
+            <a class="{{ request()->routeIs('isp.bandwidth-invoices.*') ? 'active' : '' }}" href="{{ route('isp.bandwidth-invoices.index') }}" title="Bandwidth invoices"><span class="nav-icon">₹</span><span class="nav-label">Bandwidth invoices</span></a>
+            @endif
             @if(auth()->user()->isAdmin())
             <a class="{{ request()->routeIs('isp.routers.*') ? 'active' : '' }}" href="{{ route('isp.routers.index') }}" title="Routers"><span class="nav-icon">⌁</span><span class="nav-label">Routers</span></a>
             <a class="{{ request()->routeIs('isp.users.*') ? 'active' : '' }}" href="{{ route('isp.users.index') }}" title="Admin users"><span class="nav-icon">♚</span><span class="nav-label">Admin users</span></a>

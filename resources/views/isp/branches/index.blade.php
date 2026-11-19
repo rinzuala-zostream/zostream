@@ -59,6 +59,7 @@
                     </span>
                 </header>
 
+                @include('isp.branches.billing-fields', ['billingBranch' => $branch])
                 <div class="branch-card-fields">
                     <label class="branch-field">
                         <span>Default router</span>
@@ -143,6 +144,7 @@
 @endsection
 
 @push('scripts')
+@include('isp.branches.billing-script')
 <script>
 document.querySelectorAll('[data-package-group]').forEach(function (group) {
     const inputs = Array.from(group.querySelectorAll('input[name="package_ids[]"]'));
