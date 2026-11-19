@@ -11,7 +11,7 @@ final class ChatDisplayNames
         $username = trim((string) ($user->username ?? ''));
         $name = $username !== '' ? $username : (trim((string) ($user->name ?? '')) ?: $fallback);
 
-        return mb_substr($name, 0, 100);
+        return self::prefixed($name);
     }
 
     public static function forUsers(iterable $ids): array
@@ -39,15 +39,20 @@ final class ChatDisplayNames
         }
         foreach ($messages as &$message) {
             if (! $message['deleted']) {
-                $message['display_name'] = $usernames[$message['user_id']] ?? $message['display_name'];
+                $message['display_name'] = self::prefixed($usernames[$message['user_id']] ?? $message['display_name']);
             }
             if (isset($message['reply']) && ! $message['reply']['deleted']) {
-                $message['reply']['display_name'] = $usernames[$message['reply']['user_id']] ?? $message['reply']['display_name'];
+                $message['reply']['display_name'] = self::prefixed($usernames[$message['reply']['user_id']] ?? $message['reply']['display_name']);
             }
         }
         unset($message);
 
         return $messages;
+    }
+
+    private static function prefixed(string $name): string
+    {
+        return '#'.mb_substr(ltrim($name, '#'), 0, 99);
     }
 
     private static function users(iterable $ids): array

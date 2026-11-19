@@ -22,10 +22,10 @@ class ChatApiTest extends TestCase
     public function test_chat_uses_username_for_new_messages_and_keeps_legacy_name_without_one(): void
     {
         $room = $this->room();
-        $this->send($room)->assertCreated()->assertJsonPath('data.display_name', 'Alice');
+        $this->send($room)->assertCreated()->assertJsonPath('data.display_name', '#Alice');
         DB::table('user')->where('uid', 'alice')->update(['username' => 'zo_alice']);
         Cache::store(config('chat.cache_store'))->forget('chat:send:'.hash('sha256', 'alice'));
-        $this->send($room)->assertCreated()->assertJsonPath('data.display_name', 'zo_alice');
+        $this->send($room)->assertCreated()->assertJsonPath('data.display_name', '#zo_alice');
     }
 
     public function test_existing_cached_messages_and_replies_pick_up_username_without_rewriting_legacy_names(): void
@@ -38,9 +38,9 @@ class ChatApiTest extends TestCase
         $this->getJson($url)->assertOk(); // Warm the room cache before profile completion.
         DB::table('user')->where('uid', 'alice')->update(['username' => 'zo_alice']);
         $messages = collect($this->getJson($url)->assertOk()->json('data.messages'))->keyBy('id');
-        $this->assertSame('zo_alice', $messages[$parent]['display_name']);
-        $this->assertSame('zo_alice', $messages[$reply]['reply']['display_name']);
-        $this->assertSame('bob', $messages[$reply]['display_name']);
+        $this->assertSame('#zo_alice', $messages[$parent]['display_name']);
+        $this->assertSame('#zo_alice', $messages[$reply]['reply']['display_name']);
+        $this->assertSame('#bob', $messages[$reply]['display_name']);
         $this->assertSame('alice', ChatDatabase::connection()->table('chat_messages')->where('id', $parent)->value('display_name'));
     }
 
@@ -48,7 +48,7 @@ class ChatApiTest extends TestCase
     {
         $room = $this->room();
         DB::table('user')->where('uid', 'alice')->update(['username' => '   ']);
-        $this->send($room)->assertCreated()->assertJsonPath('data.display_name', 'Alice');
+        $this->send($room)->assertCreated()->assertJsonPath('data.display_name', '#Alice');
         $deleted = $this->message($room);
         ChatDatabase::connection()->table('chat_messages')->where('id', $deleted)->update(['deleted_at' => now(), 'display_name' => 'Deleted viewer']);
         DB::table('user')->where('uid', 'alice')->update(['username' => 'zo_alice']);
@@ -62,11 +62,11 @@ class ChatApiTest extends TestCase
         DB::table('user')->where('uid', 'alice')->update(['username' => 'zo_alice']);
         $room = $this->createPrivateRoom();
         $this->getJson('/api/v4/chat/invites?auth_user_id=bob')->assertOk()
-            ->assertJsonPath('data.invites.0.inviter_name', 'zo_alice');
+            ->assertJsonPath('data.invites.0.inviter_name', '#zo_alice');
         $global = $this->room();
         $this->postJson("/api/v4/chat/rooms/$global/typing", $this->identity(['active' => true]))->assertOk();
         $this->getJson("/api/v4/chat/rooms/$global/typing?auth_user_id=bob")->assertOk()
-            ->assertJsonPath('data.users.0.name', 'zo_alice');
+            ->assertJsonPath('data.users.0.name', '#zo_alice');
     }
 
     public function test_username_invitee_search_is_bounded_literal_and_omits_private_fields(): void
@@ -161,7 +161,7 @@ class ChatApiTest extends TestCase
         $this->assertSame('bob', $row->recipient_user_id);
         $fcm = \Mockery::mock(\App\Http\Controllers\FCMNotificationController::class);
         $fcm->shouldReceive('sendToToken')->once()->with('bob-token', 'Global Chat · Reaction',
-            'Alice reacted ❤️ to your message.', '', 'chat_activity', \Mockery::on(fn ($p) =>
+            '#Alice reacted ❤️ to your message.', '', 'chat_activity', \Mockery::on(fn ($p) =>
                 $p['room_id'] === $room && $p['message_id'] === (string) $id && $p['room_type'] === 'global'))
             ->andReturn(['success' => true]);
         $this->app->instance(\App\Http\Controllers\FCMNotificationController::class, $fcm);
@@ -184,7 +184,7 @@ class ChatApiTest extends TestCase
         $this->assertSame(0, ChatDatabase::connection()->table('chat_outbox')->where('kind', 'message_push')->count());
         $this->assertSame(1, ChatDatabase::connection()->table('chat_outbox')->where('kind', 'interaction_push')->count());
         $fcm = \Mockery::mock(\App\Http\Controllers\FCMNotificationController::class);
-        $fcm->shouldReceive('sendToToken')->once()->with('bob-token', 'Friends · Reply', 'Alice replied to your message.', '',
+        $fcm->shouldReceive('sendToToken')->once()->with('bob-token', 'Friends · Reply', '#Alice replied to your message.', '',
             'chat_message', \Mockery::on(fn ($p) => $p['message_id'] === $sent->json('data.id') && $p['activity'] === 'reply'))
             ->andReturn(['success' => true]);
         $this->app->instance(\App\Http\Controllers\FCMNotificationController::class, $fcm);
@@ -251,7 +251,7 @@ class ChatApiTest extends TestCase
             ChatDatabase::connection()->table('chat_reactions')->insert(['message_id' => $id, 'user_id' => 'alice', 'emoji' => '🔥']);
             app(\App\Support\Chat\ChatInteractionNotifications::class)->reaction(ChatDatabase::connection()->table('chat_messages')->find($id), 'alice', '🔥');
             $fcm->shouldReceive('sendToToken')->once()->with('bob-token', ($type === 'movie' ? 'Film A' : 'Episode Chat').' · Reaction',
-                'Alice reacted 🔥 to your message.', '', 'chat_activity', \Mockery::on(fn ($p) =>
+                '#Alice reacted 🔥 to your message.', '', 'chat_activity', \Mockery::on(fn ($p) =>
                     $p['room_type'] === $type && $p['watch_content_id'] === 'film-a'))->andReturn(['success' => true]);
         }
         $this->app->instance(\App\Http\Controllers\FCMNotificationController::class, $fcm);
@@ -310,7 +310,7 @@ class ChatApiTest extends TestCase
         $this->send($room, 'Hello Bob', $request)->assertOk();
         $this->assertSame(1, ChatDatabase::connection()->table('chat_outbox')->where('kind', 'message_push')->count());
         $fcm = \Mockery::mock(\App\Http\Controllers\FCMNotificationController::class);
-        $fcm->shouldReceive('sendToToken')->once()->with('bob-push-token', 'Friends', 'Alice: Hello Bob', '', 'chat_message', [
+        $fcm->shouldReceive('sendToToken')->once()->with('bob-push-token', 'Friends', '#Alice: Hello Bob', '', 'chat_message', [
             'room_id' => $room, 'message_id' => $sent->json('data.id'),
         ])->andReturn(['success' => true]);
         $this->app->instance(\App\Http\Controllers\FCMNotificationController::class, $fcm);
@@ -374,7 +374,7 @@ class ChatApiTest extends TestCase
             'body' => 'Secret ending', 'spoiler' => true, 'request_id' => (string) Str::uuid(),
         ]))->assertCreated();
         $fcm = \Mockery::mock(\App\Http\Controllers\FCMNotificationController::class);
-        $fcm->shouldReceive('sendToToken')->once()->with('bob-push-token', 'Friends', 'Alice: Sent a spoiler message.', '', 'chat_message', \Mockery::type('array'))
+        $fcm->shouldReceive('sendToToken')->once()->with('bob-push-token', 'Friends', '#Alice: Sent a spoiler message.', '', 'chat_message', \Mockery::type('array'))
             ->andReturn(['success' => true]);
         $this->app->instance(\App\Http\Controllers\FCMNotificationController::class, $fcm);
         app(\App\Support\Chat\ChatMessageNotifications::class)->deliver(ChatDatabase::connection()->table('chat_outbox')->where('kind', 'message_push')->first());
@@ -787,7 +787,7 @@ class ChatApiTest extends TestCase
         ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
         $url = "/api/v4/chat/rooms/$room/typing";
         $this->postJson($url, $this->identity(['active' => true]))->assertOk();
-        $this->getJson($url.'?auth_user_id=bob&auth_device_id=b')->assertOk()->assertJsonPath('data.users.0.name', 'Alice');
+        $this->getJson($url.'?auth_user_id=bob&auth_device_id=b')->assertOk()->assertJsonPath('data.users.0.name', '#Alice');
         $this->getJson($url.'?auth_user_id=stranger')->assertForbidden();
         $this->travel(7)->seconds();
         $this->getJson($url.'?auth_user_id=bob&auth_device_id=b')->assertOk()->assertJsonCount(0, 'data.users');
@@ -805,9 +805,9 @@ class ChatApiTest extends TestCase
             $this->postJson($url, ['auth_user_id' => $user, 'auth_device_id' => $user.'-device', 'active' => true])->assertOk();
         }
         $this->getJson($url.'?auth_user_id=alice')->assertOk()->assertJsonCount(2, 'data.users')
-            ->assertJsonPath('data.users.0.user_id', 'bob')->assertJsonPath('data.users.1.name', 'Carol');
+            ->assertJsonPath('data.users.0.user_id', 'bob')->assertJsonPath('data.users.1.name', '#Carol');
         ChatDatabase::connection()->table('chat_blocks')->insert(['user_id' => 'carol', 'blocked_user_id' => 'alice']);
-        $this->getJson($url.'?auth_user_id=alice')->assertOk()->assertJsonCount(1, 'data.users')->assertJsonPath('data.users.0.name', 'Bob');
+        $this->getJson($url.'?auth_user_id=alice')->assertOk()->assertJsonCount(1, 'data.users')->assertJsonPath('data.users.0.name', '#Bob');
         $this->postJson($url, ['auth_user_id' => 'bob', 'active' => false])->assertOk();
         $this->getJson($url.'?auth_user_id=alice')->assertOk()->assertJsonCount(0, 'data.users');
         $private = $this->createPrivateRoom();
@@ -1347,7 +1347,7 @@ class ChatApiTest extends TestCase
             ->assertJsonPath('data.invites.0.invite_id', $invite)
             ->assertJsonPath('data.invites.0.room_id', $room)
             ->assertJsonPath('data.invites.0.watch_position_ms', 0)
-            ->assertJsonPath('data.invites.0.inviter_name', 'Alice');
+            ->assertJsonPath('data.invites.0.inviter_name', '#Alice');
         Schema::create('seasons', function (Blueprint $t) {
             $t->id();
             $t->string('season_number');
