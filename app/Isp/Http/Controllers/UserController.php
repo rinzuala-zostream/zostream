@@ -113,14 +113,18 @@ class UserController extends Controller
 
     private function validated(Request $request, ?User $user = null): array
     {
+        // The selected role controls branch billing; retain the existing operator
+        // permission role so all customer and payment scoping stays consistent.
+        $request->merge(['billing_type' => $request->input('role') === 'bandwidth_only' ? 'bandwidth_only' : 'standard']);
         $data = $request->validate([
             'name' => ['required', 'string', 'max:150'],
             'email' => ['required', 'email', 'max:255', Rule::unique('isp_users', 'email')->ignore($user)],
             'password' => [$user ? 'nullable' : 'required', 'string', 'min:8', 'max:255', 'confirmed'],
-            'role' => ['required', Rule::in(['admin', 'branch_operator'])],
-            'branch_id' => [Rule::requiredIf($request->input('role') === 'branch_operator'), 'nullable', 'exists:branches,id'],
+            'role' => ['required', Rule::in(['admin', 'branch_operator', 'bandwidth_only'])],
+            'branch_id' => [Rule::requiredIf(in_array($request->input('role'), ['branch_operator', 'bandwidth_only'], true)), 'nullable', 'exists:branches,id'],
             'is_active' => ['nullable', 'boolean'],
         ] + BranchBillingSettings::rules());
+        $data['role'] = $data['role'] === 'bandwidth_only' ? 'branch_operator' : $data['role'];
         $data['branch_id'] = $data['role'] === 'branch_operator' ? ($data['branch_id'] ?? null) : null;
         $data['is_active'] = $request->boolean('is_active');
 

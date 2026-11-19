@@ -18,7 +18,7 @@ class DashboardController extends Controller
     {
         $branchId = $request->user()->isBranchOperator() ? $request->user()->branch_id : null;
         $monthStart = CarbonImmutable::now()->startOfMonth();
-        $revenue = Payment::query()
+        $revenue = Payment::customerCollections()
             ->when($branchId, fn ($query) => $query->whereHas(
                 'customer', fn ($query) => $query->where('branch_id', $branchId)
             ))

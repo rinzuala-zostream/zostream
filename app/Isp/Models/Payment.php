@@ -2,6 +2,7 @@
 
 namespace App\Isp\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -27,6 +28,11 @@ class Payment extends Model
             'amount' => 'decimal:2',
             'paid_at' => 'datetime',
         ];
+    }
+
+    public function scopeCustomerCollections(Builder $query): Builder
+    {
+        return $query->whereDoesntHave('customer.branch', fn (Builder $branch) => $branch->where('billing_type', 'bandwidth_only'));
     }
 
     public function customer(): BelongsTo

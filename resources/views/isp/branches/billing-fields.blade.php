@@ -1,5 +1,8 @@
 @php($billingBranch = $billingBranch ?? null)
 <div data-billing-settings class="branch-fields">
+    @if($roleControlsBilling ?? false)
+        <input type="hidden" name="billing_type" data-billing-type value="{{ old('role', $panelUser->panelRole() ?: 'branch_operator') === 'bandwidth_only' ? 'bandwidth_only' : 'standard' }}">
+    @else
     <label class="branch-field">
         <span>Operator type</span>
         <select name="billing_type" data-billing-type>
@@ -7,6 +10,7 @@
             <option value="bandwidth_only" @selected(old('billing_type', $billingBranch?->billing_type) === 'bandwidth_only')>Bandwidth Only</option>
         </select>
     </label>
+    @endif
     <div data-bandwidth-fields>
         <label class="branch-field"><span>Bandwidth (Mbps)</span><input name="bandwidth_mbps" type="number" min="0.01" max="9999999.99" step="0.01" value="{{ old('bandwidth_mbps', $billingBranch?->bandwidth_mbps) }}"></label>
         <label class="branch-field"><span>Monthly rate per Mbps (₹)</span><input name="bandwidth_rate" type="number" min="0.01" max="999999.99" step="0.01" value="{{ old('bandwidth_rate', $billingBranch?->bandwidth_rate) }}"></label>

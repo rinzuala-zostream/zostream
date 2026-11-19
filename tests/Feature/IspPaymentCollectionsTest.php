@@ -21,6 +21,7 @@ class IspPaymentCollectionsTest extends TestCase
         Schema::create('branches', function (Blueprint $table): void {
             $table->id();
             $table->string('name');
+            $table->string('billing_type')->default('standard');
             $table->decimal('operator_percentage', 5, 2)->nullable();
             $table->decimal('ott_deduction', 12, 2)->nullable();
             $table->boolean('is_active')->default(true);
@@ -382,6 +383,77 @@ class IspPaymentCollectionsTest extends TestCase
             today()->addDays(35)->toDateString(),
             Customer::findOrFail($customerId)->expires_at->toDateString(),
         );
+    }
+
+    public function test_bandwidth_customers_are_excluded_from_collections_picker_and_dashboard_without_deleting_history(): void
+    {
+        CarbonImmutable::setTestNow('2026-10-15 12:00:00');
+        $normalBranch = DB::table('branches')->insertGetId(['name' => 'Standard branch']);
+        $bandwidthBranch = DB::table('branches')->insertGetId(['name' => 'Bandwidth branch', 'billing_type' => 'bandwidth_only']);
+        $admin = User::create(['name' => 'Admin', 'email' => 'separation@example.test', 'password' => 'password123', 'role' => 'admin', 'is_active' => true]);
+        $package = DB::table('packages')->insertGetId(['name' => 'Plan', 'price' => 500]);
+        $normalCustomer = DB::table('customers')->insertGetId(['name' => 'Standard subscriber', 'username' => 'standard-sub', 'branch_id' => $normalBranch, 'package_id' => $package]);
+        $bandwidthCustomer = DB::table('customers')->insertGetId(['name' => 'Bandwidth subscriber', 'username' => 'bandwidth-sub', 'branch_id' => $bandwidthBranch, 'package_id' => $package]);
+        foreach ([[$normalCustomer, '2026-10-10', 100], [$bandwidthCustomer, '2026-10-10', 900], [$normalCustomer, '2026-09-10', 80], [$bandwidthCustomer, '2026-09-10', 800]] as [$customer, $paidAt, $amount]) {
+            $this->insertPayment($customer, $package, $admin->id, $paidAt, $amount, $amount, 0);
+        }
+        $this->actingAs($admin, 'isp')->get(route('isp.payments.index', ['month' => '2026-10']))
+            ->assertOk()->assertSee('Standard subscriber')->assertDontSee('Bandwidth subscriber')
+            ->assertViewHas('collectionSummary', fn ($summary) => (float) $summary->revenue === 100.0 && (int) $summary->payment_count === 1)
+            ->assertViewHas('revenueDifference', 20.0);
+        $this->get(route('isp.payments.index', ['view' => 'collect']))
+            ->assertOk()->assertSee('Standard subscriber')->assertDontSee('Bandwidth subscriber')
+            ->assertViewHas('customers', fn ($customers) => $customers->pluck('id')->all() === [$normalCustomer]);
+        $this->get(route('isp.dashboard'))->assertOk()
+            ->assertViewHas('stats', fn ($stats) => (float) $stats['revenue'] === 100.0);
+        $historicalPayment = DB::table('payments')->where('customer_id', $bandwidthCustomer)->value('id');
+        $this->get(route('isp.payments.invoice', $historicalPayment))->assertOk()->assertHeader('Content-Type', 'application/pdf');
+        $this->delete(route('isp.payments.destroy', $historicalPayment))->assertForbidden();
+        $this->assertSame(4, DB::table('payments')->count());
+        $this->assertSame(2, DB::table('payments')->where('customer_id', $bandwidthCustomer)->count());
+
+        $operator = User::create(['name' => 'Bandwidth operator', 'email' => 'bandwidth-panel@example.test', 'password' => 'password123', 'role' => 'branch_operator', 'branch_id' => $bandwidthBranch, 'is_active' => true]);
+        $this->actingAs($operator, 'isp')->get(route('isp.payments.index'))->assertRedirect(route('isp.bandwidth-invoices.index'));
+        $this->get(route('isp.dashboard'))->assertOk()
+            ->assertSee(route('isp.bandwidth-invoices.index'))
+            ->assertDontSee('title="Payments"', false)->assertDontSee('Payments collected');
+    }
+
+    public function test_bandwidth_customer_collection_and_checkout_are_rejected_for_admin_and_operator(): void
+    {
+        $branch = DB::table('branches')->insertGetId(['name' => 'Bandwidth', 'billing_type' => 'bandwidth_only']);
+        $package = DB::table('packages')->insertGetId(['name' => 'Plan', 'price' => 500]);
+        $customer = DB::table('customers')->insertGetId(['name' => 'No collection', 'username' => 'no-collection', 'branch_id' => $branch, 'package_id' => $package, 'expires_at' => '2026-12-01']);
+        foreach (['admin', 'branch_operator'] as $role) {
+            $user = User::create(['name' => $role, 'email' => $role.'@blocked-payments.test', 'password' => 'password123', 'role' => $role, 'branch_id' => $role === 'branch_operator' ? $branch : null, 'is_active' => true]);
+            $this->actingAs($user, 'isp')->post(route('isp.payments.store'), ['customer_id' => $customer, 'method' => 'cash'])->assertForbidden();
+            $this->postJson(route('isp.payments.checkout'), ['customer_id' => $customer])->assertForbidden();
+        }
+        $this->assertSame(0, DB::table('payments')->count());
+        $this->assertSame('2026-12-01', Customer::findOrFail($customer)->expires_at->toDateString());
+    }
+
+    public function test_customer_cards_offer_expiry_edit_for_bandwidth_and_payment_for_standard(): void
+    {
+        $admin = User::create(['name' => 'Admin', 'email' => 'cards@example.test', 'password' => 'password123', 'role' => 'admin', 'is_active' => true]);
+        $this->actingAs($admin, 'isp');
+        foreach (['bandwidth_only', 'standard'] as $type) {
+            $branch = \App\Isp\Models\Branch::create(['name' => $type, 'billing_type' => $type]);
+            $customer = new Customer(['name' => 'Card subscriber', 'username' => 'card-sub', 'branch_id' => $branch->id, 'status' => 'active', 'expires_at' => today()->subDay()]);
+            $customer->id = 123;
+            $customer->setRelation('branch', $branch)->setRelation('routerPayment', null)->setRelation('router', null)->setRelation('package', null);
+            $customer->setAttribute('usage_download_bytes', 0)->setAttribute('usage_upload_bytes', 0);
+            $view = $this->view('isp.customers.index', [
+                'customers' => new \Illuminate\Pagination\LengthAwarePaginator(collect([$customer]), 1, 15),
+                'errors' => new \Illuminate\Support\ViewErrorBag,
+                'customerSummary' => ['active' => 0, 'needs_attention' => 1], 'routers' => collect(), 'branches' => collect([$branch]),
+            ]);
+            if ($type === 'bandwidth_only') {
+                $view->assertSee('Activate / Set expiry')->assertDontSee('Collect payment')->assertDontSee(route('isp.payments.index', ['customer' => $customer]));
+            } else {
+                $view->assertSee('Collect payment')->assertSee('Collect payment to restore access')->assertDontSee('Activate / Set expiry');
+            }
+        }
     }
 
     private function insertPayment(

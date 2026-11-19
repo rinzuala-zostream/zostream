@@ -28,8 +28,11 @@ use Throwable;
 
 class PaymentController extends Controller
 {
-    public function index(Request $request): View
+    public function index(Request $request): View|RedirectResponse
     {
+        if ($request->user()->panelRole() === 'bandwidth_only') {
+            return to_route('isp.bandwidth-invoices.index');
+        }
         $branchId = $request->user()->isBranchOperator() ? $request->user()->branch_id : null;
         $routerId = $request->user()->isAdmin() && $request->filled('router_id')
             ? $request->integer('router_id')
@@ -47,7 +50,7 @@ class PaymentController extends Controller
         $nextMonth = $selectedMonth->addMonth();
         $previousMonth = $selectedMonth->subMonth();
 
-        $scopePayments = static fn ($query) => $query
+        $scopePayments = static fn ($query) => $query->customerCollections()
             ->when($branchId, fn ($query) => $query->whereHas(
                 'customer',
                 fn ($query) => $query->where('branch_id', $branchId)
@@ -81,7 +84,8 @@ class PaymentController extends Controller
                 ->latest('paid_at')
                 ->paginate(20)
                 ->withQueryString(),
-            'customers' => Customer::when($branchId, fn ($query) => $query->where('branch_id', $branchId))
+            'customers' => Customer::whereDoesntHave('branch', fn ($branch) => $branch->where('billing_type', 'bandwidth_only'))
+                ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
                 ->with(['package:id,name,price,validity_days', 'branch', 'branch.packages:id'])
                 ->orderBy('name')->get(['id', 'package_id', 'branch_id', 'name', 'phone', 'username']),
             'packages' => Package::where('is_active', true)->orderBy('name')->get(),
@@ -111,6 +115,7 @@ class PaymentController extends Controller
         ]);
         $customer = Customer::with(['package', 'router', 'branch'])->findOrFail($data['customer_id']);
         $this->ensureCustomerAccess($request, $customer);
+        $this->ensureCustomerCollectionAllowed($customer);
         $package = $this->selectedPackage($customer, $data['package_id'] ?? null);
         if ((float) $package->price <= 0) {
             return back()->withInput()->with('error', 'The selected customer does not have a payable package.');
@@ -153,6 +158,7 @@ class PaymentController extends Controller
         ]);
         $customer = Customer::with(['package', 'router', 'branch'])->findOrFail($data['customer_id']);
         $this->ensureCustomerAccess($request, $customer);
+        $this->ensureCustomerCollectionAllowed($customer);
         $package = $this->selectedPackage($customer, $data['package_id'] ?? null);
 
         try {
@@ -370,6 +376,7 @@ class PaymentController extends Controller
     public function destroy(Payment $payment): RedirectResponse
     {
         $this->ensureCustomerAccess(request(), $payment->customer);
+        $this->ensureCustomerCollectionAllowed($payment->customer);
         $payment->delete();
 
         return back()->with('success', 'Payment deleted.');
@@ -499,6 +506,12 @@ class PaymentController extends Controller
         if ($request->user()?->isBranchOperator()) {
             abort_unless($customer->branch_id === $request->user()->branch_id, 403);
         }
+    }
+
+    private function ensureCustomerCollectionAllowed(Customer $customer): void
+    {
+        abort_if($customer->branch?->isBandwidthOnly(), 403,
+            'Bandwidth Only customers use activation and expiry settings. Bill the branch through Bandwidth invoices.');
     }
 
     private function renewCustomer(Customer $customer, RadiusService $radius, ?Package $package): ?string

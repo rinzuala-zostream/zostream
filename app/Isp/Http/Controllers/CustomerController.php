@@ -475,6 +475,10 @@ class CustomerController extends Controller
     {
         $this->ensureCustomerAccess(request(), $customer);
 
+        if ($customer->expires_at?->lt(today()) && $customer->branch?->isBandwidthOnly()) {
+            return to_route('isp.customers.edit', $customer)->with('warning', 'Set a valid expiry date and activate this customer. No customer payment is required.');
+        }
+
         if ($customer->expires_at?->lt(today())) {
             return redirect()->route('isp.customers.index')->with(
                 'warning',

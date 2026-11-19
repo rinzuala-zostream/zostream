@@ -189,6 +189,15 @@
                         <button class="customer-menu-trigger" type="button" aria-label="Actions for {{ $customer->name }}" aria-haspopup="menu" aria-expanded="false">•••</button>
                         <div class="customer-menu-popover" role="menu" hidden>
                             <div class="customer-menu-heading"><span>QUICK ACTIONS</span><strong>{{ $customer->name }}</strong></div>
+                            @if($customer->branch?->isBandwidthOnly())
+                                <a class="customer-menu-item is-primary" role="menuitem" href="{{ route('isp.customers.edit', ['customer' => $customer, 'return_to' => request()->fullUrl()]) }}"><i aria-hidden="true">✎</i><span><strong>Activate / Set expiry</strong><small>Manage access without a customer payment</small></span></a>
+                                @unless($isExpired)
+                                    <form method="POST" action="{{ route('isp.customers.toggle', $customer) }}">
+                                        @csrf
+                                        <button class="customer-menu-item" role="menuitem" type="submit"><i aria-hidden="true">{{ $customer->status === 'active' ? 'Ⅱ' : '▶' }}</i><span><strong>{{ $customer->status === 'active' ? 'Suspend access' : 'Activate access' }}</strong><small>Overdue branch invoices still block internet</small></span></button>
+                                    </form>
+                                @endunless
+                            @else
                             <a class="customer-menu-item is-primary" role="menuitem" href="{{ route('isp.payments.index', ['customer' => $customer]) }}"><i aria-hidden="true">₹</i><span><strong>Collect payment</strong><small>Renew internet for 30 days</small></span></a>
                             @if($isExpired)
                                 <button class="customer-menu-item" role="menuitem" type="button" disabled><i aria-hidden="true">⌛</i><span><strong>Expired plan</strong><small>Collect payment to restore access</small></span></button>
@@ -197,6 +206,7 @@
                                     @csrf
                                     <button class="customer-menu-item" role="menuitem" type="submit"><i aria-hidden="true">{{ $customer->status === 'active' ? 'Ⅱ' : '▶' }}</i><span><strong>{{ $customer->status === 'active' ? 'Suspend access' : 'Activate access' }}</strong><small>{{ $customer->status === 'active' ? 'Pause PPPoE authentication' : 'Restore PPPoE authentication' }}</small></span></button>
                                 </form>
+                            @endif
                             @endif
                             @if(auth()->user()->isAdmin())
                                 <form method="POST" action="{{ route('isp.customers.sync', $customer) }}">

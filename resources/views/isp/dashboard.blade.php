@@ -76,10 +76,17 @@
         <span>Unknown status</span><strong>{{ number_format($stats['unknown']) }}</strong>
         <small>Router inactive or unreachable</small><i>→</i>
     </a>
+    @if(auth()->user()->panelRole() === 'bandwidth_only')
+    <a class="stat-card blue" href="{{ route('isp.bandwidth-invoices.index') }}">
+        <span>Monthly bandwidth</span><strong>View invoices</strong>
+        <small>Bandwidth charges, GST and payment status</small><i>→</i>
+    </a>
+    @else
     <a class="stat-card blue" href="{{ route('isp.payments.index', ['view' => 'collections', 'month' => $revenueMonth]) }}">
         <span>This month</span><strong>₹{{ number_format($stats['revenue'], 0) }}</strong>
         <small>Payments collected</small><i>→</i>
     </a>
+    @endif
     <a class="stat-card violet" href="{{ auth()->user()->isAdmin() ? route('isp.routers.index') : route('isp.customers.index', ['status' => 'unknown']) }}">
         <span>Reachable routers</span><strong>{{ $stats['reachable_routers'] }}/{{ $stats['routers'] }}</strong>
         <small>Live REST status · cached 20 seconds</small><i>→</i>

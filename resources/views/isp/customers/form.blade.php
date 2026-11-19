@@ -37,7 +37,7 @@
             @if($customer->branch?->isBandwidthOnly() || auth()->user()->branch?->isBandwidthOnly())
                 <div class="form-help full">Bandwidth Only: activate and set expiry without recording a payment. Overdue branch invoices still block internet access.</div>
             @endif
-            <div class="form-help full">New customers receive 30 days automatically unless an administrator selects an expiry date. Future payments extend an active plan from its current expiry date.</div>
+            <div class="form-help full">New customers receive 30 days automatically unless an administrator selects an expiry date. @if(!($customer->branch?->isBandwidthOnly() || auth()->user()->branch?->isBandwidthOnly()))Future payments extend an active plan from its current expiry date.@endif</div>
         </div>
     </section>
 

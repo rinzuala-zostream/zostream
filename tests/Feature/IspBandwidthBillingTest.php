@@ -319,8 +319,8 @@ class IspBandwidthBillingTest extends TestCase
         $branch = $this->branch(['billing_type' => 'standard', 'operator_percentage' => 20]);
         $this->actingAs($this->user(), 'isp')->post(route('isp.users.store'), [
             'name' => 'Bandwidth operator', 'email' => 'bandwidth@example.test', 'password' => 'password123',
-            'password_confirmation' => 'password123', 'role' => 'branch_operator', 'branch_id' => $branch->id,
-            'is_active' => 1, 'billing_type' => 'bandwidth_only', 'bandwidth_mbps' => 1200,
+            'password_confirmation' => 'password123', 'role' => 'bandwidth_only', 'branch_id' => $branch->id,
+            'is_active' => 1, 'bandwidth_mbps' => 1200,
             'bandwidth_rate' => 70, 'bandwidth_gst' => 18, 'bandwidth_due_day' => 12,
         ])->assertRedirect()->assertSessionHasNoErrors();
         $this->assertTrue($branch->fresh()->isBandwidthOnly());
@@ -328,7 +328,19 @@ class IspBandwidthBillingTest extends TestCase
         $this->assertSame('70.00', $branch->fresh()->bandwidth_rate);
         $operator = User::where('email', 'bandwidth@example.test')->firstOrFail();
         $this->assertSame($branch->id, $operator->branch_id);
-        $this->get(route('isp.users.edit', $operator))->assertOk()->assertSee('1200.00');
+        $this->assertTrue($operator->isBranchOperator());
+        $this->assertFalse($operator->isAdmin());
+        $this->assertSame('bandwidth_only', $operator->panelRole());
+        $this->get(route('isp.users.edit', $operator))->assertOk()->assertSee('1200.00')->assertDontSee('Operator type')->assertSee('value="bandwidth_only" selected', false);
+        $this->get(route('isp.users.index'))->assertOk()->assertSee('Bandwidth Only');
+        $this->put(route('isp.users.update', $operator), [
+            'name' => 'Updated bandwidth operator', 'email' => $operator->email,
+            'role' => 'bandwidth_only', 'branch_id' => $branch->id, 'is_active' => 1,
+            'bandwidth_mbps' => 1200, 'bandwidth_rate' => 70, 'bandwidth_gst' => 18, 'bandwidth_due_day' => 12,
+        ])->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertSame('Updated bandwidth operator', $operator->fresh()->name);
+        $this->assertSame('bandwidth_only', $operator->fresh()->panelRole());
+        $this->assertSame('2026-11-01', $branch->fresh()->bandwidth_started_at->toDateString());
     }
 
     public function test_extending_due_date_restores_access_and_shortening_it_blocks_again(): void
@@ -377,5 +389,15 @@ class IspBandwidthBillingTest extends TestCase
             'bandwidth_rate' => 70, 'bandwidth_gst' => 101, 'bandwidth_due_day' => 32,
         ])->assertSessionHasErrors(['bandwidth_mbps', 'bandwidth_gst', 'bandwidth_due_day']);
         $this->assertSame(1, Branch::count());
+    }
+
+    public function test_bandwidth_role_requires_a_branch_and_billing_fields_despite_a_forged_type(): void
+    {
+        $this->actingAs($this->user(), 'isp')->post(route('isp.users.store'), [
+            'name' => 'Invalid operator', 'email' => 'invalid@example.test',
+            'password' => 'password123', 'password_confirmation' => 'password123',
+            'role' => 'bandwidth_only', 'billing_type' => 'standard', 'is_active' => 1,
+        ])->assertSessionHasErrors(['branch_id', 'bandwidth_mbps', 'bandwidth_rate', 'bandwidth_gst', 'bandwidth_due_day']);
+        $this->assertFalse(User::where('email', 'invalid@example.test')->exists());
     }
 }

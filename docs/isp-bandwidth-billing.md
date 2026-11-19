@@ -2,7 +2,7 @@
 
 Existing branches default to `standard`; their billing and customer expiry permissions stay unchanged.
 
-In **Branches** or **Admin users → Add/Edit → Operator billing**, select **Bandwidth Only** for the assigned branch and enter bandwidth in Mbps, monthly price per Mbps, GST percentage, and monthly payment due day. Settings are shared by every operator and customer in that branch. Operator share and OTT deduction do not apply to this type.
+In **Branches** or **Admin users → Add/Edit → Role**, select **Bandwidth Only** for the assigned branch and enter bandwidth in Mbps, monthly price per Mbps, GST percentage, and monthly payment due day. The user form uses the Role selection directly, without a separate Operator type selector. Bandwidth Only retains branch-operator permissions. Settings are shared by every operator and customer in that branch. Operator share and OTT deduction do not apply to this type.
 
 Monthly subtotal is `Mbps × rate`, rounded to two decimal places. GST is rounded to two decimal places and added to the subtotal. For 1200 Mbps at ₹70 with 18% GST: ₹84,000 + ₹15,120 = ₹99,120. Each invoice preserves its issued quantity, rate, tax, amount and branch name.
 
@@ -32,7 +32,7 @@ Due dates include the entire selected day. After that day, any unpaid overdue in
 
 Only an ISP administrator (the existing `admin` role) can mark an invoice paid or change its due date. **Bandwidth invoices** shows branch-scoped invoice history and printable details. **Mark as Paid** stores the administrator, timestamp and optional payment reference; repeating it preserves the original payment record. Paying all overdue invoices restores only customers whose own status and expiry allow access. Suspended and expired customers stay blocked.
 
-Bandwidth Only operators can edit customer expiry dates and activate customers without recording customer payments. These actions, package renewals and manual Sync cannot bypass an overdue branch invoice. Customer payment collection remains available, with zero operator commission for Bandwidth Only customers. A branch with unpaid invoices cannot switch to standard, and a branch with invoice history cannot be deleted.
+Bandwidth Only operators can edit customer expiry dates and activate customers without recording customer payments. These actions, package renewals and manual Sync cannot bypass an overdue branch invoice. Bandwidth Only operators use Bandwidth invoices instead of Payments. Their customer cards offer Activate / Set expiry without collecting a payment. New customer collections and checkouts for these branches are rejected, including admin requests. Admin Payments lists, collection totals and dashboard customer revenue exclude these customers. Existing payment records remain stored for history and invoice retrieval; previously started paid gateway checkouts can still be settled by the existing callback. A branch with unpaid invoices cannot switch to standard, and a branch with invoice history cannot be deleted.
 
 Invoices are created using settings available at issuance. Catch-up after downtime uses the current settings for any missing invoices. Generated invoices are never recalculated when settings change.
 

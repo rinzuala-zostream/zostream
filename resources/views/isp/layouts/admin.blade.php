@@ -24,7 +24,9 @@
             <a class="{{ request()->routeIs('isp.branches.*') ? 'active' : '' }}" href="{{ route('isp.branches.index') }}" title="Branches"><span class="nav-icon">⌖</span><span class="nav-label">Branches</span></a>
             <a class="{{ request()->routeIs('isp.packages.*') ? 'active' : '' }}" href="{{ route('isp.packages.index') }}" title="Packages"><span class="nav-icon">◇</span><span class="nav-label">Packages</span></a>
             @endif
+            @if(auth()->user()->panelRole() !== 'bandwidth_only')
             <a class="{{ request()->routeIs('isp.payments.*') ? 'active' : '' }}" href="{{ route('isp.payments.index') }}" title="Payments"><span class="nav-icon">₹</span><span class="nav-label">Payments</span></a>
+            @endif
             @if(auth()->user()->isAdmin() || auth()->user()->branch?->isBandwidthOnly())
             <a class="{{ request()->routeIs('isp.bandwidth-invoices.*') ? 'active' : '' }}" href="{{ route('isp.bandwidth-invoices.index') }}" title="Bandwidth invoices"><span class="nav-icon">₹</span><span class="nav-label">Bandwidth invoices</span></a>
             @endif

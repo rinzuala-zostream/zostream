@@ -34,7 +34,7 @@
                 <span class="module-state {{ $panelUser->is_active ? '' : 'disabled' }}"><i></i>{{ $panelUser->is_active ? 'Active' : 'Disabled' }}</span>
             </header>
             <div class="user-access-summary">
-                <div><small>ROLE</small><strong>{{ $panelUser->isAdmin() ? 'Administrator' : 'Branch operator' }}</strong></div>
+                <div><small>ROLE</small><strong>{{ $panelUser->isAdmin() ? 'Administrator' : ($panelUser->panelRole() === 'bandwidth_only' ? 'Bandwidth Only' : 'Branch operator') }}</strong></div>
                 <div><small>ACCESS SCOPE</small><strong>{{ $panelUser->branch?->name ?? 'All branches' }}</strong></div>
             </div>
             <div class="user-role-note">

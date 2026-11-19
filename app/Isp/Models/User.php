@@ -37,6 +37,13 @@ class User extends Authenticatable
         return $this->belongsTo(Branch::class);
     }
 
+    public function panelRole(): string
+    {
+        return $this->isBranchOperator() && $this->branch?->isBandwidthOnly()
+            ? 'bandwidth_only'
+            : ($this->role ?? 'branch_operator');
+    }
+
     public function isAdmin(): bool
     {
         return $this->role === 'admin';
