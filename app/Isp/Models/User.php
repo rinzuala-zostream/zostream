@@ -14,7 +14,7 @@ class User extends Authenticatable
 
     protected $table = 'isp_users';
 
-    protected $fillable = ['name', 'email', 'password', 'role', 'branch_id', 'is_active'];
+    protected $fillable = ['name', 'email', 'phone', 'password', 'role', 'branch_id', 'is_active'];
 
     protected $hidden = ['password', 'remember_token'];
 

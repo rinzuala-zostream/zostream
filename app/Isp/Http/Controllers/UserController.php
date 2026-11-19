@@ -6,6 +6,7 @@ use App\Isp\Models\Branch;
 use App\Isp\Models\User;
 use App\Isp\Services\BandwidthBillingService;
 use App\Isp\Services\BranchBillingSettings;
+use App\Isp\Support\PhoneNumber;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -118,12 +119,20 @@ class UserController extends Controller
         $request->merge(['billing_type' => $request->input('role') === 'bandwidth_only' ? 'bandwidth_only' : 'standard']);
         $data = $request->validate([
             'name' => ['required', 'string', 'max:150'],
+            'phone' => ['bail', Rule::requiredIf($request->input('role') === 'bandwidth_only'), 'nullable', 'string', 'max:30',
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    if (filled($value) && ! PhoneNumber::normalize($value)) {
+                        $fail('Enter a valid WhatsApp phone number, including the country code for non-Indian numbers.');
+                    }
+                },
+            ],
             'email' => ['required', 'email', 'max:255', Rule::unique('isp_users', 'email')->ignore($user)],
             'password' => [$user ? 'nullable' : 'required', 'string', 'min:8', 'max:255', 'confirmed'],
             'role' => ['required', Rule::in(['admin', 'branch_operator', 'bandwidth_only'])],
             'branch_id' => [Rule::requiredIf(in_array($request->input('role'), ['branch_operator', 'bandwidth_only'], true)), 'nullable', 'exists:branches,id'],
             'is_active' => ['nullable', 'boolean'],
         ] + BranchBillingSettings::rules());
+        $data['phone'] = PhoneNumber::normalize($data['phone'] ?? null);
         $data['role'] = $data['role'] === 'bandwidth_only' ? 'branch_operator' : $data['role'];
         $data['branch_id'] = $data['role'] === 'branch_operator' ? ($data['branch_id'] ?? null) : null;
         $data['is_active'] = $request->boolean('is_active');

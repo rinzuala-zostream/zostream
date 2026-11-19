@@ -45,6 +45,7 @@ Route::prefix('isp')->name('isp.')->group(function (): void {
         Route::get('/bandwidth-invoices', [BandwidthInvoiceController::class, 'index'])->name('bandwidth-invoices.index');
         Route::get('/bandwidth-invoices/{bandwidthInvoice}', [BandwidthInvoiceController::class, 'show'])->name('bandwidth-invoices.show');
         Route::put('/bandwidth-invoices/{bandwidthInvoice}', [BandwidthInvoiceController::class, 'update'])->middleware('isp.admin')->name('bandwidth-invoices.update');
+        Route::post('/bandwidth-invoices/{bandwidthInvoice}/whatsapp', [BandwidthInvoiceController::class, 'whatsapp'])->middleware('isp.admin')->name('bandwidth-invoices.whatsapp');
         Route::post('/bandwidth-invoices/{bandwidthInvoice}/paid', [BandwidthInvoiceController::class, 'paid'])->middleware('isp.admin')->name('bandwidth-invoices.paid');
 
         Route::get('/customers/export', [CustomerController::class, 'export'])->name('customers.export');

@@ -4,6 +4,7 @@ namespace App\Isp\Http\Controllers;
 
 use App\Isp\Models\BandwidthInvoice;
 use App\Isp\Services\BandwidthBillingService;
+use App\Isp\Services\BandwidthInvoiceWhatsAppService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -20,11 +21,14 @@ class BandwidthInvoiceController extends Controller
         ]);
     }
 
-    public function show(Request $request, BandwidthInvoice $bandwidthInvoice): View
+    public function show(Request $request, BandwidthInvoice $bandwidthInvoice, BandwidthInvoiceWhatsAppService $links): View
     {
         abort_if($request->user()->isBranchOperator() && $bandwidthInvoice->branch_id !== $request->user()->branch_id, 403);
 
-        return view('isp.bandwidth-invoices.show', ['invoice' => $bandwidthInvoice->load(['branch', 'paidBy'])]);
+        return view('isp.bandwidth-invoices.show', [
+            'invoice' => $bandwidthInvoice->load(['branch', 'paidBy', 'deliveries']),
+            'publicUrl' => $links->viewUrl($bandwidthInvoice), 'pdfUrl' => $links->pdfUrl($bandwidthInvoice),
+        ]);
     }
 
     public function update(Request $request, BandwidthInvoice $bandwidthInvoice, BandwidthBillingService $billing): RedirectResponse
@@ -40,6 +44,19 @@ class BandwidthInvoiceController extends Controller
 
         return back()->with($failed ? 'warning' : 'success', $failed
             ? 'Due date saved. Some access updates failed and will be retried automatically.' : 'Invoice due date updated; access synchronized.');
+    }
+
+    public function whatsapp(BandwidthInvoice $bandwidthInvoice, BandwidthInvoiceWhatsAppService $whatsApp): RedirectResponse
+    {
+        $failed = $whatsApp->sendInvoice($bandwidthInvoice);
+
+        if (! $bandwidthInvoice->deliveries()->exists()) {
+            return back()->with('warning', 'No eligible recipient found. Add a WhatsApp phone number to an active Bandwidth Only operator in this branch.');
+        }
+
+        return back()->with($failed ? 'warning' : 'success', $failed
+            ? 'WhatsApp attempt failed. Delivery status is shown below; failed attempts retry after 15 minutes.'
+            : 'WhatsApp delivery checked. Existing accepted messages are not sent again; pending retries respect their retry time.');
     }
 
     public function paid(Request $request, BandwidthInvoice $bandwidthInvoice, BandwidthBillingService $billing): RedirectResponse

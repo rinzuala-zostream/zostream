@@ -90,6 +90,7 @@ class IspBandwidthBillingTest extends TestCase
             });
         }
         (require database_path('migrations/2026_11_19_000001_add_bandwidth_billing.php'))->up();
+        (require database_path('migrations/2026_11_19_000002_add_bandwidth_invoice_whatsapp_delivery.php'))->up();
     }
 
     protected function tearDown(): void
@@ -318,7 +319,7 @@ class IspBandwidthBillingTest extends TestCase
     {
         $branch = $this->branch(['billing_type' => 'standard', 'operator_percentage' => 20]);
         $this->actingAs($this->user(), 'isp')->post(route('isp.users.store'), [
-            'name' => 'Bandwidth operator', 'email' => 'bandwidth@example.test', 'password' => 'password123',
+            'name' => 'Bandwidth operator', 'email' => 'bandwidth@example.test', 'phone' => '+91 98765 43210', 'password' => 'password123',
             'password_confirmation' => 'password123', 'role' => 'bandwidth_only', 'branch_id' => $branch->id,
             'is_active' => 1, 'bandwidth_mbps' => 1200,
             'bandwidth_rate' => 70, 'bandwidth_gst' => 18, 'bandwidth_due_day' => 12,
@@ -334,11 +335,12 @@ class IspBandwidthBillingTest extends TestCase
         $this->get(route('isp.users.edit', $operator))->assertOk()->assertSee('1200.00')->assertDontSee('Operator type')->assertSee('value="bandwidth_only" selected', false);
         $this->get(route('isp.users.index'))->assertOk()->assertSee('Bandwidth Only');
         $this->put(route('isp.users.update', $operator), [
-            'name' => 'Updated bandwidth operator', 'email' => $operator->email,
+            'name' => 'Updated bandwidth operator', 'email' => $operator->email, 'phone' => '9876543210',
             'role' => 'bandwidth_only', 'branch_id' => $branch->id, 'is_active' => 1,
             'bandwidth_mbps' => 1200, 'bandwidth_rate' => 70, 'bandwidth_gst' => 18, 'bandwidth_due_day' => 12,
         ])->assertRedirect()->assertSessionHasNoErrors();
         $this->assertSame('Updated bandwidth operator', $operator->fresh()->name);
+        $this->assertSame('919876543210', $operator->fresh()->phone);
         $this->assertSame('bandwidth_only', $operator->fresh()->panelRole());
         $this->assertSame('2026-11-01', $branch->fresh()->bandwidth_started_at->toDateString());
     }
@@ -397,7 +399,163 @@ class IspBandwidthBillingTest extends TestCase
             'name' => 'Invalid operator', 'email' => 'invalid@example.test',
             'password' => 'password123', 'password_confirmation' => 'password123',
             'role' => 'bandwidth_only', 'billing_type' => 'standard', 'is_active' => 1,
-        ])->assertSessionHasErrors(['branch_id', 'bandwidth_mbps', 'bandwidth_rate', 'bandwidth_gst', 'bandwidth_due_day']);
+        ])->assertSessionHasErrors(['phone', 'branch_id', 'bandwidth_mbps', 'bandwidth_rate', 'bandwidth_gst', 'bandwidth_due_day']);
         $this->assertFalse(User::where('email', 'invalid@example.test')->exists());
+    }
+
+    private function configureWhatsApp(): void
+    {
+        config(['app.whatsapp_phone_id' => 'test-phone-id', 'app.whatsapp_token' => 'test-token', 'app.whatsapp_invoice_button_parameter' => 'path']);
+        \Illuminate\Support\Facades\Http::preventStrayRequests();
+    }
+
+    public function test_whatsapp_uses_wifi_document_flow_with_bandwidth_links_and_sends_once_per_phone(): void
+    {
+        $this->configureWhatsApp();
+        \Illuminate\Support\Facades\Http::fake(['https://graph.facebook.com/*' => \Illuminate\Support\Facades\Http::response(['messages' => [['id' => 'wamid.test-1']]], 200)]);
+        $branch = $this->branch();
+        $operator = $this->user($branch);
+        $operator->update(['phone' => '9876543210']);
+        $duplicate = $this->user($branch);
+        $duplicate->update(['phone' => '+91 9876543210']);
+        $inactive = $this->user($branch);
+        $inactive->update(['phone' => '9999999999', 'is_active' => false]);
+        $admin = $this->user();
+        $admin->update(['phone' => '8888888888', 'branch_id' => $branch->id]);
+        $billing = app(BandwidthBillingService::class);
+        $billing->generate($branch);
+        $service = app(\App\Isp\Services\BandwidthInvoiceWhatsAppService::class);
+        $invoice = BandwidthInvoice::firstOrFail();
+        $this->assertSame(0, $service->sendPending($branch));
+        $this->assertSame(0, $service->sendPending($branch));
+        \Illuminate\Support\Facades\Http::assertSentCount(1);
+        \Illuminate\Support\Facades\Http::assertSent(function ($request) use ($invoice): bool {
+            $components = collect($request['template']['components']);
+            $body = $components->firstWhere('type', 'body');
+            $header = $components->firstWhere('type', 'header');
+            $button = $components->firstWhere('type', 'button');
+            $this->assertSame('99120.00', $body['parameters'][3]['text']);
+            $this->assertSame($invoice->number(), $body['parameters'][1]['text']);
+            $this->assertSame('Oct 01, 2026 - Oct 31, 2026', $body['parameters'][2]['text']);
+            $this->assertSame('Nov 10, 2026', $body['parameters'][4]['text']);
+            $this->assertStringContainsString('/invoices/bandwidth/'.$invoice->id.'/pdf?signature=', $header['parameters'][0]['document']['link']);
+            $this->assertStringStartsWith('invoices/bandwidth/'.$invoice->id.'?signature=', $button['parameters'][0]['text']);
+
+            return $request['to'] === '919876543210' && $request['template']['name'] === 'zostream_wifi_invoice_v3';
+        });
+        $this->assertSame(1, $invoice->deliveries()->count());
+        $delivery = $invoice->deliveries()->firstOrFail();
+        $this->assertNotNull($delivery->sent_at);
+        $this->assertSame('wamid.test-1', $delivery->provider_message_id);
+        $this->assertSame(1, $delivery->attempts);
+    }
+
+    public function test_whatsapp_failure_waits_for_retry_then_recovers_without_duplicate_invoices(): void
+    {
+        $this->configureWhatsApp();
+        \Illuminate\Support\Facades\Http::fake(['https://graph.facebook.com/*' => \Illuminate\Support\Facades\Http::sequence()
+            ->push(['error' => ['message' => 'Provider temporarily unavailable']], 503)
+            ->push(['messages' => [['id' => 'wamid.retry']]], 200)]);
+        $branch = $this->branch();
+        $operator = $this->user($branch);
+        $operator->update(['phone' => '9876543210']);
+        $this->artisan('isp:bandwidth-billing')->assertFailed();
+        $invoice = BandwidthInvoice::firstOrFail();
+        $delivery = $invoice->deliveries()->firstOrFail();
+        $this->assertNull($delivery->sent_at);
+        $this->assertNull($delivery->processing_at);
+        $this->assertNotNull($delivery->last_error);
+        $this->assertSame(1, $delivery->attempts);
+        $this->artisan('isp:bandwidth-billing')->assertSuccessful();
+        \Illuminate\Support\Facades\Http::assertSentCount(1);
+        $this->travel(16)->minutes();
+        $this->artisan('isp:bandwidth-billing')->assertSuccessful();
+        \Illuminate\Support\Facades\Http::assertSentCount(2);
+        $this->assertNotNull($delivery->fresh()->sent_at);
+        $this->assertSame(2, $delivery->fresh()->attempts);
+        $this->assertSame(1, BandwidthInvoice::count());
+    }
+
+    public function test_in_progress_delivery_is_not_duplicated_and_stale_claim_can_retry(): void
+    {
+        $this->configureWhatsApp();
+        \Illuminate\Support\Facades\Http::fake(['https://graph.facebook.com/*' => \Illuminate\Support\Facades\Http::response(['messages' => [['id' => 'wamid.stale']]], 200)]);
+        $branch = $this->branch();
+        $operator = $this->user($branch);
+        $operator->update(['phone' => '9876543210']);
+        app(BandwidthBillingService::class)->generate($branch);
+        $invoice = BandwidthInvoice::firstOrFail();
+        $invoice->deliveries()->create(['phone' => '919876543210', 'recipient_name' => $operator->name, 'processing_at' => now()]);
+        $service = app(\App\Isp\Services\BandwidthInvoiceWhatsAppService::class);
+        $service->sendInvoice($invoice);
+        \Illuminate\Support\Facades\Http::assertNothingSent();
+        $this->travel(16)->minutes();
+        $service->sendInvoice($invoice);
+        \Illuminate\Support\Facades\Http::assertSentCount(1);
+    }
+
+    public function test_public_bandwidth_invoice_and_pdf_require_signatures_and_have_separate_ui(): void
+    {
+        $branch = $this->branch();
+        app(BandwidthBillingService::class)->generate($branch);
+        $invoice = BandwidthInvoice::firstOrFail();
+        $links = app(\App\Isp\Services\BandwidthInvoiceWhatsAppService::class);
+        $this->get(route('invoice.bandwidth.show', $invoice))->assertForbidden();
+        $this->get(route('invoice.bandwidth.pdf', $invoice))->assertForbidden();
+        $this->get($links->viewUrl($invoice))->assertOk()->assertViewIs('invoices.bandwidth_show')
+            ->assertSee('Business Bandwidth')->assertSee('99,120.00')->assertSee('GST')->assertSee('Please settle this invoice by')
+            ->assertDontSee('Mark as Paid')->assertDontSee('Zo Stream WIFI');
+        $this->get($links->viewUrl($invoice).'&extra=tampered')->assertForbidden();
+        $this->view('invoices.bandwidth_pdf', ['invoice' => $invoice])->assertSee('Please settle by');
+        $pdf = $this->get($links->pdfUrl($invoice))->assertOk()->assertHeader('Content-Type', 'application/pdf');
+        $this->assertStringStartsWith('%PDF-', $pdf->getContent());
+        $this->assertGreaterThan(5000, strlen($pdf->getContent()));
+        $invoice->update(['paid_at' => now()]);
+        $this->get($links->viewUrl($invoice))->assertOk()->assertSee('Payment recorded');
+    }
+
+    public function test_manual_whatsapp_attempt_is_admin_only_and_standard_branches_do_not_send(): void
+    {
+        $this->configureWhatsApp();
+        \Illuminate\Support\Facades\Http::fake(['https://graph.facebook.com/*' => \Illuminate\Support\Facades\Http::response(['messages' => [['id' => 'wamid.manual']]], 200)]);
+        $branch = $this->branch();
+        $operator = $this->user($branch);
+        $operator->update(['phone' => '9876543210']);
+        app(BandwidthBillingService::class)->generate($branch);
+        $invoice = BandwidthInvoice::firstOrFail();
+        $this->actingAs($operator, 'isp')->post(route('isp.bandwidth-invoices.whatsapp', $invoice))->assertForbidden();
+        $this->actingAs($this->user(), 'isp')->post(route('isp.bandwidth-invoices.whatsapp', $invoice))->assertRedirect()->assertSessionHas('success');
+        $this->post(route('isp.bandwidth-invoices.whatsapp', $invoice))->assertRedirect();
+        \Illuminate\Support\Facades\Http::assertSentCount(1);
+        $branch->update(['billing_type' => 'standard']);
+        $this->assertSame(0, app(\App\Isp\Services\BandwidthInvoiceWhatsAppService::class)->sendPending($branch));
+        \Illuminate\Support\Facades\Http::assertSentCount(1);
+    }
+
+    public function test_whatsapp_failure_does_not_prevent_other_branches_being_blocked(): void
+    {
+        $this->configureWhatsApp();
+        \Illuminate\Support\Facades\Http::fake(['https://graph.facebook.com/*' => \Illuminate\Support\Facades\Http::response(['error' => ['message' => 'Unavailable']], 503)]);
+        $first = $this->branch();
+        $operator = $this->user($first);
+        $operator->update(['phone' => '9876543210']);
+        $firstCustomer = $this->customer($first);
+        $second = $this->branch(['name' => 'Second bandwidth branch']);
+        $secondCustomer = $this->customer($second);
+        $this->travelTo(now()->setDate(2026, 11, 11));
+        $this->artisan('isp:bandwidth-billing')->assertFailed();
+        foreach ([$firstCustomer, $secondCustomer] as $customer) {
+            $this->assertDatabaseHas('radcheck', ['username' => $customer->username, 'attribute' => 'Auth-Type', 'value' => 'Reject']);
+        }
+        $this->assertSame(2, BandwidthInvoice::count());
+    }
+
+    public function test_phone_is_optional_for_standard_roles_and_invalid_phone_is_rejected(): void
+    {
+        $this->actingAs($this->user(), 'isp');
+        $data = ['name' => 'New admin', 'email' => 'new-admin@example.test', 'password' => 'password123', 'password_confirmation' => 'password123', 'role' => 'admin', 'is_active' => 1];
+        $this->postJson(route('isp.users.store'), $data + ['phone' => ['invalid']])->assertUnprocessable()->assertJsonValidationErrors('phone');
+        $this->post(route('isp.users.store'), $data)->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertNull(User::where('email', 'new-admin@example.test')->firstOrFail()->phone);
     }
 }

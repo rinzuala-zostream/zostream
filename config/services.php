@@ -42,6 +42,12 @@ return [
         ))),
     ],
 
+    'isp_bandwidth_invoice' => [
+        // Same approved five-parameter document template as the WiFi invoice.
+        'template' => env('WHATSAPP_BANDWIDTH_INVOICE_TEMPLATE', 'zostream_wifi_invoice_v3'),
+        'language' => env('WHATSAPP_BANDWIDTH_INVOICE_LANGUAGE', 'en'),
+    ],
+
     'admin_whatsapp' => [
         'allowed_numbers' => array_values(array_filter(array_map(
             static fn ($number) => preg_replace('/\D+/', '', trim($number)),

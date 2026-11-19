@@ -30,7 +30,7 @@
         <article class="user-modern-card">
             <header>
                 <div class="panel-user-avatar">{{ $initials ?: '?' }}</div>
-                <div class="panel-user-identity"><h3>{{ $panelUser->name }}</h3><span>{{ $panelUser->email }}</span></div>
+                <div class="panel-user-identity"><h3>{{ $panelUser->name }}</h3><span>{{ $panelUser->email }}</span>@if($panelUser->phone)<span>WhatsApp: +{{ $panelUser->phone }}</span>@endif</div>
                 <span class="module-state {{ $panelUser->is_active ? '' : 'disabled' }}"><i></i>{{ $panelUser->is_active ? 'Active' : 'Disabled' }}</span>
             </header>
             <div class="user-access-summary">

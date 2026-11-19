@@ -4,6 +4,7 @@ namespace App\Isp\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class BandwidthInvoice extends Model
 {
@@ -26,6 +27,11 @@ class BandwidthInvoice extends Model
     public function paidBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'paid_by');
+    }
+
+    public function deliveries(): HasMany
+    {
+        return $this->hasMany(BandwidthInvoiceDelivery::class);
     }
 
     public function isOverdue(): bool

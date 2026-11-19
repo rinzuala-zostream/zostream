@@ -73,6 +73,11 @@ Route::get('/check', function () {
 
 Route::get('/ads/{ad}', [AdsController::class, 'show'])->name('ads.show');
 
+Route::get('/invoices/bandwidth/{bandwidthInvoice}', [\App\Isp\Http\Controllers\PublicBandwidthInvoiceController::class, 'show'])
+    ->middleware('signed')->name('invoice.bandwidth.show');
+Route::get('/invoices/bandwidth/{bandwidthInvoice}/pdf', [\App\Isp\Http\Controllers\PublicBandwidthInvoiceController::class, 'pdf'])
+    ->middleware('signed')->name('invoice.bandwidth.pdf');
+
 Route::get('/invoices/payments/{payment}', [InvoiceController::class, 'show'])
     ->middleware('signed')
     ->name('invoice.payments.show');
@@ -136,6 +141,7 @@ Route::get('/invite/{legacyInvitation}', function (string $legacyInvitation) {
     abort_unless(str_starts_with($token, '{{1}}'), 404);
     $token = substr($token, 5);
     abort_unless(preg_match('/^[A-Za-z0-9]{64}$/D', $token), 404);
+
     return redirect('/invite/'.$token)->header('Cache-Control', 'no-store')
         ->header('Referrer-Policy', 'no-referrer')->header('X-Robots-Tag', 'noindex, nofollow');
 })->where('legacyInvitation', '[^/]+');

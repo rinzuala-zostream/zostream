@@ -2,7 +2,7 @@
 @section('title', $invoice->number())
 @section('eyebrow', 'Bandwidth invoice')
 @section('content')
-<div class="page-actions"><a class="button secondary" href="{{ route('isp.bandwidth-invoices.index') }}">← Bandwidth invoices</a><button class="button secondary" onclick="window.print()" type="button">Print invoice</button></div>
+<div class="page-actions"><a class="button secondary" href="{{ route('isp.bandwidth-invoices.index') }}">← Bandwidth invoices</a><a class="button secondary" href="{{ $publicUrl }}" target="_blank" rel="noopener">Operator invoice view</a><a class="button secondary" href="{{ $pdfUrl }}">Download PDF</a><button class="button secondary" onclick="window.print()" type="button">Print invoice</button></div>
 <section class="form-card bandwidth-invoice">
     <h2>ZoStream — Bandwidth invoice {{ $invoice->number() }}</h2>
     <p>Bill to: <strong>{{ $invoice->branch_name }}</strong></p>
@@ -30,6 +30,19 @@
                 <div><button class="button primary">Mark as Paid</button></div>
             </form>
         @endif
+    @endif
+</section>
+<section class="form-card" style="margin-top:20px">
+    <h3>WhatsApp invoice delivery</h3>
+    <p>Sent to active Bandwidth Only operators in this branch. Accepted means WhatsApp accepted the message; it does not confirm that the recipient read it.</p>
+    @forelse($invoice->deliveries as $delivery)
+        <p><strong>{{ $delivery->recipient_name }}</strong> · +{{ $delivery->phone }} · {{ $delivery->sent_at ? 'Accepted '.$delivery->sent_at->format('d M Y H:i') : 'Pending' }}
+        @if(!$delivery->sent_at && $delivery->last_error)<br><small>{{ $delivery->last_error }} @if($delivery->next_attempt_at) · Next retry: {{ $delivery->next_attempt_at->format('d M Y H:i') }}@endif</small>@endif</p>
+    @empty
+        <p>No delivery recorded yet. Add a WhatsApp phone number to an active branch operator; unpaid invoice delivery runs automatically with bandwidth billing.</p>
+    @endforelse
+    @if(auth()->user()->isAdmin())
+        <form method="POST" action="{{ route('isp.bandwidth-invoices.whatsapp', $invoice) }}">@csrf<button class="button secondary">Send / Retry pending WhatsApp invoices</button></form>
     @endif
 </section>
 @endsection

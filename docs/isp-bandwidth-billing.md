@@ -43,3 +43,27 @@ vendor/bin/phpunit --filter Isp
 ```
 
 Tests use an isolated in-memory database and mocked router connections. Live router blocking/unblocking still needs verification in the deployment environment.
+
+## WhatsApp invoices and operator phone numbers
+
+Run the additional migration before deploying the phone and WhatsApp UI:
+
+```sh
+php artisan migrate --path=database/migrations/2026_11_19_000002_add_bandwidth_invoice_whatsapp_delivery.php --force
+php artisan view:clear
+```
+
+Admin users have a WhatsApp phone field on Add/Edit. It is required when saving a Bandwidth Only operator and optional for the existing roles. Indian ten-digit numbers become `91` plus the number; international numbers need their country code. Existing operators should edit their account to add a phone number.
+
+The existing `isp:bandwidth-billing` schedule first generates invoices and finishes access enforcement for all branches, then sends unpaid invoices to active operators assigned to each Bandwidth Only branch. No additional queue worker is required. Recipients with the same normalized phone share one delivery record per invoice; accepted sends are skipped on subsequent runs. Failed sends retry after 15 minutes; a processing claim older than 15 minutes can be retried. Standard branches and administrator accounts are not invoice recipients.
+
+Delivery reuses the WiFi document template flow: a signed PDF attachment, five body parameters (recipient name, bandwidth invoice number, service dates, GST-inclusive total, due date), and an optional signed invoice-view button. The default template is the existing `zostream_wifi_invoice_v3`. To use a separately approved bandwidth template with the same parameter structure:
+
+```dotenv
+WHATSAPP_BANDWIDTH_INVOICE_TEMPLATE=zostream_wifi_invoice_v3
+WHATSAPP_BANDWIDTH_INVOICE_LANGUAGE=en
+```
+
+The existing WhatsApp phone ID/token and `WHATSAPP_INVOICE_BUTTON_PARAMETER` configuration are reused. A bandwidth template with different parameters is not interchangeable. Public link and PDF use a separate Business Bandwidth design and contain bandwidth, monthly Mbps rate, subtotal, GST, total, service month, due date and current payment state. They require valid URL signatures and expose no admin controls.
+
+The admin invoice page shows per-recipient acceptance/error/retry status and offers **Send / Retry pending WhatsApp invoices**. Successful recipients are not resent by this button. Provider acceptance is not proof of handset delivery or reading. Messages are sent by the deployed scheduler or an explicit admin action; development tests fake WhatsApp HTTP requests and do not message real users.

@@ -13,6 +13,7 @@
         <div class="editor-fields">
             <label><span>Full name</span><input name="name" value="{{ old('name', $panelUser->name) }}" required maxlength="150"></label>
             <label><span>Email address</span><input type="email" name="email" value="{{ old('email', $panelUser->email) }}" required></label>
+            <label><span>WhatsApp phone number</span><input id="userPhone" type="tel" name="phone" value="{{ old('phone', $panelUser->phone) }}" maxlength="30" autocomplete="tel" placeholder="e.g. +91 9876543210"><small>Required for Bandwidth Only invoice delivery. Indian 10-digit numbers use +91 automatically.</small></label>
         </div>
     </div>
     <div class="editor-section">
@@ -60,6 +61,7 @@
     const update = () => {
         const operator = role.value === 'branch_operator' || role.value === 'bandwidth_only';
         const bandwidth = role.value === 'bandwidth_only';
+        document.getElementById('userPhone').required = bandwidth;
         type.value = bandwidth ? 'bandwidth_only' : 'standard';
         branch.hidden = !operator;
         billing.hidden = !bandwidth;
