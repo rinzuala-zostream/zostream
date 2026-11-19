@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V4;
 
 use App\Support\Chat\ChatDatabase;
+use App\Support\Chat\ChatDisplayNames;
 use App\Http\Controllers\Controller;
 use App\Support\Api\V4Response;
 use Illuminate\Http\Request;
@@ -70,7 +71,7 @@ class ChatInvitationLinkController extends Controller
             'invite_id' => (string) $invite->id, 'status' => $invite->status,
             'subscription_id' => $room->content_type ? $this->subscriptionId((string) $r->input('auth_user_id')) : null,
             'accepted' => $invite->status === 'accepted', 'room_id' => (string) $room->room_id,
-            'room_name' => $room->room_name, 'inviter_name' => DB::table('user')->where('uid', $invite->inviter_user_id)->value('name') ?: 'A Zo Stream user',
+            'room_name' => $room->room_name, 'inviter_name' => ChatDisplayNames::name(DB::table('user')->where('uid', $invite->inviter_user_id)->first(['username', 'name']), 'A Zo Stream user'),
             'content_type' => $room->content_type, 'content_id' => $room->content_id,
             'content_title' => $content->title ?? null, 'season_id' => $seasonId === null ? null : (string) $seasonId,
             'season_number' => $seasonId ? (int) DB::table('seasons')->where('id', $seasonId)->value('season_number') : null,

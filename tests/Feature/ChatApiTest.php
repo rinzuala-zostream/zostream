@@ -19,6 +19,56 @@ use Tests\TestCase;
 
 class ChatApiTest extends TestCase
 {
+    public function test_chat_uses_username_for_new_messages_and_keeps_legacy_name_without_one(): void
+    {
+        $room = $this->room();
+        $this->send($room)->assertCreated()->assertJsonPath('data.display_name', 'Alice');
+        DB::table('user')->where('uid', 'alice')->update(['username' => 'zo_alice']);
+        Cache::store(config('chat.cache_store'))->forget('chat:send:'.hash('sha256', 'alice'));
+        $this->send($room)->assertCreated()->assertJsonPath('data.display_name', 'zo_alice');
+    }
+
+    public function test_existing_cached_messages_and_replies_pick_up_username_without_rewriting_legacy_names(): void
+    {
+        $room = $this->room();
+        $parent = $this->message($room);
+        $reply = $this->message($room, 'bob');
+        ChatDatabase::connection()->table('chat_messages')->where('id', $reply)->update(['reply_to_id' => $parent]);
+        $url = "/api/v4/chat/rooms/$room/messages?".http_build_query($this->identity());
+        $this->getJson($url)->assertOk(); // Warm the room cache before profile completion.
+        DB::table('user')->where('uid', 'alice')->update(['username' => 'zo_alice']);
+        $messages = collect($this->getJson($url)->assertOk()->json('data.messages'))->keyBy('id');
+        $this->assertSame('zo_alice', $messages[$parent]['display_name']);
+        $this->assertSame('zo_alice', $messages[$reply]['reply']['display_name']);
+        $this->assertSame('bob', $messages[$reply]['display_name']);
+        $this->assertSame('alice', ChatDatabase::connection()->table('chat_messages')->where('id', $parent)->value('display_name'));
+    }
+
+    public function test_blank_username_and_deleted_messages_keep_their_existing_display_names(): void
+    {
+        $room = $this->room();
+        DB::table('user')->where('uid', 'alice')->update(['username' => '   ']);
+        $this->send($room)->assertCreated()->assertJsonPath('data.display_name', 'Alice');
+        $deleted = $this->message($room);
+        ChatDatabase::connection()->table('chat_messages')->where('id', $deleted)->update(['deleted_at' => now(), 'display_name' => 'Deleted viewer']);
+        DB::table('user')->where('uid', 'alice')->update(['username' => 'zo_alice']);
+        $messages = collect($this->getJson("/api/v4/chat/rooms/$room/messages?".http_build_query($this->identity()))
+            ->assertOk()->json('data.messages'))->keyBy('id');
+        $this->assertSame('Deleted viewer', $messages[$deleted]['display_name']);
+    }
+
+    public function test_chat_typing_and_invitation_sender_prefer_username(): void
+    {
+        DB::table('user')->where('uid', 'alice')->update(['username' => 'zo_alice']);
+        $room = $this->createPrivateRoom();
+        $this->getJson('/api/v4/chat/invites?auth_user_id=bob')->assertOk()
+            ->assertJsonPath('data.invites.0.inviter_name', 'zo_alice');
+        $global = $this->room();
+        $this->postJson("/api/v4/chat/rooms/$global/typing", $this->identity(['active' => true]))->assertOk();
+        $this->getJson("/api/v4/chat/rooms/$global/typing?auth_user_id=bob")->assertOk()
+            ->assertJsonPath('data.users.0.name', 'zo_alice');
+    }
+
     public function test_username_invitee_search_is_bounded_literal_and_omits_private_fields(): void
     {
         DB::table('user')->where('uid', 'alice')->update(['username' => 'zo_self']);

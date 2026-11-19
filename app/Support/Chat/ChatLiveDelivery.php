@@ -74,6 +74,7 @@ final class ChatLiveDelivery
         $data = ['overlay_live' => ! $message->deleted_at && Carbon::parse($message->created_at)->gte(now()->subSeconds(10)),
             'kind' => $message->deleted_at ? 'deleted' : 'created', 'event_id' => (string) $row->id,
             'room_id' => (string) $room->id, 'message' => app(ChatService::class)->message($message)];
+        $data['message'] = ChatDisplayNames::messages([$data['message']])[0];
         // Deliver a watch card with its current state. The separate metadata
         // channel may arrive earlier/later or be recovering its subscription.
         if ($data['message']['watch_invite'] !== null) {

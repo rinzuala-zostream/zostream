@@ -40,8 +40,9 @@ final class ChatMessageNotifications
         $token = DB::table('user')->where('uid', $user)->value('token');
         if (! $token) { return; }
         $body = $message->spoiler ? 'Sent a spoiler message.' : mb_substr((string) $message->body, 0, 180);
+        $sender = ChatDisplayNames::messages([['user_id' => $message->user_id, 'display_name' => $message->display_name, 'deleted' => false]])[0]['display_name'];
         $result = app(FCMNotificationController::class)->sendToToken($token, $room->room_name,
-            $message->display_name.': '.$body, key: 'chat_message',
+            $sender.': '.$body, key: 'chat_message',
             data: ['room_id' => (string) $row->room_id, 'message_id' => (string) $message->id]);
         if (! ($result['success'] ?? false)) { throw new \RuntimeException('Chat message push delivery failed'); }
     }

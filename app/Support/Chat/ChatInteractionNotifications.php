@@ -76,8 +76,9 @@ final class ChatInteractionNotifications
             $body = 'replied to your message.';
         }
         $token = DB::table('user')->where('uid', $user)->value('token');
-        $name = DB::table('user')->where('uid', $actor)->value('name');
-        if (! $token || $name === null) { return; }
+        $actorUser = DB::table('user')->where('uid', $actor)->first(['username', 'name']);
+        if (! $token || $actorUser === null) { return; }
+        $name = ChatDisplayNames::name($actorUser);
         $payload = ['notification_id' => (string) $row->id, 'room_id' => (string) $room->id, 'message_id' => (string) $message->id,
             'activity' => $data['kind'], 'room_type' => $room->type, 'content_id' => (string) ($room->content_id ?? '')];
         $content = null;

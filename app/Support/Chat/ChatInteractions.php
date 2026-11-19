@@ -32,7 +32,7 @@ final class ChatInteractions
                     'spoiler' => ! $hidden && (bool) $parent->spoiler, 'deleted' => (bool) $hidden];
             }
         }
-        return $messages;
+        return ChatDisplayNames::messages($messages);
     }
 
     public function target(Request $r, int $room, int $message): object
@@ -70,7 +70,7 @@ final class ChatInteractions
                 $userKey = hash('sha256', $uid);
                 unset($users[$userKey]);
                 if ($active) {
-                    $name = DB::table('user')->where('uid', $uid)->value('name') ?: 'Viewer';
+                    $name = ChatDisplayNames::name(DB::table('user')->where('uid', $uid)->first(['username', 'name']));
                     $users[$userKey] = ['user_id' => $uid, 'name' => mb_substr(trim($name), 0, 100), 'expires_at' => now()->timestamp + 6];
                 }
                 $cache->put($key, array_slice($users, -20, null, true), 6);

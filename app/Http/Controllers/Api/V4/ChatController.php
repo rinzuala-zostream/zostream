@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V4;
 
 use App\Support\Chat\ChatDatabase;
+use App\Support\Chat\ChatDisplayNames;
 use App\Http\Controllers\Controller;
 use App\Support\Api\V4Response;
 use App\Support\Chat\ChatService;
@@ -94,7 +95,7 @@ final class ChatController extends Controller
         $users = DB::table('user')->whereNotIn('uid', $excluded)
             ->whereRaw("username LIKE ? ESCAPE '!'", [$prefix])->orderBy('username')->limit(8)
             ->get(['uid', 'username', 'name'])->map(fn ($user) => [
-                'user_id' => (string) $user->uid, 'username' => $user->username, 'name' => $user->name ?: 'Viewer',
+                'user_id' => (string) $user->uid, 'username' => $user->username, 'name' => ChatDisplayNames::name($user),
             ]);
 
         return V4Response::success(['users' => $users]);
@@ -109,13 +110,13 @@ final class ChatController extends Controller
         $matches = DB::table('user')->where('uid', '!=', (string) $r->input('auth_user_id'))
             ->whereNotNull('auth_phone')->where('auth_phone', '!=', '')
             ->whereRaw("REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(auth_phone, '+', ''), ' ', ''), '-', ''), '(', ''), ')', '') LIKE ?", ['%'.substr($digits, -7)])
-            ->get(['uid', 'name', 'auth_phone', 'country_code'])->filter(fn ($candidate) =>
+            ->get(['uid', 'username', 'name', 'auth_phone', 'country_code'])->filter(fn ($candidate) =>
                 \App\Support\Chat\InvitationPhone::matches($v['phone'], $candidate->auth_phone, $candidate->country_code));
         abort_if($matches->count() > 1, 422, 'More than one account matches this number. Enter the full number with country code.');
         $user = $matches->first();
         abort_unless($user, 404, 'No Zo Stream account was found for this phone number. Check the number and country code.');
 
-        return V4Response::success(['user_id' => (string) $user->uid, 'name' => $user->name ?: 'Viewer']);
+        return V4Response::success(['user_id' => (string) $user->uid, 'name' => ChatDisplayNames::name($user)]);
     }
 
     public function createInviteRoom(Request $r)
@@ -346,7 +347,7 @@ final class ChatController extends Controller
             ->where('ir.active', true)->orderByDesc('i.id')->limit(50)
             ->get(['i.id as invite_id', 'i.room_id', 'i.expires_at', 'ir.room_name', 'ir.content_type', 'ir.content_id', 'ir.watch_position_ms', 'i.inviter_user_id', 'ir.active', 'ir.idle_expires_at'])
             ->filter(fn ($room) => app(InviteRoomLifecycle::class)->active($room))->values();
-        $names = DB::table('user')->whereIn('uid', $rows->pluck('inviter_user_id'))->pluck('name', 'uid');
+        $names = ChatDisplayNames::forUsers($rows->pluck('inviter_user_id'));
         $rows->transform(function ($invite) use ($names) {
             unset($invite->active, $invite->idle_expires_at);
             $invite->invite_id = (string) $invite->invite_id;
@@ -635,9 +636,9 @@ final class ChatController extends Controller
                 $this->chat->assertInviteRoomActive($inviteRoom);
             }
             $sharedRoom = isset($v['room_invite']) ? app(\App\Support\Chat\RoomInvitationService::class)->share($r, $roomInfo, (int) $v['room_invite']['room_id']) : null;
-            $name = DB::table('user')->where('uid', $uid)->value('name');
+            $name = ChatDisplayNames::name(DB::table('user')->where('uid', $uid)->first(['username', 'name']));
             $inserted = ChatDatabase::connection()->table('chat_messages')->insertOrIgnore(['room_id' => $room, 'user_id' => $uid, 'request_id' => $v['request_id'],
-                'display_name' => mb_substr(trim((string) $name) ?: 'Viewer', 0, 100), 'body' => $sharedRoom ? 'Invitation to '.$sharedRoom->room_name : $body,
+                'display_name' => $name, 'body' => $sharedRoom ? 'Invitation to '.$sharedRoom->room_name : $body,
                 'invite_room_id' => $sharedRoom?->room_id, 'reply_to_id' => $v['reply_to_id'] ?? null,
                 'moment' => isset($v['moment']) ? json_encode($v['moment']) : null,
                 'spoiler' => $v['spoiler'] ?? false, 'created_at' => now(), 'updated_at' => now()]);
@@ -714,7 +715,7 @@ final class ChatController extends Controller
     public function blocks(Request $r)
     {
         $ids = $this->chat->blocked((string) $r->input('auth_user_id'));
-        $names = DB::table('user')->whereIn('uid', $ids)->pluck('name', 'uid');
+        $names = ChatDisplayNames::forUsers($ids);
 
         return V4Response::success(['user_ids' => $ids, 'users' => array_map(fn ($id) => ['id' => $id, 'name' => $names[$id] ?? 'Viewer'], $ids)]);
     }
