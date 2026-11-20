@@ -18,7 +18,7 @@ const groups = [
     { label: 'Overview', items: [{ label: 'Dashboard', to: '/dashboard', icon: 'grid' }, { label: 'Analytics', to: '/analytics', icon: 'chart' }, { label: 'Arrange home sections', to: '/home/sections', icon: 'layers' }] },
     { label: 'Advertising', items: [{ label: 'Ad submissions', to: '/ads/submissions', icon: 'image' }, { label: 'Billing & campaigns', to: '/ads/billing', icon: 'credit-card' }, { label: 'Rates & placements', to: '/ads/billing-rates', icon: 'settings' }] },
     { label: 'Content', items: [item('movies'), { label: 'PPV', to: '/ppv', icon: 'credit-card' }, { label: 'Trailers', to: '/trailers', icon: 'play' }, { label: 'Channels', to: '/channels', icon: 'layers' }, ...['seasons', 'episodes', 'banners'].map(item)] },
-    { label: 'Audience', items: ['users', 'subscriptions', 'plans', 'devices'].map(item) },
+    { label: 'Audience', items: [...['users', 'subscriptions', 'plans', 'devices'].map(item), { label: 'Activation QR', to: '/activation-qr', icon: 'credit-card' }] },
     { label: 'Engagement', items: ['polls', 'legal'].map(item).concat([
         { label: 'Notifications', to: '/tools/notifications', icon: 'bell' },
         { label: 'Chat moderation', to: '/chat', icon: 'message' },

@@ -259,6 +259,33 @@ class NewStreamController extends Controller
                     ->first();
             }
 
+            // An activation QR may grant this movie to a selected shared device.
+            // Prefer its exact-device grant even if another device rented later.
+            $qrGrant = (clone $baseQuery)
+                ->where('movie_id', $movieId)
+                ->where('payment_gateway', 'admin_grant')
+                ->where('meta->device_token', $deviceToken)
+                ->latest('id')
+                ->first();
+            $hasQrGrant = $qrGrant && $device->status !== 'blocked'
+                && \App\Models\RedemptionCode::where('payment_history_id', $qrGrant->id)
+                    ->where('status', 'redeemed')
+                    ->where('type', 'ppv')
+                    ->where('movie_id', $movieId)
+                    ->where('redeemed_by', $userId)
+                    ->where('device_id', $device->id)
+                    ->exists();
+            if ($hasQrGrant) {
+                $rental = $qrGrant;
+            }
+            if ($rental && $rental->payment_gateway === 'admin_grant' && !$hasQrGrant) {
+                return response()->json([
+                    'status' => 'error',
+                    'title' => 'PPV Device Locked',
+                    'message' => 'This QR rental is only available on its selected, unblocked device.',
+                ], 403);
+            }
+
             if (!$rental) {
                 return response()->json([
                     'status' => 'error',
@@ -267,7 +294,7 @@ class NewStreamController extends Controller
                 ], 403);
             }
 
-            if (!$device || !$device->is_owner_device) {
+            if (!$device || (!$device->is_owner_device && !$hasQrGrant)) {
                 return response()->json([
                     'status' => 'error',
                     'title' => 'Permission Denied',

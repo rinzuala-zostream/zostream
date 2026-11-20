@@ -25,6 +25,30 @@ Then open `http://127.0.0.1:8000/admin`.
 
 Admin login depends on the existing `ADMIN_WHATSAPP_ALLOWED_NUMBERS`, `ADMIN_QR_ALLOWED_UIDS`, Firebase, and API v4 configuration.
 
+## Single-use activation QR codes
+
+Open **Audience → Activation QR** (`/admin/activation-qr`) to issue a PPV movie
+or subscription grant. Choose a published PPV movie or active plan, add a label
+and optional QR expiry, then download the PNG. PPV rental days default to seven
+and begin at successful activation. No checkout occurs when claiming these grants.
+
+The signed-in account owner scans the QR in the mobile app and chooses one of
+their registered devices. Subscription plans must match the device type. A new
+or expired subscription starts today using the selected plan's duration. An
+active subscription on the selected device extends by **30 days** from its
+existing expiry, only when the plan matches. Existing subscription sharing
+rules still apply; extending a subscription also extends access for devices
+already sharing that subscription. PPV grants bind to the exact selected device.
+
+Scanning does not consume a code. Successful activation marks it redeemed in
+the same database transaction as the entitlement and history. History displays
+the account, device and activation time. Unused codes can be cancelled; used
+codes cannot be reissued or cancelled. Treat unused PNGs as redeemable vouchers.
+
+Deploy the migration `2026_11_20_000001_create_redemption_codes_table.php` and build
+the Vue assets before using the page. Mobile scanner support is a separate
+client change; existing login/payment QR handling remains unchanged.
+
 ## Desktop release installers
 
 In **App releases**, select **Mac (macOS)** or **Windows**, choose an installer,

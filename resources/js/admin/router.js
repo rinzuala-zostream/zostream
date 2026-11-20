@@ -55,6 +55,7 @@ const router = createRouter({
                 { path: 'channels', component: ChannelsPage },
                 { path: 'channels/:id', component: ChannelDetailPage },
                 { path: 'ppv', component: PpvPage },
+                { path: 'activation-qr', component: () => import('./pages/RedemptionCodesPage.vue') },
                 { path: 'ppv/:type/:id', component: PpvDetailPage },
                 { path: 'manage/:resource', component: ResourceListPage },
                 { path: 'manage/:resource/new', component: ResourceEditorPage },

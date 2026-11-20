@@ -12,6 +12,65 @@
 The older `/api/*` and `/api/v3.0/*` contracts are migration-only. New client
 code must not add dependencies on them.
 
+## Single-use activation QR grants
+
+These routes are separate from existing login and payment `/qr-sessions`.
+Administrator-created grants activate PPV or a subscription without checkout.
+
+Admin routes require a bearer token with administrator access:
+
+| Method | Path under `/api/v4` | Purpose |
+| --- | --- | --- |
+| GET | `/admin/redemption-codes/options` | Published PPV movies and active subscription plans |
+| GET | `/admin/redemption-codes?page=1&status=available` | Paginated history; status may also be `redeemed`, `cancelled`, or `expired` |
+| POST | `/admin/redemption-codes` | Create a single-use code |
+| POST | `/admin/redemption-codes/{id}/cancel` | Cancel an unused code |
+
+Create a PPV code with `{"label":"Movie gift","type":"ppv","movie_id":"<movie.id>","rental_days":7}`.
+Create a subscription code with `{"label":"Plan gift","type":"subscription","plan_id":1}`.
+Either accepts optional `expires_at` as a future ISO timestamp. PPV rental days
+range from 1 to 365 and default to 7. Movie identifiers use `movie.id`, not `num`.
+The response includes `qr_payload: "zostream://redeem/<64 lowercase hex characters>"`.
+QR images should encode that exact string, keeping this namespace distinct from
+legacy session tokens. Do not send these codes to the login/payment verify route.
+
+Mobile integration (next client change):
+
+1. Recognize the exact `zostream://redeem/{token}` payload and validate the token
+   as 64 lowercase hexadecimal characters.
+2. `GET /api/v4/redemptions/{token}` with the authenticated owner's bearer token.
+   It returns the target, validity, and only that account's non-blocked devices.
+   Subscription devices are filtered by plan device type. Each has `eligible`,
+   `reason`, and `action` (`ppv`, `add_new`, or `extend`). Scanning does not reserve
+   or consume the QR. Do not activate on scan alone.
+3. After the user selects an eligible device, immediately call
+   `POST /api/v4/redemptions/{token}/redeem` with `{"device_id":<numeric n_devices.id>}`.
+   The account identity comes from the access token. Both customer routes require
+   the account owner device and are rate limited to 30 requests per minute.
+4. On success, refresh device/subscription/rental data. The result contains
+   `type`, `action`, `device_id`, `subscription_id`, `movie_id`, `expires_at`,
+   `payment_history_id`, and `already_redeemed`. These fields are inside `data`
+   in the standard v4 response envelope.
+
+PPV access starts immediately and binds to the selected device token using the
+existing rental authorization. New/expired subscriptions use the plan duration;
+active subscriptions require the same plan and extend by exactly **30 days**
+from their existing expiry. Existing subscription sharing semantics apply to
+devices already linked to that subscription. Activation writes a successful
+zero-amount payment history with gateway `admin_grant` and QR metadata.
+
+Only a successful transaction consumes the QR. Row locks serialize redemption
+and cancellation. A retry by the same account for the same device returns the
+original result without extending again, even after the QR expiry. Another
+account/device receives 409. An expired unused QR returns 410; an invalid or
+unowned device returns 404; blocked/unsupported devices or unavailable targets
+cannot activate. Validation failures return 422. Keep the same token and device
+when retrying after an uncertain network response. An already used QR cannot
+be inspected again via GET; retry the original POST to recover its result.
+
+Deployment requires the redemption codes migration and updated admin assets.
+The mobile scanner is not changed by this backend implementation.
+
 ## Contract
 
 Every request should send:

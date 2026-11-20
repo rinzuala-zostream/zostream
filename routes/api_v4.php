@@ -353,6 +353,11 @@ Route::prefix('v4')
                 Route::post('/payments/amazon/verify', [BillingController::class, 'processAmazonPurchase']);
             });
 
+            Route::prefix('redemptions')->middleware(['owner.device', 'throttle:30,1'])->group(function () {
+                Route::get('/{token}', [\App\Http\Controllers\Api\V4\RedemptionController::class, 'show'])->where('token', '[a-f0-9]{64}');
+                Route::post('/{token}/redeem', [\App\Http\Controllers\Api\V4\RedemptionController::class, 'redeem'])->where('token', '[a-f0-9]{64}');
+            });
+
             Route::prefix('qr-sessions')->middleware('owner.device')->group(function () {
                 Route::post('/payment', [V4QrSessionController::class, 'createPayment']);
                 Route::get('/{token}', [V4QrSessionController::class, 'inspect']);
@@ -381,6 +386,10 @@ Route::prefix('v4')
             Route::middleware('admin.token')
                 ->prefix('admin')
                 ->group(function () {
+                    Route::get('/redemption-codes/options', [\App\Http\Controllers\Api\V4\AdminRedemptionController::class, 'options']);
+                    Route::get('/redemption-codes', [\App\Http\Controllers\Api\V4\AdminRedemptionController::class, 'index']);
+                    Route::post('/redemption-codes', [\App\Http\Controllers\Api\V4\AdminRedemptionController::class, 'store'])->middleware('throttle:30,1');
+                    Route::post('/redemption-codes/{id}/cancel', [\App\Http\Controllers\Api\V4\AdminRedemptionController::class, 'cancel'])->whereNumber('id');
                     Route::post('/otp/diagnostic', [AdminOtpDiagnosticController::class, 'sendAndReveal'])
                         ->middleware('throttle:3,1');
                     Route::get('/dashboard', [DashboardController::class, 'index']);
