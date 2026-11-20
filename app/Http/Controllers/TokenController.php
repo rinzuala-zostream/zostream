@@ -6,12 +6,19 @@ use Illuminate\Http\Request;
 use App\Models\SessionTokenModel;
 use App\Models\New\ActiveStream;
 use App\Models\New\Devices;
+use App\Http\Middleware\IdleSessionMiddleware;
+use App\Support\AdminAccess;
 use DB;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
 
 class TokenController extends Controller
 {
+    public function __construct(
+        private readonly AdminAccess $adminAccess,
+        private readonly IdleSessionMiddleware $idleSession
+    ) {}
+
     /**
      * Generate random access & refresh tokens for a user
      */
@@ -75,6 +82,17 @@ class TokenController extends Controller
                 'status' => 'error',
                 'message' => 'Refresh token expired'
             ], 403);
+        }
+
+        if ($this->adminAccess->isAdmin((string) $record->user_id)) {
+            if ($this->idleSession->isExpired($record)) {
+                $record->delete();
+
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Administrator session expired due to inactivity. Please sign in again.',
+                ], 401);
+            }
         }
 
         // Generate new tokens

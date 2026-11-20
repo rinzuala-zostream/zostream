@@ -10,7 +10,10 @@ use Symfony\Component\HttpFoundation\Response;
 
 class AdminTokenMiddleware
 {
-    public function __construct(private readonly AdminAccess $adminAccess) {}
+    public function __construct(
+        private readonly AdminAccess $adminAccess,
+        private readonly IdleSessionMiddleware $idleSession
+    ) {}
 
     public function handle(Request $request, Closure $next): Response
     {
@@ -24,7 +27,6 @@ class AdminTokenMiddleware
             );
         }
 
-        return $next($request);
+        return $this->idleSession->handle($request, $next);
     }
-
 }

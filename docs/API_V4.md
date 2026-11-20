@@ -17,7 +17,10 @@ code must not add dependencies on them.
 These routes are separate from existing login and payment `/qr-sessions`.
 Administrator-created grants activate PPV or a subscription without checkout.
 
-Admin routes require a bearer token with administrator access:
+Admin routes require a bearer token with administrator access. Admin sessions
+are revoked after seven days without authenticated admin API activity.
+Authenticated requests reset that idle deadline; active sessions retain the
+existing rolling 30-day refresh-token lifetime.
 
 | Method | Path under `/api/v4` | Purpose |
 | --- | --- | --- |
