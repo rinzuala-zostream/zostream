@@ -44,6 +44,14 @@ class RedemptionPpvCatalog
             default => 'Movie',
         };
         $title = $target?->title ?: ucfirst($type).' access';
+        $scopeNumber = match ($type) {
+            'season' => $season?->season_number,
+            'episode' => $target instanceof Episode ? $target->episode_number : null,
+            default => null,
+        };
+        $isRepeatedNumber = $scopeNumber !== null
+            && preg_match('/^'.$type.'\s+([0-9]+)$/iD', trim($title), $number)
+            && (int) $number[1] === (int) $scopeNumber;
         $poster = $type === 'movie' ? $movie?->poster : ($season?->poster ?: ($movie?->poster ?: $target?->thumbnail));
 
         return [
@@ -52,7 +60,7 @@ class RedemptionPpvCatalog
             'scope_label' => $scope, 'poster_url' => $poster,
             'season_number' => $season?->season_number,
             'episode_number' => $target instanceof Episode ? $target->episode_number : null,
-            'display_name' => $type === 'movie' ? $title : implode(' · ', array_filter([$movie?->title, $scope, $title])),
+            'display_name' => $type === 'movie' ? $title : implode(' · ', array_filter([$movie?->title, $scope, $isRepeatedNumber ? null : $title])),
         ];
     }
 
