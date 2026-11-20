@@ -42,7 +42,11 @@ Add a label, choose **1–20 A4 pages** and an optional QR expiry. Each page con
 separate cinema design with a movie/season poster, title, rental days and exact
 season/episode scope alongside the QR. Subscription card layout stays unchanged.
 Generate the batch,
-preview the sheets, then choose **Print / Save PDF**. Print at A4 portrait, 100%
+preview the sheets in the PDF dialog, then choose **Print / Save PDF**. New
+batches open that dialog automatically. **A4 PDF**, card **PDF**, and **View QR**
+actions also open dialogs, keeping the history list in place. The QR dialog
+offers PNG download. Close previews using the close button, Escape or the
+backdrop; focus returns to the opening control. Print at A4 portrait, 100%
 scale, with browser headers/footers disabled. Cards have cut guides, a 29–30 mm QR,
 an activation instruction and an individual reference number. Open **A4 batch**
 from history to print the same cards again; this never creates new vouchers.

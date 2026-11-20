@@ -1,6 +1,6 @@
 <script setup>
 import QRCodeStyling from 'qr-code-styling';
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import PageHeader from '../components/PageHeader.vue';
 import StatusPanel from '../components/StatusPanel.vue';
 import { api, getSession, queryString } from '../lib/api';
@@ -16,6 +16,9 @@ const loading = ref(false); const saving = ref(false); const cancelling = ref(nu
 const error = ref(''); const notice = ref(''); const selected = ref(null);
 const batch = ref(null); const rendering = ref(false); const renderedCount = ref(0); const printing = ref(false);
 const lastBatchId = ref(''); const pendingRequest = ref(null);
+const previewDialog = ref(null); const previewMode = ref(null); const previewLoading = ref(false); const previewError = ref('');
+const previewTarget = ref(null);
+let previewRequest = 0; let renderingRequest = 0; let previewOpener; let previousBodyOverflow = null;
 const storageKey = `zostream_qr_batch_${getSession()?.uid || 'admin'}`;
 try { pendingRequest.value = JSON.parse(sessionStorage.getItem(storageKey) || 'null'); } catch { /* Storage may be unavailable. */ }
 const form = ref({ label: '', type: 'subscription', target: '', rental_days: 7, expires_at: '', page_count: 1,
@@ -41,6 +44,45 @@ const ppvSelection = computed(() => {
 });
 const printHtml = computed(() => batch.value ? voucherDocument(batch.value, batch.value.codes, mobileIcon) : '');
 const formatDate = value => value ? new Date(value).toLocaleString() : '—';
+
+async function showPreview(mode) {
+    const request = ++previewRequest;
+    previewMode.value = mode; previewError.value = ''; previewLoading.value = true;
+    await nextTick();
+    if (request !== previewRequest) return request;
+    if (!previewDialog.value.open) {
+        previewOpener = document.activeElement;
+        previousBodyOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        previewDialog.value.showModal();
+    }
+    return request;
+}
+function restorePreviewScroll() {
+    if (previousBodyOverflow !== null) {
+        document.body.style.overflow = previousBodyOverflow;
+        previousBodyOverflow = null;
+    }
+}
+function onPreviewClosed() {
+    // A native close event can arrive after another preview has already opened.
+    if (previewDialog.value?.open || previewMode.value === null) return;
+    previewRequest++; renderingRequest++;
+    previewMode.value = null; previewLoading.value = false; previewError.value = '';
+    selected.value = null; batch.value = null; rendering.value = false;
+    restorePreviewScroll();
+    if (previewOpener?.isConnected && !previewOpener.disabled) previewOpener.focus();
+}
+function closePreview() {
+    if (printing.value) return;
+    previewDialog.value?.close();
+    onPreviewClosed();
+}
+function onPreviewBackdrop(event) {
+    if (event.target !== previewDialog.value) return;
+    const rect = previewDialog.value.getBoundingClientRect();
+    if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) closePreview();
+}
 
 function savePending(value) {
     pendingRequest.value = value;
@@ -103,41 +145,57 @@ function changeGroupPage(targetPage) {
     closeDetails(); page.value = targetPage; load();
 }
 async function preview(row) {
-    try { selected.value = { ...row, image: await qrImage(row.qr_payload) }; }
-    catch (reason) { error.value = reason.message; }
+    previewTarget.value = row; selected.value = null;
+    const request = await showPreview('qr');
+    if (request !== previewRequest) return;
+    try {
+        const image = await qrImage(row.qr_payload);
+        if (request === previewRequest) selected.value = { ...row, image };
+    } catch (reason) { if (request === previewRequest) previewError.value = reason.message; }
+    finally { if (request === previewRequest) previewLoading.value = false; }
 }
 function download() {
     if (!selected.value) return;
     const link = document.createElement('a');
     link.href = selected.value.image; link.download = `zostream-qr-${selected.value.id}.png`; link.click();
 }
-async function prepareBatch(value) {
+async function prepareBatch(value, request = previewRequest) {
+    if (request !== previewRequest) return false;
+    const renderRequest = ++renderingRequest;
     lastBatchId.value = value.batch_id;
     rendering.value = true; renderedCount.value = 0;
     try {
         const codes = [];
         for (let offset = 0; offset < value.codes.length; offset += QR_CODES_PER_PAGE) {
+            if (request !== previewRequest || renderRequest !== renderingRequest) return false;
             const chunk = await Promise.all(value.codes.slice(offset, offset + QR_CODES_PER_PAGE)
                 .map(async code => ({ ...code, image: await qrImage(code.qr_payload) })));
             codes.push(...chunk); renderedCount.value = codes.length;
         }
+        if (request !== previewRequest || renderRequest !== renderingRequest) return false;
         batch.value = { ...value, codes };
-    } finally { rendering.value = false; }
+        return true;
+    } finally { if (renderRequest === renderingRequest) rendering.value = false; }
 }
-async function openBatch(id) {
-    if (rendering.value || saving.value || printing.value) return;
-    error.value = '';
-    try { await prepareBatch(await api(`/admin/redemption-codes/batches/${id}`)); }
-    catch (reason) { error.value = reason.message; }
+async function openBatch(id, provided = null) {
+    if (printing.value || (!provided && saving.value)) return;
+    lastBatchId.value = id; batch.value = null;
+    const request = await showPreview('pdf');
+    if (request !== previewRequest) return;
+    try { await prepareBatch(provided || await api(`/admin/redemption-codes/batches/${id}`), request); }
+    catch (reason) { if (request === previewRequest) previewError.value = reason.message; }
+    finally { if (request === previewRequest) previewLoading.value = false; }
 }
 async function printBatch() {
     if (!batch.value || printing.value) return;
-    printing.value = true; error.value = '';
+    printing.value = true; previewError.value = '';
+    const request = previewRequest;
     try {
         // Refresh status so cards claimed since preview are marked as used.
-        await prepareBatch(await api(`/admin/redemption-codes/batches/${batch.value.batch_id}`));
+        const ready = await prepareBatch(await api(`/admin/redemption-codes/batches/${batch.value.batch_id}`), request);
+        if (!ready) return;
         await printVoucherDocument(printHtml.value);
-    } catch (reason) { error.value = reason.message; }
+    } catch (reason) { if (request === previewRequest) previewError.value = reason.message; }
     finally { printing.value = false; }
 }
 async function create() {
@@ -160,7 +218,7 @@ async function create() {
         savePending(null);
         notice.value = `${result.codes.length} unique QR cards created across ${result.page_count} A4 ${result.page_count === 1 ? 'sheet' : 'sheets'}.`;
         filter.value = ''; page.value = 1;
-        await load(); await prepareBatch(result);
+        await load(); await openBatch(result.batch_id, result);
     } catch (reason) {
         error.value = reason.message;
         if (reason.status >= 400 && reason.status < 500 && ![408, 429].includes(reason.status)) savePending(null);
@@ -188,6 +246,11 @@ onMounted(async () => {
     await load();
     try { options.value = await api('/admin/redemption-codes/options'); }
     catch (reason) { error.value = reason.message; }
+});
+onBeforeUnmount(() => {
+    previewRequest++; renderingRequest++;
+    previewDialog.value?.close();
+    restorePreviewScroll();
 });
 </script>
 
@@ -226,23 +289,11 @@ onMounted(async () => {
                 </fieldset>
                 <small>Cards are consumed only after successful activation. Keep unused cards private.</small>
             </form>
-            <article v-if="!selected" class="studio-cover">
+            <article class="studio-cover">
                 <span class="studio-kicker">ZO STREAM ACCESS</span><h2>Scan.<br>Select.<br>Stream.</h2><p>One card. One activation.<br>A screen full of possibilities.</p><div class="cover-grid"><span v-for="index in 12" :key="index">▦</span></div><small>Designed for A4 · Ready to cut & distribute</small>
             </article>
-            <article v-if="selected" class="admin-table-card redemption-preview">
-                <h2>{{ selected.label }}</h2><img :src="selected.image" alt="Single-use activation QR" class="redemption-qr" />
-                <p>Single use · {{ selected.type === 'ppv' ? 'PPV' : 'Subscription' }}</p>
-                <button class="admin-primary" type="button" @click="download">Download PNG</button>
-                <small>Keep this QR private. Anyone with the code can claim it once.</small>
-            </article>
         </section>
-        <section v-if="rendering" class="admin-table-card render-progress">Preparing your print sheets… {{ renderedCount }} cards rendered.</section>
-        <section v-if="batch" class="admin-table-card print-preview">
-            <div class="redemption-toolbar"><div><span class="studio-kicker">READY TO PRINT</span><h2>{{ batch.label }}</h2><p>{{ batch.page_count }} A4 sheets · {{ batch.codes.length }} QR cards · {{ batch.target_name }}</p></div><button class="admin-primary" :disabled="rendering || printing" @click="printBatch">{{ printing ? 'Preparing print…' : 'Print / Save PDF' }}</button></div>
-            <p class="print-help">Choose A4 portrait, 100% scale, and turn off browser headers and footers. Select “Save as PDF” to download.</p>
-            <iframe :srcdoc="printHtml" title="A4 activation QR sheet preview" class="sheet-frame" sandbox="allow-same-origin" />
-        </section>
-        <button v-else-if="lastBatchId && !rendering" class="admin-secondary" @click="openBatch(lastBatchId)">Reopen last print batch</button>
+        <button v-if="lastBatchId && previewMode !== 'pdf' && !rendering" class="admin-secondary reopen-batch" @click="openBatch(lastBatchId)">Reopen last print batch</button>
         <section class="admin-table-card">
             <div class="redemption-toolbar"><div><h2>QR history</h2><small>Open a label to see its cards by the reference number printed on the PDF.</small></div><select v-model="filter" aria-label="Filter labels by card status" @change="changeGroupPage(1)">
                 <option value="">All labels</option><option value="available">With available cards</option><option value="redeemed">With used cards</option><option value="expired">With expired cards</option><option value="cancelled">With cancelled cards</option>
@@ -274,21 +325,32 @@ onMounted(async () => {
             </tbody></table></div>
             <div class="redemption-toolbar"><button class="admin-secondary" :disabled="page <= 1 || loading" @click="changeGroupPage(page - 1)">Previous labels</button><span>{{ page }} / {{ lastPage }}</span><button class="admin-secondary" :disabled="page >= lastPage || loading" @click="changeGroupPage(page + 1)">Next labels</button></div>
         </section>
+        <dialog ref="previewDialog" class="preview-dialog" :class="{ 'is-pdf': previewMode === 'pdf' }" aria-labelledby="qr-preview-title" :aria-busy="previewLoading || rendering" @cancel.prevent="closePreview" @close="onPreviewClosed" @click="onPreviewBackdrop">
+            <header class="preview-header">
+                <div><span class="studio-kicker">{{ previewMode === 'qr' ? 'ACTIVATION QR' : 'A4 PDF PREVIEW' }}</span><h2 id="qr-preview-title">{{ previewMode === 'qr' ? (selected?.label || previewTarget?.label || 'Activation QR') : (batch?.label || 'A4 print preview') }}</h2><p v-if="previewMode === 'pdf' && batch">{{ batch.page_count }} A4 sheets · {{ batch.codes.length }} QR cards · {{ batch.target_name }}</p></div>
+                <div class="preview-actions"><button v-if="previewMode === 'pdf' && batch" class="admin-primary" :disabled="previewLoading || rendering || printing" @click="printBatch">{{ printing ? 'Preparing print…' : 'Print / Save PDF' }}</button><button class="admin-secondary preview-close" type="button" autofocus :disabled="printing" aria-label="Close preview" @click="closePreview">✕</button></div>
+            </header>
+            <div class="preview-content" :class="{ 'qr-content': previewMode === 'qr' }">
+                <StatusPanel tone="error" :message="previewError" />
+                <div v-if="previewLoading || rendering" class="preview-loading" role="status" aria-live="polite">{{ previewMode === 'qr' ? 'Preparing QR…' : rendering ? `Preparing print sheets… ${renderedCount} cards rendered.` : 'Loading print batch…' }}</div>
+                <template v-else-if="previewMode === 'qr' && selected"><img :src="selected.image" alt="Single-use activation QR" class="redemption-qr" /><b class="qr-reference">{{ selected.qr_number || `#${String(selected.id).padStart(4, '0')}` }}</b><p>Single use · {{ selected.type === 'ppv' ? 'PPV' : 'Subscription' }}</p><button class="admin-primary" type="button" @click="download">Download PNG</button><small>Keep this QR private. Anyone with the code can claim it once.</small></template>
+                <template v-else-if="previewMode === 'pdf' && batch"><p class="print-help">Choose A4 portrait, 100% scale, and turn off browser headers and footers. Select “Save as PDF” to download.</p><iframe :srcdoc="printHtml" title="A4 activation QR sheet preview" class="sheet-frame" sandbox="allow-same-origin" /></template>
+                <button v-else-if="previewError" class="admin-secondary preview-retry" @click="previewMode === 'qr' ? preview(previewTarget) : openBatch(lastBatchId)">Try again</button>
+            </div>
+        </dialog>
     </div>
 </template>
 
 <style scoped>
 .redemption-top { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 20px; margin-bottom: 20px; }
-.redemption-form, .redemption-preview { padding: 24px; }
+.redemption-form { padding: 24px; }
 .redemption-form { display: grid; gap: 16px; }
 .redemption-form fieldset { display: grid; gap: 18px; margin: 0; padding: 0; border: 0; min-width: 0; }
 .redemption-form fieldset:disabled { opacity: .6; }
 .redemption-form label { display: grid; gap: 6px; }
 input, select { padding: 10px 12px; border: 1px solid var(--a-line); border-radius: 8px; background: var(--a-bg); color: var(--a-text); min-width: 0; }
-.redemption-form p, .redemption-preview small { opacity: .75; line-height: 1.5; }
-.redemption-preview { display: flex; flex-direction: column; align-items: center; gap: 16px; }
-.redemption-qr { background: white; width: 300px; max-width: 100%; }
-.redemption-qr :deep(canvas) { max-width: 100%; height: auto; }
+.redemption-form p { opacity: .75; line-height: 1.5; }
+.redemption-qr { background: white; width: 288px; max-width: 100%; height: auto; border-radius: 12px; }
 .redemption-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px; }
 td small { display: block; opacity: .7; margin-top: 5px; }
 .studio-kicker { display: block; font-size: 10px; font-weight: 800; letter-spacing: 2px; color: var(--a-cyan); margin-bottom: 10px; }
@@ -301,12 +363,18 @@ td small { display: block; opacity: .7; margin-top: 5px; }
 .studio-cover { border-radius: 18px; padding: 36px; background: linear-gradient(145deg, #102f3c, #075e60); color: #fff; display: flex; flex-direction: column; justify-content: space-between; overflow: hidden; }
 .studio-cover h2 { font-size: clamp(48px, 5vw, 78px); line-height: 1; letter-spacing: -3px; margin: 20px 0; }.studio-cover p { color: #c3e5df; line-height: 1.7; }.studio-cover .studio-kicker { color: #92efce; }
 .cover-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; width: 180px; transform: rotate(-8deg); margin: 22px 0; }.cover-grid span { display: grid; place-items: center; background: #ffffff16; border: 1px solid #ffffff2a; border-radius: 7px; aspect-ratio: 1; font-size: 25px; color: #b5e9da; }
-.studio-cover>small { color: #c3e5df; font-size: 11px; }.render-progress { padding: 24px; margin-bottom: 20px; }
-.print-preview { margin-bottom: 24px; overflow: hidden; }.print-preview h2 { margin: 0; }.print-preview p { font-size: 13px; color: var(--a-muted); }.print-help { padding: 0 16px; }
-.sheet-frame { display: block; width: 100%; height: 900px; border: 0; background: #e8edf1; }
+.studio-cover>small { color: #c3e5df; font-size: 11px; }.reopen-batch { margin-bottom: 20px; }
+.preview-dialog { width: min(440px, calc(100vw - 32px)); max-width: none; max-height: calc(100dvh - 32px); padding: 0; border: 1px solid var(--a-line); border-radius: 18px; background: var(--a-bg); color: var(--a-text); box-shadow: 0 30px 100px #0008; }
+.preview-dialog[open] { display: flex; flex-direction: column; }.preview-dialog.is-pdf { width: min(1120px, calc(100vw - 32px)); height: min(1100px, calc(100dvh - 32px)); }
+.preview-dialog::backdrop { background: #020713b8; backdrop-filter: blur(5px); }
+.preview-header { display: flex; flex: none; justify-content: space-between; gap: 20px; align-items: flex-start; padding: 20px 24px; border-bottom: 1px solid var(--a-line); }.preview-header>div:first-child { min-width: 0; }.preview-header h2 { margin: 0; font-size: 21px; overflow-wrap: anywhere; }.preview-header p { margin: 8px 0 0; color: var(--a-muted); font-size: 12px; }.preview-header .studio-kicker { margin-bottom: 7px; }
+.preview-actions { display: flex; gap: 10px; align-items: center; flex: none; }.preview-close { min-width: 38px; }.preview-content { min-height: 0; overflow: auto; }.preview-dialog.is-pdf .preview-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }.preview-content>.admin-status { flex: none; margin: 12px 16px; }
+.qr-content { display: flex; flex-direction: column; gap: 16px; align-items: center; padding: 24px; }.qr-content p { margin: 0; }.qr-content>small { color: var(--a-muted); text-align: center; font-size: 12px; line-height: 1.5; }
+.preview-loading { display: grid; place-items: center; min-height: 180px; padding: 28px; text-align: center; color: var(--a-muted); }.preview-dialog.is-pdf .preview-loading { flex: 1; }.preview-retry { margin: 20px; align-self: center; }
+.print-help { flex: none; padding: 0 20px; font-size: 12px; color: var(--a-muted); }.sheet-frame { display: block; width: 100%; flex: 1; min-height: 0; border: 0; background: #e8edf1; }
 .history-label-button { display: inline-flex; align-items: center; gap: 10px; border: 0; background: none; color: var(--a-text); cursor: pointer; padding: 4px 0; text-align: left; }.history-label-button>span { color: var(--a-cyan); }
 .history-counts { display: flex; flex-wrap: wrap; gap: 6px; }.history-counts span { border: 1px solid var(--a-line); border-radius: 20px; padding: 4px 8px; font-size: 10px; color: var(--a-muted); }.history-counts .is-available { color: var(--a-cyan); }.history-counts .is-redeemed { color: var(--a-lime); }
 .history-detail-row>td { padding: 0 !important; }.history-detail { padding: 12px 18px; background: var(--a-bg); border-block: 1px solid var(--a-line); }.history-detail h3 { margin: 0 0 6px; }.history-detail small, .redemption-toolbar>div>small { color: var(--a-muted); font-size: 11px; }
 .history-label-row.is-expanded { background: var(--a-bg); }.qr-reference { font-family: ui-monospace, monospace; color: var(--a-cyan); white-space: nowrap; }
-@media (max-width: 640px) { .redemption-toolbar { flex-wrap: wrap; }.studio-cover { padding: 24px; }.sheet-frame { height: 650px; } }
+@media (max-width: 640px) { .redemption-toolbar { flex-wrap: wrap; }.studio-cover { padding: 24px; }.preview-header { padding: 16px; flex-wrap: wrap; gap: 12px; }.preview-actions { margin-left: auto; }.qr-content { padding: 20px; } }
 </style>
