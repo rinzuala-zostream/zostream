@@ -9,6 +9,9 @@ import mobileIcon from '../../../images/zostream-mobile-icon.png?inline';
 
 const options = ref({ movies: [], series: [] });
 const rows = ref([]); const page = ref(1); const lastPage = ref(1); const filter = ref('');
+const expandedLabel = ref(null); const detailRows = ref([]); const detailLoading = ref(false); const detailError = ref('');
+const detailPage = ref(1); const detailLastPage = ref(1); const detailTotal = ref(0); const detailFilter = ref('');
+let detailRequest = 0;
 const loading = ref(false); const saving = ref(false); const cancelling = ref(null);
 const error = ref(''); const notice = ref(''); const selected = ref(null);
 const batch = ref(null); const rendering = ref(false); const renderedCount = ref(0); const printing = ref(false);
@@ -63,10 +66,41 @@ async function qrImage(payload) {
 async function load() {
     loading.value = true; error.value = '';
     try {
-        const result = await api(`/admin/redemption-codes${queryString({ page: page.value, status: filter.value })}`);
+        const result = await api(`/admin/redemption-codes/history${queryString({ page: page.value, status: filter.value })}`);
         rows.value = result.data; lastPage.value = result.last_page;
+        if (expandedLabel.value !== null && !rows.value.some(row => row.label === expandedLabel.value)) closeDetails();
     } catch (reason) { error.value = reason.message; }
     finally { loading.value = false; }
+}
+function closeDetails() {
+    expandedLabel.value = null; detailRows.value = []; detailError.value = ''; detailLoading.value = false;
+    detailPage.value = 1; detailLastPage.value = 1; detailTotal.value = 0;
+    detailRequest++;
+}
+async function loadDetails(targetPage = 1) {
+    if (expandedLabel.value === null) return;
+    const request = ++detailRequest;
+    detailLoading.value = true; detailError.value = '';
+    try {
+        const result = await api(`/admin/redemption-codes/history/codes${queryString({ label: expandedLabel.value, page: targetPage, status: detailFilter.value })}`);
+        if (request !== detailRequest) return;
+        if (!result.data.length && targetPage > 1) return loadDetails(targetPage - 1);
+        detailRows.value = result.data; detailPage.value = result.current_page;
+        detailLastPage.value = result.last_page; detailTotal.value = result.total;
+    } catch (reason) { if (request === detailRequest) detailError.value = reason.message; }
+    finally { if (request === detailRequest) detailLoading.value = false; }
+}
+async function toggleDetails(label) {
+    if (expandedLabel.value === label) { closeDetails(); return; }
+    closeDetails(); expandedLabel.value = label; detailPage.value = 1; detailFilter.value = '';
+    await loadDetails();
+}
+async function refreshHistory() {
+    await load();
+    if (expandedLabel.value !== null) await loadDetails(detailPage.value);
+}
+function changeGroupPage(targetPage) {
+    closeDetails(); page.value = targetPage; load();
 }
 async function preview(row) {
     try { selected.value = { ...row, image: await qrImage(row.qr_payload) }; }
@@ -140,7 +174,7 @@ async function cancel(row) {
         await api(`/admin/redemption-codes/${row.id}/cancel`, { method: 'POST' });
         if (selected.value?.id === row.id) selected.value = null;
         if (batch.value?.codes.some(code => code.id === row.id)) batch.value = null;
-        notice.value = 'QR cancelled.'; await load();
+        notice.value = 'QR cancelled.'; await refreshHistory();
     } catch (reason) { error.value = reason.message; }
     finally { cancelling.value = null; }
 }
@@ -160,7 +194,7 @@ onMounted(async () => {
 <template>
     <div class="admin-page">
         <PageHeader eyebrow="Audience" title="Activation QR studio" description="Create beautifully arranged A4 sheets of single-use access cards.">
-            <button class="admin-secondary" type="button" :disabled="loading" @click="load">Refresh</button>
+            <button class="admin-secondary" type="button" :disabled="loading" @click="refreshHistory">Refresh</button>
         </PageHeader>
         <StatusPanel tone="error" :message="error" />
         <StatusPanel tone="success" :message="notice" />
@@ -210,20 +244,35 @@ onMounted(async () => {
         </section>
         <button v-else-if="lastBatchId && !rendering" class="admin-secondary" @click="openBatch(lastBatchId)">Reopen last print batch</button>
         <section class="admin-table-card">
-            <div class="redemption-toolbar"><h2>QR history</h2><select v-model="filter" aria-label="Filter status" @change="page = 1; load()">
-                <option value="">All statuses</option><option value="available">Available</option><option value="redeemed">Redeemed</option><option value="expired">Expired</option><option value="cancelled">Cancelled</option>
+            <div class="redemption-toolbar"><div><h2>QR history</h2><small>Open a label to see its cards by the reference number printed on the PDF.</small></div><select v-model="filter" aria-label="Filter labels by card status" @change="changeGroupPage(1)">
+                <option value="">All labels</option><option value="available">With available cards</option><option value="redeemed">With used cards</option><option value="expired">With expired cards</option><option value="cancelled">With cancelled cards</option>
             </select></div>
-            <div v-if="loading" class="admin-loading">Loading QR codes…</div>
-            <div v-else class="admin-table-scroll"><table><thead><tr><th>Label / target</th><th>Status</th><th>Expiry</th><th>Activation</th><th>Actions</th></tr></thead><tbody>
-                <tr v-for="row in rows" :key="row.id">
-                    <td><b>{{ row.label }}</b><small>{{ row.type }} · {{ row.movie_id || (row.plan_id ? `Plan #${row.plan_id}` : '30-day add / extend') }}</small></td>
-                    <td>{{ row.status }}</td><td>{{ formatDate(row.expires_at) }}</td>
-                    <td><template v-if="row.redeemed_at">{{ row.redeemed_by }}<small>Device #{{ row.device_id }} · {{ row.result?.action }} · {{ formatDate(row.redeemed_at) }}</small></template><span v-else>—</span></td>
-                    <td><template v-if="row.status === 'available'"><button class="admin-secondary" @click="preview(row)">View QR</button> <button class="admin-secondary" :disabled="cancelling === row.id" @click="cancel(row)">Cancel</button></template><button v-if="row.batch_id" class="admin-secondary" :disabled="saving || rendering || printing" @click="openBatch(row.batch_id)">A4 batch</button></td>
-                </tr>
-                <tr v-if="!rows.length"><td colspan="5">No QR codes found.</td></tr>
+            <div v-if="loading" class="admin-loading">Loading labels…</div>
+            <div v-else class="admin-table-scroll"><table class="history-labels"><thead><tr><th>Label</th><th>Cards</th><th>Status overview</th><th>Latest creation</th><th>Actions</th></tr></thead><tbody>
+                <template v-for="row in rows" :key="row.label">
+                    <tr class="history-label-row" :class="{ 'is-expanded': expandedLabel === row.label }">
+                        <td><button class="history-label-button" :aria-expanded="expandedLabel === row.label" :aria-controls="`qr-label-${row.latest_id}`" @click="toggleDetails(row.label)"><span>{{ expandedLabel === row.label ? '▾' : '▸' }}</span><b>{{ row.label }}</b></button><small>{{ row.type_count > 1 ? 'Mixed access' : row.type === 'ppv' ? 'PPV' : 'Subscription' }} · {{ row.batch_count }} print batches</small></td>
+                        <td><b>{{ row.code_count }}</b></td>
+                        <td><div class="history-counts"><span v-if="row.available_count" class="is-available">{{ row.available_count }} available</span><span v-if="row.redeemed_count" class="is-redeemed">{{ row.redeemed_count }} used</span><span v-if="row.expired_count">{{ row.expired_count }} expired</span><span v-if="row.cancelled_count">{{ row.cancelled_count }} cancelled</span></div></td>
+                        <td>{{ formatDate(row.latest_at) }}</td>
+                        <td><button class="admin-secondary" @click="toggleDetails(row.label)">{{ expandedLabel === row.label ? 'Hide list' : 'View list' }}</button> <button v-if="row.batch_count === 1 && row.single_count === 0" class="admin-secondary" :disabled="saving || rendering || printing" @click="openBatch(row.batch_id)">A4 PDF</button></td>
+                    </tr>
+                    <tr v-if="expandedLabel === row.label" class="history-detail-row"><td colspan="5">
+                        <section :id="`qr-label-${row.latest_id}`" class="history-detail">
+                            <div class="redemption-toolbar"><div><h3>{{ row.label }}</h3><small>{{ detailTotal }} cards · Listed in PDF reference order</small></div><select v-model="detailFilter" aria-label="Filter cards under this label" @change="loadDetails(1)"><option value="">All cards</option><option value="available">Available</option><option value="redeemed">Used</option><option value="expired">Expired</option><option value="cancelled">Cancelled</option></select></div>
+                            <StatusPanel tone="error" :message="detailError" />
+                            <div v-if="detailLoading" class="admin-loading">Loading card list…</div>
+                            <div v-else class="admin-table-scroll"><table class="history-codes"><thead><tr><th>PDF No.</th><th>Access</th><th>Status</th><th>Expiry</th><th>Activation</th><th>Actions</th></tr></thead><tbody>
+                                <tr v-for="code in detailRows" :key="code.id"><td><b class="qr-reference">{{ code.qr_number || `#${String(code.id).padStart(4, '0')}` }}</b></td><td>{{ code.type === 'ppv' ? `PPV · ${code.content_type || 'movie'}` : 'Subscription' }}</td><td>{{ code.status }}</td><td>{{ formatDate(code.expires_at) }}</td><td><template v-if="code.redeemed_at">{{ code.redeemed_by }}<small>Device #{{ code.device_id }} · {{ code.result?.action }} · {{ formatDate(code.redeemed_at) }}</small></template><span v-else>—</span></td><td><template v-if="code.status === 'available'"><button class="admin-secondary" @click="preview(code)">View QR</button> <button class="admin-secondary" :disabled="cancelling === code.id" @click="cancel(code)">Cancel</button> </template><button v-if="code.batch_id" class="admin-secondary" :disabled="saving || rendering || printing" @click="openBatch(code.batch_id)">PDF</button></td></tr>
+                                <tr v-if="!detailRows.length"><td colspan="6">No cards match this filter.</td></tr>
+                            </tbody></table></div>
+                            <div class="redemption-toolbar"><button class="admin-secondary" :disabled="detailPage <= 1 || detailLoading" @click="loadDetails(detailPage - 1)">Previous cards</button><span>{{ detailPage }} / {{ detailLastPage }}</span><button class="admin-secondary" :disabled="detailPage >= detailLastPage || detailLoading" @click="loadDetails(detailPage + 1)">Next cards</button></div>
+                        </section>
+                    </td></tr>
+                </template>
+                <tr v-if="!rows.length"><td colspan="5">No labels found.</td></tr>
             </tbody></table></div>
-            <div class="redemption-toolbar"><button class="admin-secondary" :disabled="page <= 1 || loading" @click="page--; load()">Previous</button><span>{{ page }} / {{ lastPage }}</span><button class="admin-secondary" :disabled="page >= lastPage || loading" @click="page++; load()">Next</button></div>
+            <div class="redemption-toolbar"><button class="admin-secondary" :disabled="page <= 1 || loading" @click="changeGroupPage(page - 1)">Previous labels</button><span>{{ page }} / {{ lastPage }}</span><button class="admin-secondary" :disabled="page >= lastPage || loading" @click="changeGroupPage(page + 1)">Next labels</button></div>
         </section>
     </div>
 </template>
@@ -255,5 +304,9 @@ td small { display: block; opacity: .7; margin-top: 5px; }
 .studio-cover>small { color: #c3e5df; font-size: 11px; }.render-progress { padding: 24px; margin-bottom: 20px; }
 .print-preview { margin-bottom: 24px; overflow: hidden; }.print-preview h2 { margin: 0; }.print-preview p { font-size: 13px; color: var(--a-muted); }.print-help { padding: 0 16px; }
 .sheet-frame { display: block; width: 100%; height: 900px; border: 0; background: #e8edf1; }
+.history-label-button { display: inline-flex; align-items: center; gap: 10px; border: 0; background: none; color: var(--a-text); cursor: pointer; padding: 4px 0; text-align: left; }.history-label-button>span { color: var(--a-cyan); }
+.history-counts { display: flex; flex-wrap: wrap; gap: 6px; }.history-counts span { border: 1px solid var(--a-line); border-radius: 20px; padding: 4px 8px; font-size: 10px; color: var(--a-muted); }.history-counts .is-available { color: var(--a-cyan); }.history-counts .is-redeemed { color: var(--a-lime); }
+.history-detail-row>td { padding: 0 !important; }.history-detail { padding: 12px 18px; background: var(--a-bg); border-block: 1px solid var(--a-line); }.history-detail h3 { margin: 0 0 6px; }.history-detail small, .redemption-toolbar>div>small { color: var(--a-muted); font-size: 11px; }
+.history-label-row.is-expanded { background: var(--a-bg); }.qr-reference { font-family: ui-monospace, monospace; color: var(--a-cyan); white-space: nowrap; }
 @media (max-width: 640px) { .redemption-toolbar { flex-wrap: wrap; }.studio-cover { padding: 24px; }.sheet-frame { height: 650px; } }
 </style>

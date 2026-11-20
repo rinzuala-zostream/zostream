@@ -23,6 +23,8 @@ Admin routes require a bearer token with administrator access:
 | --- | --- | --- |
 | GET | `/admin/redemption-codes/options` | Published PPV movies, series/seasons/episodes and active subscription plans |
 | GET | `/admin/redemption-codes?page=1&status=available` | Paginated history; status may also be `redeemed`, `cancelled`, or `expired` |
+| GET | `/admin/redemption-codes/history?page=1&status=available` | One row per label, with full card/status counts; filter selects labels containing a matching card |
+| GET | `/admin/redemption-codes/history/codes?label=Campaign&page=1` | Cards under an exact label, sorted by PDF reference; optional card `status` filter |
 | POST | `/admin/redemption-codes` | Create a single-use code |
 | POST | `/admin/redemption-codes/batches` | Create/recover A4 sheets using a client-generated batch UUID |
 | GET | `/admin/redemption-codes/batches/{batchId}` | Reopen a batch with current code statuses |
@@ -58,6 +60,16 @@ PPV batches also return `content_type`, `content_id`, `poster_url`, `series_titl
 print layout has two columns/four rows with posters and scope details. Old PPV
 batches retain every issued code but reflow to eight tickets per page; the
 returned page count reflects the current print layout.
+
+The Vue history uses the grouped `/history` endpoint (25 labels per page).
+Labels shared across batches appear once. Each summary includes `code_count`,
+`batch_count`, `single_count`, `type`, `type_count`, `latest_at`, and
+`available_count`, `redeemed_count`, `expired_count`, `cancelled_count`. Filtering
+labels by status does not narrow these counts. Summary rows contain no QR token
+or payload. Opening a label requests `/history/codes` (25 cards per page) and
+shows `qr_number`, the exact zero-padded ID printed on the PDF. Existing flat
+history and batch printing endpoints remain supported; no schema change is
+required for the grouped history.
 
 Mobile integration (implemented in Android and iOS):
 

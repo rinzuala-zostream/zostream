@@ -50,6 +50,15 @@ Redeemed, cancelled and expired cards are visibly marked when reprinting. Old
 PPV batches are reflowed to eight tickets per page without changing their codes;
 their print page count can therefore increase.
 
+**QR history** shows one row per label, combining batches that share that label.
+The row summarizes total cards and available/used/expired/cancelled counts.
+Choose **View list** to expand a compact list ordered by the exact reference
+number printed on the PDF (`#0001`, etc.). Labels and their card lists paginate
+independently (25 per page), and cards load only when a label is opened.
+Cancel, view a single QR or reopen its PDF from the expanded list. Status filters
+on the label list select matching labels while retaining their full counts;
+the expanded list has its own card filter.
+
 The signed-in account owner scans the QR in the mobile app and chooses one of
 their registered devices. The backend resolves the matching plan after device
 selection: retain an active subscription's plan for Extend. Add New always

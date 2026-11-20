@@ -48,6 +48,57 @@ class AdminRedemptionController extends Controller
         ]);
     }
 
+    public function history(Request $request): JsonResponse
+    {
+        $data = $request->validate(['status' => ['nullable', Rule::in(['available', 'redeemed', 'cancelled', 'expired'])]]);
+        $cutoff = now()->toDateTimeString();
+        $query = RedemptionCode::query()->select('label')->groupBy('label')
+            ->selectRaw('COUNT(*) as code_count, COUNT(DISTINCT batch_id) as batch_count, MIN(batch_id) as batch_id')
+            ->selectRaw('MIN(type) as type, COUNT(DISTINCT type) as type_count, MAX(id) as latest_id, MAX(created_at) as latest_at')
+            ->selectRaw("SUM(CASE WHEN status = 'available' AND (expires_at IS NULL OR expires_at >= ?) THEN 1 ELSE 0 END) as available_count", [$cutoff])
+            ->selectRaw("SUM(CASE WHEN status = 'available' AND expires_at < ? THEN 1 ELSE 0 END) as expired_count", [$cutoff])
+            ->selectRaw("SUM(CASE WHEN status = 'redeemed' THEN 1 ELSE 0 END) as redeemed_count")
+            ->selectRaw("SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelled_count")
+            ->selectRaw('SUM(CASE WHEN batch_id IS NULL THEN 1 ELSE 0 END) as single_count');
+        if ($status = $data['status'] ?? null) {
+            $query->having($status.'_count', '>', 0);
+        }
+        $page = $query->orderByDesc('latest_id')->paginate(25);
+        $page->getCollection()->transform(function ($row) {
+            $result = $row->toArray();
+            foreach (['code_count', 'batch_count', 'type_count', 'single_count', 'available_count', 'redeemed_count', 'cancelled_count', 'expired_count'] as $key) {
+                $result[$key] = (int) $row->$key;
+            }
+            $result['latest_at'] = $row->latest_at ? \Carbon\Carbon::parse($row->latest_at)->toIso8601String() : null;
+
+            // Token and QR payloads are returned only when an administrator opens the list.
+            return $result;
+        });
+
+        return V4Response::success($page);
+    }
+
+    public function historyCodes(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'label' => ['required', 'string', 'max:150'],
+            'status' => ['nullable', Rule::in(['available', 'redeemed', 'cancelled', 'expired'])],
+        ]);
+        $query = RedemptionCode::where('label', $data['label'])->orderBy('id');
+        if (($data['status'] ?? '') === 'expired') {
+            $query->where('status', 'available')->where('expires_at', '<', now());
+        } elseif ($data['status'] ?? null) {
+            $query->where('status', $data['status']);
+            if ($data['status'] === 'available') {
+                $query->where(fn ($q) => $q->whereNull('expires_at')->orWhere('expires_at', '>=', now()));
+            }
+        }
+        $page = $query->paginate(25);
+        $page->getCollection()->transform(fn ($code) => $this->serialize($code));
+
+        return V4Response::success($page);
+    }
+
     public function store(Request $request, RedemptionService $service): JsonResponse
     {
         $data = $this->validateCode($request);
@@ -148,6 +199,7 @@ class AdminRedemptionController extends Controller
     {
         return [
             ...$code->toArray(),
+            'qr_number' => '#'.str_pad((string) $code->id, 4, '0', STR_PAD_LEFT),
             'status' => $code->status === 'available' && $code->expires_at?->isPast() ? 'expired' : $code->status,
             'qr_payload' => 'zostream://redeem/'.$code->token,
         ];

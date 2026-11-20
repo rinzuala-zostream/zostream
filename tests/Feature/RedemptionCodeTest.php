@@ -518,6 +518,66 @@ class RedemptionCodeTest extends TestCase
         $this->assertSame(12, RedemptionCode::count());
     }
 
+    public function test_history_groups_repeated_labels_across_batches_and_keeps_full_status_counts(): void
+    {
+        $label = 'Shared & / Campaign';
+        $firstBatch = (string) \Illuminate\Support\Str::uuid();
+        $secondBatch = (string) \Illuminate\Support\Str::uuid();
+        $first = $this->code('ppv', ['label' => $label, 'batch_id' => $firstBatch]);
+        $this->code('ppv', ['label' => $label, 'batch_id' => $firstBatch, 'expires_at' => now()->subMinute()]);
+        $this->code('subscription', ['label' => $label, 'batch_id' => $secondBatch, 'status' => 'redeemed']);
+        $this->code('subscription', ['label' => $label, 'batch_id' => $secondBatch, 'status' => 'cancelled']);
+        $this->code('ppv', ['label' => 'Other label']);
+
+        $response = $this->getJson('/api/v4/admin/redemption-codes/history?status=expired', $this->headersFor('admin'))
+            ->assertOk()->assertJsonCount(1, 'data.data')->assertJsonPath('data.total', 1)
+            ->assertJsonPath('data.data.0.label', $label)->assertJsonPath('data.data.0.code_count', 4)
+            ->assertJsonPath('data.data.0.batch_count', 2)->assertJsonPath('data.data.0.type_count', 2)
+            ->assertJsonPath('data.data.0.available_count', 1)->assertJsonPath('data.data.0.redeemed_count', 1)
+            ->assertJsonPath('data.data.0.expired_count', 1)->assertJsonPath('data.data.0.cancelled_count', 1);
+        $this->assertArrayNotHasKey('token', $response->json('data.data.0'));
+        $this->assertArrayNotHasKey('qr_payload', $response->json('data.data.0'));
+        $query = http_build_query(['label' => $label]);
+        $this->getJson('/api/v4/admin/redemption-codes/history/codes?'.$query, $this->headersFor('admin'))
+            ->assertOk()->assertJsonCount(4, 'data.data')->assertJsonPath('data.data.0.id', $first->id)
+            ->assertJsonPath('data.data.0.qr_number', '#'.str_pad((string) $first->id, 4, '0', STR_PAD_LEFT))
+            ->assertJsonPath('data.data.1.status', 'expired');
+        $this->getJson('/api/v4/admin/redemption-codes/history/codes?'.$query.'&status=available', $this->headersFor('admin'))
+            ->assertOk()->assertJsonCount(1, 'data.data');
+
+        $this->postJson('/api/v4/admin/redemption-codes/'.$first->id.'/cancel', [], $this->headersFor('admin'))->assertOk();
+        $this->getJson('/api/v4/admin/redemption-codes/history?status=cancelled', $this->headersFor('admin'))
+            ->assertOk()->assertJsonPath('data.data.0.cancelled_count', 2)->assertJsonPath('data.data.0.available_count', 0);
+    }
+
+    public function test_history_paginates_labels_and_card_references_independently(): void
+    {
+        for ($index = 0; $index < 26; $index++) {
+            $this->code('ppv', ['label' => 'Label '.$index]);
+        }
+        for ($index = 0; $index < 60; $index++) {
+            $this->code('ppv', ['label' => 'Bulk label']);
+        }
+        $this->getJson('/api/v4/admin/redemption-codes/history', $this->headersFor('admin'))
+            ->assertOk()->assertJsonCount(25, 'data.data')->assertJsonPath('data.total', 27)
+            ->assertJsonPath('data.last_page', 2)->assertJsonPath('data.data.0.label', 'Bulk label')
+            ->assertJsonPath('data.data.0.code_count', 60);
+        $this->getJson('/api/v4/admin/redemption-codes/history?page=2', $this->headersFor('admin'))
+            ->assertOk()->assertJsonCount(2, 'data.data');
+        $this->getJson('/api/v4/admin/redemption-codes/history/codes?label=Bulk%20label&page=2', $this->headersFor('admin'))
+            ->assertOk()->assertJsonCount(25, 'data.data')->assertJsonPath('data.total', 60)
+            ->assertJsonPath('data.last_page', 3)->assertJsonPath('data.data.0.qr_number', '#0052');
+    }
+
+    public function test_history_and_label_contents_require_administrator_access(): void
+    {
+        foreach (['/history', '/history/codes?label=Gift'] as $path) {
+            $this->getJson('/api/v4/admin/redemption-codes'.$path)->assertUnauthorized();
+            $this->getJson('/api/v4/admin/redemption-codes'.$path, $this->headersFor('alice'))->assertForbidden();
+        }
+        $this->getJson('/api/v4/admin/redemption-codes/history/codes', $this->headersFor('admin'))->assertUnprocessable();
+    }
+
     public function test_transaction_rolls_back_entitlement_if_recording_activation_fails(): void
     {
         $code = $this->code('subscription');
