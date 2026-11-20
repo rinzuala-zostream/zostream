@@ -4,8 +4,10 @@ namespace App\Services;
 
 use App\Models\MovieModel;
 use App\Models\New\Devices;
+use App\Models\New\Episode;
 use App\Models\New\PaymentHistory;
 use App\Models\New\Plan;
+use App\Models\New\Season;
 use App\Models\New\Subscription;
 use App\Models\RedemptionCode;
 use Illuminate\Support\Facades\DB;
@@ -19,16 +21,44 @@ class RedemptionService
         abort_if($code->expires_at?->isPast(), 410, 'This QR has expired.');
     }
 
-    public function target(RedemptionCode $code): MovieModel|Plan
+    public function target(RedemptionCode $code): MovieModel|Season|Episode|Plan|null
     {
+        if ($code->type === 'subscription' && $code->plan_id === null) {
+            return null;
+        }
         $target = $code->type === 'ppv'
-            ? MovieModel::where('id', $code->movie_id)->where('status', 'Published')->where('isEnable', true)->where('isPayPerView', true)->first()
+            ? app(RedemptionPpvCatalog::class)->target($code)
             : Plan::whereKey($code->plan_id)->where('is_active', true)->first();
         if (! $target) {
             throw ValidationException::withMessages(['target' => 'This movie or plan is no longer available.']);
         }
 
         return $target;
+    }
+
+    public function planForDevice(RedemptionCode $code, Devices $device, ?Subscription $subscription): Plan
+    {
+        $active = $subscription?->isActive() ?? false;
+        if ($code->plan_id !== null) {
+            $plan = $this->target($code);
+        } elseif ($active) {
+            $plan = $subscription->plan;
+        } else {
+            $plan = Plan::where('device_type', $device->device_type)->where('is_active', true)
+                ->where('duration_days', 30)
+                ->orderBy('price')->orderBy('id')->first();
+        }
+        if (! $plan || $plan->device_type !== $device->device_type) {
+            $message = $code->plan_id === null && ! $active
+                ? 'No active 30-day subscription plan is available for this device.'
+                : 'No compatible subscription plan is available for this device.';
+            throw ValidationException::withMessages(['device_id' => $message]);
+        }
+        if ($active && (int) $subscription->plan_id !== (int) $plan->id) {
+            throw ValidationException::withMessages(['device_id' => 'An active subscription can only be extended with the same plan.']);
+        }
+
+        return $plan;
     }
 
     public function redeem(string $token, string $userId, int $deviceId): array
@@ -48,21 +78,16 @@ class RedemptionService
             $action = 'ppv';
 
             if ($code->type === 'subscription') {
-                if ($target->device_type !== $device->device_type) {
-                    throw ValidationException::withMessages(['device_id' => 'This plan does not support the selected device type.']);
-                }
                 $subscription = Subscription::whereKey($device->subscription_id)->where('user_id', $userId)
                     ->lockForUpdate()->first();
+                $target = $this->planForDevice($code, $device, $subscription);
                 if ($subscription?->isActive()) {
-                    if ((int) $subscription->plan_id !== (int) $target->id) {
-                        throw ValidationException::withMessages(['device_id' => 'An active subscription can only be extended with the same plan.']);
-                    }
                     $action = 'extend';
                     $endAt = $subscription->end_at->copy()->addDays(30)->endOfDay();
                     $subscription->update(['end_at' => $endAt]);
                 } else {
                     $action = 'add_new';
-                    $endAt = Subscription::endAtForDuration(now(), $target->duration_days);
+                    $endAt = Subscription::endAtForDuration(now(), $code->plan_id === null ? 30 : $target->duration_days);
                     $subscription = Subscription::create([
                         'user_id' => $userId, 'plan_id' => $target->id,
                         'start_at' => now(), 'end_at' => $endAt, 'is_active' => true,
@@ -75,7 +100,7 @@ class RedemptionService
 
             $payment = PaymentHistory::create([
                 'user_id' => $userId, 'subscription_id' => $subscription?->id,
-                'plan_id' => $code->plan_id, 'movie_id' => $code->movie_id,
+                'plan_id' => $subscription?->plan_id, 'movie_id' => $code->movie_id,
                 'device_type' => $device->device_type, 'app_payment_type' => $code->type,
                 'amount' => 0, 'currency' => 'INR', 'payment_method' => 'qr',
                 'payment_gateway' => 'admin_grant', 'transaction_id' => 'qr_grant_'.$code->id,
@@ -85,11 +110,15 @@ class RedemptionService
                     'redemption_code_id' => $code->id, 'action' => $action,
                     'device_id' => $device->id, 'device_token' => $device->device_token,
                     'device_type' => $device->device_type,
+                    'content_type' => $code->type === 'ppv' ? ($code->content_type ?? 'movie') : null,
+                    'content_id' => $code->movie_id,
                 ],
             ]);
             $result = [
                 'type' => $code->type, 'action' => $action, 'device_id' => $device->id,
                 'subscription_id' => $subscription?->id, 'movie_id' => $code->movie_id,
+                'plan_id' => $subscription?->plan_id,
+                'content_type' => $code->type === 'ppv' ? ($code->content_type ?? 'movie') : null,
                 'expires_at' => $endAt->toIso8601String(), 'payment_history_id' => $payment->id,
             ];
             $code->update([

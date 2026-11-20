@@ -387,6 +387,8 @@ Route::prefix('v4')
                 ->prefix('admin')
                 ->group(function () {
                     Route::get('/redemption-codes/options', [\App\Http\Controllers\Api\V4\AdminRedemptionController::class, 'options']);
+                    Route::post('/redemption-codes/batches', [\App\Http\Controllers\Api\V4\AdminRedemptionController::class, 'storeBatch'])->middleware('throttle:10,1');
+                    Route::get('/redemption-codes/batches/{batchId}', [\App\Http\Controllers\Api\V4\AdminRedemptionController::class, 'batch'])->whereUuid('batchId');
                     Route::get('/redemption-codes', [\App\Http\Controllers\Api\V4\AdminRedemptionController::class, 'index']);
                     Route::post('/redemption-codes', [\App\Http\Controllers\Api\V4\AdminRedemptionController::class, 'store'])->middleware('throttle:30,1');
                     Route::post('/redemption-codes/{id}/cancel', [\App\Http\Controllers\Api\V4\AdminRedemptionController::class, 'cancel'])->whereNumber('id');

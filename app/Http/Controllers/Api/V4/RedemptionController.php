@@ -5,10 +5,12 @@ namespace App\Http\Controllers\Api\V4;
 use App\Http\Controllers\Controller;
 use App\Models\New\Devices;
 use App\Models\RedemptionCode;
+use App\Services\RedemptionPpvCatalog;
 use App\Services\RedemptionService;
 use App\Support\Api\V4Response;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 class RedemptionController extends Controller
 {
@@ -19,27 +21,38 @@ class RedemptionController extends Controller
         $code = RedemptionCode::where('token', $token)->firstOrFail();
         $this->redemptions->assertAvailable($code);
         $target = $this->redemptions->target($code);
-        $devices = Devices::with('subscription')->where('user_id', $request->input('auth_user_id'))
+        $ppv = $code->type === 'ppv' ? app(RedemptionPpvCatalog::class)->presentation($code, $target) : [];
+        $devices = Devices::with('subscription.plan')->where('user_id', $request->input('auth_user_id'))
             ->where('status', '!=', 'blocked')->whereNotNull('device_token')
-            ->when($code->type === 'subscription', fn ($query) => $query->where('device_type', $target->device_type))
+            ->when($code->type === 'subscription' && $target !== null, fn ($query) => $query->where('device_type', $target->device_type))
             ->get()->map(function (Devices $device) use ($code) {
-                $active = $device->subscription?->isActive() ?? false;
-                $eligible = $code->type !== 'subscription' || ! $active || (int) $device->subscription->plan_id === (int) $code->plan_id;
+                $subscription = $device->subscription && (string) $device->subscription->user_id === (string) $device->user_id
+                    ? $device->subscription : null;
+                $active = $subscription?->isActive() ?? false;
+                $reason = null;
+                if ($code->type === 'subscription') {
+                    try {
+                        $this->redemptions->planForDevice($code, $device, $subscription);
+                    } catch (ValidationException $exception) {
+                        $reason = $exception->errors()['device_id'][0] ?? 'This device cannot activate the subscription.';
+                    }
+                }
 
                 return [
                     'id' => $device->id, 'name' => $device->device_name, 'device_type' => $device->device_type,
-                    'eligible' => $eligible,
-                    'reason' => $eligible ? null : 'An active subscription can only be extended with the same plan.',
+                    'eligible' => $reason === null,
+                    'reason' => $reason,
                     'action' => $code->type === 'ppv' ? 'ppv' : ($active ? 'extend' : 'add_new'),
-                    'subscription_expires_at' => $device->subscription?->end_at?->toIso8601String(),
+                    'subscription_expires_at' => $subscription?->end_at?->toIso8601String(),
                 ];
             });
 
         return V4Response::success([
             'type' => $code->type, 'label' => $code->label,
-            'target' => ['id' => $code->movie_id ?? $code->plan_id, 'name' => $target->title ?? $target->name],
+            'target' => ['id' => $code->movie_id ?? $code->plan_id, 'name' => $ppv['display_name'] ?? $target?->name ?? '30-day subscription'],
+            ...$ppv,
             'rental_days' => $code->type === 'ppv' ? $code->rental_days : null,
-            'new_subscription_days' => $code->type === 'subscription' ? $target->duration_days : null,
+            'new_subscription_days' => $code->type === 'subscription' ? ($target?->duration_days ?? 30) : null,
             'extension_days' => $code->type === 'subscription' ? 30 : null,
             'expires_at' => $code->expires_at?->toIso8601String(), 'devices' => $devices,
         ]);

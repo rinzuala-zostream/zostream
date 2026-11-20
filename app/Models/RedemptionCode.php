@@ -13,5 +13,6 @@ class RedemptionCode extends Model
         'redeemed_at' => 'datetime',
         'result' => 'array',
         'rental_days' => 'integer',
+        'batch_page_count' => 'integer',
     ];
 }

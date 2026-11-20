@@ -21,18 +21,43 @@ Admin routes require a bearer token with administrator access:
 
 | Method | Path under `/api/v4` | Purpose |
 | --- | --- | --- |
-| GET | `/admin/redemption-codes/options` | Published PPV movies and active subscription plans |
+| GET | `/admin/redemption-codes/options` | Published PPV movies, series/seasons/episodes and active subscription plans |
 | GET | `/admin/redemption-codes?page=1&status=available` | Paginated history; status may also be `redeemed`, `cancelled`, or `expired` |
 | POST | `/admin/redemption-codes` | Create a single-use code |
+| POST | `/admin/redemption-codes/batches` | Create/recover A4 sheets using a client-generated batch UUID |
+| GET | `/admin/redemption-codes/batches/{batchId}` | Reopen a batch with current code statuses |
 | POST | `/admin/redemption-codes/{id}/cancel` | Cancel an unused code |
 
 Create a PPV code with `{"label":"Movie gift","type":"ppv","movie_id":"<movie.id>","rental_days":7}`.
-Create a subscription code with `{"label":"Plan gift","type":"subscription","plan_id":1}`.
+For series, include `content_type: "season"` or `"episode"`, and put the selected
+`season.id` or `episode.id` in the existing `movie_id` field. Omitted
+`content_type` defaults to `movie`, keeping old codes compatible. Example:
+`{"label":"Season pass","type":"ppv","content_type":"season","movie_id":"<season.id>"}`.
+The options response has `movies` plus `series`, each containing its `seasons`
+with `is_pay_per_view`, poster and individually purchasable `episodes`. Never
+use a parent series ID as a substitute for a selected season or episode.
+Create a subscription code with `{"label":"30-day gift","type":"subscription"}`.
+Omit `plan_id` for new subscription codes. The backend resolves the selected
+device's plan and grants 30 days; old plan-bound codes remain supported.
 Either accepts optional `expires_at` as a future ISO timestamp. PPV rental days
 range from 1 to 365 and default to 7. Movie identifiers use `movie.id`, not `num`.
 The response includes `qr_payload: "zostream://redeem/<64 lowercase hex characters>"`.
 QR images should encode that exact string, keeping this namespace distinct from
 legacy session tokens. Do not send these codes to the login/payment verify route.
+
+For A4 sheets, POST the same code fields plus `batch_id` (a client-generated UUID)
+and `page_count` (integer 1–20) to `/admin/redemption-codes/batches`. Each sheet
+contains **12 subscription codes** or **8 PPV codes**. The response has `batch_id`, `page_count`,
+`codes_per_page`, `label`, `type`, `target_name` and `codes`. Creation is atomic.
+Retry with the exact same batch UUID and body after a lost response to recover
+the same codes. Reusing that UUID for different parameters or another admin
+returns 409. The print UI keeps an uncertain request in session storage and
+reuses it on retry. Reopening/printing a batch never generates new codes.
+PPV batches also return `content_type`, `content_id`, `poster_url`, `series_title`,
+`scope_label`, `season_number`, `episode_number` and `display_name`. The PPV
+print layout has two columns/four rows with posters and scope details. Old PPV
+batches retain every issued code but reflow to eight tickets per page; the
+returned page count reflects the current print layout.
 
 Mobile integration (implemented in Android and iOS):
 
@@ -40,7 +65,8 @@ Mobile integration (implemented in Android and iOS):
    as 64 lowercase hexadecimal characters.
 2. `GET /api/v4/redemptions/{token}` with the authenticated owner's bearer token.
    It returns the target, validity, and only that account's non-blocked devices.
-   Subscription devices are filtered by plan device type. Each has `eligible`,
+   Generic subscription codes list all device types; old plan-bound codes filter
+   devices by their plan type. Each has `eligible`,
    `reason`, and `action` (`ppv`, `add_new`, or `extend`). Scanning does not reserve
    or consume the QR. Do not activate on scan alone.
 3. After the user selects an eligible device, immediately call
@@ -53,9 +79,25 @@ Mobile integration (implemented in Android and iOS):
    in the standard v4 response envelope.
 
 PPV access starts immediately and binds to the selected device token using the
-existing rental authorization. New/expired subscriptions use the plan duration;
-active subscriptions require the same plan and extend by exactly **30 days**
-from their existing expiry. Existing subscription sharing semantics apply to
+existing rental authorization. An episode grant authorizes only that episode;
+a season grant authorizes episodes whose actual parent is the granted season,
+including premium episodes not individually priced as PPV. Stored content type
+prevents movie/season/episode ID collisions from granting wider access. The
+inspect response's `target.name` includes series and scope so existing mobile
+clients show the right content without changing the redemption request.
+Generic subscription codes resolve a plan after
+device selection. An active subscription keeps its plan and extends by exactly
+**30 days** from existing expiry. New/expired subscriptions start **30 days**
+today, selecting an active plan of exactly 30 days matching the device type
+(lowest price, then ID if several match). Longer expired plans are not reused;
+there is no fallback to another duration. If no active 30-day plan exists,
+inspection marks the device ineligible and redemption returns 422 without
+consuming the QR. An active subscription can
+keep a retired plan; a new subscription requires an active plan. Previously
+issued plan-bound codes keep the old plan-duration/same-plan rules.
+`new_subscription_days` and `extension_days` remain 30 for generic codes, so the
+existing Android and iOS device selection screens need no contract change.
+Existing subscription sharing semantics apply to
 devices already linked to that subscription. Activation writes a successful
 zero-amount payment history with gateway `admin_grant` and QR metadata.
 
@@ -68,7 +110,8 @@ cannot activate. Validation failures return 422. Keep the same token and device
 when retrying after an uncertain network response. An already used QR cannot
 be inspected again via GET; retry the original POST to recover its result.
 
-Deployment requires the redemption codes migration and updated admin assets.
+Deployment requires all three redemption migrations (codes, print batches,
+PPV content type) and updated admin assets.
 Updated Android and iOS builds recognize the activation namespace before the
 legacy session route. They persist an in-flight device selection and offer a
 same-device POST retry after an uncertain network result, including when the

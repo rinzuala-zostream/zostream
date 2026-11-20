@@ -21,11 +21,14 @@ class RedemptionCodeTest extends TestCase
         parent::setUp();
         Carbon::setTestNow(Carbon::parse('2026-11-20 12:00:00'));
         (require database_path('migrations/2026_11_20_000001_create_redemption_codes_table.php'))->up();
+        (require database_path('migrations/2026_11_20_000002_add_print_batches_to_redemption_codes.php'))->up();
+        (require database_path('migrations/2026_11_20_000003_add_ppv_content_type_to_redemption_codes.php'))->up();
         Schema::create('n_plans', function (Blueprint $t) {
             $t->id();
             $t->string('name');
             $t->string('device_type');
             $t->integer('duration_days');
+            $t->decimal('price')->default(0);
             $t->boolean('is_active');
             $t->timestamps();
         });
@@ -69,9 +72,32 @@ class RedemptionCodeTest extends TestCase
             $t->id('num');
             $t->string('id');
             $t->string('title');
+            $t->string('poster')->nullable();
             $t->string('status');
             $t->boolean('isEnable');
             $t->boolean('isPayPerView');
+        });
+        Schema::create('seasons', function (Blueprint $t) {
+            $t->id('num');
+            $t->string('id');
+            $t->unsignedBigInteger('movie_id');
+            $t->string('title');
+            $t->integer('season_number');
+            $t->string('poster')->nullable();
+            $t->boolean('isPayPerView');
+            $t->string('status');
+        });
+        Schema::create('episodes', function (Blueprint $t) {
+            $t->id('num');
+            $t->string('id');
+            $t->string('season_id');
+            $t->string('title');
+            $t->integer('episode_number');
+            $t->string('thumbnail')->nullable();
+            $t->boolean('isPayPerView');
+            $t->boolean('is_active');
+            $t->string('status');
+            $t->boolean('isPremium')->default(false);
         });
         Schema::create('session_tokens', function (Blueprint $t) {
             $t->id();
@@ -134,6 +160,122 @@ class RedemptionCodeTest extends TestCase
             ->assertJsonPath('data.extension_days', 30);
         $this->assertSame('available', $code->fresh()->status);
         $this->assertSame(0, PaymentHistory::count());
+    }
+
+    public function test_admin_can_issue_a_plan_free_subscription_and_activate_30_days(): void
+    {
+        $monthly = Plan::create(['name' => 'Monthly TV', 'device_type' => 'tv', 'duration_days' => 30, 'is_active' => true]);
+        $response = $this->postJson('/api/v4/admin/redemption-codes', ['label' => '30 days', 'type' => 'subscription'], $this->headersFor('admin'))
+            ->assertCreated()->assertJsonPath('data.plan_id', null);
+        $code = RedemptionCode::findOrFail($response->json('data.id'));
+        $this->getJson('/api/v4/redemptions/'.$code->token, $this->headersFor('alice'))
+            ->assertOk()->assertJsonCount(2, 'data.devices')
+            ->assertJsonPath('data.new_subscription_days', 30)->assertJsonPath('data.target.name', '30-day subscription');
+        $this->redeem($code)->assertOk()->assertJsonPath('data.action', 'add_new')->assertJsonPath('data.plan_id', $monthly->id);
+        $this->assertSame(Subscription::endAtForDuration(now(), 30)->toDateTimeString(), Subscription::first()->end_at->toDateTimeString());
+        $this->assertSame($monthly->id, PaymentHistory::first()->plan_id);
+    }
+
+    public function test_plan_free_qr_extends_the_selected_devices_existing_plan(): void
+    {
+        $plan = Plan::create(['name' => 'Another TV plan', 'device_type' => 'tv', 'duration_days' => 90, 'is_active' => true]);
+        $sub = Subscription::create(['user_id' => 'alice', 'plan_id' => $plan->id, 'start_at' => now(), 'end_at' => now()->addDays(12)->endOfDay(), 'is_active' => true]);
+        Devices::find(10)->update(['subscription_id' => $sub->id]);
+        $previous = $sub->fresh()->end_at->copy();
+        $code = $this->code('subscription', ['plan_id' => null]);
+        $this->redeem($code)->assertOk()->assertJsonPath('data.action', 'extend')->assertJsonPath('data.plan_id', $plan->id);
+        $this->redeem($code)->assertOk()->assertJsonPath('data.already_redeemed', true);
+        $this->assertSame($previous->addDays(30)->toDateTimeString(), $sub->fresh()->end_at->toDateTimeString());
+        $this->assertSame($plan->id, $sub->fresh()->plan_id);
+    }
+
+    public function test_plan_free_qr_picks_a_monthly_plan_for_a_new_device_and_never_consumes_when_unavailable(): void
+    {
+        Plan::create(['name' => 'Long mobile', 'device_type' => 'mobile', 'duration_days' => 90, 'is_active' => true]);
+        Plan::create(['name' => 'Inactive monthly mobile', 'device_type' => 'mobile', 'duration_days' => 30, 'is_active' => false]);
+        $code = $this->code('subscription', ['plan_id' => null]);
+        $this->redeem($code, 1)->assertUnprocessable();
+        $this->assertSame('available', $code->fresh()->status);
+        $this->assertSame(0, Subscription::count());
+        $this->assertSame(0, PaymentHistory::count());
+        $this->getJson('/api/v4/redemptions/'.$code->token, $this->headersFor('alice'))
+            ->assertOk()->assertJsonPath('data.devices.0.eligible', false)
+            ->assertJsonPath('data.devices.0.reason', 'No active 30-day subscription plan is available for this device.');
+        $plan = Plan::create(['name' => 'Monthly mobile', 'device_type' => 'mobile', 'duration_days' => 30, 'is_active' => true]);
+        $this->redeem($code, 1)->assertOk()->assertJsonPath('data.plan_id', $plan->id);
+        $this->assertSame('mobile', PaymentHistory::first()->device_type);
+    }
+
+    public function test_expired_generic_subscription_starts_30_days_even_if_old_plan_was_longer(): void
+    {
+        $sub = Subscription::create(['user_id' => 'alice', 'plan_id' => 1, 'start_at' => now()->subDays(100), 'end_at' => now()->subDay(), 'is_active' => true]);
+        Devices::find(10)->update(['subscription_id' => $sub->id]);
+        $code = $this->code('subscription', ['plan_id' => null]);
+        $this->redeem($code)->assertUnprocessable();
+        $this->assertSame('available', $code->fresh()->status);
+        $this->assertSame($sub->id, Devices::find(10)->subscription_id);
+        $monthly = Plan::create(['name' => 'Monthly TV', 'device_type' => 'tv', 'duration_days' => 30, 'is_active' => true]);
+        $this->redeem($code)->assertOk()->assertJsonPath('data.action', 'add_new')->assertJsonPath('data.plan_id', $monthly->id);
+        $this->assertSame($monthly->id, Devices::find(10)->subscription->plan_id);
+        $this->assertSame(Subscription::endAtForDuration(now(), 30)->toDateTimeString(), Devices::find(10)->subscription->end_at->toDateTimeString());
+    }
+
+    public function test_a4_batch_has_12_unique_codes_per_page_and_is_safe_to_retry(): void
+    {
+        Plan::create(['name' => 'Monthly TV', 'device_type' => 'tv', 'duration_days' => 30, 'is_active' => true]);
+        $body = ['label' => 'Campaign', 'type' => 'subscription', 'page_count' => 2, 'batch_id' => (string) \Illuminate\Support\Str::uuid()];
+        $first = $this->postJson('/api/v4/admin/redemption-codes/batches', $body, $this->headersFor('admin'))
+            ->assertCreated()->assertJsonPath('data.page_count', 2)->assertJsonPath('data.codes_per_page', 12)
+            ->assertJsonCount(24, 'data.codes');
+        $this->assertCount(24, array_unique(array_column($first->json('data.codes'), 'token')));
+        $this->postJson('/api/v4/admin/redemption-codes/batches', $body, $this->headersFor('admin'))
+            ->assertCreated()->assertJsonPath('data.codes.0.id', $first->json('data.codes.0.id'));
+        $this->assertSame(24, RedemptionCode::count());
+        $body['page_count'] = 1;
+        $this->postJson('/api/v4/admin/redemption-codes/batches', $body, $this->headersFor('admin'))->assertConflict();
+        $code = RedemptionCode::first();
+        $this->redeem($code)->assertOk();
+        $this->getJson('/api/v4/admin/redemption-codes/batches/'.$body['batch_id'], $this->headersFor('admin'))
+            ->assertOk()->assertJsonPath('data.codes.0.status', 'redeemed')->assertJsonCount(24, 'data.codes');
+    }
+
+    public function test_batch_validation_permissions_and_atomic_failure(): void
+    {
+        $body = ['label' => 'Campaign', 'type' => 'ppv', 'movie_id' => 'film', 'page_count' => 1, 'batch_id' => (string) \Illuminate\Support\Str::uuid()];
+        $this->postJson('/api/v4/admin/redemption-codes/batches', $body, $this->headersFor('alice'))->assertForbidden();
+        $this->postJson('/api/v4/admin/redemption-codes/batches', ['label' => 'Generic only', 'type' => 'subscription', 'plan_id' => 1, 'batch_id' => $body['batch_id'], 'page_count' => 1], $this->headersFor('admin'))->assertUnprocessable();
+        foreach ([0, 21, 1.5] as $count) {
+            $this->postJson('/api/v4/admin/redemption-codes/batches', [...$body, 'page_count' => $count], $this->headersFor('admin'))->assertUnprocessable();
+        }
+        $this->postJson('/api/v4/admin/redemption-codes/batches', [...$body, 'movie_id' => 'missing'], $this->headersFor('admin'))->assertUnprocessable();
+        $this->assertSame(0, DB::table('redemption_print_batches')->count());
+        $created = 0;
+        RedemptionCode::creating(function () use (&$created) {
+            if (++$created === 3) {
+                throw new \RuntimeException('Simulated batch failure');
+            }
+        });
+        try {
+            $this->postJson('/api/v4/admin/redemption-codes/batches', $body, $this->headersFor('admin'))->assertStatus(500);
+            $this->assertSame(0, RedemptionCode::count());
+            $this->assertSame(0, DB::table('redemption_print_batches')->count());
+        } finally {
+            RedemptionCode::flushEventListeners();
+        }
+    }
+
+    public function test_existing_batch_can_be_recovered_after_its_qr_expiry(): void
+    {
+        $body = ['label' => 'Campaign', 'type' => 'subscription', 'page_count' => 1,
+            'batch_id' => (string) \Illuminate\Support\Str::uuid(), 'expires_at' => now()->addMinute()->toIso8601String()];
+        $this->postJson('/api/v4/admin/redemption-codes/batches', $body, $this->headersFor('admin'))->assertCreated();
+        Carbon::setTestNow(now()->addMinutes(2));
+        $this->postJson('/api/v4/admin/redemption-codes/batches', $body, $this->headersFor('admin'))
+            ->assertCreated()->assertJsonPath('data.codes.0.status', 'expired');
+        $this->assertSame(12, RedemptionCode::count());
+        $body['batch_id'] = (string) \Illuminate\Support\Str::uuid();
+        $this->postJson('/api/v4/admin/redemption-codes/batches', $body, $this->headersFor('admin'))->assertUnprocessable();
+        $this->assertSame(1, DB::table('redemption_print_batches')->count());
     }
 
     public function test_ppv_is_device_bound_single_use_and_retry_is_idempotent(): void
@@ -224,7 +366,7 @@ class RedemptionCodeTest extends TestCase
         $this->redeem($code)->assertForbidden();
     }
 
-    public function test_ppv_grants_play_only_on_the_selected_device_and_keep_existing_owner_rules(): void
+    private function ppvPlaybackController(): \App\Http\Controllers\NewStreamController
     {
         Schema::create('n_active_streams', function (Blueprint $t) {
             $t->id();
@@ -247,7 +389,13 @@ class RedemptionCodeTest extends TestCase
         $ads->shouldReceive('serve')->andReturn(response()->json(['success' => true, 'data' => []]));
         $hls = \Mockery::mock(\App\Http\Controllers\HlsFolderController::class);
         $hls->shouldReceive('check')->andReturn(response()->json(['data' => ['stream_url' => 'https://media.example.test/film.m3u8']]));
-        $controller = new \App\Http\Controllers\NewStreamController($hls, $movies, $watch, $ads);
+
+        return new \App\Http\Controllers\NewStreamController($hls, $movies, $watch, $ads);
+    }
+
+    public function test_ppv_grants_play_only_on_the_selected_device_and_keep_existing_owner_rules(): void
+    {
+        $controller = $this->ppvPlaybackController();
         $start = function (string $token) use ($controller) {
             $request = \Illuminate\Http\Request::create('/', 'POST', [
                 'user_id' => 'alice', 'movie_id' => 'film', 'type' => 'movie', 'platform' => 'ios', 'device_type' => 'tv',
@@ -274,6 +422,100 @@ class RedemptionCodeTest extends TestCase
         DB::table('redemption_codes')->delete();
         PaymentHistory::query()->update(['payment_gateway' => 'razorpay']);
         $this->assertSame(403, $start('alice-tv-2')->getStatusCode());
+    }
+
+    private function seedSeries(): void
+    {
+        DB::table('movie')->insert(['num' => 2, 'id' => 'series', 'title' => 'Demo Series', 'poster' => '/series.jpg', 'status' => 'Published', 'isEnable' => true, 'isPayPerView' => false]);
+        foreach ([1, 2] as $season) {
+            DB::table('seasons')->insert(['id' => 'season-'.$season, 'movie_id' => 2, 'title' => 'Chapter '.$season, 'season_number' => $season, 'poster' => '/season-'.$season.'.jpg', 'status' => 'Published', 'isPayPerView' => true]);
+        }
+        foreach ([['ep-1', 'season-1', 1], ['ep-2', 'season-1', 2], ['ep-other', 'season-2', 1]] as [$id, $season, $number]) {
+            DB::table('episodes')->insert(['id' => $id, 'season_id' => $season, 'title' => 'Episode '.$number, 'episode_number' => $number, 'status' => 'Published', 'is_active' => true, 'isPayPerView' => true]);
+        }
+    }
+
+    public function test_ppv_catalog_and_two_column_batches_include_poster_and_exact_scope(): void
+    {
+        $this->seedSeries();
+        $this->getJson('/api/v4/admin/redemption-codes/options', $this->headersFor('admin'))
+            ->assertOk()->assertJsonPath('data.series.0.title', 'Demo Series')
+            ->assertJsonCount(2, 'data.series.0.seasons')->assertJsonCount(2, 'data.series.0.seasons.0.episodes');
+        foreach (['movie' => 'film', 'season' => 'season-1', 'episode' => 'ep-1'] as $type => $id) {
+            $body = ['label' => 'PPV cards', 'type' => 'ppv', 'content_type' => $type, 'movie_id' => $id,
+                'page_count' => 1, 'batch_id' => (string) \Illuminate\Support\Str::uuid()];
+            $response = $this->postJson('/api/v4/admin/redemption-codes/batches', $body, $this->headersFor('admin'))
+                ->assertCreated()->assertJsonPath('data.codes_per_page', 8)->assertJsonCount(8, 'data.codes')
+                ->assertJsonPath('data.content_type', $type);
+            if ($type !== 'movie') {
+                $response->assertJsonPath('data.poster_url', '/season-1.jpg')->assertJsonPath('data.series_title', 'Demo Series');
+            }
+        }
+        $this->assertSame(24, RedemptionCode::count());
+    }
+
+    public function test_season_grant_only_unlocks_episodes_in_its_actual_season(): void
+    {
+        $this->seedSeries();
+        DB::table('episodes')->where('id', 'ep-2')->update(['isPayPerView' => false, 'isPremium' => true]);
+        $code = $this->code('ppv', ['content_type' => 'season', 'movie_id' => 'season-1']);
+        $this->getJson('/api/v4/redemptions/'.$code->token, $this->headersFor('alice'))->assertOk()
+            ->assertJsonPath('data.content_type', 'season')->assertJsonPath('data.scope_label', 'Season 1 · Full season');
+        $this->redeem($code)->assertOk()->assertJsonPath('data.content_type', 'season');
+        $this->assertSame('season', PaymentHistory::first()->meta['content_type']);
+        $controller = $this->ppvPlaybackController();
+        $start = function (string $id, string $season) use ($controller) {
+            $request = \Illuminate\Http\Request::create('/', 'POST', ['user_id' => 'alice', 'movie_id' => $id, 'season_id' => $season, 'type' => 'episode', 'platform' => 'ios', 'device_type' => 'tv']);
+            $request->headers->set('Device-Token', 'alice-tv');
+
+            return $controller->start($request);
+        };
+        $this->assertSame(200, $start('ep-1', 'season-1')->getStatusCode());
+        $this->assertSame(200, $start('ep-2', 'season-1')->getStatusCode());
+        $this->assertSame(403, $start('ep-other', 'season-1')->getStatusCode());
+    }
+
+    public function test_episode_grant_does_not_unlock_siblings_or_a_movie_with_the_same_id(): void
+    {
+        $this->seedSeries();
+        DB::table('movie')->insert(['id' => 'ep-1', 'title' => 'Different movie', 'status' => 'Published', 'isEnable' => true, 'isPayPerView' => true]);
+        $code = $this->code('ppv', ['content_type' => 'episode', 'movie_id' => 'ep-1']);
+        $this->redeem($code)->assertOk();
+        $controller = $this->ppvPlaybackController();
+        $start = function (string $id, string $type) use ($controller) {
+            $request = \Illuminate\Http\Request::create('/', 'POST', ['user_id' => 'alice', 'movie_id' => $id, 'season_id' => 'season-1', 'type' => $type, 'platform' => 'ios', 'device_type' => 'tv']);
+            $request->headers->set('Device-Token', 'alice-tv');
+
+            return $controller->start($request);
+        };
+        $this->assertSame(200, $start('ep-1', 'episode')->getStatusCode());
+        $this->assertSame(403, $start('ep-2', 'episode')->getStatusCode());
+        $this->assertSame(403, $start('ep-1', 'movie')->getStatusCode());
+    }
+
+    public function test_ppv_series_targets_require_published_enabled_parents_and_correct_type(): void
+    {
+        $this->seedSeries();
+        $body = ['label' => 'Episode', 'type' => 'ppv', 'content_type' => 'episode', 'movie_id' => 'ep-1'];
+        DB::table('movie')->where('id', 'series')->update(['isEnable' => false]);
+        $this->postJson('/api/v4/admin/redemption-codes', $body, $this->headersFor('admin'))->assertUnprocessable();
+        DB::table('movie')->where('id', 'series')->update(['isEnable' => true]);
+        DB::table('episodes')->where('id', 'ep-1')->update(['status' => 'Draft']);
+        $this->postJson('/api/v4/admin/redemption-codes', $body, $this->headersFor('admin'))->assertUnprocessable();
+        $this->postJson('/api/v4/admin/redemption-codes', [...$body, 'content_type' => 'movie'], $this->headersFor('admin'))->assertUnprocessable();
+        $this->assertSame(0, RedemptionCode::count());
+    }
+
+    public function test_old_ppv_batches_reflow_without_reissuing_codes(): void
+    {
+        $batchId = (string) \Illuminate\Support\Str::uuid();
+        DB::table('redemption_print_batches')->insert(['id' => $batchId, 'created_by' => 'admin', 'request_fingerprint' => str_repeat('a', 64), 'page_count' => 1]);
+        for ($i = 0; $i < 12; $i++) {
+            $this->code('ppv', ['batch_id' => $batchId, 'batch_page_count' => 1]);
+        }
+        $this->getJson('/api/v4/admin/redemption-codes/batches/'.$batchId, $this->headersFor('admin'))
+            ->assertOk()->assertJsonPath('data.codes_per_page', 8)->assertJsonPath('data.page_count', 2)->assertJsonCount(12, 'data.codes');
+        $this->assertSame(12, RedemptionCode::count());
     }
 
     public function test_transaction_rolls_back_entitlement_if_recording_activation_fails(): void

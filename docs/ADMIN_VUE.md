@@ -27,26 +27,54 @@ Admin login depends on the existing `ADMIN_WHATSAPP_ALLOWED_NUMBERS`, `ADMIN_QR_
 
 ## Single-use activation QR codes
 
-Open **Audience → Activation QR** (`/admin/activation-qr`) to issue a PPV movie
-or subscription grant. Choose a published PPV movie or active plan, add a label
-and optional QR expiry, then download the PNG. PPV rental days default to seven
-and begin at successful activation. No checkout occurs when claiming these grants.
+Open **Audience → Activation QR** (`/admin/activation-qr`) to issue a PPV content
+or subscription grant. Subscription cards need no plan selection: each provides
+30 days of new access or extends an active subscription by 30 days. PPV cards
+support a published movie, full season or single episode. Choose **Movie** or
+**Series → Season → Full season only / One episode only**. Only published,
+enabled PPV items appear. A season must be sold as PPV to issue a full-season
+pass; individually sold episodes remain selectable even if their season is not
+sold as a package. Rental days default to seven and begin at successful
+activation. No checkout occurs when claiming these grants.
+
+Add a label, choose **1–20 A4 pages** and an optional QR expiry. Each page contains
+**12 subscription cards (3 × 4)** or **8 PPV tickets (2 × 4)**. PPV tickets use a
+separate cinema design with a movie/season poster, title, rental days and exact
+season/episode scope alongside the QR. Subscription card layout stays unchanged.
+Generate the batch,
+preview the sheets, then choose **Print / Save PDF**. Print at A4 portrait, 100%
+scale, with browser headers/footers disabled. Cards have cut guides, a 29–30 mm QR,
+an activation instruction and an individual reference number. Open **A4 batch**
+from history to print the same cards again; this never creates new vouchers.
+Redeemed, cancelled and expired cards are visibly marked when reprinting. Old
+PPV batches are reflowed to eight tickets per page without changing their codes;
+their print page count can therefore increase.
 
 The signed-in account owner scans the QR in the mobile app and chooses one of
-their registered devices. Subscription plans must match the device type. A new
-or expired subscription starts today using the selected plan's duration. An
-active subscription on the selected device extends by **30 days** from its
-existing expiry, only when the plan matches. Existing subscription sharing
+their registered devices. The backend resolves the matching plan after device
+selection: retain an active subscription's plan for Extend. Add New always
+selects an active **30-day plan** matching the device type (lowest price, then
+ID if multiple plans match). It never reuses a longer expired plan or falls
+back to another duration. New/expired subscriptions start today for **30 days**;
+active subscriptions extend by **30 days** from their existing expiry. A device
+with no active 30-day plan cannot use Add New or consume the QR. Previously issued plan-bound
+codes keep their original plan and duration rules. Existing subscription sharing
 rules still apply; extending a subscription also extends access for devices
 already sharing that subscription. PPV grants bind to the exact selected device.
+Full-season grants cover only episodes belonging to that season, including
+premium episodes not individually sold as PPV. An episode-only grant covers
+only that episode. Playback verifies the stored content type and actual parent
+season, preventing identical IDs or a supplied season ID from widening access.
 
 Scanning does not consume a code. Successful activation marks it redeemed in
 the same database transaction as the entitlement and history. History displays
 the account, device and activation time. Unused codes can be cancelled; used
 codes cannot be reissued or cancelled. Treat unused PNGs as redeemable vouchers.
 
-Deploy the migration `2026_11_20_000001_create_redemption_codes_table.php` and build
-the Vue assets before using the page. The Android and iOS scanner implementations
+Deploy the redemption codes migration and
+`2026_11_20_000002_add_print_batches_to_redemption_codes.php` and
+`2026_11_20_000003_add_ppv_content_type_to_redemption_codes.php`, then build the Vue
+assets before using the page. The Android and iOS scanner implementations
 recognize `zostream://redeem/{token}` and present device selection. Existing
 login/payment QR handling remains unchanged. Roll out updated mobile builds
 before distributing activation QR codes.

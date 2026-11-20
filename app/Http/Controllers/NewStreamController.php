@@ -96,6 +96,19 @@ class NewStreamController extends Controller
             ], 400);
         }
 
+        // A full-season QR also covers premium episodes that are not sold individually.
+        $preApprovedQrGrant = null;
+        if ($requiresSubscription && $contentType === 'episode') {
+            $grantDevice = Devices::where('user_id', $userId)->where('device_token', $deviceToken)->first();
+            if ($grantDevice) {
+                $preApprovedQrGrant = $this->qrRentalForContent($grantDevice, $contentType, $resolvedContentId, $movie->season_id);
+            }
+            if ($preApprovedQrGrant) {
+                $isPPV = true;
+                $requiresSubscription = false;
+            }
+        }
+
         // 🔥 Default values for PPV
         $subscription = null;
         $plan = null;
@@ -259,22 +272,10 @@ class NewStreamController extends Controller
                     ->first();
             }
 
-            // An activation QR may grant this movie to a selected shared device.
-            // Prefer its exact-device grant even if another device rented later.
-            $qrGrant = (clone $baseQuery)
-                ->where('movie_id', $movieId)
-                ->where('payment_gateway', 'admin_grant')
-                ->where('meta->device_token', $deviceToken)
-                ->latest('id')
-                ->first();
-            $hasQrGrant = $qrGrant && $device->status !== 'blocked'
-                && \App\Models\RedemptionCode::where('payment_history_id', $qrGrant->id)
-                    ->where('status', 'redeemed')
-                    ->where('type', 'ppv')
-                    ->where('movie_id', $movieId)
-                    ->where('redeemed_by', $userId)
-                    ->where('device_id', $device->id)
-                    ->exists();
+            $qrGrant = $preApprovedQrGrant ?? $this->qrRentalForContent(
+                $device, $contentType, $resolvedContentId, $contentType === 'episode' ? $movie->season_id : null
+            );
+            $hasQrGrant = $qrGrant !== null;
             if ($hasQrGrant) {
                 $rental = $qrGrant;
             }
@@ -1265,6 +1266,37 @@ class NewStreamController extends Controller
         // Compatibility for sessions created before content_key was introduced.
         return $stream->content_id === null
             || (string) $stream->content_id === $contentKey;
+    }
+
+    private function qrRentalForContent(Devices $device, string $contentType, string $contentId, ?string $seasonId): ?PaymentHistory
+    {
+        if ($device->status === 'blocked') {
+            return null;
+        }
+        // Scope follows the resolved episode's actual parent, never the request's season_id.
+        $scopes = [['content_type' => $contentType, 'movie_id' => $contentId]];
+        if ($contentType === 'episode' && $seasonId) {
+            $scopes[] = ['content_type' => 'season', 'movie_id' => $seasonId];
+        }
+        $candidates = PaymentHistory::where('user_id', $device->user_id)
+            ->where('status', 'success')->where('expiry_date', '>', now())
+            ->where('device_type', $device->device_type)->where('app_payment_type', 'ppv')
+            ->whereIn('movie_id', array_column($scopes, 'movie_id'))->where('payment_gateway', 'admin_grant')
+            ->where('meta->device_token', $device->device_token)->latest('id')->get();
+        foreach ($candidates as $rental) {
+            if (\App\Models\RedemptionCode::where('payment_history_id', $rental->id)
+                ->where('status', 'redeemed')->where('type', 'ppv')
+                ->where('redeemed_by', $device->user_id)->where('device_id', $device->id)
+                ->where(function ($query) use ($scopes) {
+                    foreach ($scopes as $scope) {
+                        $query->orWhere(fn ($q) => $q->where($scope));
+                    }
+                })->exists()) {
+                return $rental;
+            }
+        }
+
+        return null;
     }
 
     private function isPpvRentalAllowedOnDevice(PaymentHistory $rental, Devices $device, string $deviceToken): bool
