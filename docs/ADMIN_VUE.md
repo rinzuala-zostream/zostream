@@ -68,7 +68,11 @@ category (Mobile, TV, Desktop or Browser), rather than an individual login
 record. The API returns at most one registered device per category and omits
 device names. If a category has multiple devices, it prefers an eligible device
 that can Extend; otherwise it uses the most recently active device. PPV is
-granted to that selected device. The backend resolves the matching plan after
+granted to that selected device. All four categories remain visible even when
+the account has not signed in on one of them; selecting a missing category
+activates the grant immediately for that account and category, ready to use
+when a matching device signs in. Subscription and PPV expiry both start at
+selection time. The backend resolves the matching plan after
 device selection: retain an active subscription's plan for Extend. Add New
 always selects an active **30-day plan** matching the device type (lowest price, then
 ID if multiple plans match). It never reuses a longer expired plan or falls
@@ -77,21 +81,25 @@ active subscriptions extend by **30 days** from their existing expiry. A device
 with no active 30-day plan cannot use Add New or consume the QR. Previously issued plan-bound
 codes keep their original plan and duration rules. Existing subscription sharing
 rules still apply; extending a subscription also extends access for devices
-already sharing that subscription. PPV grants bind to the exact selected device.
+already sharing that subscription. PPV grants bind to the exact selected device
+or, when no device is registered, to the selected category on that account.
 Full-season grants cover only episodes belonging to that season, including
 premium episodes not individually sold as PPV. An episode-only grant covers
 only that episode. Playback verifies the stored content type and actual parent
 season, preventing identical IDs or a supplied season ID from widening access.
 
-Scanning does not consume a code. Successful activation marks it redeemed in
-the same database transaction as the entitlement and history. History displays
-the account, device and activation time. Unused codes can be cancelled; used
-codes cannot be reissued or cancelled. Treat unused PNGs as redeemable vouchers.
+Scanning does not consume a code. Activation records the grant and history in
+one database transaction. When a category has no registered device, the grant
+is active immediately for that account and category; a later matching device
+login can use it until expiry. Unused codes can be cancelled;
+used codes cannot be reissued or cancelled. Treat unused PNGs as redeemable vouchers.
 
 Deploy the redemption codes migration and
 `2026_11_20_000002_add_print_batches_to_redemption_codes.php` and
-`2026_11_20_000003_add_ppv_content_type_to_redemption_codes.php`, then build the Vue
-assets before using the page. The Android and iOS scanner implementations
+`2026_11_20_000003_add_ppv_content_type_to_redemption_codes.php` and
+`2026_11_20_000004_add_deferred_device_type_to_redemption_codes.php` and
+`2026_11_20_000005_activate_legacy_redemption_category_grants.php`, then build
+the Vue assets before using the page. The Android and iOS scanner implementations
 recognize `zostream://redeem/{token}` and present device selection. Existing
 login/payment QR handling remains unchanged. Roll out updated mobile builds
 before distributing activation QR codes.

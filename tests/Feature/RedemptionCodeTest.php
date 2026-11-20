@@ -23,6 +23,7 @@ class RedemptionCodeTest extends TestCase
         (require database_path('migrations/2026_11_20_000001_create_redemption_codes_table.php'))->up();
         (require database_path('migrations/2026_11_20_000002_add_print_batches_to_redemption_codes.php'))->up();
         (require database_path('migrations/2026_11_20_000003_add_ppv_content_type_to_redemption_codes.php'))->up();
+        (require database_path('migrations/2026_11_20_000004_add_deferred_device_type_to_redemption_codes.php'))->up();
         Schema::create('n_plans', function (Blueprint $t) {
             $t->id();
             $t->string('name');
@@ -50,6 +51,7 @@ class RedemptionCodeTest extends TestCase
             $t->string('device_token');
             $t->boolean('is_owner_device')->default(false);
             $t->string('status');
+            $t->dateTime('last_activity')->nullable();
             $t->timestamps();
         });
         Schema::create('n_payment_histories', function (Blueprint $t) {
@@ -156,7 +158,8 @@ class RedemptionCodeTest extends TestCase
     {
         $code = $this->code('subscription');
         $this->getJson('/api/v4/redemptions/'.$code->token, $this->headersFor('alice'))
-            ->assertOk()->assertJsonCount(1, 'data.devices')->assertJsonPath('data.devices.0.id', 10)
+            ->assertOk()->assertJsonCount(4, 'data.devices')->assertJsonPath('data.devices.0.device_type', 'mobile')
+            ->assertJsonPath('data.devices.1.id', 10)->assertJsonPath('data.devices.1.device_type', 'tv')
             ->assertJsonPath('data.extension_days', 30);
         $this->assertSame('available', $code->fresh()->status);
         $this->assertSame(0, PaymentHistory::count());
@@ -169,7 +172,7 @@ class RedemptionCodeTest extends TestCase
             ->assertCreated()->assertJsonPath('data.plan_id', null);
         $code = RedemptionCode::findOrFail($response->json('data.id'));
         $this->getJson('/api/v4/redemptions/'.$code->token, $this->headersFor('alice'))
-            ->assertOk()->assertJsonCount(2, 'data.devices')
+            ->assertOk()->assertJsonCount(4, 'data.devices')
             ->assertJsonPath('data.new_subscription_days', 30)->assertJsonPath('data.target.name', '30-day subscription');
         $this->redeem($code)->assertOk()->assertJsonPath('data.action', 'add_new')->assertJsonPath('data.plan_id', $monthly->id);
         $this->assertSame(Subscription::endAtForDuration(now(), 30)->toDateTimeString(), Subscription::first()->end_at->toDateTimeString());

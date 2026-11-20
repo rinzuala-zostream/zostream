@@ -1282,11 +1282,20 @@ class NewStreamController extends Controller
             ->where('status', 'success')->where('expiry_date', '>', now())
             ->where('device_type', $device->device_type)->where('app_payment_type', 'ppv')
             ->whereIn('movie_id', array_column($scopes, 'movie_id'))->where('payment_gateway', 'admin_grant')
-            ->where('meta->device_token', $device->device_token)->latest('id')->get();
+            ->where(function ($query) use ($device) {
+                $query->where('meta->device_token', $device->device_token)
+                    ->orWhere(fn ($category) => $category->where('meta->category_grant', true)
+                        ->where('meta->device_type', $device->device_type));
+            })->latest('id')->get();
         foreach ($candidates as $rental) {
             if (\App\Models\RedemptionCode::where('payment_history_id', $rental->id)
                 ->where('status', 'redeemed')->where('type', 'ppv')
-                ->where('redeemed_by', $device->user_id)->where('device_id', $device->id)
+                ->where('redeemed_by', $device->user_id)
+                ->where(function ($query) use ($device) {
+                    $query->where('device_id', $device->id)
+                        ->orWhere(fn ($category) => $category->whereNull('device_id')
+                            ->where('redeemed_device_type', $device->device_type));
+                })
                 ->where(function ($query) use ($scopes) {
                     foreach ($scopes as $scope) {
                         $query->orWhere(fn ($q) => $q->where($scope));
@@ -1311,6 +1320,13 @@ class NewStreamController extends Controller
             }
 
             $meta = is_array($lockedRental->meta) ? $lockedRental->meta : [];
+            if ((bool) ($meta['category_grant'] ?? false)) {
+                return ($meta['device_type'] ?? null) === $device->device_type
+                    && \App\Models\RedemptionCode::where('payment_history_id', $lockedRental->id)
+                        ->where('status', 'redeemed')->where('type', 'ppv')
+                        ->where('redeemed_by', $device->user_id)->whereNull('device_id')
+                        ->where('redeemed_device_type', $device->device_type)->exists();
+            }
             $rentalDeviceToken = trim((string) ($meta['device_token'] ?? ''));
             $rentalDeviceId = isset($meta['device_id']) ? (int) $meta['device_id'] : null;
 

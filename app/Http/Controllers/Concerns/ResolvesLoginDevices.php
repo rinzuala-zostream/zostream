@@ -30,7 +30,7 @@ trait ResolvesLoginDevices
             ];
         }
 
-        return DB::transaction(function () use ($user, $subscription, $deviceId, $deviceName, $deviceType, $platform) {
+        $result = DB::transaction(function () use ($user, $subscription, $deviceId, $deviceName, $deviceType, $platform) {
             $ownerDevice = Devices::where('user_id', $user->uid)
                 ->where('device_type', $deviceType)
                 ->where('is_owner_device', true)
@@ -116,6 +116,8 @@ trait ResolvesLoginDevices
                 'message' => $message,
             ];
         });
+
+        return $result;
     }
 
     private function normalizeLoginDeviceType(?string $deviceType): string
