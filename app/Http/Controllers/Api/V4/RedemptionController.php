@@ -25,6 +25,7 @@ class RedemptionController extends Controller
         $devices = Devices::with('subscription.plan')->where('user_id', $request->input('auth_user_id'))
             ->where('status', '!=', 'blocked')->whereNotNull('device_token')
             ->when($code->type === 'subscription' && $target !== null, fn ($query) => $query->where('device_type', $target->device_type))
+            ->orderByDesc('last_activity')->orderByDesc('id')
             ->get()->map(function (Devices $device) use ($code) {
                 $subscription = $device->subscription && (string) $device->subscription->user_id === (string) $device->user_id
                     ? $device->subscription : null;
@@ -39,13 +40,36 @@ class RedemptionController extends Controller
                 }
 
                 return [
-                    'id' => $device->id, 'name' => $device->device_name, 'device_type' => $device->device_type,
+                    'id' => $device->id, 'device_type' => $device->device_type,
                     'eligible' => $reason === null,
                     'reason' => $reason,
                     'action' => $code->type === 'ppv' ? 'ppv' : ($active ? 'extend' : 'add_new'),
                     'subscription_expires_at' => $subscription?->end_at?->toIso8601String(),
+                    '_last_activity' => $device->last_activity?->getTimestamp() ?? 0,
                 ];
-            });
+            })
+            ->groupBy('device_type')
+            ->map(function ($devicesOfType) {
+                return $devicesOfType->sort(function (array $left, array $right) {
+                    $eligible = ((int) $right['eligible']) <=> ((int) $left['eligible']);
+                    if ($eligible !== 0) {
+                        return $eligible;
+                    }
+
+                    // If several devices share a category, preserve an eligible
+                    // subscription on one of them so the QR extends that access.
+                    $extension = ((int) ($right['action'] === 'extend')) <=> ((int) ($left['action'] === 'extend'));
+                    if ($extension !== 0) {
+                        return $extension;
+                    }
+
+                    return ($right['_last_activity'] <=> $left['_last_activity']) ?: ($right['id'] <=> $left['id']);
+                })->first();
+            })
+            ->map(function (array $device) {
+                unset($device['_last_activity']);
+                return $device;
+            })->values();
 
         return V4Response::success([
             'type' => $code->type, 'label' => $code->label,

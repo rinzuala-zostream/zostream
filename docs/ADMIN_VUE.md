@@ -63,10 +63,14 @@ Cancel, view a single QR or reopen its PDF from the expanded list. Status filter
 on the label list select matching labels while retaining their full counts;
 the expanded list has its own card filter.
 
-The signed-in account owner scans the QR in the mobile app and chooses one of
-their registered devices. The backend resolves the matching plan after device
-selection: retain an active subscription's plan for Extend. Add New always
-selects an active **30-day plan** matching the device type (lowest price, then
+The signed-in account owner scans the QR in the mobile app and chooses a device
+category (Mobile, TV, Desktop or Browser), rather than an individual login
+record. The API returns at most one registered device per category and omits
+device names. If a category has multiple devices, it prefers an eligible device
+that can Extend; otherwise it uses the most recently active device. PPV is
+granted to that selected device. The backend resolves the matching plan after
+device selection: retain an active subscription's plan for Extend. Add New
+always selects an active **30-day plan** matching the device type (lowest price, then
 ID if multiple plans match). It never reuses a longer expired plan or falls
 back to another duration. New/expired subscriptions start today for **30 days**;
 active subscriptions extend by **30 days** from their existing expiry. A device
