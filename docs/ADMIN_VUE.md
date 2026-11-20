@@ -46,8 +46,10 @@ the account, device and activation time. Unused codes can be cancelled; used
 codes cannot be reissued or cancelled. Treat unused PNGs as redeemable vouchers.
 
 Deploy the migration `2026_11_20_000001_create_redemption_codes_table.php` and build
-the Vue assets before using the page. Mobile scanner support is a separate
-client change; existing login/payment QR handling remains unchanged.
+the Vue assets before using the page. The Android and iOS scanner implementations
+recognize `zostream://redeem/{token}` and present device selection. Existing
+login/payment QR handling remains unchanged. Roll out updated mobile builds
+before distributing activation QR codes.
 
 ## Desktop release installers
 

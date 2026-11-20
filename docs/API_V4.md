@@ -34,7 +34,7 @@ The response includes `qr_payload: "zostream://redeem/<64 lowercase hex characte
 QR images should encode that exact string, keeping this namespace distinct from
 legacy session tokens. Do not send these codes to the login/payment verify route.
 
-Mobile integration (next client change):
+Mobile integration (implemented in Android and iOS):
 
 1. Recognize the exact `zostream://redeem/{token}` payload and validate the token
    as 64 lowercase hexadecimal characters.
@@ -69,7 +69,12 @@ when retrying after an uncertain network response. An already used QR cannot
 be inspected again via GET; retry the original POST to recover its result.
 
 Deployment requires the redemption codes migration and updated admin assets.
-The mobile scanner is not changed by this backend implementation.
+Updated Android and iOS builds recognize the activation namespace before the
+legacy session route. They persist an in-flight device selection and offer a
+same-device POST retry after an uncertain network result, including when the
+sheet is reopened by scanning the same QR. A definitive 4xx rejection (except
+408/429) clears the pending selection; successful activation refreshes the home
+data. Deploy the migration/backend before distributing the updated clients.
 
 ## Contract
 
