@@ -31,6 +31,7 @@ class SmartEngagementTest extends TestCase
         CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-11-19 12:30:00', 'UTC')); // 18:00 IST
         \Illuminate\Support\Carbon::setTestNow(CarbonImmutable::now('UTC'));
         (require database_path('migrations/2026_11_19_000001_create_smart_engagement_tables.php'))->up();
+        (require database_path('migrations/2026_11_22_000001_create_engagement_rules_table.php'))->up();
         Schema::create('user', function (Blueprint $table) {
             $table->string('uid')->primary();
             $table->text('token')->nullable();
@@ -369,6 +370,123 @@ class SmartEngagementTest extends TestCase
         foreach (['engagement_users', 'engagement_content', 'engagement_deliveries'] as $table) {
             $this->assertSame(0, DB::table($table)->count());
         }
+    }
+
+    public function test_cancelled_unsent_journey_is_replanned_after_optin(): void
+    {
+        Queue::fake();
+        $id = $this->delivery();
+        $controller = app(EngagementPreferenceController::class);
+        $controller->update(new Request(['auth_user_id' => 'u1', 'enabled' => false]));
+        $controller->update(new Request(['auth_user_id' => 'u1', 'enabled' => true]));
+        $this->artisan('engagement:queue')->assertSuccessful();
+        $row = DB::table('engagement_deliveries')->find($id);
+        $this->assertSame('queued', $row->status);
+        $this->assertNull($row->reason);
+        $this->assertSame(1, DB::table('engagement_deliveries')->count());
+    }
+
+    public function test_admin_templates_are_used_and_disabled_rule_cancels_queued_delivery(): void
+    {
+        $id = $this->delivery();
+        $templates = app(\App\Services\Engagement\EngagementTemplates::class);
+        $controller = app(\App\Http\Controllers\Api\V4\AdminEngagementController::class);
+        $controller->update(new Request(['enabled' => true, 'title_template' => 'Watch {title}', 'body_template' => 'Lo en teh: {title}']), 'continue_watching', $templates);
+        $push = Mockery::mock(FCMNotificationController::class);
+        $push->shouldReceive('sendToToken')->once()->with('test-push-token', 'Watch First', 'Lo en teh: First', '', 'm1', Mockery::type('array'))->andReturn(['success' => true]);
+        $this->send($id, $push);
+        $this->assertSame('sent', DB::table('engagement_deliveries')->find($id)->status);
+        // A fresh eligible journey must be cancelled when its rule is switched off.
+        DB::table('engagement_users')->update(['last_sent_at' => null]);
+        $this->progress('m1', '2026-11-18T12:00:00Z');
+        $candidate = $this->candidate();
+        $next = DB::table('engagement_deliveries')->insertGetId([
+            'user_id' => 'u1', 'dedupe_key' => app(EngagementRules::class)->dedupe('u1', $candidate),
+            ...array_diff_key($candidate, ['eligible_at' => true]), 'status' => 'queued', 'scheduled_at' => now('UTC'),
+            'created_at' => now('UTC'), 'updated_at' => now('UTC'),
+        ]);
+        $controller->update(new Request(['enabled' => false, 'title_template' => 'Zo Stream', 'body_template' => '{title}']), 'continue_watching', $templates);
+        $this->assertSame('cancelled', DB::table('engagement_deliveries')->find($next)->status);
+        $push->shouldNotReceive('sendToToken');
+        $this->send($next, $push);
+        $this->assertNull($this->candidate());
+    }
+
+    public function test_admin_rejects_unknown_template_placeholders(): void
+    {
+        $this->expectException(\Illuminate\Validation\ValidationException::class);
+        app(\App\Http\Controllers\Api\V4\AdminEngagementController::class)->update(
+            new Request(['enabled' => true, 'title_template' => 'Zo Stream', 'body_template' => '{user_phone}']),
+            'watchlist', app(\App\Services\Engagement\EngagementTemplates::class));
+    }
+
+    public function test_test_push_requires_explicit_token_and_does_not_change_delivery_metrics(): void
+    {
+        $push = Mockery::mock(FCMNotificationController::class);
+        $push->shouldReceive('sendToToken')->once()->with('test-only-token', 'Zo Stream', Mockery::type('string'), '', 'm1',
+            Mockery::on(fn ($data) => $data['type'] === 'smart_engagement_test' && $data['movie_id'] === 'm1' && ! isset($data['notification_id'])))
+            ->andReturn(['success' => true]);
+        $controller = app(\App\Http\Controllers\Api\V4\AdminEngagementController::class);
+        $templates = app(\App\Services\Engagement\EngagementTemplates::class);
+        $response = $controller->test(new Request(['rule' => 'watchlist', 'token' => 'test-only-token', 'movie_id' => 'm1']), $templates, $push);
+        $this->assertTrue($response->getData(true)['success']);
+        $this->assertSame(0, DB::table('engagement_deliveries')->count());
+        $this->assertNull($this->state()->last_sent_at);
+        $this->expectException(\Illuminate\Validation\ValidationException::class);
+        $controller->test(new Request(['rule' => 'watchlist', 'token' => ' ', 'movie_id' => 'm1']), $templates, $push);
+    }
+
+    public function test_rate_lock_contention_defers_without_sending_then_respects_cap(): void
+    {
+        $id = $this->delivery();
+        $push = Mockery::mock(FCMNotificationController::class);
+        $push->shouldNotReceive('sendToToken');
+        $lock = Cache::lock('engagement:push-rate-lock', 10);
+        $lock->get();
+        try {
+            $this->send($id, $push);
+        } finally {
+            $lock->release();
+        }
+        $this->assertSame('rate_limit', DB::table('engagement_deliveries')->find($id)->reason);
+        DB::table('engagement_deliveries')->where('id', $id)->update(['scheduled_at' => now('UTC')]);
+        config(['engagement.pushes_per_minute' => 1]);
+        \Illuminate\Support\Facades\RateLimiter::hit('engagement:push-rate', 60);
+        $this->send($id, $push);
+        $this->assertSame('pending', DB::table('engagement_deliveries')->find($id)->status);
+    }
+
+    public function test_smart_admin_routes_require_authenticated_admin(): void
+    {
+        $count = 0;
+        foreach (\Illuminate\Support\Facades\Route::getRoutes() as $route) {
+            if (str_contains($route->uri(), 'admin/notifications/smart')) {
+                $count++;
+                $this->assertContains('auth.token', $route->gatherMiddleware());
+                $this->assertContains('admin.token', $route->gatherMiddleware());
+            }
+        }
+        $this->assertSame(3, $count);
+    }
+
+    public function test_manual_push_failure_is_an_http_error_instead_of_false_success(): void
+    {
+        config(['firebase.credentials' => '/nonexistent-notification-test.json']);
+        $response = app(FCMNotificationController::class)->send(new Request(['title' => 'Test', 'token' => 'test-device']));
+        $this->assertSame(502, $response->getStatusCode());
+        $this->assertFalse($response->getData(true)['success']);
+    }
+
+    public function test_disabled_high_priority_rule_allows_watchlist_and_is_rechecked_by_worker(): void
+    {
+        $id = $this->delivery();
+        DB::table('engagement_rules')->insert(['rule' => 'continue_watching', 'enabled' => false, 'title_template' => 'Zo Stream', 'body_template' => '{title}']);
+        $push = Mockery::mock(FCMNotificationController::class);
+        $push->shouldNotReceive('sendToToken');
+        $this->send($id, $push);
+        $this->assertSame('cancelled', DB::table('engagement_deliveries')->find($id)->status);
+        DB::table('wist_list')->insert(['uid' => 'u1', 'movie_id' => 'm2', 'created_at' => '2026-11-10 10:00:00']);
+        $this->assertSame('watchlist', $this->candidate()['rule']);
     }
 
     private function activity(string $at): void

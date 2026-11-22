@@ -12,9 +12,12 @@ class EngagementRules
 {
     private array $subscriptions = [];
 
+    private array $ruleSettings = [];
+
     public function candidate(object $user, CarbonImmutable $now): ?array
     {
         unset($this->subscriptions[$user->user_id]);
+        $this->ruleSettings = app(EngagementTemplates::class)->all();
         if (! $user->enabled || ! $user->last_active_at || $user->unopened_count >= 5) {
             return null;
         }
@@ -183,7 +186,7 @@ class EngagementRules
 
     private function usable(object $user, array $candidate, CarbonImmutable $now): bool
     {
-        if (CarbonImmutable::parse($candidate['eligible_at'], 'UTC')->gt($now) || ! $this->content($user, $candidate['content_type'], $candidate['content_id'])) {
+        if (! ($this->ruleSettings[$candidate['rule']]['enabled'] ?? true) || CarbonImmutable::parse($candidate['eligible_at'], 'UTC')->gt($now) || ! $this->content($user, $candidate['content_type'], $candidate['content_id'])) {
             return false;
         }
 

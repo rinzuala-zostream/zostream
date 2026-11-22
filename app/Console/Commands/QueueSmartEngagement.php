@@ -43,6 +43,13 @@ class QueueSmartEngagement extends Command
                     $this->line(json_encode(['user' => hash('sha256', $user->user_id), 'rule' => $candidate['rule'],
                         'content_id' => $candidate['content_id'], 'scheduled_at_ist' => $slot->setTimezone(config('engagement.timezone'))->toIso8601String()], JSON_THROW_ON_ERROR));
                     if (! $dryRun && ! DB::table('engagement_deliveries')->where('user_id', $user->user_id)->whereIn('status', ['pending', 'queued', 'sending'])->exists()) {
+                        // Only unsent cancelled journeys may be revived. Sent/failed/sending
+                        // rows retain their identity and are never blindly retried.
+                        DB::table('engagement_deliveries')->where('dedupe_key', $rules->dedupe($user->user_id, $candidate))
+                            ->where('status', 'cancelled')->update([
+                                ...array_diff_key($candidate, ['eligible_at' => true]),
+                                'status' => 'pending', 'reason' => null, 'scheduled_at' => $slot, 'updated_at' => $now,
+                            ]);
                         DB::table('engagement_deliveries')->insertOrIgnore([
                             'user_id' => $user->user_id, 'dedupe_key' => $rules->dedupe($user->user_id, $candidate),
                             ...array_diff_key($candidate, ['eligible_at' => true]),

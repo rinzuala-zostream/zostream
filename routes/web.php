@@ -11,6 +11,11 @@ use Illuminate\Support\Facades\Storage;
 
 require __DIR__.'/isp.php';
 
+Route::get('/network-check', [\App\Http\Controllers\NetworkDiagnosticController::class, 'show'])
+    ->middleware('throttle:20,1')->name('network-check');
+Route::post('/network-check/{id}/report', [\App\Http\Controllers\NetworkDiagnosticController::class, 'report'])
+    ->whereUuid('id')->middleware(['signed:relative', 'throttle:30,1'])->name('network-check.report');
+
 Route::get('/', function () {
     return view('welcome');
 });

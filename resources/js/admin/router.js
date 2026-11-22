@@ -60,6 +60,7 @@ const router = createRouter({
                 { path: 'manage/:resource', component: ResourceListPage },
                 { path: 'manage/:resource/new', component: ResourceEditorPage },
                 { path: 'manage/:resource/:id', component: ResourceEditorPage },
+                { path: 'notifications/smart', component: () => import('./pages/SmartNotificationsPage.vue') },
                 { path: 'tools/:tool', component: ToolsPage },
                 { path: 'whatsapp', component: WhatsAppPage },
                 { path: 'ads/submissions', component: AdSubmissionsPage },

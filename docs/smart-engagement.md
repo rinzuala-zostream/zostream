@@ -71,7 +71,7 @@ the conservative defaults, then monitor queue age, planner duration and DB laten
 Both switches default to false. No production configuration or database is changed
 by adding the implementation to the repository.
 
-1. Deploy the code and apply the two new migrations using the normal deployment
+1. Deploy the code and apply the engagement migrations using the normal deployment
    process. The new tables use the primary DB; no analytics-history migration is needed.
 2. Use a shared cache supporting atomic locks (the existing Redis cache is suitable).
    All web, scheduler and worker instances must share it.
@@ -114,6 +114,43 @@ be recovered by the planner. A row in `sending` after a crash represents uncerta
 external delivery and is deliberately not automatically resent. Inspect it using
 FCM/provider evidence before resolving it. A failed FCM attempt is also not retried
 blindly; invalid/expired tokens must be refreshed through the existing push-token API.
+
+## Vue admin controls
+
+Open **Engagement → Smart notifications** (`/admin/notifications/smart`). Each of
+six rules has an enabled switch, notification title and message template. Use
+`{title}` to insert the actual recommended movie/episode title. Empty templates
+and unknown placeholders are rejected. Defaults remain available before the new
+`2026_11_22_000001_create_engagement_rules_table` migration is applied; saving
+settings requires that migration. Workers read saved templates without a restart.
+
+Disabling a rule cancels pending/queued deliveries for that rule. Enabling it again
+allows still-eligible, unsent cancelled journeys to be planned on their next check.
+Sent, failed and uncertain sends are never automatically retried. The global server
+rollout switches, quiet hours, recipient preferences and cooldowns still apply.
+
+The page includes a live text preview, per-rule accepted/opened/played counts for
+rows created within the last 30 days, and a test action using a saved template.
+Tests require a published movie public ID and an explicit device FCM token; they
+cannot broadcast and do not create engagement deliveries or change smart counters.
+An accepted test push still counts as existing push activity for that device.
+Test pushes are marked `smart_engagement_test`, without a real notification ID.
+
+Admin-authenticated routes:
+
+```text
+GET  /api/v4/admin/notifications/smart
+PUT  /api/v4/admin/notifications/smart/{rule}
+POST /api/v4/admin/notifications/smart/test
+```
+
+Movie pushes include the legacy `key` and explicit `movie_id` for the movie/series
+public ID. Episode reminders route to their parent series details, rather than
+mistaking an episode ID for a movie ID. Android retains that destination through
+startup verification and login; Apple supports both payload formats. Both mobile
+clients report smart `notification_id` with notification-open analytics. Deploy the
+updated app builds for those client changes to take effect. Playback access and
+profile checks continue through the normal details flow.
 
 ## App contract
 

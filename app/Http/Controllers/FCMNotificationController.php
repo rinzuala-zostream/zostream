@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Kreait\Firebase\Factory;
 use Kreait\Firebase\Messaging\CloudMessage;
@@ -9,7 +10,7 @@ use Kreait\Firebase\Messaging\Notification;
 
 class FCMNotificationController extends Controller
 {
-    public function send(Request $request): array
+    public function send(Request $request): JsonResponse
     {
         $validated = $request->validate([
             'title' => 'nullable|string|max:200',
@@ -21,7 +22,7 @@ class FCMNotificationController extends Controller
             'data' => 'nullable|array',
         ]);
 
-        return $this->sendNotification(
+        $result = $this->sendNotification(
             token: $validated['token'] ?? null,
             topic: $validated['topic'] ?? 'all',
             title: $validated['title'] ?? '',
@@ -30,6 +31,8 @@ class FCMNotificationController extends Controller
             key: $validated['key'] ?? null,
             data: $validated['data'] ?? [],
         );
+
+        return response()->json($result + ['message' => $result['success'] ? 'Notification accepted by FCM.' : 'Notification delivery failed.'], $result['success'] ? 200 : 502);
     }
 
     public function sendToToken(
@@ -134,6 +137,16 @@ class FCMNotificationController extends Controller
 
         if ($key !== null && $key !== '') {
             $messageData['key'] = $key;
+        }
+
+        // Keep the legacy key while supplying explicit movie fields to newer apps.
+        // Chat and support routing keys are commands, never movie IDs.
+        $routingKey = $messageData['key'] ?? '';
+        $reserved = ['chat_invite', 'chat_message', 'chat_activity', 'customer_support'];
+        if (! in_array($routingKey, $reserved, true) && preg_match('/^[A-Za-z0-9][A-Za-z0-9._-]{0,190}$/D', $routingKey)) {
+            $messageData['movie_id'] = $routingKey;
+        } elseif ($routingKey === '' && ! empty($messageData['movie_id'])) {
+            $messageData['key'] = $messageData['movie_id'];
         }
 
         $apns = [

@@ -507,6 +507,9 @@ Route::prefix('v4')
                     Route::post('/app-releases/{platform}/upload', \App\Http\Controllers\Api\V4\DesktopReleaseUploadController::class)
                         ->middleware('admin.config-whitelist');
                     Route::post('/notifications/push', [FCMNotificationController::class, 'send']);
+                    Route::get('/notifications/smart', [\App\Http\Controllers\Api\V4\AdminEngagementController::class, 'index']);
+                    Route::put('/notifications/smart/{rule}', [\App\Http\Controllers\Api\V4\AdminEngagementController::class, 'update']);
+                    Route::post('/notifications/smart/test', [\App\Http\Controllers\Api\V4\AdminEngagementController::class, 'test'])->middleware('throttle:5,1');
                     Route::post('/whatsapp/send', [AdminWhatsAppController::class, 'send']);
                     Route::get('/whatsapp/settings', [AdminWhatsAppInboxController::class, 'settings']);
                     Route::put('/whatsapp/settings', [AdminWhatsAppInboxController::class, 'saveSettings']);

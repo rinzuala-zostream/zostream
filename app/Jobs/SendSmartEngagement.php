@@ -104,13 +104,24 @@ class SendSmartEngagement implements ShouldQueue
 
                 return;
             }
-            // Global cap for this optional queue; existing push paths never use it.
-            if (RateLimiter::tooManyAttempts('engagement:push-rate', max(1, (int) config('engagement.pushes_per_minute')))) {
+            $text = app(\App\Services\Engagement\EngagementTemplates::class)->render($delivery->rule, $content['title']);
+            // Serialize the shared counter across workers, independently of user locks.
+            $rateLock = Cache::lock('engagement:push-rate-lock', 10);
+            if (! $rateLock->get()) {
                 $this->postpone($now->addMinutes(2), 'rate_limit');
 
                 return;
             }
-            RateLimiter::hit('engagement:push-rate', 60);
+            try {
+                if (RateLimiter::tooManyAttempts('engagement:push-rate', max(1, (int) config('engagement.pushes_per_minute')))) {
+                    $this->postpone($now->addMinutes(2), 'rate_limit');
+
+                    return;
+                }
+                RateLimiter::hit('engagement:push-rate', 60);
+            } finally {
+                $rateLock->release();
+            }
             $now = CarbonImmutable::now('UTC');
             if ($timing->quiet($now)) {
                 $this->postpone($timing->nextSlot($now, $user->watch_hours), 'quiet_hours');
@@ -123,7 +134,7 @@ class SendSmartEngagement implements ShouldQueue
             }
             // Persist the claim before I/O. An ambiguous network failure must not
             // automatically send the same push twice. FCM acceptance is not device delivery.
-            $result = $push->sendToToken($account->token, 'Zo Stream', $this->body($delivery->rule, $content['title']),
+            $result = $push->sendToToken($account->token, $text['title'], $text['body'],
                 $content['image'], $content['movie_id'], [
                     'type' => 'smart_engagement', 'rule' => $delivery->rule, 'notification_id' => (string) $delivery->id,
                     'content_id' => $delivery->content_id, 'content_type' => $delivery->content_type,
@@ -163,17 +174,5 @@ class SendSmartEngagement implements ShouldQueue
         DB::table('engagement_deliveries')->where('id', $this->deliveryId)->update([
             'status' => $status, 'reason' => $reason, 'sent_at' => $sentAt, 'updated_at' => now('UTC'),
         ]);
-    }
-
-    private function body(string $rule, string $title): string
-    {
-        return match ($rule) {
-            'continue_watching' => $title.' kha i la en zawh lo! I chawlhsan atangin en chhunzawm leh rawh.',
-            'watchlist' => 'I watchlist-a '.$title.' kha i la en lo. Hun remchangah lo en teh!',
-            'unused_subscription' => 'I Zo Stream plan kha hmang tangkai rawh! '.$title.' lo en teh.',
-            'comeback' => 'Zo Stream-ah lo kir leh rawh! '.$title.' kan thlang sak che.',
-            'search_interest' => 'I duh zawng nen inmil '.$title.' kan thlang sak che. Lo en teh!',
-            default => 'I en tawh nen inmil '.$title.' lo en leh teh!',
-        };
     }
 }

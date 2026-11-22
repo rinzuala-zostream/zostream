@@ -24,6 +24,7 @@ class NotificationImagePayloadTest extends TestCase
         $this->assertSame('PRIORITY_HIGH', $message['android']['notification']['notification_priority']);
         $this->assertSame('default', $message['android']['notification']['sound']);
         $this->assertSame('movie-123', $message['data']['key']);
+        $this->assertSame('movie-123', $message['data']['movie_id']);
     }
 
     public function test_direct_invitation_keeps_recipient_and_data_with_an_image(): void
@@ -62,6 +63,15 @@ class NotificationImagePayloadTest extends TestCase
             $message = $this->message('recipient-token', null, null, $key);
             $this->assertSame($channel, $message['android']['notification']['channel_id']);
         }
+    }
+
+    public function test_explicit_movie_payload_keeps_legacy_routing_without_using_episode_id(): void
+    {
+        $message = $this->message('device', null, null, null, ['movie_id' => 'series-1', 'content_id' => 'episode-2', 'content_type' => 'episode']);
+        $this->assertSame('series-1', $message['data']['key']);
+        $this->assertSame('series-1', $message['data']['movie_id']);
+        $chat = $this->message('device', null, null, 'chat_message', ['room_id' => '10']);
+        $this->assertArrayNotHasKey('movie_id', $chat['data']);
     }
 
     private function message(?string $token, ?string $topic, ?string $image, ?string $key, array $data = []): array
