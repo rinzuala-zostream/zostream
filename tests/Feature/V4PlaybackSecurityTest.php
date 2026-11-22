@@ -233,6 +233,32 @@ class V4PlaybackSecurityTest extends TestCase
         $this->assertSame('active', $device->fresh()->status);
     }
 
+    public function test_replaced_stop_token_is_identifiable_without_stopping_the_current_session(): void
+    {
+        $device = $this->device('user-a', 'device-a', 'active');
+        $stream = $this->stream($device, 'replacement-token');
+        $watchPositions = Mockery::mock(WatchPositionController::class);
+        $watchPositions->shouldNotReceive('save');
+
+        $request = Request::create('/api/v4/playback/sessions/stop', 'POST', [
+            'auth_user_id' => 'user-a',
+            'stream_token' => 'old-token',
+            'watch_position' => 10_000,
+            'content_type' => 'movie',
+            'movie_id' => 'movie-1',
+            'duration' => 100_000,
+        ]);
+        $request->headers->set('Device-Token', $device->device_token);
+
+        $response = $this->controller($watchPositions)->stop($request);
+
+        $this->assertSame(404, $response->getStatusCode());
+        $this->assertSame('STREAM_SESSION_NOT_FOUND', $response->getData(true)['code']);
+        $this->assertSame('replacement-token', $stream->fresh()->stream_token);
+        $this->assertSame('active', $stream->fresh()->status);
+        $this->assertSame('active', $device->fresh()->status);
+    }
+
     public function test_stop_saves_progress_for_a_previously_inactive_stream(): void
     {
         $device = $this->device('user-a', 'device-a', 'active');

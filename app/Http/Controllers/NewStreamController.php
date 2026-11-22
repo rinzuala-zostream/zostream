@@ -1021,6 +1021,7 @@ class NewStreamController extends Controller
 
                 return response()->json([
                     'status' => 'error',
+                    'code' => 'STREAM_SESSION_NOT_FOUND',
                     'title' => 'Session Not Found',
                     'message' => 'This streaming session does not belong to this device or has been replaced.',
                 ], 404);
