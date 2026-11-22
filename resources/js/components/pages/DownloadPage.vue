@@ -128,7 +128,16 @@ async function selectDevice(key) {
                     <div class="instructions-label"><span aria-hidden="true">01 — 03</span> HOW TO INSTALL</div>
                     <h3 id="install-title">Get started in three steps.</h3>
                     <ol><li v-for="(step, index) in steps" :key="`${releaseKey}-${index}`"><span class="instruction-number">{{ index + 1 }}</span><div><h4>{{ step.title }}</h4><p>{{ step.text }}</p></div></li></ol>
-                    <p v-if="active.key === 'mac'" class="installer-note">This app hasn’t been notarized by Apple. If macOS blocks it from opening, go to <strong>System Settings → Privacy &amp; Security</strong> and click <strong>Open Anyway</strong>.</p>
+                    <div v-if="active.key === 'mac' && !isStore" class="mac-install-guide">
+                        <p class="installer-note">This app hasn’t been notarized by Apple. If macOS blocks it from opening, go to <strong>System Settings → Privacy &amp; Security</strong> and click <strong>Open Anyway</strong>.</p>
+                        <figure class="mac-security-screenshot">
+                            <a href="/images/macos-open-anyway.png" target="_blank" rel="noopener noreferrer">
+                                <img :src="'/images/macos-open-anyway.png'" alt="macOS System Settings with Privacy &amp; Security selected and the Open Anyway button highlighted for Zo Stream." width="1301" height="1209" loading="lazy" decoding="async" />
+                                <span>View full-size image <span aria-hidden="true">↗</span></span>
+                            </a>
+                            <figcaption>Select Privacy &amp; Security, then click Open Anyway as highlighted above.</figcaption>
+                        </figure>
+                    </div>
                 </template>
                 <template v-else>
                     <div class="instructions-label">ZO STREAM DOWNLOAD</div>

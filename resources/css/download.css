@@ -55,6 +55,13 @@
 .download-instructions li p { margin: 0; color: #637681; font-size: 12px; line-height: 1.75; }
 .installer-note { margin: 20px 0 0; padding: 12px 14px; border-radius: 8px; background: #e4ebef; color: #617480; font-size: 11px; line-height: 1.8; }
 .installer-note strong { color: #3e5866; font-weight: 650; }
+.mac-security-screenshot { margin: 14px 0 0; }
+.mac-security-screenshot > a { display: block; overflow: hidden; border: 1px solid #cbd6dc; border-radius: 10px; background: #fff; }
+.mac-security-screenshot img { display: block; width: 100%; height: auto; }
+.mac-security-screenshot > a > span { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border-top: 1px solid #e1e8eb; color: #335b70; font-size: 12px; font-weight: 600; }
+.mac-security-screenshot > a:hover > span { text-decoration: underline; text-underline-offset: 3px; }
+.mac-security-screenshot figcaption { margin-top: 9px; color: #637681; font-size: 11px; line-height: 1.75; }
+
 .instructions-placeholder { margin: 0; color: #637681; font-size: 13px; line-height: 1.8; }
 .instructions-help { display: flex; gap: 10px; margin-top: 20px; color: #335b70; font-size: 12px; font-weight: 600; }
 .installation-help { display: flex; align-items: center; gap: 11px; padding-top: 18px; margin-top: auto; border-top: 1px solid #d9e2e7; color: #4b6776; }
