@@ -8,6 +8,7 @@ import SubscriptionCreateForm from '../components/SubscriptionCreateForm.vue';
 import { api, queryString } from '../lib/api';
 import { normalizeForSubmit, resources } from '../lib/resources';
 import { deviceTypeLabel, optionLabel } from '../lib/platforms';
+import { loadSubscriptionPlans } from '../lib/subscription-plans';
 
 const route = useRoute(); const router = useRouter();
 const key = computed(() => route.params.resource); const resource = computed(() => resources[key.value]);
@@ -90,8 +91,7 @@ function fill(record) {
 }
 async function loadPlans() {
     if (!['subscriptions'].includes(key.value)) return;
-    const response = valueData(await api('/admin/plans?per_page=100'));
-    plans.value = Array.isArray(response) ? response : response.data || [];
+    plans.value = await loadSubscriptionPlans(api);
 }
 async function load() {
     init(); loading.value = true;
@@ -372,7 +372,7 @@ onMounted(load);
                             </section>
                             <small>Select one or more plans. Start/end dates can be left blank to use each plan duration.</small>
                         </div>
-                        <select v-else-if="field.relation === 'plan'" v-model="model[field.name]" :required="field.required"><option value="">Choose a plan…</option><option v-for="plan in plans" :key="plan.id" :value="plan.id">{{ plan.name }} · {{ deviceTypeLabel(plan.device_type) }} · ₹{{ plan.price }}</option></select>
+                        <select v-else-if="field.relation === 'plan'" v-model="model[field.name]" :required="field.required"><option value="">Choose a plan…</option><optgroup v-for="[deviceType, devicePlans] in plansByDevice" :key="deviceType" :label="deviceTypeLabel(deviceType)"><option v-for="plan in devicePlans" :key="plan.id" :value="plan.id">{{ plan.name }} · {{ deviceTypeLabel(plan.device_type) }} · ₹{{ plan.price }}</option></optgroup></select>
                         <select v-else-if="field.type==='select'" v-model="model[field.name]" :required="field.required"><option value="">Choose…</option><option v-for="option in field.options" :key="option" :value="option">{{ optionLabel(field, option) }}</option></select>
                         <ArtworkUpload v-else-if="field.upload" v-model="model[field.name]" :field="field" :file="files[field.name]" @file-change="setUpload(field.name, $event)" />
                         <input v-else v-model="model[field.name]" :type="field.type" :readonly="field.readOnly" :required="field.required" :placeholder="field.placeholder" :step="field.type==='number'?'any':undefined" :min="field.min" :max="field.max">
