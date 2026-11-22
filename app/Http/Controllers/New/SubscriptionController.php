@@ -1052,34 +1052,27 @@ class SubscriptionController extends Controller
      */
     public function update(Request $request, $id)
     {
+        $validated = $request->validate([
+            'plan_id' => 'sometimes|required|integer|exists:n_plans,id',
+            'start_at' => 'nullable|date',
+            'end_at' => 'nullable|date',
+            'is_active' => 'nullable|boolean',
+            'renewed_by' => 'nullable|string|max:225',
+        ]);
+        // Omitted/blank dates preserve the existing paid validity period.
+        $validated = array_filter($validated, fn ($value) => $value !== null);
         try {
-            $subscription = Subscription::find($id);
-
-            if (!$subscription) {
-                return $this->respond([
-                    'status' => 'error',
-                    'message' => 'Subscription not found'
-                ], 404);
-            }
-
-            $validated = $request->validate([
-                'plan_id' => 'nullable|integer|exists:n_plans,id',
-                'start_at' => 'nullable|date',
-                'end_at' => 'nullable|date',
-                'is_active' => 'nullable|boolean',
-                'renewed_by' => 'nullable|string|max:225',
-            ]);
-
-            $subscription->update($validated);
-
+            $subscription = app(\App\Services\AdminSubscriptionUpdater::class)->update((int) $id, $validated, $request->input('auth_user_id'));
             return $this->respond([
                 'status' => 'success',
                 'message' => 'Subscription updated successfully',
-                'data' => $subscription
+                'data' => $subscription,
             ]);
-        } catch (Exception $e) {
+        } catch (\Illuminate\Validation\ValidationException | \Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
             Log::error('Subscription update error', ['id' => $id, 'error' => $e->getMessage()]);
-            return $this->errorResponse('Failed to update subscription', $e);
+            return $this->respond(['status' => 'error', 'message' => 'Failed to update subscription'], 500);
         }
     }
 

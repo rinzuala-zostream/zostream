@@ -735,6 +735,32 @@ class NewStreamController extends Controller
     // 🔁 Ping stream
     public function ping(Request $request)
     {
+        // Keep the legacy heartbeat response, but never acknowledge a known
+        // session whose entitlement was revoked by an admin edit or plan switch.
+        $knownStream = ActiveStream::with(['device', 'subscription.plan'])
+            ->where('stream_token', trim((string) $request->input('stream_token')))->first();
+        if ($knownStream) {
+            $device = $knownStream->device;
+            $subscription = $knownStream->subscription;
+            $revoked = $knownStream->status !== 'active' || ! $device || $device->status === 'blocked';
+            if ($request->filled('auth_user_id') && $device
+                && (string) $device->user_id !== (string) $request->input('auth_user_id')) $revoked = true;
+            $requestDevice = $request->header('Device-Token') ?: $request->input('auth_device_id');
+            if ($requestDevice && $device && ! hash_equals((string) $device->device_token, (string) $requestDevice)) $revoked = true;
+            if ($knownStream->subscription_id) {
+                $revoked = $revoked || ! $subscription || ! $subscription->isActive()
+                    || ! $subscription->plan
+                    || (int) $device?->subscription_id !== (int) $knownStream->subscription_id
+                    || strtolower((string) $device?->device_type) !== strtolower((string) $subscription->plan?->device_type);
+            }
+            if ($revoked) {
+                return response()->json([
+                    'status' => 'error', 'code' => 'SUBSCRIPTION_CHANGED',
+                    'title' => 'Playback Access Changed',
+                    'message' => 'This playback session is no longer active. Restart playback with your current plan.',
+                ], 403);
+            }
+        }
         return response()->json([
             'status' => 'success',
             'message' => 'Streaming session is active.',

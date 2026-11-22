@@ -1010,6 +1010,186 @@ class V4PlaybackSecurityTest extends TestCase
         return [['mobile'], ['browser'], ['tv'], ['desktop']];
     }
 
+    private function switchFixture(): array
+    {
+        DB::table('user')->insert(['uid' => 'switch-user']);
+        $mobile = Plan::create(['name' => 'Mobile', 'device_type' => 'mobile', 'device_limit' => 3, 'price' => 99, 'duration_days' => 30, 'is_active' => true]);
+        $desktop = Plan::create(['name' => 'Desktop', 'device_type' => 'desktop', 'device_limit' => 1, 'price' => 199, 'duration_days' => 90, 'is_active' => true]);
+        $subscription = Subscription::create(['user_id' => 'switch-user', 'plan_id' => $mobile->id, 'start_at' => now()->subDays(3), 'end_at' => now()->addDays(12), 'is_active' => true]);
+        $owner = $this->device('switch-user', 'switch-mobile', 'active');
+        $owner->update(['subscription_id' => $subscription->id]);
+        $target = $this->device('switch-user', 'switch-desktop', 'active');
+        $target->update(['device_type' => 'desktop']);
+        $shared = $this->device('switch-user', 'switch-shared', 'active');
+        $shared->update(['device_type' => 'desktop', 'is_owner_device' => false]);
+        $blocked = $this->device('switch-user', 'switch-blocked', 'blocked');
+        $blocked->update(['device_type' => 'desktop', 'is_owner_device' => false]);
+        $stream = $this->stream($owner, 'switch-stream');
+        $stream->update(['subscription_id' => $subscription->id]);
+        return compact('mobile', 'desktop', 'subscription', 'owner', 'target', 'shared', 'blocked', 'stream');
+    }
+
+    private function updateSubscription(int $id, array $payload)
+    {
+        $controller = new NewSubscriptionController(Mockery::mock(RazorpayController::class), $this->controller());
+        return $controller->update(Request::create('/admin/subscriptions/'.$id, 'PUT', $payload), $id);
+    }
+
+    public function test_admin_switch_rebinds_desktop_and_revokes_old_playback_without_extending_paid_time(): void
+    {
+        extract($this->switchFixture());
+        $subscription->refresh();
+        $dates = [$subscription->getRawOriginal('start_at'), $subscription->getRawOriginal('end_at')];
+        DB::table('n_payment_histories')->insert(['user_id' => 'switch-user', 'subscription_id' => $subscription->id,
+            'plan_id' => $mobile->id, 'device_type' => 'mobile', 'amount' => 99, 'status' => 'success']);
+        $payment = (array) DB::table('n_payment_histories')->first();
+        $unrelated = $this->stream($target, 'free-playback');
+        $response = $this->updateSubscription($subscription->id, ['plan_id' => $desktop->id]);
+        $this->assertSame(200, $response->getStatusCode(), $response->getContent());
+        $this->assertSame($desktop->id, $subscription->fresh()->plan_id);
+        $this->assertSame($dates, [$subscription->fresh()->getRawOriginal('start_at'), $subscription->fresh()->getRawOriginal('end_at')]);
+        $this->assertNull($owner->fresh()->subscription_id);
+        $this->assertTrue($owner->fresh()->is_owner_device);
+        $this->assertSame($subscription->id, $target->fresh()->subscription_id);
+        $this->assertSame('active', $target->fresh()->status);
+        $this->assertSame('inactive', $shared->fresh()->status);
+        $this->assertSame('blocked', $blocked->fresh()->status);
+        $this->assertSame('stopped', $stream->fresh()->status);
+        $this->assertSame('active', $unrelated->fresh()->status);
+        $this->assertSame($payment, (array) DB::table('n_payment_histories')->first());
+        $this->assertDatabaseCount('n_payment_histories', 1);
+        $this->assertDatabaseHas('n_stream_events', ['subscription_id' => $subscription->id, 'event_type' => 'renew']);
+        // The old device/token cannot acknowledge the stopped paid session.
+        $request = Request::create('/stream/ping', 'POST', ['auth_user_id' => 'switch-user', 'auth_device_id' => 'switch-mobile',
+            'device_id' => 'switch-mobile', 'stream_token' => 'switch-stream', 'subscription_id' => $subscription->id, 'movie_id' => 'movie-1']);
+        $this->assertGreaterThanOrEqual(400, $this->controller()->ping($request)->getStatusCode());
+    }
+
+    public function test_admin_switch_rejects_an_existing_target_subscription_without_side_effects(): void
+    {
+        extract($this->switchFixture());
+        Subscription::create(['user_id' => 'switch-user', 'plan_id' => $desktop->id, 'end_at' => now()->addDays(5), 'is_active' => true]);
+        try {
+            $this->updateSubscription($subscription->id, ['plan_id' => $desktop->id]);
+            $this->fail('Duplicate active category must be rejected.');
+        } catch (\Illuminate\Validation\ValidationException $error) {
+            $this->assertArrayHasKey('plan_id', $error->errors());
+        }
+        $this->assertSame($mobile->id, $subscription->fresh()->plan_id);
+        $this->assertSame($subscription->id, $owner->fresh()->subscription_id);
+        $this->assertSame('active', $stream->fresh()->status);
+        $this->assertDatabaseCount('n_stream_events', 0);
+        $this->assertSame(0, DB::transactionLevel());
+    }
+
+    public function test_admin_same_category_downgrade_resets_shared_access_and_streams(): void
+    {
+        extract($this->switchFixture());
+        $desktop->update(['device_type' => 'mobile']);
+        $shared->update(['device_type' => 'mobile', 'subscription_id' => $subscription->id]);
+        $this->assertSame(200, $this->updateSubscription($subscription->id, ['plan_id' => $desktop->id])->getStatusCode());
+        $this->assertSame($subscription->id, $owner->fresh()->subscription_id);
+        $this->assertSame('active', $owner->fresh()->status);
+        $this->assertSame('inactive', $shared->fresh()->status);
+        $this->assertSame('stopped', $stream->fresh()->status);
+    }
+
+    public function test_admin_switch_rejects_inactive_plans_and_invalid_merged_dates(): void
+    {
+        extract($this->switchFixture());
+        $desktop->update(['is_active' => false]);
+        foreach ([['plan_id' => $desktop->id], ['end_at' => now()->subYear()->toDateString()]] as $payload) {
+            try {
+                $this->updateSubscription($subscription->id, $payload);
+                $this->fail('Invalid edit must be rejected.');
+            } catch (\Illuminate\Validation\ValidationException $error) {
+                $this->assertNotEmpty($error->errors());
+            }
+        }
+        $this->assertSame($mobile->id, $subscription->fresh()->plan_id);
+        $this->assertSame('active', $stream->fresh()->status);
+    }
+
+    public function test_admin_date_edit_preserves_devices_and_deactivation_stops_playback(): void
+    {
+        extract($this->switchFixture());
+        $date = now()->addDays(20)->toDateString();
+        $this->assertSame(200, $this->updateSubscription($subscription->id, ['end_at' => $date])->getStatusCode());
+        $this->assertSame($date.' 23:59:59', $subscription->fresh()->getRawOriginal('end_at'));
+        $this->assertSame('active', $stream->fresh()->status);
+        $this->assertSame($subscription->id, $owner->fresh()->subscription_id);
+        $this->assertSame(200, $this->updateSubscription($subscription->id, ['is_active' => false])->getStatusCode());
+        $this->assertSame('stopped', $stream->fresh()->status);
+        $this->assertDatabaseCount('n_stream_events', 0);
+    }
+
+    public function test_admin_switch_audit_failure_rolls_back_plan_devices_and_streams(): void
+    {
+        extract($this->switchFixture());
+        Schema::drop('n_stream_events');
+        $response = $this->updateSubscription($subscription->id, ['plan_id' => $desktop->id]);
+        $this->assertSame(500, $response->getStatusCode());
+        $this->assertSame($mobile->id, $subscription->fresh()->plan_id);
+        $this->assertSame($subscription->id, $owner->fresh()->subscription_id);
+        $this->assertNull($target->fresh()->subscription_id);
+        $this->assertSame('active', $stream->fresh()->status);
+        $this->assertSame(0, DB::transactionLevel());
+    }
+
+    public function test_admin_switch_retry_keeps_new_sessions_and_creates_only_one_audit_event(): void
+    {
+        extract($this->switchFixture());
+        $this->updateSubscription($subscription->id, ['plan_id' => $desktop->id]);
+        $session = $this->stream($target, 'after-switch');
+        $session->update(['subscription_id' => $subscription->id]);
+        $this->updateSubscription($subscription->id, ['plan_id' => $desktop->id]);
+        $this->assertSame('active', $session->fresh()->status);
+        $this->assertDatabaseCount('n_stream_events', 1);
+        $request = Request::create('/stream/ping', 'POST', ['auth_user_id' => 'switch-user',
+            'auth_device_id' => 'switch-desktop', 'stream_token' => 'after-switch']);
+        $this->assertSame(200, $this->controller()->ping($request)->getStatusCode());
+        $request->merge(['auth_device_id' => 'switch-mobile']);
+        $this->assertSame(403, $this->controller()->ping($request)->getStatusCode());
+    }
+
+    public function test_switch_with_no_registered_target_device_is_ready_for_first_login(): void
+    {
+        extract($this->switchFixture());
+        Devices::where('device_type', 'desktop')->delete();
+        Schema::table('n_devices', fn (Blueprint $table) => $table->string('platform')->nullable());
+        $this->assertSame(200, $this->updateSubscription($subscription->id, ['plan_id' => $desktop->id])->getStatusCode());
+        $resolver = new class {
+            use ResolvesLoginDevices;
+            public function login(UserModel $user, Subscription $subscription): array
+            {
+                return $this->resolveLoginDevice($user, $subscription, 'new-windows-device', 'Windows PC', 'desktop', 'windows');
+            }
+        };
+        $result = $resolver->login(UserModel::where('uid', 'switch-user')->firstOrFail(), $subscription->fresh());
+        $this->assertTrue($result['is_owner_device']);
+        $this->assertSame($subscription->id, $result['device']->subscription_id);
+        $this->assertSame('desktop', $result['device']->device_type);
+    }
+
+    public function test_switch_device_migration_preserves_identity_and_rejects_lossy_rollback(): void
+    {
+        extract($this->switchFixture());
+        // Exercise migration against a legacy required subscription column.
+        Devices::whereNull('subscription_id')->delete();
+        Schema::table('n_devices', fn (Blueprint $table) => $table->unsignedBigInteger('subscription_id')->nullable(false)->change());
+        $migration = require database_path('migrations/2026_11_22_000001_allow_unbound_subscription_devices.php');
+        $migration->up();
+        $this->updateSubscription($subscription->id, ['plan_id' => $desktop->id]);
+        $this->assertNull($owner->fresh()->subscription_id);
+        try {
+            $migration->down();
+            $this->fail('Rollback must preserve unbound devices.');
+        } catch (\RuntimeException $error) {
+            $this->assertStringContainsString('unbound devices', $error->getMessage());
+        }
+        $this->assertDatabaseHas('n_devices', ['device_token' => 'switch-mobile', 'is_owner_device' => true]);
+    }
+
     private function controller(?WatchPositionController $watchPositions = null): NewStreamController
     {
         return new NewStreamController(

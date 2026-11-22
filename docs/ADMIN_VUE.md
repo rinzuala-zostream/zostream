@@ -128,3 +128,42 @@ the full 512 MB application limit, set PHP `upload_max_filesize` to at least `51
 PHP `post_max_size` to at least `520M`, and the reverse proxy request-body limit
 to at least 520 MB (for example, Nginx `client_max_body_size 520m`). Smaller server
 limits still apply and are reported as upload errors in the form.
+
+## Editing and switching subscriptions
+
+In Subscribers → Edit, choose a plan from Mobile, TV, Browser or Desktop (Mac /
+Windows) and save. All pages of plans are loaded. The account is read-only;
+payment fields are shown only when creating a subscription with payment.
+
+A plan switch preserves paid start/expiry dates unless the admin explicitly
+edits them. It does not charge the customer, recalculate remaining value or
+rewrite historical payments. Expired subscriptions remain expired unless their
+validity is explicitly extended. Switching to an inactive plan or duplicating
+another active subscription in the target category returns a validation error.
+
+The switch runs in a database transaction: stop the subscription's active
+sessions, remove the previous category's bindings, and bind registered devices
+in the new category. Existing owners remain owners, shared devices return to
+inactive, and blocked devices stay blocked. Device identities and playback
+history are retained. With no target device registered, sign in on that category
+to bind the subscription using the existing login flow. Same-category plan
+changes also reset shared seats so a downgrade cannot retain the old allowance.
+Switches are audited in `n_stream_events` with action `admin_plan_switch`; any
+failure rolls back the plan, sessions, devices and audit together. Retrying a
+saved plan does not repeat the reset. Deactivation or shortening validity into
+the past also stops current subscription sessions.
+
+Playback heartbeats reject known stopped sessions, revoked bindings and inactive
+subscriptions while retaining the legacy response format. Playback revocation
+is observed at the next heartbeat; already buffered media is not recalled.
+
+Apply `2026_11_22_000001_allow_unbound_subscription_devices.php` through the normal
+deployment migration step before using category switches. It makes
+`n_devices.subscription_id` nullable so login identities survive removal of an
+entitlement. Rollback refuses to discard unbound devices.
+
+Validation: `php vendor/bin/phpunit tests/Feature/V4PlaybackSecurityTest.php
+ tests/Feature/V4MobileAdapterTest.php tests/Feature/SubscriptionMaintenanceTest.php
+ tests/Feature/DesktopDeviceMigrationTest.php` and
+`node --test tests/frontend/subscription-*.test.mjs`. Build with
+`node node_modules/vite/bin/vite.js build` (the local `.bin/vite` stub is empty).

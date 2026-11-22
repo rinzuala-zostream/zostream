@@ -14,6 +14,16 @@ const route = useRoute(); const router = useRouter();
 const key = computed(() => route.params.resource); const resource = computed(() => resources[key.value]);
 const editing = computed(() => route.params.id && route.params.id !== 'new');
 const creatingSubscription = computed(() => key.value === 'subscriptions' && !editing.value);
+const editingSubscription = computed(() => key.value === 'subscriptions' && editing.value);
+const visibleFields = computed(() => {
+    const fields = resource.value?.fields || [];
+    if (!editingSubscription.value) return fields.filter(field => !(key.value === 'legal' && field.name === 'sections'));
+    return fields.filter(field => ['user_id', 'plan_id', 'start_at', 'end_at', 'renewed_by', 'is_active'].includes(field.name))
+        .map(field => field.name === 'user_id' ? { ...field, readOnly: true } : field);
+});
+const switchingPlan = computed(() => editingSubscription.value && currentRecord.value
+    && String(model.plan_id) !== String(currentRecord.value.plan_id));
+
 const model = reactive({}); const loading = ref(false); const saving = ref(false); const error = ref(''); const notice = ref('');
 const relationQuery = ref(''); const relationBusy = ref(false); const relationResults = ref([]); const plans = ref([]);
 const existingFeatures = ref([]); const existingOptions = ref([]); let relationTimer;
@@ -269,6 +279,13 @@ async function save() {
     try {
         if (key.value === 'legal') model.sections = JSON.stringify(legalSections.value);
         const payload = normalizeForSubmit(key.value, model);
+        if (editingSubscription.value) {
+            const editable = new Set(['plan_id', 'start_at', 'end_at', 'is_active', 'renewed_by']);
+            Object.keys(payload).forEach(name => { if (!editable.has(name)) delete payload[name]; });
+            for (const date of ['start_at', 'end_at']) {
+                if (payload[date] === storedDateInputValue(currentRecord.value?.[date])) delete payload[date];
+            }
+        }
         if (key.value === 'legal' && (!payload.sections?.length || payload.sections.some(section => !section.heading?.trim() || !section.body?.trim()))) throw new Error('Every legal section needs a heading and content.');
         if (payload.start_at && payload.end_at && new Date(payload.end_at) < new Date(payload.start_at)) throw new Error('End date cannot be earlier than start date.');
         let planFeatures = []; let discount = 0;
@@ -319,6 +336,11 @@ onMounted(load);
         <div v-if="loading" class="admin-loading">Loading record…</div>
         <SubscriptionCreateForm v-else-if="creatingSubscription" :model="model" :plans="plans" :saving="saving" @save="save" />
         <form v-else class="admin-editor admin-panel" @submit.prevent="save">
+            <section v-if="editingSubscription" class="admin-current-record-section">
+                <h2>{{ switchingPlan ? 'Switch subscription plan' : 'Subscription access' }}</h2>
+                <p>Switching keeps the existing start and expiry dates unless you edit them below. It does not charge the user or change payment history.</p>
+                <p v-if="switchingPlan">Saving stops current subscription playback and resets shared access for the selected device category. When changing categories, old devices lose this subscription binding. The existing owner can use the new category; if no device is registered there, sign in on that device first. Blocked devices stay blocked.</p>
+            </section>
             <section v-if="relationContext" class="admin-current-record-section">
                 <article class="admin-current-record">
                     <p>{{ relationContext.eyebrow }}</p>
@@ -327,7 +349,7 @@ onMounted(load);
                     <div><b v-for="fact in relationContext.facts" :key="fact">{{ fact }}</b></div>
                 </article>
             </section>
-            <section v-if="['subscriptions','seasons','episodes','banners'].includes(key)" class="admin-relation-picker">
+            <section v-if="['subscriptions','seasons','episodes','banners'].includes(key) && !editingSubscription" class="admin-relation-picker">
                 <label><span>{{ relationSearchLabel }}</span><input v-model="relationQuery" type="search" :placeholder="relationContext ? 'Search only if you want to change this link…' : 'Type at least 2 characters…'" @input="queueRelationSearch"></label>
                 <small v-if="relationBusy">Searching…</small>
                 <div v-if="relationResults.length" class="admin-relation-results"><button v-for="item in relationResults" :key="item.id || item.uid || item.num" type="button" @click="selectRelation(item)"><b>{{ item.label || item.title || item.name || item.uid }}</b><span>{{ relationResultSubtitle(item) }}</span></button></div>
@@ -358,7 +380,7 @@ onMounted(load);
                 </section>
             </div>
             <div v-else class="admin-form-grid">
-                <label v-for="field in resource.fields.filter(item => !(key === 'legal' && item.name === 'sections'))" :key="field.name" :class="{wide:field.wide,check:field.type==='checkbox'}">
+                <label v-for="field in visibleFields" :key="field.name" :class="{wide:field.wide,check:field.type==='checkbox'}">
                     <template v-if="field.type==='checkbox'"><input v-model="model[field.name]" type="checkbox"><span>{{field.label}}<small v-if="field.help">{{ field.help }}</small></span></template>
                     <template v-else><span>{{field.label}} <b v-if="field.required">*</b></span>
                         <textarea v-if="['textarea','lines','json'].includes(field.type)" v-model="model[field.name]" :required="field.required" :placeholder="field.type==='lines'?'First item\nSecond item':field.placeholder" />
@@ -372,7 +394,7 @@ onMounted(load);
                             </section>
                             <small>Select one or more plans. Start/end dates can be left blank to use each plan duration.</small>
                         </div>
-                        <select v-else-if="field.relation === 'plan'" v-model="model[field.name]" :required="field.required"><option value="">Choose a plan…</option><optgroup v-for="[deviceType, devicePlans] in plansByDevice" :key="deviceType" :label="deviceTypeLabel(deviceType)"><option v-for="plan in devicePlans" :key="plan.id" :value="plan.id">{{ plan.name }} · {{ deviceTypeLabel(plan.device_type) }} · ₹{{ plan.price }}</option></optgroup></select>
+                        <select v-else-if="field.relation === 'plan'" v-model="model[field.name]" :required="field.required"><option value="">Choose a plan…</option><optgroup v-for="[deviceType, devicePlans] in plansByDevice" :key="deviceType" :label="deviceTypeLabel(deviceType)"><option v-for="plan in devicePlans" :key="plan.id" :value="plan.id" :disabled="plan.is_active === false && String(plan.id) !== String(currentRecord?.plan_id)">{{ plan.name }} · {{ deviceTypeLabel(plan.device_type) }} · ₹{{ plan.price }}</option></optgroup></select>
                         <select v-else-if="field.type==='select'" v-model="model[field.name]" :required="field.required"><option value="">Choose…</option><option v-for="option in field.options" :key="option" :value="option">{{ optionLabel(field, option) }}</option></select>
                         <ArtworkUpload v-else-if="field.upload" v-model="model[field.name]" :field="field" :file="files[field.name]" @file-change="setUpload(field.name, $event)" />
                         <input v-else v-model="model[field.name]" :type="field.type" :readonly="field.readOnly" :required="field.required" :placeholder="field.placeholder" :step="field.type==='number'?'any':undefined" :min="field.min" :max="field.max">
