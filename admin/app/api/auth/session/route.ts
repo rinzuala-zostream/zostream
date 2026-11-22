@@ -13,6 +13,8 @@ type SessionBody = {
   expires_in?: number;
 };
 
+const ADMIN_REFRESH_COOKIE_MAX_AGE = 60 * 60 * 24 * 90;
+
 export async function POST(request: Request) {
   try {
     const blocked = verifySameOriginRequest(request);
@@ -38,24 +40,24 @@ export async function POST(request: Request) {
     response.cookies.set(
       "zostream_admin_uid",
       uid,
-      secureCookieOptions(60 * 60 * 24 * 30),
+      secureCookieOptions(ADMIN_REFRESH_COOKIE_MAX_AGE),
     );
     response.cookies.set(
       "zostream_admin_access_token",
       accessToken,
-      secureCookieOptions(60 * 60 * 24 * 7),
+      secureCookieOptions(ADMIN_REFRESH_COOKIE_MAX_AGE),
     );
     response.cookies.set(
       "zostream_admin_refresh_token",
       refreshToken,
-      secureCookieOptions(60 * 60 * 24 * 30),
+      secureCookieOptions(ADMIN_REFRESH_COOKIE_MAX_AGE),
     );
 
     if (body.token_type) {
       response.cookies.set(
         "zostream_admin_token_type",
         body.token_type,
-        secureCookieOptions(60 * 60 * 24 * 30),
+        secureCookieOptions(ADMIN_REFRESH_COOKIE_MAX_AGE),
       );
     }
 

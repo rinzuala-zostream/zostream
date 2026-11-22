@@ -10,6 +10,8 @@ import {
   verifySameOriginRequest,
 } from "@/app/lib/route-security";
 
+const ADMIN_REFRESH_COOKIE_MAX_AGE = 60 * 60 * 24 * 90;
+
 export async function POST(request: Request) {
   try {
     const blocked = verifySameOriginRequest(request);
@@ -48,7 +50,7 @@ export async function POST(request: Request) {
         sameSite: "lax",
         secure: isProd,
         path: "/",
-        maxAge: 60 * 60 * 24 * 7,
+        maxAge: ADMIN_REFRESH_COOKIE_MAX_AGE,
       });
 
       nextResponse.cookies.set("zostream_admin_refresh_token", response.refresh_token, {
@@ -56,7 +58,7 @@ export async function POST(request: Request) {
         sameSite: "lax",
         secure: isProd,
         path: "/",
-        maxAge: 60 * 60 * 24 * 30,
+        maxAge: ADMIN_REFRESH_COOKIE_MAX_AGE,
       });
 
       if (response.token_type) {
@@ -65,7 +67,7 @@ export async function POST(request: Request) {
           sameSite: "lax",
           secure: isProd,
           path: "/",
-          maxAge: 60 * 60 * 24 * 30,
+          maxAge: ADMIN_REFRESH_COOKIE_MAX_AGE,
         });
       }
     }

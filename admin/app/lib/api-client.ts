@@ -43,6 +43,7 @@ const AGE_RESTRICTION_COOKIE_KEY = "zostream_age_restriction";
 const ACCESS_TOKEN_COOKIE_KEY = "zostream_admin_access_token";
 const REFRESH_TOKEN_COOKIE_KEY = "zostream_admin_refresh_token";
 const TOKEN_TYPE_COOKIE_KEY = "zostream_admin_token_type";
+const ADMIN_REFRESH_COOKIE_MAX_AGE = 60 * 60 * 24 * 90;
 
 type RefreshTokenResponse = {
   status?: "success" | "error";
@@ -216,7 +217,7 @@ async function persistRefreshedAuthCookies(data: RefreshTokenResponse) {
       sameSite: "lax",
       secure: isProd,
       path: "/",
-      maxAge: 60 * 60 * 24 * 7,
+      maxAge: ADMIN_REFRESH_COOKIE_MAX_AGE,
     });
 
     cookieStore.set(REFRESH_TOKEN_COOKIE_KEY, data.refresh_token, {
@@ -224,7 +225,7 @@ async function persistRefreshedAuthCookies(data: RefreshTokenResponse) {
       sameSite: "lax",
       secure: isProd,
       path: "/",
-      maxAge: 60 * 60 * 24 * 30,
+      maxAge: ADMIN_REFRESH_COOKIE_MAX_AGE,
     });
 
     if (data.token_type) {
@@ -233,7 +234,7 @@ async function persistRefreshedAuthCookies(data: RefreshTokenResponse) {
         sameSite: "lax",
         secure: isProd,
         path: "/",
-        maxAge: 60 * 60 * 24 * 30,
+        maxAge: ADMIN_REFRESH_COOKIE_MAX_AGE,
       });
     }
   } catch {

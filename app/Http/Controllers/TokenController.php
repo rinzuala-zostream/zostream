@@ -28,9 +28,9 @@ class TokenController extends Controller
         $accessToken = hash('sha256', Str::random(60));
         $refreshToken = hash('sha256', Str::random(60));
 
-        // Expiry times
-        $accessExp = Carbon::now()->addHours(1);   // 1 hour
-        $refreshExp = Carbon::now()->addDays(30);  // 30 days
+        // Short-lived access tokens are renewed from the durable refresh token.
+        $accessExp = Carbon::now()->addMinutes($this->accessTokenLifetimeMinutes());
+        $refreshExp = Carbon::now()->addDays($this->refreshTokenLifetimeDays());
 
         // Save to DB
         SessionTokenModel::create([
@@ -99,8 +99,8 @@ class TokenController extends Controller
         $newAccessToken = hash('sha256', Str::random(60));
         $newRefreshToken = hash('sha256', Str::random(60));
 
-        $newAccessExp = Carbon::now()->addHours(1);
-        $newRefreshExp = Carbon::now()->addDays(30);
+        $newAccessExp = Carbon::now()->addMinutes($this->accessTokenLifetimeMinutes());
+        $newRefreshExp = Carbon::now()->addDays($this->refreshTokenLifetimeDays());
 
         $record->update([
             'access_token' => SessionTokenModel::digest($newAccessToken),
@@ -133,6 +133,16 @@ class TokenController extends Controller
             return null;
 
         return $record->user_id;
+    }
+
+    private function accessTokenLifetimeMinutes(): int
+    {
+        return max(1, (int) config('auth.token_lifetimes.access_minutes', 60));
+    }
+
+    private function refreshTokenLifetimeDays(): int
+    {
+        return max(1, (int) config('auth.token_lifetimes.refresh_days', 90));
     }
 
     /**

@@ -120,4 +120,18 @@ return [
 
     'password_timeout' => env('AUTH_PASSWORD_TIMEOUT', 10800),
 
+    /*
+    |--------------------------------------------------------------------------
+    | API session tokens
+    |--------------------------------------------------------------------------
+    |
+    | Access tokens remain short lived. A valid refresh token renews them when
+    | an inactive admin browser becomes active again.
+    |
+    */
+    'token_lifetimes' => [
+        'access_minutes' => (int) env('AUTH_ACCESS_TOKEN_TTL_MINUTES', 60),
+        'refresh_days' => (int) env('AUTH_REFRESH_TOKEN_TTL_DAYS', 90),
+    ],
+
 ];
