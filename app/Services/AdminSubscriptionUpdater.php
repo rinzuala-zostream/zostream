@@ -22,12 +22,28 @@ class AdminSubscriptionUpdater
             UserModel::where('uid', $userId)->lockForUpdate()->first();
             $subscription = Subscription::lockForUpdate()->findOrFail($id);
             $oldPlan = $subscription->plan;
-            $plan = Plan::findOrFail($attributes['plan_id'] ?? $subscription->plan_id);
+            $errorField = isset($attributes['device_type']) ? 'device_type' : 'plan_id';
+            if (isset($attributes['device_type'])) {
+                $deviceType = $attributes['device_type'];
+                // Keep the current plan for the current category, including legacy inactive plans.
+                $plan = $oldPlan && $oldPlan->device_type === $deviceType ? $oldPlan
+                    : Plan::where('device_type', $deviceType)->where('is_active', true)
+                        ->orderByRaw('ABS(duration_days - ?)', [$oldPlan?->duration_days ?? 30])
+                        ->orderByRaw('ABS(price - ?)', [$oldPlan?->price ?? 0])
+                        ->orderBy('id')->first();
+                if (! $plan) {
+                    throw ValidationException::withMessages(['device_type' => 'No active plan is available for this device type.']);
+                }
+                $attributes['plan_id'] = $plan->id;
+                unset($attributes['device_type']);
+            } else {
+                $plan = Plan::findOrFail($attributes['plan_id'] ?? $subscription->plan_id);
+            }
             $switching = (int) $plan->id !== (int) $subscription->plan_id;
             $type = strtolower(trim((string) $plan->device_type));
 
             if ($switching && (! $plan->is_active || ! in_array($type, ['mobile', 'tv', 'browser', 'desktop'], true))) {
-                throw ValidationException::withMessages(['plan_id' => 'Choose an active plan for a supported device type.']);
+                throw ValidationException::withMessages([$errorField => 'Choose an active plan for a supported device type.']);
             }
             $start = isset($attributes['start_at']) ? Carbon::parse($attributes['start_at'])->startOfDay() : $subscription->start_at;
             $end = isset($attributes['end_at']) ? Carbon::parse($attributes['end_at'])->endOfDay() : $subscription->end_at;
@@ -38,7 +54,7 @@ class AdminSubscriptionUpdater
                 $duplicate = Subscription::activeForUserAndDeviceType($userId, $type)
                     ->where('id', '!=', $id)->lockForUpdate()->first();
                 if ($duplicate) {
-                    throw ValidationException::withMessages(['plan_id' => 'This user already has an active '.$type.' subscription. Edit that subscription instead.']);
+                    throw ValidationException::withMessages([$errorField => 'This user already has an active '.$type.' subscription. Edit that subscription instead.']);
                 }
             }
 

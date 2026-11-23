@@ -1091,6 +1091,56 @@ class V4PlaybackSecurityTest extends TestCase
         $this->assertGreaterThanOrEqual(400, $this->controller()->ping($request)->getStatusCode());
     }
 
+    #[\PHPUnit\Framework\Attributes\DataProvider('renewalDeviceTypes')]
+    public function test_admin_can_choose_a_device_without_selecting_a_plan(string $type): void
+    {
+        extract($this->switchFixture());
+        $subscription->refresh();
+        $dates = [$subscription->getRawOriginal('start_at'), $subscription->getRawOriginal('end_at')];
+        if ($type !== 'mobile') {
+            $desktop->update(['device_type' => $type]);
+            // Prefer a plan with the current duration over the older 90-day plan.
+            $expected = Plan::create(['name' => 'Matching plan', 'device_type' => $type,
+                'duration_days' => 30, 'price' => 199, 'is_active' => true]);
+        } else {
+            $expected = $mobile;
+        }
+        $response = $this->updateSubscription($subscription->id, ['device_type' => $type]);
+        $this->assertSame(200, $response->getStatusCode(), $response->getContent());
+        $this->assertSame($expected->id, $subscription->fresh()->plan_id);
+        $this->assertSame($type, $subscription->fresh()->plan->device_type);
+        $this->assertSame($dates, [$subscription->fresh()->getRawOriginal('start_at'), $subscription->fresh()->getRawOriginal('end_at')]);
+        $this->assertSame($type === 'mobile' ? 'active' : 'stopped', $stream->fresh()->status);
+        $this->assertDatabaseCount('n_payment_histories', 0);
+    }
+
+    public function test_admin_device_selection_rejects_invalid_unavailable_and_duplicate_categories(): void
+    {
+        extract($this->switchFixture());
+        Subscription::create(['user_id' => 'switch-user', 'plan_id' => $desktop->id, 'end_at' => now()->addDays(5), 'is_active' => true]);
+        $desktop->update(['is_active' => false]);
+        foreach ([['device_type' => 'desktop'], ['device_type' => 'console'],
+            ['device_type' => ['mobile', 'tv']], ['device_type' => 'tv', 'plan_id' => $desktop->id]] as $payload) {
+            try {
+                $this->updateSubscription($subscription->id, $payload);
+                $this->fail('Invalid device selection must be rejected.');
+            } catch (\Illuminate\Validation\ValidationException $error) {
+                $this->assertArrayHasKey('device_type', $error->errors());
+            }
+        }
+        $desktop->update(['is_active' => true]);
+        try {
+            $this->updateSubscription($subscription->id, ['device_type' => 'desktop']);
+            $this->fail('Duplicate active category must be rejected.');
+        } catch (\Illuminate\Validation\ValidationException $error) {
+            $this->assertArrayHasKey('device_type', $error->errors());
+        }
+        $this->assertSame($mobile->id, $subscription->fresh()->plan_id);
+        $this->assertSame('active', $stream->fresh()->status);
+        $this->assertSame($subscription->id, $owner->fresh()->subscription_id);
+        $this->assertDatabaseCount('n_stream_events', 0);
+    }
+
     public function test_admin_switch_rejects_an_existing_target_subscription_without_side_effects(): void
     {
         extract($this->switchFixture());

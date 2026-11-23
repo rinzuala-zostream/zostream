@@ -1053,7 +1053,8 @@ class SubscriptionController extends Controller
     public function update(Request $request, $id)
     {
         $validated = $request->validate([
-            'plan_id' => 'sometimes|required|integer|exists:n_plans,id',
+            'plan_id' => 'sometimes|required|prohibits:device_type|integer|exists:n_plans,id',
+            'device_type' => 'sometimes|required|prohibits:plan_id|string|in:mobile,tv,browser,desktop',
             'start_at' => 'nullable|date',
             'end_at' => 'nullable|date',
             'is_active' => 'nullable|boolean',

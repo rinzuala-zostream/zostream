@@ -116,3 +116,37 @@ test('subscription edit loads Desktop from page two and saves only access fields
         assert.equal(Object.hasOwn(explicitDateEdit.body, 'start_at'), false);
     } finally { app.unmount(); }
 });
+
+
+test('device-only editing selects one category without a plan and restores the plan flow when switched off', async () => {
+    route.params = { resource: 'subscriptions', id: '5' };
+    const calls = [];
+    globalThis.__subscriptionApi = async (path, options) => {
+        calls.push({ path, ...options });
+        return path.startsWith('/admin/plans?') ? { data: [mobile, desktop] } : record;
+    };
+    const { root, app } = mount(ResourceEditorPage);
+    try {
+        await settle();
+        input(root, 'Choose device only', true);
+        await settle();
+        assert.equal(find(root, el => el.tag === 'optgroup'), undefined);
+        const select = find(root, el => el.tag === 'select');
+        assert.deepEqual(select.options.map(option => option.props.value), ['', 'mobile', 'browser', 'tv', 'desktop']);
+        assert.notEqual(select.props.multiple, true);
+        input(root, 'Device', '');
+        await submit(root, 'Starts at');
+        assert.match(text(root), /Choose one device type/);
+        assert.equal(calls.some(call => call.method === 'PUT'), false);
+        input(root, 'Device', 'desktop');
+        await settle();
+        assert.match(text(root), /Saving stops current subscription playback/);
+        await submit(root, 'Starts at');
+        assert.deepEqual(calls.find(call => call.method === 'PUT').body, { device_type: 'desktop', renewed_by: '', is_active: true });
+        input(root, 'Choose device only', false);
+        await settle();
+        assert.ok(find(root, el => el.tag === 'optgroup'));
+        await submit(root, 'Starts at');
+        assert.deepEqual(calls.filter(call => call.method === 'PUT').at(-1).body, { plan_id: 1, renewed_by: '', is_active: true });
+    } finally { app.unmount(); }
+});

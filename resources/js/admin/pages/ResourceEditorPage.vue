@@ -7,7 +7,7 @@ import StatusPanel from '../components/StatusPanel.vue';
 import SubscriptionCreateForm from '../components/SubscriptionCreateForm.vue';
 import { api, queryString } from '../lib/api';
 import { normalizeForSubmit, resources } from '../lib/resources';
-import { deviceTypeLabel, optionLabel } from '../lib/platforms';
+import { deviceTypes, deviceTypeLabel, optionLabel } from '../lib/platforms';
 import { loadSubscriptionPlans } from '../lib/subscription-plans';
 
 const route = useRoute(); const router = useRouter();
@@ -15,14 +15,19 @@ const key = computed(() => route.params.resource); const resource = computed(() 
 const editing = computed(() => route.params.id && route.params.id !== 'new');
 const creatingSubscription = computed(() => key.value === 'subscriptions' && !editing.value);
 const editingSubscription = computed(() => key.value === 'subscriptions' && editing.value);
+const deviceOnly = ref(false);
+const selectedDeviceType = ref('');
 const visibleFields = computed(() => {
     const fields = resource.value?.fields || [];
     if (!editingSubscription.value) return fields.filter(field => !(key.value === 'legal' && field.name === 'sections'));
-    return fields.filter(field => ['user_id', 'plan_id', 'start_at', 'end_at', 'renewed_by', 'is_active'].includes(field.name))
+    return fields.filter(field => ['user_id', 'plan_id', 'start_at', 'end_at', 'renewed_by', 'is_active'].includes(field.name)
+        && !(deviceOnly.value && field.name === 'plan_id'))
         .map(field => field.name === 'user_id' ? { ...field, readOnly: true } : field);
 });
 const switchingPlan = computed(() => editingSubscription.value && currentRecord.value
-    && String(model.plan_id) !== String(currentRecord.value.plan_id));
+    && (deviceOnly.value
+        ? selectedDeviceType.value && selectedDeviceType.value !== currentRecord.value.plan?.device_type
+        : String(model.plan_id) !== String(currentRecord.value.plan_id)));
 
 const model = reactive({}); const loading = ref(false); const saving = ref(false); const error = ref(''); const notice = ref('');
 const relationQuery = ref(''); const relationBusy = ref(false); const relationResults = ref([]); const plans = ref([]);
@@ -64,6 +69,7 @@ function setUpload(name, file) {
     else delete files[name];
 }
 function init() {
+    deviceOnly.value = false; selectedDeviceType.value = '';
     Object.keys(model).forEach(name => delete model[name]); Object.keys(files).forEach(name => delete files[name]);
     resource.value?.fields.forEach(field => { model[field.name] = field.default ?? (field.type === 'checkbox' ? false : ''); });
     if (key.value === 'subscriptions' && !editing.value) model.plan_id = [];
@@ -122,6 +128,7 @@ async function load() {
             }
         }
         currentRecord.value = record; fill(record);
+        if (editingSubscription.value) selectedDeviceType.value = record.plan?.device_type || '';
         if (key.value === 'seasons') seasonEpisodes.value = (record.episodes || []).map(episode => ({ id: episode.id, title: episode.title || `Episode ${episode.episode_number}`, isPayPerView: Boolean(episode.isPayPerView), amount: Number(episode.amount || 0) }));
         if (key.value === 'legal') legalSections.value = record.sections?.length ? record.sections.map(section => ({ ...section })) : [{ heading: '', body: '' }];
         if (key.value === 'plans') {
@@ -282,6 +289,11 @@ async function save() {
         if (editingSubscription.value) {
             const editable = new Set(['plan_id', 'start_at', 'end_at', 'is_active', 'renewed_by']);
             Object.keys(payload).forEach(name => { if (!editable.has(name)) delete payload[name]; });
+            if (deviceOnly.value) {
+                if (!deviceTypes.some(device => device.value === selectedDeviceType.value)) throw new Error('Choose one device type.');
+                delete payload.plan_id;
+                payload.device_type = selectedDeviceType.value;
+            }
             for (const date of ['start_at', 'end_at']) {
                 if (payload[date] === storedDateInputValue(currentRecord.value?.[date])) delete payload[date];
             }
@@ -337,10 +349,14 @@ onMounted(load);
         <SubscriptionCreateForm v-else-if="creatingSubscription" :model="model" :plans="plans" :saving="saving" @save="save" />
         <form v-else class="admin-editor admin-panel" @submit.prevent="save">
             <section v-if="editingSubscription" class="admin-current-record-section">
-                <h2>{{ switchingPlan ? 'Switch subscription plan' : 'Subscription access' }}</h2>
+                <h2>{{ switchingPlan ? (deviceOnly ? 'Switch subscription device' : 'Switch subscription plan') : 'Subscription access' }}</h2>
                 <p>Switching keeps the existing start and expiry dates unless you edit them below. It does not charge the user or change payment history.</p>
                 <p v-if="switchingPlan">Saving stops current subscription playback and resets shared access for the selected device category. When changing categories, old devices lose this subscription binding. The existing owner can use the new category; if no device is registered there, sign in on that device first. Blocked devices stay blocked.</p>
             </section>
+            <div v-if="editingSubscription" class="admin-form-grid">
+                <label class="check subscription-device-switch"><input v-model="deviceOnly" type="checkbox" role="switch" :aria-checked="deviceOnly"><span>Choose device only</span></label>
+                <label v-if="deviceOnly"><span>Device *</span><select v-model="selectedDeviceType" required><option value="">Choose a device…</option><option v-for="device in deviceTypes" :key="device.value" :value="device.value">{{ device.label }}</option></select><small>Choose one device. Start and expiry dates stay the same unless edited below.</small></label>
+            </div>
             <section v-if="relationContext" class="admin-current-record-section">
                 <article class="admin-current-record">
                     <p>{{ relationContext.eyebrow }}</p>
@@ -434,3 +450,29 @@ onMounted(load);
         </Teleport>
     </div>
 </template>
+
+<style scoped>
+.subscription-device-switch input {
+    appearance: none;
+    width: 40px;
+    min-width: 40px;
+    height: 24px;
+    padding: 3px;
+    border: 1px solid var(--a-line);
+    border-radius: 999px;
+    background: var(--a-soft);
+    cursor: pointer;
+}
+.subscription-device-switch input::before {
+    content: '';
+    display: block;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--a-muted);
+    transition: transform .15s;
+}
+.subscription-device-switch input:checked { background: var(--a-cyan); }
+.subscription-device-switch input:checked::before { transform: translateX(16px); background: #fff; }
+.subscription-device-switch input:focus-visible { outline: 2px solid var(--a-cyan); outline-offset: 3px; }
+</style>
