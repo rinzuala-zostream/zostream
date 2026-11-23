@@ -1,10 +1,13 @@
 <script setup>
-import { onBeforeUnmount, ref } from 'vue';
+import { onBeforeUnmount, ref, watch } from 'vue';
+import { notify } from '../../lib/feedback';
 import AdminIcon from '../AdminIcon.vue';
 import { uploadChannelFile } from '../../lib/channelUploads';
 const props = defineProps({ api: Function, channelId: [String, Number], contentId: [String, Number], audience: { type: String, default: 'admin' }, kind: { type: String, default: 'artwork' }, disabled: Boolean, label: { type: String, default: 'Upload file' } });
 const emit = defineEmits(['uploaded', 'busy']);
 const input = ref(null); const drag = ref(false); const busy = ref(false); const percent = ref(0); const file = ref(null); const error = ref(''); const done = ref('');
+watch(error, value => { if (value && props.audience === 'admin') notify(value, 'error'); }, { flush: 'sync' });
+watch(done, value => { if (value && props.audience === 'admin') notify(value, 'success'); }, { flush: 'sync' });
 let cancelled = false; let session = null; let mounted = true;
 const accept = props.kind === 'artwork' ? '.jpg,.jpeg,.png,.webp' : props.audience === 'creator' ? '.mp4' : '.mp4,.mp3,.m4a,.wav,.vtt,.srt';
 async function select(files) {

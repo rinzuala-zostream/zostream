@@ -1,4 +1,5 @@
 <script setup>
+import { confirmAction } from '../lib/feedback';
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import PageHeader from '../components/PageHeader.vue';
@@ -19,7 +20,7 @@ async function act(action) {
     if (!canReview.value) return;
     if (['reject','request-changes'].includes(action) && !decision.reason.trim()) { error.value = 'Reason is required for this action.'; return; }
     const messages = { approve: 'Approve and publish this ad?', reject: 'Reject this submission?', 'request-changes': 'Send this change request?' };
-    if (!confirm(messages[action])) return;
+    if (!(await confirmAction(messages[action]))) return;
     busy.value = true; error.value = ''; notice.value = '';
     const body = action === 'approve' ? { start_date: decision.start_date || null, period_days: Number(decision.period_days), media_url: decision.media_url || null, review_note: decision.review_note || null } : { reason: decision.reason };
     try { item.value = await api(`/admin/ad-submissions/${item.value.id}/${action}`, { method: 'POST', body }); notice.value = action === 'approve' ? (item.value.approval_whatsapp_sent_at ? 'Ad approved. WhatsApp payment link sent.' : 'Ad approved, but WhatsApp delivery failed. Check the error below.') : 'Submission status updated.'; }
@@ -27,7 +28,7 @@ async function act(action) {
     finally { busy.value = false; }
 }
 async function resendPaymentLink() {
-    if (!canResendPayment.value || !confirm('Resend the WhatsApp payment link?')) return;
+    if (!canResendPayment.value || !(await confirmAction('Resend the WhatsApp payment link?'))) return;
     busy.value = true; error.value = ''; notice.value = '';
     try { item.value = await api(`/admin/ad-submissions/${item.value.id}/resend-payment-link`, { method: 'POST' }); notice.value = item.value.approval_whatsapp_sent_at ? 'WhatsApp payment link sent.' : 'WhatsApp delivery failed.'; }
     catch (reason) { error.value = reason.message; }
@@ -39,7 +40,7 @@ onMounted(load);
 <template>
     <div class="admin-page ad-review-page">
         <PageHeader eyebrow="Advertising review" :title="item?.reference_no || 'Ad submission'" :description="item ? `${item.business_name} · ${labels[item.status] || item.status}` : 'Loading submission details'" back="/ads/submissions" />
-        <StatusPanel tone="success" :message="notice" /><StatusPanel tone="error" :message="error" />
+        <StatusPanel :tone="notice.includes('failed') ? 'warning' : 'success'" :message="notice" /><StatusPanel tone="error" :message="error" />
         <div v-if="loading" class="admin-loading">Loading submission…</div>
         <div v-else-if="item" class="ad-review-layout">
             <div class="ad-review-content">

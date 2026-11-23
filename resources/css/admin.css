@@ -669,3 +669,5 @@
     .admin-root .admin-sidebar { transform: translateX(-100%); }
     .admin-root .admin-sidebar.is-open { transform: none; }
 }
+
+.admin-root .admin-status.is-warning,.admin-login .admin-status.is-warning{color:var(--a-warning);border-color:var(--a-warning);background:var(--a-soft)}

@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { notify } from '../lib/feedback';
 import UserLookup from '../components/UserLookup.vue';
 import ArtworkUpload from '../components/ArtworkUpload.vue';
 import PageHeader from '../components/PageHeader.vue';
@@ -13,7 +14,7 @@ import { loadSubscriptionPlans } from '../lib/subscription-plans';
 
 const route = useRoute(); const router = useRouter();
 const key = computed(() => route.params.resource); const resource = computed(() => resources[key.value]);
-const listTarget = computed(() => (['movies', 'seasons', 'episodes'].includes(key.value) || (key.value === 'subscriptions' && route.query.user))
+const listTarget = computed(() => (['movies', 'seasons', 'episodes'].includes(key.value) || (['users', 'subscriptions'].includes(key.value) && route.query.user))
     ? { path: `/manage/${key.value}`, query: route.query }
     : `/manage/${key.value}`);
 const editing = computed(() => route.params.id && route.params.id !== 'new');
@@ -316,6 +317,7 @@ async function save() {
                 await api(resource.value.createEndpoint, { method: 'POST', body: { ...payload, plan_id: planId, transaction_id: planIds.length > 1 && payload.transaction_id ? `${payload.transaction_id}-${planId}` : payload.transaction_id } });
             }
             notice.value = `${planIds.length} subscription${planIds.length === 1 ? '' : 's'} created with payment history.`;
+            notify(notice.value, 'success');
             router.push(listTarget.value); return;
         }
         const endpoint = editing.value ? `${resource.value.endpoint}/${route.params.id}` : (resource.value.createEndpoint || resource.value.endpoint);
@@ -334,6 +336,7 @@ async function save() {
         if (key.value === 'plans') await syncPlanFeatures(id, planFeatures, discount);
         if (key.value === 'polls' && editing.value) await syncPollOptions(id, pollOptions);
         notice.value = `${resource.value.singular} saved successfully.`;
+        notify(notice.value, 'success');
         router.push(listTarget.value);
     } catch (reason) { error.value = reason.message; }
     finally { saving.value = false; }

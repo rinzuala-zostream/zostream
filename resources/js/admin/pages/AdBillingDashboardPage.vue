@@ -1,4 +1,5 @@
 <script setup>
+import { confirmAction } from '../lib/feedback';
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 import PageHeader from '../components/PageHeader.vue';
 import StatusPanel from '../components/StatusPanel.vue';
@@ -9,8 +10,8 @@ const data = ref({ summary: {}, items: [], pagination: {} }); const loading = re
 let refreshTimer;
 const money = (value, currency='INR') => new Intl.NumberFormat('en-IN', { style:'currency', currency, maximumFractionDigits:2 }).format(value || 0);
 async function load(background=false) { if(!background) loading.value=true; error.value=''; try { data.value = await api(`/admin/ads/billing-dashboard${queryString({ status: status.value })}`, { cache:'no-store' }); } catch(reason){ error.value=reason.message; } finally{loading.value=false;} }
-async function markPaid(campaign) { const invoice=campaign.invoices?.at(-1); if(!invoice) return; try { await api(`/admin/ads/invoices/${invoice.id}/mark-paid`, {method:'POST',body:{payment_method:'manual'}}); notice.value='Invoice paid; campaign activated.'; await load(); } catch(reason){error.value=reason.message;} }
-async function setStatus(campaign,next){ if(!confirm(`Set campaign to ${next}?`)) return; try{await api(`/admin/ads/campaigns/${campaign.id}/status`,{method:'PUT',body:{status:next}});notice.value=`Campaign ${next}.`;await load();}catch(reason){error.value=reason.message;} }
+async function markPaid(campaign) { const invoice=campaign.invoices?.at(-1); if(!invoice) return; error.value=''; notice.value=''; try { await api(`/admin/ads/invoices/${invoice.id}/mark-paid`, {method:'POST',body:{payment_method:'manual'}}); notice.value='Invoice paid; campaign activated.'; await load(); } catch(reason){error.value=reason.message;} }
+async function setStatus(campaign,next){ if(!(await confirmAction(`Set campaign to ${next}?`))) return; error.value=''; notice.value=''; try{await api(`/admin/ads/campaigns/${campaign.id}/status`,{method:'PUT',body:{status:next}});notice.value=`Campaign ${next}.`;await load();}catch(reason){error.value=reason.message;} }
 function refreshWhenVisible(){ if(document.visibilityState==='visible') void load(true); }
 onMounted(() => { void load(); refreshTimer=window.setInterval(refreshWhenVisible,10000); document.addEventListener('visibilitychange',refreshWhenVisible); });
 onBeforeUnmount(() => { window.clearInterval(refreshTimer); document.removeEventListener('visibilitychange',refreshWhenVisible); });

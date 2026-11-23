@@ -1,4 +1,5 @@
 <script setup>
+import { confirmAction } from '../lib/feedback';
 import QRCodeStyling from 'qr-code-styling';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import PageHeader from '../components/PageHeader.vue';
@@ -226,8 +227,8 @@ async function create() {
     finally { saving.value = false; }
 }
 async function cancel(row) {
-    if (!window.confirm(`Cancel “${row.label}”? This QR will stop working.`)) return;
-    cancelling.value = row.id; error.value = '';
+    if (!(await confirmAction(`Cancel “${row.label}”? This QR will stop working.`))) return;
+    cancelling.value = row.id; error.value = ''; notice.value = '';
     try {
         await api(`/admin/redemption-codes/${row.id}/cancel`, { method: 'POST' });
         if (selected.value?.id === row.id) selected.value = null;

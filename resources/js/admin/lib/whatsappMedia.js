@@ -1,4 +1,5 @@
 import { onBeforeUnmount, reactive } from 'vue';
+import { notify } from './feedback';
 import { apiBlob } from './api';
 
 const supportedTypes = new Set(['image', 'document']);
@@ -16,6 +17,7 @@ export function useWhatsAppMedia() {
             urls[message.id] = URL.createObjectURL(blob);
         } catch (reason) {
             failed[message.id] = reason?.message || 'Media unavailable.';
+            notify(`Message attachment: ${failed[message.id]}`, 'error');
         } finally {
             loading[message.id] = false;
         }

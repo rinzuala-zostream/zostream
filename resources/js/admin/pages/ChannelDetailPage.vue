@@ -1,4 +1,5 @@
 <script setup>
+import { confirmAction } from '../lib/feedback';
 import UserLookup from '../components/UserLookup.vue';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { onBeforeRouteLeave, onBeforeRouteUpdate, useRoute, useRouter } from 'vue-router';
@@ -63,7 +64,7 @@ async function saveProfile(body) {
     await mutate(async () => { channel.value = await api(base.value, { method: 'PUT', body }); }, 'Channel profile saved.');
 }
 async function removeChannel() {
-    if (!confirm(`Remove ${channel.value.name} from public discovery? Records will be retained.`)) return;
+    if (!(await confirmAction(`Remove ${channel.value.name} from public discovery? Records will be retained.`))) return;
     await mutate(async () => { channel.value = await api(base.value, { method: 'DELETE' }); }, 'Channel removed from public discovery.');
 }
 function openEditor(type, record = {}) {
@@ -82,7 +83,7 @@ async function saveRecord(body) {
     }, selected.type === 'plan' ? 'Plan saved.' : 'Content saved.');
 }
 async function removeRecord(row, type) {
-    if (!confirm(type === 'plan' ? 'Deactivate this plan? Existing memberships are retained.' : 'Withdraw this content? Media and history are retained.')) return;
+    if (!(await confirmAction(type === 'plan' ? 'Deactivate this plan? Existing memberships are retained.' : 'Withdraw this content? Media and history are retained.'))) return;
     await mutate(async () => {
         await api(`/admin/${type === 'plan' ? 'channel-plans' : 'channel-contents'}/${row.id}`, { method: 'DELETE' });
         editor.value = null; content.value = null; contentGeneration++;
@@ -132,7 +133,7 @@ async function saveMedia(body) {
     }, 'Media saved.');
 }
 async function removeMedia(row) {
-    if (!confirm('Remove this media reference?')) return;
+    if (!(await confirmAction('Remove this media reference?'))) return;
     const videoId = content.value.id;
     await mutate(async () => { await api(`/admin/channel-media/${row.id}`, { method: 'DELETE' }); await openContent({ id: videoId }); }, 'Media reference removed.');
 }
@@ -141,12 +142,12 @@ async function savePpv(body) {
     await mutate(async () => { await api(`/admin/channel-contents/${videoId}/ppv`, { method: 'PUT', body }); await openContent({ id: videoId }); }, 'Rental settings saved.');
 }
 async function removePpv() {
-    if (!confirm('Remove rental settings?')) return;
+    if (!(await confirmAction('Remove rental settings?'))) return;
     const videoId = content.value.id;
     await mutate(async () => { await api(`/admin/channel-contents/${videoId}/ppv`, { method: 'DELETE' }); await openContent({ id: videoId }); }, 'Rental settings removed.');
 }
 async function revoke(row) {
-    if (!confirm(`Revoke channel access for ${row.user?.name || row.user_id} immediately?`)) return;
+    if (!(await confirmAction(`Revoke channel access for ${row.user?.name || row.user_id} immediately?`))) return;
     await mutate(async () => { await api(`${base.value}/subscribers/${encodeURIComponent(row.user_id)}`, { method: 'DELETE' }); await load(page.value); }, 'Membership access revoked.');
 }
 async function loadRentalHistory(nextPage = 1) {
@@ -159,7 +160,7 @@ async function loadRentalHistory(nextPage = 1) {
     finally { if (current === historyGeneration) historyLoading.value = false; }
 }
 async function cancelRental(row) {
-    if (!confirm(`Cancel the current rental for ${row.user?.name || row.user_id}?`)) return;
+    if (!(await confirmAction(`Cancel the current rental for ${row.user?.name || row.user_id}?`))) return;
     const videoId = content.value.id;
     await mutate(async () => {
         await api(`/admin/channel-contents/${videoId}/rentals/${encodeURIComponent(row.user_id)}`, { method: 'DELETE' });

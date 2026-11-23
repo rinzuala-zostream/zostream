@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router';
+import { notify } from './lib/feedback';
 import { getSession } from './lib/api';
 import LoginPage from './pages/LoginPage.vue';
 import AdminShell from './components/AdminShell.vue';
@@ -58,6 +59,7 @@ const router = createRouter({
                 { path: 'ppv', component: PpvPage },
                 { path: 'activation-qr', component: () => import('./pages/RedemptionCodesPage.vue') },
                 { path: 'ppv/:type/:id', component: PpvDetailPage },
+                { path: 'manage/users', component: () => import('./pages/UsersPage.vue') },
                 { path: 'manage/subscriptions', component: SubscriptionsPage },
                 { path: 'manage/:resource', component: ResourceListPage },
                 { path: 'manage/:resource/new', component: ResourceEditorPage },
@@ -84,5 +86,5 @@ router.beforeEach((to) => {
     if (!to.meta.guest && !loggedIn) return { path: '/', query: { redirect: to.fullPath } };
     if (to.meta.guest && loggedIn) return '/dashboard';
 });
-window.addEventListener('zostream:session-expired', () => router.replace('/'));
+window.addEventListener('zostream:session-expired', () => { notify('Your session expired. Please sign in again.', 'warning'); router.replace('/'); });
 export default router;

@@ -1,4 +1,5 @@
 <script setup>
+import { notify } from '../lib/feedback';
 import UserLookup from '../components/UserLookup.vue';
 import { computed, onBeforeUnmount, ref } from 'vue';
 import { useRouter } from 'vue-router';
@@ -32,6 +33,7 @@ async function create(body) {
     saving.value = true; error.value = '';
     try {
         const channel = await api('/admin/channels', { method: 'POST', body });
+        notify('Channel created successfully.', 'success');
         await router.push(`/channels/${channel.id}`);
     } catch (reason) { error.value = reason.message; }
     finally { saving.value = false; }

@@ -46,6 +46,10 @@ await build({
             export const authData = value => value?.data || value;
             export const deviceId = () => 'creator-test-browser';
         ` }));
+        builder.onLoad({ filter: /[/\\]admin[/\\]lib[/\\]feedback\.js$/ }, () => ({ contents: `
+            export const notify = () => {};
+            export const confirmAction = async message => globalThis.confirm(message);
+        ` }));
         builder.onLoad({ filter: /\.vue$/ }, async ({ path }) => {
             const { descriptor } = parse(await readFile(path, 'utf8'), { filename: path });
             return { contents: compileScript(descriptor, { id: path, inlineTemplate: true, templateOptions: { compilerOptions: { hoistStatic: false } } }).content, loader: 'js', resolveDir: resolve(path, '..') };

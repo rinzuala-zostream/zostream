@@ -1,4 +1,5 @@
 <script setup>
+import { confirmAction } from '../lib/feedback';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import AdminIcon from '../components/AdminIcon.vue';
@@ -165,7 +166,8 @@ async function load(reset = false) {
 
 async function remove(item) {
     const id = item.id ?? item.uid;
-    if (!confirm(`Delete this ${resource.value.singular.toLowerCase()}?`)) return;
+    if (!(await confirmAction(`Delete this ${resource.value.singular.toLowerCase()}?`))) return;
+    error.value = ''; notice.value = '';
     try {
         await api(`${resource.value.endpoint}/${encodeURIComponent(id)}`, { method: 'DELETE' });
         notice.value = `${resource.value.singular} deleted.`;
@@ -174,7 +176,8 @@ async function remove(item) {
 }
 async function suspend(item) {
     const id = item.uid ?? item.id;
-    if (!confirm(`Suspend ${item.name || id}?`)) return;
+    if (!(await confirmAction(`Suspend ${item.name || id}?`))) return;
+    error.value = ''; notice.value = '';
     try {
         await api(`/admin/users/${encodeURIComponent(id)}`, { method: 'PUT', body: { isACActive: false } });
         notice.value = 'User suspended.'; await load();

@@ -38,6 +38,7 @@ function toggle() {
 function toggleTheme() {
     theme.value = theme.value === 'dark' ? 'light' : 'dark';
     localStorage.setItem('zostream_admin_theme', theme.value);
+    window.dispatchEvent(new CustomEvent('zostream:admin-theme-change', { detail: theme.value }));
 }
 async function logout() {
     await auth.logout();

@@ -1,4 +1,6 @@
 <script setup>
+import { notify } from '../lib/feedback';
+import StatusPanel from './StatusPanel.vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { api } from '../lib/api';
@@ -79,6 +81,7 @@ async function sendReply() {
     try {
         await api('/admin/whatsapp/reply', { method: 'POST', body: { to: selectedPhone.value, message: body } });
         reply.value = '';
+        notify('Reply sent.', 'success');
         await Promise.all([loadMessages(selectedPhone.value), loadConversations(true)]);
     } catch (reason) {
         error.value = reason?.message || 'Reply could not be sent.';
@@ -120,7 +123,7 @@ onBeforeUnmount(() => {
                 <div><RouterLink to="/whatsapp" @click="closeWidget">Open full inbox</RouterLink><button type="button" aria-label="Close WhatsApp conversations" @click="closeWidget"><AdminIcon name="x" /></button></div>
             </header>
             <div class="whatsapp-widget-content">
-                <p v-if="error" class="whatsapp-widget-error">{{ error }}</p>
+                <StatusPanel tone="error" :message="error" />
                 <div v-if="loading" class="whatsapp-widget-loading">Loading conversations…</div>
                 <div v-else class="whatsapp-widget-body" :class="{ 'has-thread': selectedPhone }">
                     <aside class="whatsapp-widget-conversations">

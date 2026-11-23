@@ -10,8 +10,8 @@ export const clearSession = () => localStorage.removeItem(SESSION_KEY);
 export const unwrap = (payload) => payload && Object.hasOwn(payload, 'success') ? payload.data : payload;
 
 function errorMessage(payload, status) {
-    const details = payload?.error?.details;
-    const first = details && typeof details === 'object' ? Object.values(details).flat()[0] : null;
+    const details = payload?.error?.details || payload?.errors || payload?.data?.errors;
+    const first = details && typeof details === 'object' ? Object.values(details).flat(Infinity).find(value => typeof value === 'string' && value.trim()) : null;
     return first || payload?.error?.message || payload?.message || payload?.data?.message || `Request failed (${status})`;
 }
 
@@ -39,12 +39,14 @@ export async function api(path, options = {}, retried = false) {
             window.dispatchEvent(new Event('zostream:session-expired'));
         }
     }
-    if (!response.ok || payload?.success === false) {
-        const error = new Error(errorMessage(payload, response.status));
-        error.status = response.status; error.details = payload?.error?.details;
+    const result = unwrap(payload);
+    if (!response.ok || payload?.success === false || payload?.status === 'error' || result?.status === 'error') {
+        const failure = result?.status === 'error' ? result : payload;
+        const error = new Error(errorMessage(failure, response.status));
+        error.status = response.status; error.details = failure?.error?.details || failure?.errors;
         throw error;
     }
-    return unwrap(payload);
+    return result;
 }
 
 export async function apiBlob(path, retried = false) {

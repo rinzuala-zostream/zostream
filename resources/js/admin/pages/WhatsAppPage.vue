@@ -66,6 +66,7 @@ async function generateToken() {
     finally { busy.value = false; }
 }
 async function copy(value) {
+    error.value = ''; notice.value = '';
     try { await navigator.clipboard.writeText(value); notice.value = 'Copied to clipboard.'; }
     catch { error.value = 'Copy failed. Select and copy the value manually.'; }
 }

@@ -1,4 +1,5 @@
 <script setup>
+import { confirmAction } from '../lib/feedback';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import AdminIcon from '../components/AdminIcon.vue';
@@ -53,7 +54,7 @@ function selectUser(value) {
     else router.replace({ query: { user: value.uid } });
 }
 async function remove(subscription) {
-    if (!confirm(`Delete subscription #${subscription.id}?`)) return;
+    if (!(await confirmAction(`Delete subscription #${subscription.id}?`))) return;
     const uid = user.value?.uid;
     deleting.value = subscription.id; error.value = ''; notice.value = '';
     try {

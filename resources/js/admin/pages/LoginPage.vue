@@ -1,4 +1,5 @@
 <script setup>
+import { notify } from '../lib/feedback';
 import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useAuth } from '../stores/auth';
@@ -19,6 +20,7 @@ async function request() {
         userId.value = response.user_id || userId.value;
         if (response.otp) notice.value = `Development OTP: ${response.otp}`;
         step.value = 'otp';
+        notify('Login code sent.', 'success');
     } catch (reason) { error.value = reason.message; }
 }
 async function verify() {

@@ -1,4 +1,5 @@
 <script setup>
+import StatusPanel from './StatusPanel.vue';
 import { onBeforeUnmount, ref, useId, watch } from 'vue';
 import { api, queryString } from '../lib/api';
 
@@ -53,7 +54,8 @@ onBeforeUnmount(reset);
 <template>
     <span class="user-lookup" @focusout="blur">
         <input :id="id" v-model="text" type="text" role="combobox" :aria-controls="listId" :aria-activedescendant="open && active >= 0 ? `${listId}-${active}` : undefined" :aria-label="label" :placeholder="placeholder" :required="required" :disabled="disabled" :readonly="readonly" autocomplete="off" :aria-expanded="open && Boolean(results.length)" aria-haspopup="listbox" @input="search" @focus="open = true" @keydown.down.prevent="move(1)" @keydown.up.prevent="move(-1)" @keydown.enter.prevent="enter" @keydown.esc.stop.prevent="open = false">
-        <span v-if="open && (busy || error || (searched && !results.length))" class="lookup-status" :role="error ? 'alert' : 'status'">{{ busy ? 'Searching users…' : error || 'No users found. Try a username, name, phone, email or UID.' }}</span>
+        <span v-if="open && (busy || (searched && !results.length))" class="lookup-status" role="status">{{ busy ? 'Searching users…' : 'No users found. Try a username, name, phone, email or UID.' }}</span>
+        <StatusPanel v-if="open" tone="error" :message="error" />
         <span v-if="open && results.length" :id="listId" class="lookup-results" role="listbox" aria-label="Matching users">
             <button v-for="(user, index) in results" :key="user.uid" :id="`${listId}-${index}`" type="button" role="option" :aria-selected="index === active" :class="{ active: index === active }" :disabled="disabled" @mousedown.prevent @click="choose(user)">
                 <strong>{{ user.name || user.username || 'Unnamed user' }}<b v-if="user.username">@{{ user.username }}</b></strong>

@@ -1,3 +1,4 @@
+import { notify } from '../lib/feedback';
 import { computed, reactive } from 'vue';
 import { api, clearSession, getSession, saveSession } from '../lib/api';
 
@@ -18,6 +19,7 @@ export function useAuth() {
         state.session = session;
         state.error = '';
         saveSession(session);
+        notify('Signed in successfully.', 'success');
         return session;
     }
 
@@ -40,7 +42,10 @@ export function useAuth() {
         finally { state.busy = false; }
     }
     async function logout() {
-        try { if (state.session?.access_token) await api('/auth/logout', { method: 'POST' }); } catch {}
+        try {
+            if (state.session?.access_token) await api('/auth/logout', { method: 'POST' });
+            notify('Signed out successfully.', 'success');
+        } catch { notify('Signed out in this browser. Server sign-out could not be confirmed.', 'warning'); }
         clearSession(); state.session = null;
     }
     return { state, authenticated: computed(() => Boolean(state.session?.access_token)), acceptSession, requestOtp, verifyOtp, logout };

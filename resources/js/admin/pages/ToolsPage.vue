@@ -1,4 +1,5 @@
 <script setup>
+import { confirmAction } from '../lib/feedback';
 import UserLookup from '../components/UserLookup.vue';
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
@@ -40,8 +41,8 @@ const sendPush = () => run(async () => { const r = await api('/admin/notificatio
 const sendWa = () => run(async () => { const r = await api('/admin/whatsapp/send', { method: 'POST', body: { ...wa, template_params: wa.template_params ? wa.template_params.split('\n').filter(Boolean) : undefined } }); return r?.message || r?.data?.message || 'WhatsApp sent.'; });
 const saveWarning = () => run(async () => { await api('/admin/realtime/warning', { method: 'PUT', body: warning }); return 'Warning configuration saved.'; });
 const saveScroll = () => run(async () => { await api('/admin/realtime/text-scroll', { method: 'PUT', body: scroll }); return 'Scrolling text saved.'; });
-const deleteWarning = () => run(async () => { if (!confirm('Delete the warning configuration?')) return ''; await api('/admin/realtime/warning', { method: 'DELETE' }); Object.assign(warning, { txt: '', platform: 'all', isShow: false, isCancelable: true, isShowInLatest: false }); return 'Warning deleted.'; });
-const deleteScroll = () => run(async () => { if (!confirm('Delete the scrolling text?')) return ''; await api('/admin/realtime/text-scroll', { method: 'DELETE' }); Object.assign(scroll, { text: '', show: false }); return 'Scrolling text deleted.'; });
+const deleteWarning = () => run(async () => { if (!(await confirmAction('Delete the warning configuration?'))) return ''; await api('/admin/realtime/warning', { method: 'DELETE' }); Object.assign(warning, { txt: '', platform: 'all', isShow: false, isCancelable: true, isShowInLatest: false }); return 'Warning deleted.'; });
+const deleteScroll = () => run(async () => { if (!(await confirmAction('Delete the scrolling text?'))) return ''; await api('/admin/realtime/text-scroll', { method: 'DELETE' }); Object.assign(scroll, { text: '', show: false }); return 'Scrolling text deleted.'; });
 async function loadNotifications() {
     try { const [w, s] = await Promise.all([api('/admin/realtime/warning'), api('/admin/realtime/text-scroll')]); Object.assign(warning, w || {}); Object.assign(scroll, s || {}); }
     catch (reason) { error.value = reason.message; }
@@ -110,7 +111,7 @@ const saveClient = () => run(async () => {
     const id = client.id; const payload = { ...client, certificate_sha256: client.certificate_sha256.split(/\n|,/).map(v => v.trim()).filter(Boolean), allowed_origins: client.allowed_origins.split('\n').map(v => v.trim()).filter(Boolean), metadata: JSON.parse(client.metadata || '{}') }; delete payload.id;
     await api(`/admin/official-clients${id ? `/${id}` : ''}`, { method: id ? 'PUT' : 'POST', body: payload }); await loadClients(); resetClient(); return 'Official client saved.';
 });
-const deleteClient = (id) => run(async () => { if (!confirm('Delete this official client?')) return ''; await api(`/admin/official-clients/${id}`, { method: 'DELETE' }); await loadClients(); return 'Official client deleted.'; });
+const deleteClient = (id) => run(async () => { if (!(await confirmAction('Delete this official client?'))) return ''; await api(`/admin/official-clients/${id}`, { method: 'DELETE' }); await loadClients(); return 'Official client deleted.'; });
 
 watch(() => release.platform, loadRelease);
 watch(() => device.device_type, () => { device.platform = ''; });

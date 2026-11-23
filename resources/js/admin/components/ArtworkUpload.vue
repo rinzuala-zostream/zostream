@@ -1,4 +1,5 @@
 <script setup>
+import StatusPanel from './StatusPanel.vue';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 
 const props = defineProps({
@@ -56,11 +57,11 @@ function updateUrl(event) {
             <small>{{ file.name }} · {{ (file.size / 1024).toFixed(1) }} KB · Replaces the URL when saved</small>
             <button type="button" class="admin-secondary" @click.prevent="cancelFile">Cancel selected file</button>
         </div>
-        <small v-if="error" role="alert">{{ error }}</small>
+        <StatusPanel tone="error" :message="error" />
         <div v-if="preview && !previewFailed" class="artwork-preview" :class="{ 'title-preview': titleImage, 'poster-preview': field.name === 'poster' }">
             <img :src="preview" :alt="`${field.label} preview`" @error="previewFailed = true">
         </div>
-        <small v-else-if="previewFailed">Unable to preview this image. Check the URL or select another file.</small>
+        <StatusPanel v-else-if="previewFailed" tone="warning" message="Unable to preview this image. Check the URL or select another file." />
     </div>
 </template>
 
