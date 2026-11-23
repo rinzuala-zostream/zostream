@@ -483,7 +483,9 @@ Route::prefix('v4')
                     Route::put('/subscriptions/{id}', [SubscriptionController::class, 'update']);
                     Route::delete('/subscriptions/{id}', [SubscriptionController::class, 'destroy']);
 
-                    Route::apiResource('plans', PlanController::class);
+                    // Legacy v3 subscriptions retain the plans.* names. V4
+                    // needs unique names so production route caching can build.
+                    Route::apiResource('plans', PlanController::class)->names('v4.admin.plans');
                     Route::get('/plan-features', [PlanController::class, 'featureIndex']);
                     Route::post('/plan-features', [PlanController::class, 'storeFeature']);
                     Route::get('/plan-features/{featureId}', [PlanController::class, 'showFeature']);

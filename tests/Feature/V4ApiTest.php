@@ -9,6 +9,20 @@ use Tests\TestCase;
 
 class V4ApiTest extends TestCase
 {
+    public function test_routes_compile_for_production_cache_and_preserve_v3_and_v4_plan_urls(): void
+    {
+        $routes = Route::getRoutes();
+        foreach ($routes as $route) { $route->prepareForSerialization(); }
+        $compiled = $routes->compile();
+        $matcher = new \Symfony\Component\Routing\Matcher\CompiledUrlMatcher(
+            $compiled['compiled'], new \Symfony\Component\Routing\RequestContext()
+        );
+        $this->assertSame('plans.index', $matcher->match('/api/v3.0/subscriptions/plans')['_route']);
+        $this->assertSame('v4.admin.plans.index', $matcher->match('/api/v4/admin/plans')['_route']);
+        $this->assertContains('auth.token', $routes->getByName('v4.admin.plans.index')->gatherMiddleware());
+        $this->assertContains('admin.token', $routes->getByName('v4.admin.plans.index')->gatherMiddleware());
+    }
+
     public function test_desktop_platform_headers_are_preserved_without_changing_existing_clients(): void
     {
         foreach (['windows', 'macos', 'android', 'android-tv', 'ios', 'web', 'webos', 'tizen'] as $platform) {

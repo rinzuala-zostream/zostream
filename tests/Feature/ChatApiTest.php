@@ -1506,6 +1506,45 @@ class ChatApiTest extends TestCase
         $this->postJson($url, $this->identity(['socket_id' => '1.2', 'channel' => 'private-chat-user-anyone']))->assertForbidden();
     }
 
+    public function test_unread_polling_mode_preserves_counts_and_live_room_chat_for_existing_apps(): void
+    {
+        $this->freezeTime();
+        config(['chat.websocket_url' => 'wss://chat.example.test/app/test-key']);
+        $room = $this->room();
+        $this->message($room, 'bob', 'Live chat stays available');
+        $live = $this->unread()->assertOk()->json('data');
+        $this->assertNotEmpty($live['channels']);
+
+        config(['chat.unread_realtime_enabled' => false]);
+        $polling = $this->unread()->assertOk()->json('data');
+        $this->assertSame(array_replace($live, ['channels' => [], 'websocket_url' => '']), $polling);
+        $this->postJson("/api/v4/chat/rooms/$room/auth", $this->identity(['socket_id' => '1.2']))
+            ->assertOk()->assertJsonPath('data.channel', ChatChannels::leased('private-chat.'.$room));
+        $this->getJson("/api/v4/chat/rooms/$room/messages?".http_build_query($this->identity()))
+            ->assertOk()->assertJsonPath('data.messages.0.body', 'Live chat stays available');
+        $this->send($room)->assertCreated();
+        $this->unread()->assertJsonPath('data.total_unread', 1);
+
+        config(['chat.unread_realtime_enabled' => true]);
+        $this->unread()->assertOk()->assertJsonPath('data.channels', $live['channels'])
+            ->assertJsonPath('data.websocket_url', $live['websocket_url']);
+    }
+
+    public function test_unread_polling_mode_does_not_disable_channel_authorization_or_the_chat_kill_switch(): void
+    {
+        config(['chat.unread_realtime_enabled' => false]);
+        $channel = \App\Support\Chat\ChatReadService::userChannel('alice');
+        // Old in-flight auth calls still succeed; foreign channels remain denied.
+        $this->postJson('/api/v4/chat/unread/auth-batch', $this->identity([
+            'socket_id' => '1.2', 'channels' => [$channel],
+        ]))->assertOk();
+        $this->postJson('/api/v4/chat/unread/auth-batch', [
+            'auth_user_id' => 'bob', 'socket_id' => '1.2', 'channels' => [$channel],
+        ])->assertForbidden();
+        config(['chat.enabled' => false]);
+        $this->unread()->assertStatus(503);
+    }
+
     public function test_badges_can_discover_a_new_public_room_without_subscribing_to_other_content(): void
     {
         $global = \App\Support\Chat\ChatReadService::contextChannel('global');

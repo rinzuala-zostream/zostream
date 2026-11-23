@@ -142,12 +142,17 @@ final class ChatReadService
                 if (! $existing || in_array($existing, $ids)) { $channels[] = self::contextChannel($context, $id); }
             }
         }
+        // Existing clients keep the unread baseline and use their recovery
+        // polling when no badge socket is advertised. Room/message sockets use
+        // their own responses and remain live. Never return auth failures here:
+        // older clients can turn those into a reconnect/reauthorization loop.
+        $realtime = (bool) config('chat.unread_realtime_enabled', true);
         return ['rooms' => $result, 'total_unread' => array_sum(array_column($result, 'unread_count')),
             'auth_batch' => true,
             'event_cursor' => $cursor, 'user_id' => $uid, 'blocked_user_ids' => $blocked,
             'server_time_ms' => now()->getTimestampMs(),
-            'channels' => $channels,
-            'websocket_url' => config('chat.websocket_url')];
+            'channels' => $realtime ? $channels : [],
+            'websocket_url' => $realtime ? config('chat.websocket_url') : ''];
     }
 
     public function readState(string $uid, int $room): array
