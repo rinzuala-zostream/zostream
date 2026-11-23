@@ -92,6 +92,9 @@ class AdminUsernameSearchTest extends TestCase
         $this->assertSame(200, $response->getStatusCode());
         $this->assertSame(['uid-one'], array_column($response->getData(true)['data']['data'], 'user_id'));
         $this->assertSame('zoviewer', $response->getData(true)['data']['data'][0]['user']['username']);
+        $details = $controller->index(Request::create('/subscriptions', 'GET', ['user_id' => 'uid-one']));
+        $this->assertSame(['uid-one'], array_column($details->getData(true)['data']['data'], 'user_id'));
+
     }
 
 }

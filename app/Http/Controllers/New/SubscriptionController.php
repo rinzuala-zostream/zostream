@@ -53,6 +53,11 @@ class SubscriptionController extends Controller
 
             $query = Subscription::with(['plan', 'devices']);
 
+            if ($request->filled('user_id')) {
+                $request->validate(['user_id' => 'string|max:225']);
+                $query->where('user_id', $request->query('user_id'));
+            }
+
             if ($request->filled('is_active')) {
                 $query->where('is_active', filter_var(
                     $request->get('is_active'),

@@ -3,6 +3,7 @@ import { getSession } from './lib/api';
 import LoginPage from './pages/LoginPage.vue';
 import AdminShell from './components/AdminShell.vue';
 import DashboardPage from './pages/DashboardPage.vue';
+import SubscriptionsPage from './pages/SubscriptionsPage.vue';
 import ResourceListPage from './pages/ResourceListPage.vue';
 import ResourceEditorPage from './pages/ResourceEditorPage.vue';
 import ToolsPage from './pages/ToolsPage.vue';
@@ -57,6 +58,7 @@ const router = createRouter({
                 { path: 'ppv', component: PpvPage },
                 { path: 'activation-qr', component: () => import('./pages/RedemptionCodesPage.vue') },
                 { path: 'ppv/:type/:id', component: PpvDetailPage },
+                { path: 'manage/subscriptions', component: SubscriptionsPage },
                 { path: 'manage/:resource', component: ResourceListPage },
                 { path: 'manage/:resource/new', component: ResourceEditorPage },
                 { path: 'manage/:resource/:id', component: ResourceEditorPage },

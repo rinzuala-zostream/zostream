@@ -13,7 +13,7 @@ import { loadSubscriptionPlans } from '../lib/subscription-plans';
 
 const route = useRoute(); const router = useRouter();
 const key = computed(() => route.params.resource); const resource = computed(() => resources[key.value]);
-const listTarget = computed(() => ['movies', 'seasons', 'episodes'].includes(key.value)
+const listTarget = computed(() => (['movies', 'seasons', 'episodes'].includes(key.value) || (key.value === 'subscriptions' && route.query.user))
     ? { path: `/manage/${key.value}`, query: route.query }
     : `/manage/${key.value}`);
 const editing = computed(() => route.params.id && route.params.id !== 'new');
