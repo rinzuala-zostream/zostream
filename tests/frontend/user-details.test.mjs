@@ -52,6 +52,7 @@ globalThis.document = Object.assign(new Document(), { activeElement: null });
 globalThis.window = { addEventListener() {}, removeEventListener() {}, dispatchEvent() {} };
 globalThis.confirm = () => true;
 const node = (tag, text = '') => ({ tag, text, props: {}, style: {}, children: [], parent: null, listeners: {}, tagName: tag.toUpperCase(),
+    isConnected: true, open: false, showModal() { this.open = true; }, close() { this.open = false; }, focus() { globalThis.document.activeElement = this; },
     getRootNode() { return globalThis.document; },
     addEventListener(name, callback) { this.listeners[name] = callback; }, removeEventListener() {},
     get options() { return this.children.filter(child => child.tag === 'option'); },
@@ -96,8 +97,8 @@ test('Users opens with search and displays the selected account without a table'
         assert.equal(find(root, el => el.tag === 'table'), undefined);
         assert.equal(find(root, el => el.props.role === 'listbox'), undefined);
         assert.equal(input.value, '');
-        const edit = find(root, el => el.tag === 'a' && el.props.href?.path === '/manage/users/viewer-one');
-        assert.equal(edit.props.href.query.user, viewer.uid);
+        const edit = find(root, el => el.tag === 'button' && text(el).trim() === 'Edit user');
+        assert.ok(edit);
         const subscriptions = find(root, el => el.tag === 'a' && el.props.href?.path === '/manage/subscriptions');
         assert.equal(subscriptions.props.href.query.user, viewer.uid);
         find(root, el => el.tag === 'button' && text(el) === 'Clear selection').props.onClick(); await settle();

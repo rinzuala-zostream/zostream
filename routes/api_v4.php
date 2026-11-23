@@ -423,7 +423,10 @@ Route::prefix('v4')
 
                     Route::get('/users/find', [UserController::class, 'find']);
                     Route::get('/users-search', [UserController::class, 'search']);
-                    Route::apiResource('users', UserController::class);
+                    Route::get('/users/profile-locations', [\App\Http\Controllers\Api\V4\AdminUserController::class, 'locations']);
+                    Route::get('/users/{id}', [\App\Http\Controllers\Api\V4\AdminUserController::class, 'show'])->name('users.show');
+                    Route::match(['put', 'patch'], '/users/{id}', [\App\Http\Controllers\Api\V4\AdminUserController::class, 'update'])->name('users.update');
+                    Route::apiResource('users', UserController::class)->except(['show', 'update']);
 
                     Route::get('/devices', [DeviceController::class, 'index']);
                     Route::get('/devices/search', [DeviceController::class, 'search']);

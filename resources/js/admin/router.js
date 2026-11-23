@@ -59,6 +59,7 @@ const router = createRouter({
                 { path: 'ppv', component: PpvPage },
                 { path: 'activation-qr', component: () => import('./pages/RedemptionCodesPage.vue') },
                 { path: 'ppv/:type/:id', component: PpvDetailPage },
+                { path: 'manage/movies', component: () => import('./pages/MoviesPage.vue') },
                 { path: 'manage/users', component: () => import('./pages/UsersPage.vue') },
                 { path: 'manage/subscriptions', component: SubscriptionsPage },
                 { path: 'manage/:resource', component: ResourceListPage },
@@ -85,6 +86,8 @@ router.beforeEach((to) => {
     const loggedIn = Boolean(getSession()?.access_token);
     if (!to.meta.guest && !loggedIn) return { path: '/', query: { redirect: to.fullPath } };
     if (to.meta.guest && loggedIn) return '/dashboard';
+    if (to.params.resource === 'movies' && to.params.id && to.params.id !== 'new') return { path: '/manage/movies', query: { ...to.query, movie: to.params.id, edit: '1' } };
+    if (to.params.resource === 'users' && to.params.id && to.params.id !== 'new') return { path: '/manage/users', query: { user: to.params.id, edit: '1' } };
 });
 window.addEventListener('zostream:session-expired', () => { notify('Your session expired. Please sign in again.', 'warning'); router.replace('/'); });
 export default router;

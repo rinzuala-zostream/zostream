@@ -12,12 +12,15 @@ import { normalizeForSubmit, resources } from '../lib/resources';
 import { deviceTypes, deviceTypeLabel, optionLabel } from '../lib/platforms';
 import { loadSubscriptionPlans } from '../lib/subscription-plans';
 
+const props = defineProps({ embedded: Boolean, resourceKey: String, recordId: [String, Number], formId: String });
+const emit = defineEmits(['saved', 'saving', 'loading', 'ready', 'error']);
 const route = useRoute(); const router = useRouter();
-const key = computed(() => route.params.resource); const resource = computed(() => resources[key.value]);
+const key = computed(() => props.resourceKey || route.params.resource);
+const recordId = computed(() => props.recordId ?? route.params.id); const resource = computed(() => resources[key.value]);
 const listTarget = computed(() => (['movies', 'seasons', 'episodes'].includes(key.value) || (['users', 'subscriptions'].includes(key.value) && route.query.user))
     ? { path: `/manage/${key.value}`, query: route.query }
     : `/manage/${key.value}`);
-const editing = computed(() => route.params.id && route.params.id !== 'new');
+const editing = computed(() => recordId.value && recordId.value !== 'new');
 const creatingSubscription = computed(() => key.value === 'subscriptions' && !editing.value);
 const editingSubscription = computed(() => key.value === 'subscriptions' && editing.value);
 const deviceOnly = ref(false);
@@ -41,6 +44,7 @@ const legalSections = ref([{ heading: '', body: '' }]);
 const files = reactive({});
 const seasonEpisodes = ref([]); const episodeIncrease = ref(0);
 const currentRecord = ref(null);
+const editorReady = computed(() => !loading.value && (!editing.value || currentRecord.value !== null));
 const episodePpvOpen = ref(false);
 const sectionState = reactive({});
 const openMultiSelect = ref('');
@@ -119,14 +123,14 @@ async function load() {
     try {
         await loadPlans();
         if (!editing.value) return;
-        let endpoint = `${resource.value.endpoint}/${encodeURIComponent(route.params.id)}`;
-        if (key.value === 'movies') endpoint = `/admin/catalog/items/${encodeURIComponent(route.params.id)}`;
-        if (key.value === 'seasons') endpoint = `/catalog/seasons/${route.params.id}`;
-        if (key.value === 'episodes') endpoint = `/catalog/episodes/${route.params.id}`;
+        let endpoint = `${resource.value.endpoint}/${encodeURIComponent(recordId.value)}`;
+        if (key.value === 'movies') endpoint = `/admin/catalog/items/${encodeURIComponent(recordId.value)}`;
+        if (key.value === 'seasons') endpoint = `/catalog/seasons/${recordId.value}`;
+        if (key.value === 'episodes') endpoint = `/catalog/episodes/${recordId.value}`;
         const record = valueData(await api(endpoint));
         if (key.value === 'movies') {
             try {
-                const linkData = valueData(await api(`/admin/catalog/items/${encodeURIComponent(route.params.id)}/links?type=movie`));
+                const linkData = valueData(await api(`/admin/catalog/items/${encodeURIComponent(recordId.value)}/links?type=movie`));
                 Object.assign(record, linkData.links || {});
             } catch (reason) {
                 if (reason.status !== 404) throw reason;
@@ -137,14 +141,14 @@ async function load() {
         if (key.value === 'seasons') seasonEpisodes.value = (record.episodes || []).map(episode => ({ id: episode.id, title: episode.title || `Episode ${episode.episode_number}`, isPayPerView: Boolean(episode.isPayPerView), amount: Number(episode.amount || 0) }));
         if (key.value === 'legal') legalSections.value = record.sections?.length ? record.sections.map(section => ({ ...section })) : [{ heading: '', body: '' }];
         if (key.value === 'plans') {
-            const featureData = valueData(await api(`/admin/plans/${route.params.id}/features`));
+            const featureData = valueData(await api(`/admin/plans/${recordId.value}/features`));
             existingFeatures.value = featureData.features || record.features || [];
             model.features = existingFeatures.value.map(row => row.feature).filter(Boolean).join('\n');
             model.ppv_discount = existingFeatures.value[0]?.ppv_discount ?? '';
         }
         if (key.value === 'polls') existingOptions.value = record.options || [];
         if (key.value === 'episodes') {
-            const urls = valueData(await api(`/admin/catalog/items/${encodeURIComponent(route.params.id)}/links?type=episode`));
+            const urls = valueData(await api(`/admin/catalog/items/${encodeURIComponent(recordId.value)}/links?type=episode`));
             const first = (Array.isArray(urls) ? urls : urls.links || urls.data || [])[0];
             if (first) { model.url = first.url || ''; model.type = first.type || 'DASH'; model.quality = first.quality || 'HD'; }
             model.movie_id ||= record.season?.movie_id || record.season?.movie?.num || '';
@@ -287,6 +291,7 @@ async function syncPollOptions(pollId, rows) {
     for (const removed of existingOptions.value.slice(rows.length)) await api(`/admin/poll-options/${removed.id}`, { method: 'DELETE' });
 }
 async function save() {
+    if (saving.value || !editorReady.value) return;
     saving.value = true; error.value = ''; notice.value = '';
     try {
         if (key.value === 'legal') model.sections = JSON.stringify(legalSections.value);
@@ -318,9 +323,9 @@ async function save() {
             }
             notice.value = `${planIds.length} subscription${planIds.length === 1 ? '' : 's'} created with payment history.`;
             notify(notice.value, 'success');
-            router.push(listTarget.value); return;
+            if (props.embedded) emit('saved'); else router.push(listTarget.value); return;
         }
-        const endpoint = editing.value ? `${resource.value.endpoint}/${route.params.id}` : (resource.value.createEndpoint || resource.value.endpoint);
+        const endpoint = editing.value ? `${resource.value.endpoint}/${encodeURIComponent(recordId.value)}` : (resource.value.createEndpoint || resource.value.endpoint);
         let requestBody = payload; let method = editing.value ? 'PUT' : 'POST';
         if (Object.keys(files).length) {
             requestBody = new FormData();
@@ -329,7 +334,7 @@ async function save() {
             if (editing.value) { requestBody.set('_method', 'PUT'); method = 'POST'; }
         }
         const response = await api(endpoint, { method, body: requestBody });
-        const saved = valueData(response); const id = route.params.id || saved.id || saved.num;
+        const saved = valueData(response); const id = recordId.value || saved.id || saved.num;
         if (key.value === 'seasons' && editing.value && payload.isPayPerView) {
             for (const episode of seasonEpisodes.value) await api(`/admin/catalog/episodes/${episode.id}`, { method: 'PUT', body: { isPayPerView: episode.isPayPerView, amount: episode.isPayPerView ? Number(episode.amount || 0) : 0 } });
         }
@@ -337,11 +342,17 @@ async function save() {
         if (key.value === 'polls' && editing.value) await syncPollOptions(id, pollOptions);
         notice.value = `${resource.value.singular} saved successfully.`;
         notify(notice.value, 'success');
-        router.push(listTarget.value);
+        if (props.embedded) emit('saved', saved);
+        else if (key.value === 'movies' && !editing.value && saved.id) router.push({ path: '/manage/movies', query: { movie: saved.id } });
+        else router.push(listTarget.value);
     } catch (reason) { error.value = reason.message; }
     finally { saving.value = false; }
 }
-watch(() => [route.params.resource, route.params.id], load);
+watch(() => [key.value, recordId.value], load);
+watch(error, value => { if (value) emit('error', value); }, { flush: 'post' });
+watch(editorReady, value => emit('ready', value), { immediate: true, flush: 'sync' });
+watch(saving, value => emit('saving', value), { flush: 'sync' });
+watch(loading, value => emit('loading', value), { flush: 'sync' });
 watch([episodeIncrease, () => model.amount], () => {
     if (episodePpvOpen.value) splitSeasonAmount();
 });
@@ -350,11 +361,11 @@ onMounted(load);
 
 <template>
     <div v-if="resource" class="admin-page" :class="{ narrow: !creatingSubscription }">
-        <PageHeader :eyebrow="creatingSubscription ? 'Subscriber management' : editing ? 'Edit record' : 'New record'" :title="`${editing ? 'Update' : 'Add'} ${resource.singular}`" :description="creatingSubscription ? 'Set up access, choose plans and record a payment in one place.' : 'Admin3-compatible workflow with validated relationships and nested records.'" :back="listTarget" />
+        <PageHeader v-if="!embedded" :eyebrow="creatingSubscription ? 'Subscriber management' : editing ? 'Edit record' : 'New record'" :title="`${editing ? 'Update' : 'Add'} ${resource.singular}`" :description="creatingSubscription ? 'Set up access, choose plans and record a payment in one place.' : 'Admin3-compatible workflow with validated relationships and nested records.'" :back="listTarget" />
         <StatusPanel tone="success" :message="notice" /><StatusPanel tone="error" :message="error" />
         <div v-if="loading" class="admin-loading">Loading record…</div>
         <SubscriptionCreateForm v-else-if="creatingSubscription" :model="model" :plans="plans" :saving="saving" @save="save" />
-        <form v-else class="admin-editor admin-panel" @submit.prevent="save">
+        <form v-else-if="!editing || currentRecord" :id="formId" :inert="saving" class="admin-editor admin-panel" @submit.prevent="save">
             <section v-if="editingSubscription" class="admin-current-record-section">
                 <h2>{{ switchingPlan ? (deviceOnly ? 'Switch subscription device' : 'Switch subscription plan') : 'Subscription access' }}</h2>
                 <p>Switching keeps the existing start and expiry dates unless you edit them below. It does not charge the user or change payment history.</p>
@@ -434,8 +445,9 @@ onMounted(load);
                 <div><p>EPISODE PPV</p><h2>{{ model.isPayPerView ? 'Episode pricing' : 'Episode pricing disabled' }}</h2><span>{{ episodePpvSelectedCount }} selected · Season amount {{ Number(model.amount || 0).toLocaleString() }} · Episode total {{ episodePpvTotal.toLocaleString() }}</span></div>
                 <button type="button" class="admin-secondary" :disabled="!model.isPayPerView" @click="openEpisodePpv">View episodes</button>
             </section>
-            <footer><RouterLink :to="listTarget" class="admin-secondary">Cancel</RouterLink><button class="admin-primary" :disabled="saving">{{saving?'Saving…':`${editing?'Save changes':'Create'} ${resource.singular}`}}</button></footer>
+            <footer v-if="!embedded"><RouterLink :to="listTarget" class="admin-secondary">Cancel</RouterLink><button class="admin-primary" :disabled="saving">{{saving?'Saving…':`${editing?'Save changes':'Create'} ${resource.singular}`}}</button></footer>
         </form>
+        <button v-if="!loading && editing && !currentRecord" type="button" class="admin-secondary" @click="load">Retry record</button>
         <Teleport to=".admin-root">
             <div v-if="episodePpvOpen" class="admin-episode-ppv-backdrop" @click.self="episodePpvOpen = false">
                 <section class="admin-episode-ppv-dialog">

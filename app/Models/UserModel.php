@@ -19,7 +19,7 @@ class UserModel extends Model
     protected $keyType = 'int';
     public $timestamps = false;
 
-    // Location and gender are returned only by the authenticated mobile-profile endpoint.
+    // Hide profile location and gender from general user serialization. Authorized profile/admin endpoints expose them explicitly.
     protected $hidden = ['profile_district_code', 'profile_village_code', 'profile_gender'];
 
     protected $fillable = [

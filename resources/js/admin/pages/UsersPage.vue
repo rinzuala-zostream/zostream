@@ -5,11 +5,13 @@ import { useRoute, useRouter } from 'vue-router';
 import AdminIcon from '../components/AdminIcon.vue';
 import PageHeader from '../components/PageHeader.vue';
 import StatusPanel from '../components/StatusPanel.vue';
+import UserEditDialog from '../components/UserEditDialog.vue';
 import UserLookup from '../components/UserLookup.vue';
 import { api } from '../lib/api';
 import { formatAdminDate } from '../lib/adminDate';
 
 const route = useRoute(); const router = useRouter();
+const editing = ref(null);
 const search = ref(''); const user = ref(null); const loading = ref(false);
 const busy = ref(false); const error = ref(''); const notice = ref('');
 let version = 0;
@@ -27,11 +29,13 @@ const sections = computed(() => user.value ? [
         ['Profile complete', flag(user.value.isAccountComplete) === null ? '—' : flag(user.value.isAccountComplete) ? 'Yes' : 'No'],
         ['Phone verified', flag(user.value.is_auth_phone_active) === null ? '—' : flag(user.value.is_auth_phone_active) ? 'Yes' : 'No'],
         ['Date of birth', formatAdminDate(user.value.dob, false)],
+        ['Gender', user.value.profile_gender?.replaceAll('_', ' ')],
     ] },
     { title: 'Contact & location', fields: [
         ['Phone', user.value.auth_phone], ['Alternate phone', user.value.call],
         ['Email', user.value.mail], ['Country code', user.value.country_code],
         ['Town', user.value.khua], ['Locality', user.value.veng],
+        ['Profile district code', user.value.profile_district_code], ['Profile village code', user.value.profile_village_code],
     ] },
     { title: 'Account activity', fields: [
         ['Created', formatAdminDate(user.value.created_date)], ['Last updated', formatAdminDate(user.value.edit_date)],
@@ -46,7 +50,14 @@ async function load() {
     if (!uid) return;
     try {
         const response = await api(`/admin/users/${encodeURIComponent(uid)}`);
-        if (current === version) user.value = response?.data ?? response;
+        if (current === version) {
+            user.value = response?.data ?? response;
+            if (String(route.query.user) !== String(user.value.uid)) {
+                router.replace({ query: { ...route.query, user: user.value.uid } });
+                return;
+            }
+            if (route.query.edit === '1') editing.value = { ...user.value };
+        }
     } catch (reason) { if (current === version) error.value = reason.message; }
     finally { if (current === version) loading.value = false; }
 }
@@ -55,6 +66,10 @@ function selectUser(value) {
     if (String(route.query.user) === String(value.uid)) load();
     else router.replace({ query: { user: value.uid } });
 }
+function openEditor() { if (user.value) router.replace({ query: { user: user.value.uid, edit: '1' } }); }
+function closeEditor() { editing.value = null; router.replace({ query: { user: route.query.user } }); }
+function userSaved(value) { user.value = value; notice.value = 'User saved successfully.'; closeEditor(); }
+watch(() => route.query.edit, value => { editing.value = value === '1' && user.value ? { ...user.value } : null; });
 function clearUser() { search.value = ''; notice.value = ''; router.replace({ query: {} }); }
 async function manage(kind) {
     if (busy.value || !user.value) return;
@@ -77,7 +92,7 @@ async function manage(kind) {
     } catch (reason) { if (mounted && String(route.query.user) === String(uid)) error.value = reason.message; }
     finally { busy.value = false; }
 }
-watch(() => route.query.user, () => { notice.value = ''; load(); }, { immediate: true });
+watch(() => route.query.user, () => { editing.value = null; notice.value = ''; load(); }, { immediate: true });
 onBeforeUnmount(() => { mounted = false; version++; });
 </script>
 
@@ -95,15 +110,16 @@ onBeforeUnmount(() => { mounted = false; version++; });
         <template v-else-if="user">
             <section class="admin-panel user-identity" aria-label="Selected user details">
                 <header><div class="user-heading"><span class="user-avatar">{{ (user.name || user.username || 'U').slice(0, 1).toUpperCase() }}</span><div><p>Selected user</p><h2>{{ user.name || user.username || 'Unnamed user' }}</h2><span v-if="user.username">@{{ user.username }}</span></div></div><span class="admin-pill" :class="{ 'is-active': accountStatus === 'Active' }">{{ accountStatus }}</span><button type="button" class="admin-secondary compact" @click="clearUser">Clear selection</button></header>
-                <footer class="user-actions"><RouterLink :to="{ path: `/manage/users/${encodeURIComponent(user.uid)}`, query: { user: user.uid } }" class="admin-primary compact"><AdminIcon name="edit" /> Edit user</RouterLink><RouterLink :to="{ path: '/manage/subscriptions', query: { user: user.uid } }" class="admin-secondary compact">View subscriptions</RouterLink><button type="button" class="admin-secondary compact" :disabled="busy" @click="load">Refresh</button></footer>
+                <footer class="user-actions"><button type="button" class="admin-primary compact" :disabled="busy" @click="openEditor"><AdminIcon name="edit" /> Edit user</button><RouterLink :to="{ path: '/manage/subscriptions', query: { user: user.uid } }" class="admin-secondary compact">View subscriptions</RouterLink><button type="button" class="admin-secondary compact" :disabled="busy" @click="load">Refresh</button></footer>
             </section>
             <div class="user-detail-grid">
                 <section v-for="section in sections" :key="section.title" class="admin-panel user-detail-section"><header><h2>{{ section.title }}</h2></header><dl><div v-for="[label, value] in section.fields" :key="label"><dt>{{ label }}</dt><dd>{{ value || '—' }}</dd></div></dl></section>
             </div>
             <section class="admin-panel user-management" aria-label="Account actions"><div><h2>Account actions</h2><p>Manage this user’s account access.</p></div><button v-if="accountStatus === 'Active'" type="button" class="admin-secondary compact" :disabled="busy" @click="manage('suspend')">Suspend user</button><button type="button" class="admin-danger compact" :disabled="busy" @click="manage('delete')">Delete user</button></section>
         </template>
-        <section v-else-if="error" class="user-start"><button type="button" class="admin-secondary compact" @click="load">Retry</button></section>
-        <section v-else class="user-start"><AdminIcon name="users" /><h2>Find a user to get started</h2><p>Their account details will appear here.</p></section>
+        <UserEditDialog v-if="editing" :user="editing" @saved="userSaved" @cancel="closeEditor" />
+        <section v-if="!loading && !user && error" class="user-start"><button type="button" class="admin-secondary compact" @click="load">Retry</button></section>
+        <section v-else-if="!loading && !user" class="user-start"><AdminIcon name="users" /><h2>Find a user to get started</h2><p>Their account details will appear here.</p></section>
     </div>
 </template>
 
