@@ -8,23 +8,23 @@ const props = defineProps({ modelValue: { type: String, default: '' } });
 const emit = defineEmits(['update:modelValue', 'select']);
 const id = useId(); const query = ref(props.modelValue); const results = ref([]);
 const busy = ref(false); const error = ref(''); const searched = ref(false); const open = ref(false);
-const page = ref(1); const lastPage = ref(1); const total = ref(0); const active = ref(-1);
-let timer; let version = 0;
-function reset() { clearTimeout(timer); version++; results.value = []; busy.value = false; searched.value = false; error.value = ''; active.value = -1; page.value = 1; lastPage.value = 1; }
+const page = ref(1); const lastPage = ref(1); const total = ref(null); const active = ref(-1);
+let timer; let version = 0; let requestController;
+function reset() { clearTimeout(timer); version++; requestController?.abort(); requestController = null; results.value = []; busy.value = false; searched.value = false; error.value = ''; active.value = -1; page.value = 1; lastPage.value = 1; }
 watch(() => props.modelValue, value => { if (value !== query.value) { query.value = value; reset(); } });
 async function load(nextPage = 1) {
     const term = query.value.trim();
     if (term.length < 1) return;
-    const current = ++version; busy.value = true; error.value = ''; active.value = -1; open.value = true;
+    const current = ++version; requestController?.abort(); const controller = new AbortController(); requestController = controller; busy.value = true; error.value = ''; active.value = -1; open.value = true;
     try {
-        const response = await api(`/admin/catalog/items/search${queryString({ q: term, per_page: 12, page: nextPage })}`);
+        const response = await api(`/admin/catalog/items/search${queryString({ q: term, per_page: 12, page: nextPage, lookup: 1 })}`, { signal: controller.signal });
         if (current !== version) return;
         const value = response?.data ?? response;
         results.value = Array.isArray(value) ? value : value?.data || [];
         const pagination = response?.pagination || (Array.isArray(value) ? {} : value);
-        page.value = pagination?.current_page || nextPage; lastPage.value = pagination?.last_page || 1;
-        total.value = pagination?.total ?? results.value.length; searched.value = true;
-    } catch (reason) { if (current === version) { error.value = reason.message; results.value = []; } }
+        page.value = pagination?.current_page || nextPage; lastPage.value = pagination?.last_page || (pagination?.has_more ? page.value + 1 : page.value);
+        total.value = pagination?.total ?? null; searched.value = true;
+    } catch (reason) { if (current === version && reason.name !== 'AbortError') { error.value = reason.message; results.value = []; } }
     finally { if (current === version) busy.value = false; }
 }
 function search() {
@@ -48,7 +48,7 @@ onBeforeUnmount(reset);
             <p v-else-if="searched && !results.length && !error" class="movie-search-note" role="status">No movies found. Try another title, ID, director or genre.</p>
             <div v-if="results.length" class="movie-search-results">
                 <div :id="id" :aria-busy="busy" role="listbox" aria-label="Matching movies"><button v-for="(movie, index) in results" :id="`${id}-${index}`" :key="movie.id" type="button" :disabled="busy" role="option" :aria-selected="active === index" :class="{ active: active === index }" @mousedown.prevent @click="select(movie)"><AdminIcon :name="movie.isSeason === true || movie.isSeason === 1 ? 'layers' : 'film'" /><span><strong>{{ movie.title || movie.id }}</strong><small>{{ [movie.status, movie.director, movie.genre, movie.id].filter(Boolean).join(' · ') }}</small></span><span class="movie-select-label">Select →</span></button></div>
-                <footer v-if="lastPage > 1"><button type="button" :disabled="page <= 1 || busy" @click="load(page - 1)">Previous</button><span>{{ total }} matches · Page {{ page }} / {{ lastPage }}</span><button type="button" :disabled="page >= lastPage || busy" @click="load(page + 1)">Next</button></footer>
+                <footer v-if="lastPage > 1"><button type="button" :disabled="page <= 1 || busy" @click="load(page - 1)">Previous</button><span>{{ total == null ? `Page ${page}` : `${total} matches · Page ${page} / ${lastPage}` }}</span><button type="button" :disabled="page >= lastPage || busy" @click="load(page + 1)">Next</button></footer>
             </div>
         </template>
     </div>

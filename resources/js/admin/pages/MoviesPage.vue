@@ -14,6 +14,7 @@ import { resources } from '../lib/resources';
 const route = useRoute(); const router = useRouter();
 const search = ref(route.query.movie ? '' : String(route.query.q || '')); const movie = ref(null); const editing = ref(null);
 const loading = ref(false); const deleting = ref(false); const error = ref(''); const linksError = ref('');
+const linksLoading = ref(false); const linksReady = ref(false);
 const links = ref({}); const failedImages = ref({});
 let version = 0; let mounted = true;
 function flag(value) { return value == null ? '—' : value === true || value === 1 || value === '1' ? 'Yes' : 'No'; }
@@ -35,21 +36,30 @@ function safeLink(value) {
     catch { return null; }
 }
 function price(value) { return value == null || value === '' ? '—' : `INR ${Number(value).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`; }
+async function loadLinks(id, current) {
+    linksLoading.value = true;
+    try {
+        const response = await api(`/admin/catalog/items/${encodeURIComponent(id)}/links?type=movie`);
+        if (current === version) { links.value = (response?.data ?? response)?.links || {}; linksReady.value = true; }
+    } catch (reason) {
+        if (current === version) {
+            if (reason.status === 404) linksReady.value = true;
+            else linksError.value = `Playback links could not be loaded. ${reason.message}`;
+        }
+    } finally { if (current === version) linksLoading.value = false; }
+}
 async function load() {
     const id = String(route.query.movie || ''); const current = ++version;
     movie.value = null; editing.value = null; links.value = {}; failedImages.value = {};
-    error.value = ''; linksError.value = ''; loading.value = Boolean(id);
+    error.value = ''; linksError.value = ''; linksReady.value = false; linksLoading.value = false; loading.value = Boolean(id);
     if (!id) return;
+    // Link loading must not hold the artwork/details screen behind a slow media request.
+    void loadLinks(id, current);
     try {
         const response = await api(`/admin/catalog/items/${encodeURIComponent(id)}`);
         if (current !== version) return;
         movie.value = response?.data ?? response;
-        try {
-            const linkResponse = await api(`/admin/catalog/items/${encodeURIComponent(id)}/links?type=movie`);
-            if (current !== version) return;
-            links.value = (linkResponse?.data ?? linkResponse)?.links || {};
-        } catch (reason) { if (current === version && reason.status !== 404) linksError.value = `Playback links could not be loaded. ${reason.message}`; }
-        if (current === version && route.query.edit === '1') editing.value = { ...movie.value };
+        if (route.query.edit === '1') editing.value = { ...movie.value };
     } catch (reason) { if (current === version) error.value = reason.message; }
     finally { if (current === version) loading.value = false; }
 }
@@ -91,10 +101,10 @@ onBeforeUnmount(() => { mounted = false; version++; });
                 <section class="admin-panel movie-detail"><header><h2>Publishing & access</h2></header><dl><div><dt>Status</dt><dd>{{ movie.status || '—' }}</dd></div><div><dt>Access</dt><dd>{{ access }}</dd></div><div v-if="access === 'Pay per view'"><dt>PPV amount</dt><dd>{{ price(movie.ppv_amount) }}</dd></div><div><dt>Playback token</dt><dd>{{ movie.token ? 'Configured' : 'Not set' }}</dd></div><div v-for="field in flags" :key="field.name"><dt>{{ field.label }}</dt><dd>{{ flag(movie[field.name]) }}</dd></div></dl></section>
             </div>
             <section class="admin-panel movie-artwork"><header><h2>Artwork</h2></header><div class="movie-artwork-grid"><figure v-for="image in artwork" :key="image.field"><figcaption>{{ image.label }}</figcaption><div class="movie-artwork-preview" :class="{ 'is-logo': image.field === 'title' }"><img v-if="safeLink(image.url) && !failedImages[image.field]" :src="image.url" :alt="`${movie.title} ${image.label}`" loading="lazy" @error="failedImages[image.field] = true"><span v-else>{{ failedImages[image.field] ? 'Preview unavailable' : 'Not set' }}</span></div><a v-if="safeLink(image.url)" :href="image.url" target="_blank" rel="noopener noreferrer">Open artwork ↗</a></figure></div></section>
-            <section class="admin-panel movie-playback"><details><summary>Playback & trailer links</summary><div><StatusPanel tone="warning" :message="linksError" /><button v-if="linksError" type="button" class="admin-secondary compact" @click="load">Retry playback links</button><dl><div v-for="[label, url] in playback" :key="label"><dt>{{ label }}</dt><dd><a v-if="safeLink(url)" :href="url" target="_blank" rel="noopener noreferrer">{{ url }}</a><span v-else>{{ url || 'Not set' }}</span></dd></div></dl></div></details></section>
+            <section class="admin-panel movie-playback"><details><summary>Playback & trailer links</summary><div><p v-if="linksLoading" role="status">Loading playback links…</p><StatusPanel tone="warning" :message="linksError" /><button v-if="linksError" type="button" class="admin-secondary compact" @click="load">Retry playback links</button><dl><div v-for="[label, url] in playback" :key="label"><dt>{{ label }}</dt><dd><a v-if="safeLink(url)" :href="url" target="_blank" rel="noopener noreferrer">{{ url }}</a><span v-else>{{ url || 'Not set' }}</span></dd></div></dl></div></details></section>
             <section class="admin-panel movie-management"><div><h2>Movie actions</h2><p>Manage this title and its catalog record.</p></div><button type="button" class="admin-danger compact" :disabled="deleting" @click="remove">{{ deleting ? 'Deleting…' : 'Delete movie' }}</button></section>
         </template>
-        <MovieEditDialog v-if="editing" :movie="editing" @saved="saved" @cancel="closeEditor" />
+        <MovieEditDialog v-if="editing" :movie="editing" :links="linksReady ? links : null" @saved="saved" @cancel="closeEditor" />
         <section v-if="!loading && !movie && error" class="movie-start"><button type="button" class="admin-secondary compact" @click="load">Retry</button></section>
         <section v-else-if="!loading && !movie" class="movie-start"><AdminIcon name="film" /><h2>Find a movie to get started</h2><p>Its artwork, movie information and access settings will appear here.</p></section>
     </div>

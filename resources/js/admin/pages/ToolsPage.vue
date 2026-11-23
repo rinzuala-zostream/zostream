@@ -1,6 +1,7 @@
 <script setup>
 import { confirmAction } from '../lib/feedback';
 import UserLookup from '../components/UserLookup.vue';
+import AdminIcon from '../components/AdminIcon.vue';
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import PageHeader from '../components/PageHeader.vue';
@@ -27,6 +28,17 @@ const scroll = reactive({ text: '', show: false });
 const client = reactive({ id: '', platform: 'android', name: '', enabled: true, verification_enabled: true, verification_mode: 'manual', app_identifier: '', certificate_sha256: '', team_id: '', key_id: '', build_id: '', min_version: '', latest_version: '', api_base_url: '', api_version: '4', allowed_origins: '', metadata: '{}' });
 const titles = { operations: ['Admin tools', 'Run focused user and device operations.'], notifications: ['Notifications', 'Manage push, WhatsApp, warnings and scrolling text.'], 'app-releases': ['App releases', 'Control update availability across supported platforms.'], 'official-clients': ['Official clients', 'Manage trusted application identities and verification policy.'] };
 const heading = computed(() => titles[tool.value] || titles.operations);
+const activeTool = ref('devices');
+const toolSections = computed(() => tool.value === 'notifications' ? [
+    { id: 'push', title: 'Push notification', description: 'Send to app devices', icon: 'bell' },
+    { id: 'whatsapp', title: 'WhatsApp', description: 'Text or template message', icon: 'message' },
+    { id: 'warning', title: 'Warning banner', description: 'Manage the in-app notice', icon: 'monitor' },
+    { id: 'ticker', title: 'Scrolling text', description: 'Manage the app ticker', icon: 'file' },
+] : [
+    { id: 'devices', title: 'Device access', description: 'Clear a user’s devices', icon: 'monitor' },
+    { id: 'otp', title: 'Request OTP', description: 'Send a login code', icon: 'message' },
+    { id: 'diagnostic', title: 'OTP support', description: 'Send and reveal a code', icon: 'users' },
+]);
 
 async function run(action) {
     busy.value = true; error.value = ''; notice.value = '';
@@ -118,6 +130,7 @@ watch(() => device.device_type, () => { device.platform = ''; });
 watch(tool, async () => {
     releaseUploadAbort?.abort();
     error.value = ''; notice.value = '';
+    activeTool.value = tool.value === 'notifications' ? 'push' : 'devices';
     if (tool.value === 'app-releases') await loadRelease();
     if (tool.value === 'notifications') await loadNotifications();
     if (tool.value === 'official-clients') await loadClients();
@@ -128,16 +141,64 @@ watch(tool, async () => {
     <div class="admin-page narrow">
         <PageHeader eyebrow="Operations" :title="heading[0]" :description="heading[1]" />
         <StatusPanel tone="success" :message="notice" /><StatusPanel tone="error" :message="error" />
-        <div v-if="tool === 'operations'" class="admin-tool-grid">
-            <form class="admin-panel admin-tool" @submit.prevent="clearDevices"><header><div><p>DEVICE ACCESS</p><h2>Clear user devices</h2></div></header><label>User ID<UserLookup v-model="device.user_id" required /></label><label>Device type<select v-model="device.device_type"><option value="">All</option><option v-for="item in deviceTypes" :key="item.value" :value="item.value">{{ item.label }}</option></select></label><label v-if="device.device_type === 'desktop'">Desktop platform<select v-model="device.platform"><option value="">Mac &amp; Windows</option><option v-for="item in desktopPlatforms" :key="item.value" :value="item.value">{{ item.label }}</option></select></label><label>Device token<input v-model="device.device_token"></label><button class="admin-danger" :disabled="busy">Clear matching devices</button></form>
-            <form class="admin-panel admin-tool" @submit.prevent="requestOtp"><header><div><p>USER SUPPORT</p><h2>Request login OTP</h2></div></header><label>Country code<input v-model="otp.country_code"></label><label>Phone number<input v-model="otp.phone_number" required></label><label>User ID<UserLookup v-model="otp.user_id" /></label><button class="admin-primary" :disabled="busy">Request OTP</button></form>
-            <form class="admin-panel admin-tool" @submit.prevent="revealOtp"><header><div><p>RESTRICTED SUPPORT</p><h2>Send & reveal OTP</h2></div></header><p class="admin-tool-note">Only use to help a customer. The entered number must exactly match the registered number for this UID.</p><label>Country code<input v-model="otpDiagnostic.country_code" required></label><label>Phone number<input v-model="otpDiagnostic.phone_number" inputmode="numeric" required></label><label>User ID<UserLookup v-model="otpDiagnostic.user_id" required /></label><button class="admin-danger" :disabled="busy">Send and reveal OTP</button><p v-if="revealedOtp" class="admin-otp-reveal">OTP: <strong>{{ revealedOtp }}</strong></p></form>
-        </div>
-        <div v-else-if="tool === 'notifications'" class="admin-tool-grid">
-            <form class="admin-panel admin-tool" @submit.prevent="sendPush"><header><div><p>PUSH</p><h2>Create notification</h2></div></header><label>Title<input v-model="push.title" required></label><label>Message<textarea v-model="push.body" required /></label><label>Topic<input v-model="push.topic"></label><label>Device token<input v-model="push.token"></label><label>Image URL<input v-model="push.image" type="url"></label><label>Movie public ID / routing key<input v-model="push.key" placeholder="Movie ID opens its details when tapped"></label><label>Data JSON<textarea v-model="push.data" /></label><button class="admin-primary" :disabled="busy">Send push</button></form>
-            <form class="admin-panel admin-tool" @submit.prevent="sendWa"><header><div><p>WHATSAPP</p><h2>Send message</h2></div></header><label>Phone number<input v-model="wa.to" required></label><label>Type<select v-model="wa.type"><option value="text">Text</option><option value="template">Template</option></select></label><label v-if="wa.type === 'text'">Message<textarea v-model="wa.message" required /></label><template v-else><label>Template<input v-model="wa.template_name" required></label><label>Parameters<textarea v-model="wa.template_params" /></label></template><button class="admin-primary" :disabled="busy">Send WhatsApp</button></form>
-            <form class="admin-panel admin-tool" @submit.prevent="saveWarning"><header><div><p>IN-APP WARNING</p><h2>Warning banner</h2></div></header><label>HTML / message<textarea v-model="warning.txt" required /></label><label>Platform<select v-model="warning.platform"><option>all</option><option>android</option><option>ios</option><option v-for="item in desktopPlatforms" :key="item.value" :value="item.value">{{ item.label }}</option></select></label><label><input v-model="warning.isShow" type="checkbox"> Show warning</label><label><input v-model="warning.isCancelable" type="checkbox"> User can dismiss</label><label><input v-model="warning.isShowInLatest" type="checkbox"> Show in latest version</label><div class="admin-tool-actions"><button type="button" class="admin-danger" :disabled="busy" @click="deleteWarning">Delete</button><button class="admin-primary" :disabled="busy">Save warning</button></div></form>
-            <form class="admin-panel admin-tool" @submit.prevent="saveScroll"><header><div><p>SCROLLING TEXT</p><h2>App ticker</h2></div></header><label>Text<textarea v-model="scroll.text" required /></label><label><input v-model="scroll.show" type="checkbox"> Show scrolling text</label><div class="admin-tool-actions"><button type="button" class="admin-danger" :disabled="busy" @click="deleteScroll">Delete</button><button class="admin-primary" :disabled="busy">Save scrolling text</button></div></form>
+        <div v-if="tool === 'operations' || tool === 'notifications'" class="admin-tools-workspace">
+            <nav class="admin-tool-menu" :aria-label="`${heading[0]} sections`">
+                <button v-for="section in toolSections" :key="section.id" type="button" :class="{ active: activeTool === section.id }" :aria-pressed="activeTool === section.id" @click="activeTool = section.id">
+                    <AdminIcon :name="section.icon" /><span><strong>{{ section.title }}</strong><small>{{ section.description }}</small></span>
+                </button>
+            </nav>
+            <form v-if="activeTool === 'devices'" class="admin-panel admin-tool admin-tool-card" @submit.prevent="clearDevices">
+                <header><div><p>DEVICE ACCESS</p><h2>Clear user devices</h2><span>Choose a user and the devices to clear.</span></div><AdminIcon name="monitor" /></header>
+                <label>User<UserLookup v-model="device.user_id" required /></label>
+                <div class="admin-tool-fields">
+                    <label>Device type<select v-model="device.device_type"><option value="">All devices</option><option v-for="item in deviceTypes" :key="item.value" :value="item.value">{{ item.label }}</option></select></label>
+                    <label v-if="device.device_type === 'desktop'">Desktop platform<select v-model="device.platform"><option value="">Mac &amp; Windows</option><option v-for="item in desktopPlatforms" :key="item.value" :value="item.value">{{ item.label }}</option></select></label>
+                </div>
+                <label>Device token <small>Optional · Leave empty to clear all matching devices.</small><input v-model="device.device_token" placeholder="Specific device token"></label>
+                <footer class="admin-tool-actions"><button class="admin-danger" :disabled="busy"><AdminIcon name="trash" />Clear matching devices</button></footer>
+            </form>
+            <form v-else-if="activeTool === 'otp'" class="admin-panel admin-tool admin-tool-card" @submit.prevent="requestOtp">
+                <header><div><p>USER SUPPORT</p><h2>Request login OTP</h2><span>Send a login code to the customer’s phone.</span></div><AdminIcon name="message" /></header>
+                <div class="admin-tool-fields admin-tool-phone"><label>Country code<input v-model="otp.country_code" autocomplete="tel-country-code"></label><label>Phone number<input v-model="otp.phone_number" type="tel" autocomplete="tel-national" required></label></div>
+                <label>User <small>Optional · Search by name, username, phone or UID.</small><UserLookup v-model="otp.user_id" /></label>
+                <footer class="admin-tool-actions"><button class="admin-primary" :disabled="busy"><AdminIcon name="message" />Request OTP</button></footer>
+            </form>
+            <form v-else-if="activeTool === 'diagnostic'" class="admin-panel admin-tool admin-tool-card" @submit.prevent="revealOtp">
+                <header><div><p>RESTRICTED SUPPORT</p><h2>Send &amp; reveal OTP</h2><span>Help a customer complete their login.</span></div><AdminIcon name="users" /></header>
+                <p class="admin-tool-callout">The phone number must exactly match the registered number for the selected user.</p>
+                <label>User<UserLookup v-model="otpDiagnostic.user_id" required /></label>
+                <div class="admin-tool-fields admin-tool-phone"><label>Country code<input v-model="otpDiagnostic.country_code" autocomplete="tel-country-code" required></label><label>Phone number<input v-model="otpDiagnostic.phone_number" type="tel" autocomplete="tel-national" required></label></div>
+                <footer class="admin-tool-actions"><button class="admin-primary" :disabled="busy"><AdminIcon name="message" />Send and reveal OTP</button></footer>
+                <p v-if="revealedOtp" class="admin-tool-code" role="status">Login code<strong>{{ revealedOtp }}</strong></p>
+            </form>
+            <form v-else-if="activeTool === 'push'" class="admin-panel admin-tool admin-tool-card" @submit.prevent="sendPush">
+                <header><div><p>PUSH NOTIFICATION</p><h2>Create notification</h2><span>Write a message and choose its recipients.</span></div><AdminIcon name="bell" /></header>
+                <label>Title<input v-model="push.title" placeholder="Notification title" required></label>
+                <label>Message<textarea v-model="push.body" placeholder="Write your notification…" required /></label>
+                <fieldset class="admin-tool-group"><legend>Recipients</legend><label>Topic<input v-model="push.topic" placeholder="all"></label><label>Device token <small>Optional · Target a specific device.</small><input v-model="push.token"></label></fieldset>
+                <details class="admin-tool-options"><summary>Image, destination &amp; extra data</summary><div><label>Image URL<input v-model="push.image" type="url" placeholder="https://…"></label><label>Movie public ID / routing key<input v-model="push.key" placeholder="Movie ID opens its details when tapped"></label><label>Data JSON<textarea v-model="push.data" spellcheck="false" /></label></div></details>
+                <footer class="admin-tool-actions"><button class="admin-primary" :disabled="busy"><AdminIcon name="bell" />Send push</button></footer>
+            </form>
+            <form v-else-if="activeTool === 'whatsapp'" class="admin-panel admin-tool admin-tool-card" @submit.prevent="sendWa">
+                <header><div><p>WHATSAPP</p><h2>Send message</h2><span>Send a text message or an approved template.</span></div><AdminIcon name="message" /></header>
+                <div class="admin-tool-fields"><label>Phone number<input v-model="wa.to" type="tel" placeholder="Country code + phone number" required></label><label>Message type<select v-model="wa.type"><option value="text">Text message</option><option value="template">Template message</option></select></label></div>
+                <label v-if="wa.type === 'text'">Message<textarea v-model="wa.message" placeholder="Write your message…" required /></label>
+                <template v-else><label>Template name<input v-model="wa.template_name" required></label><label>Parameters <small>Enter one parameter per line.</small><textarea v-model="wa.template_params" /></label></template>
+                <footer class="admin-tool-actions"><button class="admin-primary" :disabled="busy"><AdminIcon name="message" />Send WhatsApp</button></footer>
+            </form>
+            <form v-else-if="activeTool === 'warning'" class="admin-panel admin-tool admin-tool-card" @submit.prevent="saveWarning">
+                <header><div><p>IN-APP WARNING</p><h2>Warning banner</h2><span>Control the notice customers see in the app.</span></div><span class="admin-tool-state" :class="{ enabled: warning.isShow }">{{ warning.isShow ? 'Visible' : 'Hidden' }}</span></header>
+                <label>HTML / message<textarea v-model="warning.txt" required /></label>
+                <label>Platform<select v-model="warning.platform"><option value="all">All platforms</option><option value="android">Android</option><option value="ios">iOS</option><option v-for="item in desktopPlatforms" :key="item.value" :value="item.value">{{ item.label }}</option></select></label>
+                <fieldset class="admin-tool-group"><legend>Display settings</legend><label class="admin-tool-check"><input v-model="warning.isShow" type="checkbox"><span>Show warning<small>Make the banner visible in the app.</small></span></label><label class="admin-tool-check"><input v-model="warning.isCancelable" type="checkbox"><span>User can dismiss<small>Allow customers to close the warning.</small></span></label><label class="admin-tool-check"><input v-model="warning.isShowInLatest" type="checkbox"><span>Show in latest version<small>Include customers using the latest release.</small></span></label></fieldset>
+                <footer class="admin-tool-actions admin-tool-actions-split"><button type="button" class="admin-danger" :disabled="busy" @click="deleteWarning"><AdminIcon name="trash" />Delete warning</button><button class="admin-primary" :disabled="busy">Save warning</button></footer>
+            </form>
+            <form v-else-if="activeTool === 'ticker'" class="admin-panel admin-tool admin-tool-card" @submit.prevent="saveScroll">
+                <header><div><p>SCROLLING TEXT</p><h2>App ticker</h2><span>Set the scrolling announcement shown in the app.</span></div><span class="admin-tool-state" :class="{ enabled: scroll.show }">{{ scroll.show ? 'Visible' : 'Hidden' }}</span></header>
+                <label>Announcement<textarea v-model="scroll.text" placeholder="Write your announcement…" required /></label>
+                <label class="admin-tool-check"><input v-model="scroll.show" type="checkbox"><span>Show scrolling text<small>Make the announcement visible to customers.</small></span></label>
+                <footer class="admin-tool-actions admin-tool-actions-split"><button type="button" class="admin-danger" :disabled="busy" @click="deleteScroll"><AdminIcon name="trash" />Delete ticker</button><button class="admin-primary" :disabled="busy">Save scrolling text</button></footer>
+            </form>
         </div>
         <form v-else-if="tool === 'app-releases'" class="admin-panel admin-editor" @submit.prevent="saveRelease">
             <div class="admin-form-grid">

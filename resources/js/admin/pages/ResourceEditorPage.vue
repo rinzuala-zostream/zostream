@@ -1,6 +1,7 @@
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { runRequestBatch } from '../lib/requestBatch';
 import { notify } from '../lib/feedback';
 import UserLookup from '../components/UserLookup.vue';
 import ArtworkUpload from '../components/ArtworkUpload.vue';
@@ -12,7 +13,7 @@ import { normalizeForSubmit, resources } from '../lib/resources';
 import { deviceTypes, deviceTypeLabel, optionLabel } from '../lib/platforms';
 import { loadSubscriptionPlans } from '../lib/subscription-plans';
 
-const props = defineProps({ embedded: Boolean, resourceKey: String, recordId: [String, Number], formId: String });
+const props = defineProps({ embedded: Boolean, resourceKey: String, recordId: [String, Number], formId: String, initialRecord: { type: Object, default: null }, initialLinks: { type: Object, default: null } });
 const emit = defineEmits(['saved', 'saving', 'loading', 'ready', 'error']);
 const route = useRoute(); const router = useRouter();
 const key = computed(() => props.resourceKey || route.params.resource);
@@ -39,7 +40,7 @@ const switchingPlan = computed(() => editingSubscription.value && currentRecord.
 
 const model = reactive({}); const loading = ref(false); const saving = ref(false); const error = ref(''); const notice = ref('');
 const relationQuery = ref(''); const relationBusy = ref(false); const relationResults = ref([]); const plans = ref([]);
-const existingFeatures = ref([]); const existingOptions = ref([]); let relationTimer;
+const existingFeatures = ref([]); const existingOptions = ref([]); let relationTimer; let relationController; let relationVersion = 0;
 const legalSections = ref([{ heading: '', body: '' }]);
 const files = reactive({});
 const seasonEpisodes = ref([]); const episodeIncrease = ref(0);
@@ -78,6 +79,7 @@ function setUpload(name, file) {
     else delete files[name];
 }
 function init() {
+    relationVersion++; clearTimeout(relationTimer); relationController?.abort();
     deviceOnly.value = false; selectedDeviceType.value = '';
     Object.keys(model).forEach(name => delete model[name]); Object.keys(files).forEach(name => delete files[name]);
     resource.value?.fields.forEach(field => { model[field.name] = field.default ?? (field.type === 'checkbox' ? false : ''); });
@@ -114,48 +116,54 @@ function fill(record) {
         else if (value != null) model[field.name] = value;
     });
 }
-async function loadPlans() {
-    if (!['subscriptions'].includes(key.value)) return;
-    plans.value = await loadSubscriptionPlans(api);
-}
+let loadVersion = 0;
 async function load() {
+    const current = ++loadVersion;
     init(); loading.value = true;
+    const kind = key.value; const id = recordId.value; const isEditing = Boolean(editing.value);
     try {
-        await loadPlans();
-        if (!editing.value) return;
-        let endpoint = `${resource.value.endpoint}/${encodeURIComponent(recordId.value)}`;
-        if (key.value === 'movies') endpoint = `/admin/catalog/items/${encodeURIComponent(recordId.value)}`;
-        if (key.value === 'seasons') endpoint = `/catalog/seasons/${recordId.value}`;
-        if (key.value === 'episodes') endpoint = `/catalog/episodes/${recordId.value}`;
-        const record = valueData(await api(endpoint));
-        if (key.value === 'movies') {
-            try {
-                const linkData = valueData(await api(`/admin/catalog/items/${encodeURIComponent(recordId.value)}/links?type=movie`));
-                Object.assign(record, linkData.links || {});
-            } catch (reason) {
-                if (reason.status !== 404) throw reason;
-            }
+        const planRequest = kind === 'subscriptions' ? loadSubscriptionPlans(api) : Promise.resolve([]);
+        if (!isEditing) { const rows = await planRequest; if (current === loadVersion) plans.value = rows; return; }
+        let endpoint = `${resource.value.endpoint}/${encodeURIComponent(id)}`;
+        if (kind === 'seasons') endpoint = `/catalog/seasons/${encodeURIComponent(id)}`;
+        if (kind === 'episodes') endpoint = `/catalog/episodes/${encodeURIComponent(id)}`;
+        const seed = kind === 'movies' && String(props.initialRecord?.id) === String(id) ? { ...props.initialRecord } : null;
+        let linkRequest = Promise.resolve({});
+        if (['movies', 'episodes'].includes(kind)) {
+            linkRequest = seed && props.initialLinks !== null
+                ? Promise.resolve({ links: props.initialLinks })
+                : api(`/admin/catalog/items/${encodeURIComponent(id)}/links?type=${kind === 'movies' ? 'movie' : 'episode'}`).catch(reason => {
+                    if (kind === 'movies' && reason.status === 404) return {};
+                    throw reason;
+                });
         }
+        const [response, linkResponse, planRows, featureResponse] = await Promise.all([
+            seed || api(endpoint), linkRequest, planRequest,
+            kind === 'plans' ? api(`/admin/plans/${encodeURIComponent(id)}/features`) : {},
+        ]);
+        if (current !== loadVersion) return;
+        plans.value = planRows;
+        const record = valueData(response); const linkData = valueData(linkResponse);
+        if (kind === 'movies') Object.assign(record, linkData.links || {});
         currentRecord.value = record; fill(record);
         if (editingSubscription.value) selectedDeviceType.value = record.plan?.device_type || '';
-        if (key.value === 'seasons') seasonEpisodes.value = (record.episodes || []).map(episode => ({ id: episode.id, title: episode.title || `Episode ${episode.episode_number}`, isPayPerView: Boolean(episode.isPayPerView), amount: Number(episode.amount || 0) }));
-        if (key.value === 'legal') legalSections.value = record.sections?.length ? record.sections.map(section => ({ ...section })) : [{ heading: '', body: '' }];
-        if (key.value === 'plans') {
-            const featureData = valueData(await api(`/admin/plans/${recordId.value}/features`));
-            existingFeatures.value = featureData.features || record.features || [];
+        if (kind === 'seasons') seasonEpisodes.value = (record.episodes || []).map(episode => ({ id: episode.id, title: episode.title || `Episode ${episode.episode_number}`, isPayPerView: Boolean(episode.isPayPerView), amount: Number(episode.amount || 0) }));
+        if (kind === 'legal') legalSections.value = record.sections?.length ? record.sections.map(section => ({ ...section })) : [{ heading: '', body: '' }];
+        if (kind === 'plans') {
+            existingFeatures.value = valueData(featureResponse).features || record.features || [];
             model.features = existingFeatures.value.map(row => row.feature).filter(Boolean).join('\n');
             model.ppv_discount = existingFeatures.value[0]?.ppv_discount ?? '';
         }
-        if (key.value === 'polls') existingOptions.value = record.options || [];
-        if (key.value === 'episodes') {
-            const urls = valueData(await api(`/admin/catalog/items/${encodeURIComponent(recordId.value)}/links?type=episode`));
-            const first = (Array.isArray(urls) ? urls : urls.links || urls.data || [])[0];
+        if (kind === 'polls') existingOptions.value = record.options || [];
+        if (kind === 'episodes') {
+            const first = (Array.isArray(linkData) ? linkData : linkData.links || linkData.data || [])[0];
             if (first) { model.url = first.url || ''; model.type = first.type || 'DASH'; model.quality = first.quality || 'HD'; }
             model.movie_id ||= record.season?.movie_id || record.season?.movie?.num || '';
         }
-    } catch (reason) { error.value = reason.message; }
-    finally { loading.value = false; }
+    } catch (reason) { if (current === loadVersion) error.value = reason.message; }
+    finally { if (current === loadVersion) loading.value = false; }
 }
+onBeforeUnmount(() => { loadVersion++; relationVersion++; clearTimeout(relationTimer); relationController?.abort(); });
 const relationContext = computed(() => {
     if (!editing.value || !['seasons', 'episodes'].includes(key.value)) return null;
     const record = currentRecord.value || {};
@@ -216,28 +224,31 @@ function isSubscriptionPlanSelected(planId) {
     return selected.includes(String(planId));
 }
 function queueRelationSearch() {
-    clearTimeout(relationTimer);
+    clearTimeout(relationTimer); relationVersion++; relationController?.abort(); relationResults.value = []; relationBusy.value = false;
     relationTimer = setTimeout(searchRelations, 300);
 }
 async function searchRelations() {
     const query = relationQuery.value.trim(); if (query.length < 2) { relationResults.value = []; return; }
+    const current = ++relationVersion; relationController?.abort(); const controller = new AbortController(); relationController = controller;
     relationBusy.value = true; error.value = '';
+    let result = [];
     try {
         if (key.value === 'subscriptions') {
-            const data = valueData(await api(`/admin/users-search${queryString({ q: query, per_page: 20 })}`));
-            relationResults.value = Array.isArray(data) ? data : data.data || [];
+            const data = valueData(await api(`/admin/users-search${queryString({ q: query, per_page: 20, lookup: 1 })}`, { signal: controller.signal }));
+            result = Array.isArray(data) ? data : data.data || [];
         } else if (key.value === 'banners') {
-            const data = valueData(await api(`/admin/catalog/items/search${queryString({ q: query, limit: 20 })}`));
-            relationResults.value = Array.isArray(data) ? data : data.data || [];
+            const data = valueData(await api(`/admin/catalog/items/search${queryString({ q: query, limit: 20 })}`, { signal: controller.signal }));
+            result = Array.isArray(data) ? data : data.data || [];
         } else {
-            const movies = valueData(await api(`/admin/catalog/seasons/search${queryString({ q: query, limit: 20 })}`));
-            relationResults.value = (Array.isArray(movies) ? movies : []).flatMap(movie => {
+            const movies = valueData(await api(`/admin/catalog/seasons/search${queryString({ q: query, limit: 20 })}`, { signal: controller.signal }));
+            result = (Array.isArray(movies) ? movies : []).flatMap(movie => {
                 if (key.value === 'seasons') return [{ type: 'movie', id: movie.num || movie.id, label: movie.title }];
                 return (movie.seasons || []).map(season => ({ type: 'season', id: season.id, movieId: movie.num || movie.id, label: `${movie.title} · Season ${season.season_number}` }));
             });
         }
-    } catch (reason) { error.value = reason.message; }
-    finally { relationBusy.value = false; }
+        if (current === relationVersion) relationResults.value = result;
+    } catch (reason) { if (current === relationVersion && reason.name !== 'AbortError') error.value = reason.message; }
+    finally { if (current === relationVersion) relationBusy.value = false; }
 }
 function selectRelation(item) {
     if (key.value === 'subscriptions') model.user_id = item.uid || item.auth_phone;
@@ -278,7 +289,9 @@ async function syncPlanFeatures(planId, names, discount) {
     for (let index = 0; index < names.length; index++) {
         const payload = { feature: names[index], ppv_discount: Number(discount || 0), sort_order: index + 1, is_active: true };
         const current = existingFeatures.value[index];
-        await api(current?.id ? `/admin/plan-features/${current.id}` : `/admin/plans/${planId}/features`, { method: current?.id ? 'PUT' : 'POST', body: payload });
+        if (!current || current.feature !== payload.feature || Number(current.ppv_discount || 0) !== payload.ppv_discount || Number(current.sort_order) !== payload.sort_order || ![true, 1, '1'].includes(current.is_active)) {
+            await api(current?.id ? `/admin/plan-features/${current.id}` : `/admin/plans/${planId}/features`, { method: current?.id ? 'PUT' : 'POST', body: payload });
+        }
     }
     for (const removed of existingFeatures.value.slice(names.length)) await api(`/admin/plan-features/${removed.id}`, { method: 'DELETE' });
 }
@@ -286,7 +299,9 @@ async function syncPollOptions(pollId, rows) {
     for (let index = 0; index < rows.length; index++) {
         const payload = { option_text: rows[index].option_text, sort_order: index };
         const current = existingOptions.value[index];
-        await api(current?.id ? `/admin/poll-options/${current.id}` : `/admin/polls/${pollId}/options`, { method: current?.id ? 'PUT' : 'POST', body: payload });
+        if (!current || current.option_text !== payload.option_text || Number(current.sort_order) !== index) {
+            await api(current?.id ? `/admin/poll-options/${current.id}` : `/admin/polls/${pollId}/options`, { method: current?.id ? 'PUT' : 'POST', body: payload });
+        }
     }
     for (const removed of existingOptions.value.slice(rows.length)) await api(`/admin/poll-options/${removed.id}`, { method: 'DELETE' });
 }
@@ -336,7 +351,13 @@ async function save() {
         const response = await api(endpoint, { method, body: requestBody });
         const saved = valueData(response); const id = recordId.value || saved.id || saved.num;
         if (key.value === 'seasons' && editing.value && payload.isPayPerView) {
-            for (const episode of seasonEpisodes.value) await api(`/admin/catalog/episodes/${episode.id}`, { method: 'PUT', body: { isPayPerView: episode.isPayPerView, amount: episode.isPayPerView ? Number(episode.amount || 0) : 0 } });
+            const originalEpisodes = new Map((currentRecord.value.episodes || []).map(episode => [String(episode.id), episode]));
+            const changed = seasonEpisodes.value.filter(episode => {
+                const original = originalEpisodes.get(String(episode.id));
+                return !original || Boolean(original.isPayPerView) !== episode.isPayPerView
+                    || (episode.isPayPerView && Number(original.amount || 0) !== Number(episode.amount || 0));
+            });
+            await runRequestBatch(changed.map(episode => () => api(`/admin/catalog/episodes/${episode.id}`, { method: 'PUT', body: { isPayPerView: episode.isPayPerView, amount: episode.isPayPerView ? Number(episode.amount || 0) : 0 } })));
         }
         if (key.value === 'plans') await syncPlanFeatures(id, planFeatures, discount);
         if (key.value === 'polls' && editing.value) await syncPollOptions(id, pollOptions);

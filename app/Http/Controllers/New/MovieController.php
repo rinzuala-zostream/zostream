@@ -196,13 +196,14 @@ class MovieController extends Controller
             'limit' => 'nullable|integer|min:1|max:50',
             'per_page' => 'nullable|integer|min:1|max:50',
             'page' => 'nullable|integer|min:1',
+            'lookup' => 'nullable|boolean',
         ]);
 
         $query = trim($validated['q']);
         $perPage = $validated['per_page'] ?? $validated['limit'] ?? 20;
         $page = $validated['page'] ?? 1;
 
-        $movies = MovieModel::query()
+        $builder = MovieModel::query()
             ->select([
                 'num',
                 'id',
@@ -235,19 +236,22 @@ class MovieController extends Controller
                 $query,
                 "{$query}%",
             ])
-            ->orderBy('title')
-            ->paginate($perPage, ['*'], 'page', $page);
+            ->orderBy('title');
+        $lookup = $request->boolean('lookup');
+        $movies = $lookup
+            ? $builder->select(['num', 'id', 'title', 'director', 'genre', 'status', 'isSeason'])->simplePaginate($perPage, ['*'], 'page', $page)
+            : $builder->paginate($perPage, ['*'], 'page', $page);
 
         return response()->json([
             'status' => 'success',
             'query' => $query,
-            'count' => $movies->total(),
+            ...($lookup ? [] : ['count' => $movies->total()]),
             'data' => $movies->items(),
             'pagination' => [
                 'current_page' => $movies->currentPage(),
                 'per_page' => $movies->perPage(),
-                'total' => $movies->total(),
-                'last_page' => $movies->lastPage(),
+                ...($lookup ? [] : ['total' => $movies->total(), 'last_page' => $movies->lastPage()]),
+                'has_more' => $movies->hasMorePages(),
                 'next_page_url' => $movies->nextPageUrl(),
             ],
         ]);
@@ -340,13 +344,18 @@ class MovieController extends Controller
             $validated = $request->validate($this->movieRules($request));
             $movieData = $this->prepareMovieData($request, $validated);
 
-            if (empty($movieData['duration'])) {
+            $sourceChanged = false;
+            foreach (['dash_url', 'url'] as $field) {
+                if (array_key_exists($field, $movieData) && trim((string) $this->decryptAdminLink($movieData[$field])) !== trim((string) $this->decryptAdminLink($movie->$field))) $sourceChanged = true;
+            }
+            $durationCleared = array_key_exists('duration', $movieData) && empty($movieData['duration']) && !empty($movie->duration);
+            if (empty($movieData['duration']) && ($sourceChanged || $durationCleared)) {
                 $sources = [
                     $movieData['dash_url'] ?? $movie->dash_url,
                     $movieData['url'] ?? $movie->url,
                 ];
 
-                foreach ($sources as $mpdSource) {
+                foreach (array_unique(array_filter($sources)) as $mpdSource) {
                     $extractedDuration = $this->mpdDurationExtractor->extract($mpdSource);
 
                     if ($extractedDuration !== null) {

@@ -6,6 +6,7 @@ use App\Models\SessionTokenModel;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
@@ -369,6 +370,38 @@ class AdminMovieApiTest extends TestCase
                     ->assertUnprocessable()->assertJsonValidationErrors($field, 'error.details');
             }
         }
+    }
+
+
+    public function test_lookup_search_pages_without_a_total_count_or_large_description_payload(): void
+    {
+        foreach (['One', 'Two'] as $index => $title) DB::table('movie')->insert(['id' => 'lookup-'.$index, 'title' => 'Lookup '.$title, 'description' => 'Large description', 'status' => 'Draft', 'isSeason' => false]);
+        DB::enableQueryLog(); DB::flushQueryLog();
+        $this->withHeaders($this->adminHeaders())->getJson('/api/v4/admin/catalog/items/search?q=Lookup&lookup=1&per_page=1')
+            ->assertOk()->assertJsonCount(1, 'data.data')->assertJsonPath('data.pagination.has_more', true)->assertJsonMissingPath('data.data.0.description')->assertJsonMissingPath('data.count');
+        $this->assertFalse(collect(DB::getQueryLog())->contains(fn ($query) => str_contains(strtolower($query['query']), 'count(*)')));
+        DB::disableQueryLog();
+    }
+
+    public function test_unrelated_updates_and_unchanged_empty_duration_do_not_fetch_external_manifests(): void
+    {
+        Http::fake();
+        DB::table('movie')->insert(['id' => 'no-probe', 'title' => 'No probe', 'status' => 'Draft', 'isSeason' => false, 'url' => 'https://cdn.example.com/source.mpd', 'duration' => null]);
+        $this->withHeaders($this->adminHeaders())->putJson('/api/v4/admin/catalog/items/no-probe', ['title' => 'New title'])->assertOk();
+        $this->putJson('/api/v4/admin/catalog/items/no-probe', ['title' => 'Another title', 'url' => 'https://cdn.example.com/source.mpd', 'duration' => ''])->assertOk();
+        DB::table('movie')->where('id', 'no-probe')->update(['duration' => '95']);
+        $this->putJson('/api/v4/admin/catalog/items/no-probe', ['title' => 'Metadata only'])->assertOk();
+        $this->assertSame('95', DB::table('movie')->where('id', 'no-probe')->value('duration'));
+        Http::assertNothingSent();
+    }
+
+    public function test_changed_playback_source_still_extracts_duration_once(): void
+    {
+        Http::fake(['https://cdn.example.com/new.mpd' => Http::response('<MPD mediaPresentationDuration="PT1H12M" />')]);
+        DB::table('movie')->insert(['id' => 'new-source', 'title' => 'New source', 'status' => 'Draft', 'isSeason' => false, 'url' => 'https://cdn.example.com/old.mpd']);
+        $this->withHeaders($this->adminHeaders())->putJson('/api/v4/admin/catalog/items/new-source', ['url' => 'https://cdn.example.com/new.mpd', 'duration' => ''])->assertOk();
+        $this->assertSame('1h 12m', DB::table('movie')->where('id', 'new-source')->value('duration'));
+        Http::assertSentCount(1);
     }
 
     private function adminHeaders(): array

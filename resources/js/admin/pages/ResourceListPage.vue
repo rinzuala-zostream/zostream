@@ -20,6 +20,7 @@ const supportsDeviceFilter = computed(() => ['devices', 'plans', 'subscriptions'
 const episodeMovie = ref(null); const episodeSeason = ref(null);
 let debounce;
 let requestId = 0;
+let requestController;
 let restoreDrilldown = true;
 const preservesSearch = computed(() => ['movies', 'seasons', 'episodes'].includes(key.value));
 const listQuery = computed(() => preservesSearch.value ? {
@@ -127,6 +128,7 @@ function handleRowAction(item) {
 
 async function load(reset = false) {
     const currentRequest = ++requestId;
+    requestController?.abort();
     if (!resource.value) return;
     if (reset) page.value = 1;
     const query = search.value.trim();
@@ -137,6 +139,7 @@ async function load(reset = false) {
     const selectedMovie = episodeMovie.value?.movie_id || episodeMovie.value?.num || episodeMovie.value?.id || (restoreDrilldown ? route.query.movie : undefined);
     const selectedSeason = episodeSeason.value?.id || (restoreDrilldown ? route.query.season : undefined);
     restoreDrilldown = false;
+    const controller = new AbortController(); requestController = controller;
     loading.value = true; error.value = '';
     try {
         let endpoint = (resource.value.listEndpoint || resource.value.endpoint).replace('{parent}', encodeURIComponent(parent.value));
@@ -146,7 +149,7 @@ async function load(reset = false) {
         if (supportsDeviceFilter.value) searchParams.device_type = deviceType.value;
         if (key.value === 'devices') searchParams.platform = platform.value;
         if (searching) searchParams[resource.value.searchParam || 'q'] = query;
-        const response = await api(`${endpoint}${queryString(searchParams)}`);
+        const response = await api(`${endpoint}${queryString(searchParams)}`, { signal: controller.signal });
         if (currentRequest !== requestId) return;
         const result = resourceCollection(response);
         if (query && !resource.value.searchEndpoint) result.items = result.items.filter(item => Object.values(item).some(value => typeof value === 'string' && value.toLowerCase().includes(query.toLowerCase())));
@@ -160,7 +163,7 @@ async function load(reset = false) {
                 if (season) setEpisodeSeason(season);
             }
         }
-    } catch (reason) { if (currentRequest === requestId) error.value = reason.message; }
+    } catch (reason) { if (currentRequest === requestId && reason.name !== 'AbortError') error.value = reason.message; }
     finally { if (currentRequest === requestId) loading.value = false; }
 }
 
@@ -205,12 +208,12 @@ function heading(column) {
     const labels = { movie_title: 'movie', season_title: 'season', season_count: 'seasons', episode_count: 'episodes' };
     return labels[column] || column.replaceAll('_', ' ');
 }
-watch(key, () => { restoreDrilldown = false; requestId++; clearTimeout(debounce); search.value = ''; parent.value = ''; deviceType.value = ''; platform.value = ''; episodeMovie.value = null; episodeSeason.value = null; load(true); });
+watch(key, () => { restoreDrilldown = false; requestId++; requestController?.abort(); clearTimeout(debounce); search.value = ''; parent.value = ''; deviceType.value = ''; platform.value = ''; episodeMovie.value = null; episodeSeason.value = null; load(true); });
 watch(deviceType, () => { platform.value = ''; load(true); });
-watch(search, () => { restoreDrilldown = false; requestId++; episodeMovie.value = null; episodeSeason.value = null; clearTimeout(debounce); debounce = setTimeout(() => load(true), 350); });
-watch(parent, () => { restoreDrilldown = false; requestId++; loading.value = false; episodeMovie.value = null; episodeSeason.value = null; });
+watch(search, () => { restoreDrilldown = false; requestId++; requestController?.abort(); episodeMovie.value = null; episodeSeason.value = null; clearTimeout(debounce); debounce = setTimeout(() => load(true), 350); });
+watch(parent, () => { restoreDrilldown = false; requestId++; requestController?.abort(); loading.value = false; episodeMovie.value = null; episodeSeason.value = null; });
 onMounted(() => load());
-onBeforeUnmount(() => { clearTimeout(debounce); requestId++; });
+onBeforeUnmount(() => { clearTimeout(debounce); requestId++; requestController?.abort(); });
 </script>
 
 <template>
@@ -233,7 +236,7 @@ onBeforeUnmount(() => { clearTimeout(debounce); requestId++; });
         <section class="admin-table-card">
             <div v-if="loading" class="admin-loading">Loading {{ resource.label.toLowerCase() }}…</div>
             <div v-else-if="!items.length" class="admin-empty-state"><AdminIcon :name="resource.icon" /><h2>No {{ resource.label.toLowerCase() }} found</h2><p>{{ resource.parentKey && !parent && search.length < 2 ? `Enter a ${resource.parentKey.replace('_', ' ')} or search by movie title above.` : resource.searchOnly && search.length < 2 ? 'Start with a search above.' : 'Try another search or create the first record.' }}</p></div>
-            <div v-else class="admin-table-scroll"><table><thead><tr><th v-for="column in columns" :key="column">{{ heading(column) }}</th><th>Actions</th></tr></thead><tbody><tr v-for="item in items" :key="item.id || item.uid"><td v-for="column in columns" :key="column"><span v-if="column.includes('status') || column.startsWith('is')" class="admin-pill">{{ display(item[column], column) }}</span><span v-else class="admin-cell-text" :title="display(item[column], column)">{{ display(item[column], column) }}</span></td><td><div class="admin-row-actions"><button v-if="rowActionLabel(item)" class="admin-row-text-action" @click="handleRowAction(item)">{{ rowActionLabel(item) }}</button><RouterLink v-if="key === 'polls'" class="admin-poll-result-link" :to="`/polls/${item.id}/insights`"><AdminIcon name="chart" /> <span>Results</span></RouterLink><button v-if="key === 'users' && item.isACActive !== false && item.isACActive !== 0" title="Suspend user" @click="suspend(item)">⊘</button><RouterLink v-if="!resource.readOnly && !item.__kind" :to="editorTarget(item.id || item.uid)"><AdminIcon name="edit" /></RouterLink><button v-if="!resource.readOnly && !item.__kind" @click="remove(item)"><AdminIcon name="trash" /></button></div></td></tr></tbody></table></div>
+            <div v-else class="admin-table-scroll"><table><thead><tr><th v-for="column in columns" :key="column">{{ heading(column) }}</th><th>Actions</th></tr></thead><tbody><tr v-for="item in items" :key="item.id || item.uid"><td v-for="column in columns" :key="column"><span v-if="column.includes('status') || column.startsWith('is')" class="admin-pill">{{ display(item[column], column) }}</span><span v-else class="admin-cell-text" :title="display(item[column], column)">{{ display(item[column], column) }}</span></td><td><div class="admin-row-actions"><button v-if="rowActionLabel(item)" class="admin-row-text-action" @click="handleRowAction(item)">{{ rowActionLabel(item) }}</button><RouterLink v-if="key === 'polls'" class="admin-poll-result-link" :to="`/polls/${item.id}/insights`"><AdminIcon name="chart" /> <span>Results</span></RouterLink><button v-if="key === 'users' && item.isACActive !== false && item.isACActive !== 0" class="admin-danger" title="Suspend user" aria-label="Suspend user" @click="suspend(item)">⊘</button><RouterLink v-if="!resource.readOnly && !item.__kind" :to="editorTarget(item.id || item.uid)"><AdminIcon name="edit" /></RouterLink><button v-if="!resource.readOnly && !item.__kind" class="admin-danger" title="Delete record" aria-label="Delete record" @click="remove(item)"><AdminIcon name="trash" /></button></div></td></tr></tbody></table></div>
             <footer v-if="lastPage > 1" class="admin-pagination"><button :disabled="page <= 1" @click="page--; load()">Previous</button><span>Page {{ page }} / {{ lastPage }}</span><button :disabled="page >= lastPage" @click="page++; load()">Next</button></footer>
         </section>
     </div>

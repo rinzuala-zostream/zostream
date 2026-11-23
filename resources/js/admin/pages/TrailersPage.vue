@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch } from 'vue';
+import { onBeforeUnmount, ref, watch } from 'vue';
 import AdminIcon from '../components/AdminIcon.vue';
 import PageHeader from '../components/PageHeader.vue';
 import StatusPanel from '../components/StatusPanel.vue';
@@ -14,7 +14,7 @@ const loadingTrailer = ref(false);
 const saving = ref(false);
 const error = ref('');
 const notice = ref('');
-let searchTimer;
+let searchTimer; let searchVersion = 0; let searchController;
 let skipNextSearch = false;
 
 function responseData(response) {
@@ -29,15 +29,16 @@ async function searchMovies() {
         return;
     }
 
+    const current = ++searchVersion; searchController?.abort(); const controller = new AbortController(); searchController = controller;
     searching.value = true;
     error.value = '';
     try {
-        const response = responseData(await api(`/admin/catalog/items/search${queryString({ q: term, limit: 20 })}`));
-        results.value = Array.isArray(response) ? response : [];
+        const response = responseData(await api(`/admin/catalog/items/search${queryString({ q: term, limit: 20, lookup: 1 })}`, { signal: controller.signal }));
+        if (current === searchVersion) results.value = Array.isArray(response) ? response : [];
     } catch (reason) {
-        error.value = reason.message;
+        if (current === searchVersion && reason.name !== 'AbortError') error.value = reason.message;
     } finally {
-        searching.value = false;
+        if (current === searchVersion) searching.value = false;
     }
 }
 
@@ -98,7 +99,7 @@ function removeTrailer(index) {
 }
 
 watch(query, () => {
-    clearTimeout(searchTimer);
+    clearTimeout(searchTimer); searchVersion++; searchController?.abort(); searching.value = false;
     if (skipNextSearch) {
         skipNextSearch = false;
         return;
@@ -109,6 +110,7 @@ watch(query, () => {
     }
     searchTimer = setTimeout(searchMovies, 300);
 });
+onBeforeUnmount(() => { clearTimeout(searchTimer); searchVersion++; searchController?.abort(); });
 </script>
 
 <template>

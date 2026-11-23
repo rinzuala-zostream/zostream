@@ -97,4 +97,18 @@ class AdminUsernameSearchTest extends TestCase
 
     }
 
+    public function test_lookup_search_skips_total_count_and_returns_only_identity_fields(): void
+    {
+        DB::enableQueryLog(); DB::flushQueryLog();
+        $response = app(UserController::class)->search(Request::create('/users-search', 'GET', ['q' => 'zoviewer', 'per_page' => 1, 'lookup' => 1]));
+        $this->assertSame(200, $response->getStatusCode());
+        $data = $response->getData(true)['data'];
+        $this->assertCount(1, $data['data']);
+        $this->assertSame('uid-one', $data['data'][0]['uid']);
+        $this->assertArrayNotHasKey('device_id', $data['data'][0]);
+        $this->assertNotNull($data['next_page_url']);
+        $this->assertFalse(collect(DB::getQueryLog())->contains(fn ($query) => str_contains(strtolower($query['query']), 'count(*)')));
+        DB::disableQueryLog();
+    }
+
 }

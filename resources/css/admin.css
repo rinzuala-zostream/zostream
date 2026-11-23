@@ -671,3 +671,78 @@
 }
 
 .admin-root .admin-status.is-warning,.admin-login .admin-status.is-warning{color:var(--a-warning);border-color:var(--a-warning);background:var(--a-soft)}
+
+/* Destructive actions keep the same contrast in both admin themes. */
+.admin-root .admin-danger,
+.admin-root .admin-page .icon-action.danger {
+    border: 1px solid #b4233b;
+    background: #b4233b;
+    color: #fff;
+    font-weight: 800;
+}
+.admin-root .admin-danger:not(:disabled):hover,
+.admin-root .admin-page .icon-action.danger:not(:disabled):hover {
+    border-color: #921b30;
+    background: #921b30;
+    color: #fff;
+}
+.admin-root .admin-danger:focus-visible,
+.admin-root .admin-page .icon-action.danger:focus-visible {
+    outline: 3px solid var(--a-text);
+    outline-offset: 3px;
+}
+.admin-root .admin-danger:disabled,
+.admin-root .admin-page .icon-action.danger:disabled { cursor: not-allowed; opacity: .6; }
+.admin-root .admin-danger svg { width: 17px; height: 17px; flex-shrink: 0; }
+
+.admin-root .admin-tools-workspace { display: grid; grid-template-columns: 230px minmax(0, 1fr); align-items: start; gap: 24px; }
+.admin-root .admin-tool-menu { display: grid; gap: 8px; }
+.admin-root .admin-tool-menu button {
+    display: flex; align-items: flex-start; gap: 12px; min-width: 0; padding: 15px 12px;
+    border: 1px solid transparent; border-radius: 10px; background: transparent; color: var(--a-muted); text-align: left;
+}
+.admin-root .admin-tool-menu button:hover { background: var(--surface-hover); color: var(--a-text); }
+.admin-root .admin-tool-menu button.active { border-color: var(--a-cyan); background: var(--a-panel); color: var(--a-cyan); }
+.admin-root .admin-tool-menu button:focus-visible { outline: 2px solid var(--a-cyan); outline-offset: 2px; }
+.admin-root .admin-tool-menu svg { width: 21px; height: 21px; flex-shrink: 0; }
+.admin-root .admin-tool-menu strong { display: block; font-size: 14px; line-height: 1.5; }
+.admin-root .admin-tool-menu small { display: block; margin-top: 4px; color: var(--a-muted); font-size: 12px; line-height: 1.5; }
+.admin-root .admin-tool-card { min-width: 0; gap: 20px; padding: 24px; }
+.admin-root .admin-tool-card > header { margin: -24px -24px 2px; padding: 24px; }
+.admin-root .admin-tool-card > header p { font-size: 10px; letter-spacing: 1.5px; }
+.admin-root .admin-tool-card > header h2 { font-size: 21px; }
+.admin-root .admin-tool-card > header div > span { display: block; margin-top: 9px; color: var(--a-muted); font-size: 13px; line-height: 1.6; }
+.admin-root .admin-tool-card > header > svg { width: 26px; height: 26px; flex-shrink: 0; color: var(--a-cyan); }
+.admin-root .admin-tool-card label { min-width: 0; color: var(--a-text); font-size: 13px; line-height: 1.5; }
+.admin-root .admin-tool-card label small { color: var(--a-muted); font-size: 12px; font-weight: 400; }
+.admin-root .admin-tool-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.admin-root .admin-tool-phone { grid-template-columns: 115px minmax(0, 1fr); }
+.admin-root .admin-tool-card :is(input, select, textarea):focus-visible { border-color: var(--a-cyan); outline: 2px solid var(--a-cyan); outline-offset: 2px; }
+.admin-root .admin-tool-group { display: grid; min-width: 0; margin: 0; padding: 16px; gap: 16px; border: 1px solid var(--a-line); border-radius: 10px; }
+.admin-root .admin-tool-group legend { padding: 0 7px; color: var(--a-muted); font-size: 12px; font-weight: 700; }
+.admin-root .admin-tool-card .admin-tool-check { display: flex; align-items: flex-start; gap: 12px; }
+.admin-root .admin-tool-card .admin-tool-check input { width: 18px; height: 18px; min-height: 0; flex-shrink: 0; margin: 2px 0 0; padding: 0; accent-color: var(--a-cyan); }
+.admin-root .admin-tool-check small { display: block; margin-top: 3px; }
+.admin-root .admin-tool-options { padding: 16px; border: 1px solid var(--a-line); border-radius: 10px; }
+.admin-root .admin-tool-options summary { color: var(--a-text); font-size: 13px; font-weight: 700; cursor: pointer; }
+.admin-root .admin-tool-options > div { display: grid; gap: 16px; margin-top: 18px; }
+.admin-root .admin-tool-card > footer { flex-wrap: wrap; margin-top: 4px; padding-top: 20px; border-top: 1px solid var(--a-line); }
+.admin-root .admin-tool-actions-split { justify-content: space-between; }
+.admin-root .admin-tool-state { padding: 5px 9px; border: 1px solid var(--a-line); border-radius: 6px; background: var(--a-soft); color: var(--a-muted); font-size: 11px; font-weight: 800; }
+.admin-root .admin-tool-state.enabled { color: var(--a-lime); border-color: currentColor; }
+.admin-root .admin-tool-callout { margin: 0; padding: 14px; border-left: 3px solid var(--a-warning); border-radius: 4px; background: var(--a-soft); color: var(--a-text); font-size: 13px; line-height: 1.7; }
+.admin-root .admin-tool-code { margin: 0; padding: 18px; border: 1px solid var(--a-line); border-radius: 10px; background: var(--a-soft); color: var(--a-muted); font-size: 12px; }
+.admin-root .admin-tool-code strong { display: block; margin-top: 8px; color: var(--a-text); font-size: 28px; letter-spacing: 5px; }
+@media (max-width: 800px) {
+    .admin-root .admin-tools-workspace { grid-template-columns: minmax(0, 1fr); gap: 18px; }
+    .admin-root .admin-tool-menu { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 480px) {
+    .admin-root .admin-tool-menu button { padding: 12px 9px; gap: 8px; }
+    .admin-root .admin-tool-menu strong { font-size: 12px; }
+    .admin-root .admin-tool-menu small { display: none; }
+    .admin-root .admin-tool-card { padding: 18px; }
+    .admin-root .admin-tool-card > header { margin: -18px -18px 0; padding: 18px; }
+    .admin-root .admin-tool-fields:not(.admin-tool-phone) { grid-template-columns: minmax(0, 1fr); }
+    .admin-root .admin-tool-card > footer button { flex: 1; }
+}

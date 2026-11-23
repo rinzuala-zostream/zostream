@@ -104,14 +104,15 @@ test('typing a username returns identities and selecting one stores its canonica
 });
 
 test('obsolete replies cannot replace newer results and lookup errors are visible', async () => {
-    let finishOld;
-    globalThis.__resourceApi = path => path.includes('old')
-        ? new Promise(resolve => { finishOld = resolve; })
+    let finishOld; let oldSignal;
+    globalThis.__resourceApi = (path, options) => path.includes('old')
+        ? new Promise(resolve => { finishOld = resolve; oldSignal = options.signal; })
         : Promise.reject(new Error('Lookup unavailable'));
     const ui = lookup();
     try {
         await ui.type('old'); await pause();
         await ui.type('new');
+        assert.equal(oldSignal.aborted, true);
         finishOld({ data: [viewer] }); await settle();
         assert.doesNotMatch(text(ui.root), /@zoviewer/);
         await pause(); await settle();

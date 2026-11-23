@@ -2,7 +2,7 @@
 import { nextTick, onBeforeUnmount, onMounted, ref, useId } from 'vue';
 import ResourceEditorPage from '../pages/ResourceEditorPage.vue';
 import AdminIcon from './AdminIcon.vue';
-const props = defineProps({ movie: { type: Object, required: true } });
+const props = defineProps({ movie: { type: Object, required: true }, links: { type: Object, default: null } });
 const emit = defineEmits(['saved', 'cancel']);
 const body = ref(null); const dialog = ref(null); const cancelButton = ref(null); const busy = ref(false); const loading = ref(true);
 const ready = ref(false);
@@ -23,7 +23,7 @@ onBeforeUnmount(() => { dialog.value?.close(); if (previousFocus?.isConnected) p
 <template>
     <dialog ref="dialog" class="movie-edit-dialog" :aria-labelledby="`${formId}-title`" @cancel.prevent="cancel">
         <header><div><p>Movie editor</p><h2 :id="`${formId}-title`">Edit {{ movie.title || movie.id }}</h2></div><button type="button" :disabled="busy" aria-label="Close movie editor" @click="cancel"><AdminIcon name="x" /></button></header>
-        <div ref="body" tabindex="-1" class="movie-editor-body"><ResourceEditorPage embedded resource-key="movies" :record-id="movie.id" :form-id="formId" @saved="emit('saved', $event)" @saving="busy = $event" @loading="loading = $event" @ready="ready = $event" @error="showError" /></div>
+        <div ref="body" tabindex="-1" class="movie-editor-body"><ResourceEditorPage embedded resource-key="movies" :initial-record="movie" :initial-links="links" :record-id="movie.id" :form-id="formId" @saved="emit('saved', $event)" @saving="busy = $event" @loading="loading = $event" @ready="ready = $event" @error="showError" /></div>
         <footer><button ref="cancelButton" type="button" class="admin-secondary compact" :disabled="busy" @click="cancel">Cancel</button><button type="submit" :form="formId" class="admin-primary compact" :disabled="busy || loading || !ready">{{ busy ? 'Saving…' : 'Save changes' }}</button></footer>
     </dialog>
 </template>

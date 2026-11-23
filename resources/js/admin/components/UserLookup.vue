@@ -14,8 +14,8 @@ const emit = defineEmits(['update:modelValue', 'select']);
 const text = ref(String(props.modelValue || ''));
 const results = ref([]); const busy = ref(false); const error = ref(''); const searched = ref(false);
 const chosen = ref(null); const open = ref(false); const active = ref(-1);
-let timer; let version = 0;
-function reset() { clearTimeout(timer); version++; results.value = []; busy.value = false; error.value = ''; searched.value = false; active.value = -1; }
+let timer; let version = 0; let requestController;
+function reset() { clearTimeout(timer); version++; requestController?.abort(); requestController = null; results.value = []; busy.value = false; error.value = ''; searched.value = false; active.value = -1; }
 watch(() => props.modelValue, value => {
     if (String(value || '') !== text.value) { reset(); text.value = String(value || ''); chosen.value = null; }
 });
@@ -26,13 +26,14 @@ function search() {
     if (term.length < 2 || props.disabled || props.readonly) return;
     const current = version; busy.value = true;
     timer = setTimeout(async () => {
+        const controller = new AbortController(); requestController = controller;
         try {
-            const response = await api(`/admin/users-search${queryString({ q: term, per_page: 12 })}`);
+            const response = await api(`/admin/users-search${queryString({ q: term, per_page: 12, lookup: 1 })}`, { signal: controller.signal });
             if (current !== version) return;
             const data = response?.data ?? response;
             results.value = (Array.isArray(data) ? data : data?.data || []).filter(user => user.uid);
             searched.value = true;
-        } catch (reason) { if (current === version) error.value = reason.message; }
+        } catch (reason) { if (current === version && reason.name !== 'AbortError') error.value = reason.message; }
         finally { if (current === version) busy.value = false; }
     }, 300);
 }

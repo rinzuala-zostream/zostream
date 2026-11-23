@@ -86,6 +86,7 @@ class UserController extends Controller
                 'uid' => 'nullable|string|max:120',
                 'limit' => 'nullable|integer|min:1|max:100',
                 'per_page' => 'nullable|integer|min:1|max:100',
+                'lookup' => 'nullable|boolean',
             ]);
 
             $term = $this->cleanSearchTerm($request->get('q', $request->get('search', '')));
@@ -106,7 +107,7 @@ class UserController extends Controller
             $mailNeedles = $this->emailNeedles($term, $mail);
             $limit = $this->perPage($request);
 
-            $users = UserModel::query()
+            $query = UserModel::query()
                 ->where(function ($query) use ($term, $name, $username, $mail, $phone, $uid, $termPhone, $mailNeedles) {
                     if ($term !== '') {
                         $query->orWhere('uid', 'like', '%' . $term . '%')
@@ -152,9 +153,12 @@ class UserController extends Controller
                 })
                 ->orderByRaw($this->searchRankSql(), $this->searchRankBindings($term, $name, $mail, $phone, $uid, $termPhone, $mailNeedles, $username))
                 ->orderBy('name')
-                ->orderByDesc('num')
-                ->paginate($limit)
-                ->appends($request->query());
+                ->orderByDesc('num');
+
+            $users = $request->boolean('lookup')
+                ? $query->select(['num', 'uid', 'name', 'username', 'mail', 'call', 'auth_phone'])->simplePaginate($limit)
+                : $query->paginate($limit);
+            $users->appends($request->query());
 
             return response()->json([
                 'status' => 'success',

@@ -112,12 +112,14 @@ test('Movies starts with search and selected movie details replace the results t
 });
 
 test('movie edit opens in a dialog and Save/Cancel retain the selected title', async () => {
-    route.params = {}; route.query = { movie: movie.id }; const { writes } = fixture();
+    route.params = {}; route.query = { movie: movie.id }; const { writes, calls } = fixture();
     globalThis.__resourceNavigation = null;
     const { root, app } = mount(MoviesPage);
     try {
         await settle(); find(root, el => el.tag === 'button' && text(el).trim() === 'Edit movie').props.onClick(); await settle();
         let dialog = find(root, el => el.tag === 'dialog'); assert.equal(dialog.open, true);
+        assert.equal(calls.filter(path => path === '/admin/catalog/items/public-film').length, 1);
+        assert.equal(calls.filter(path => path.includes('/links?')).length, 1);
         const form = find(dialog, el => el.tag === 'form');
         assert.equal(find(dialog, el => el.tag === 'button' && text(el) === 'Save changes').props.form, form.props.id);
         input(dialog, 'Title').props['onUpdate:modelValue']('Changed Film'); await settle();
@@ -170,11 +172,10 @@ test('search pagination is usable and missing playback URLs do not hide movie de
 
 test('failed editor loading cannot submit blank movie data', async () => {
     route.params = {}; route.query = { movie: movie.id };
-    let reads = 0; const writes = [];
+    const writes = [];
     globalThis.__resourceApi = async (path, options) => {
         if (options.method) writes.push(options);
-        if (path.includes('/links?')) return { links: {} };
-        if (++reads > 1) throw new Error('Could not load editor data.');
+        if (path.includes('/links?')) throw Object.assign(new Error('Could not load editor links.'), { status: 503 });
         return movie;
     };
     const { root, app } = mount(MoviesPage);
@@ -184,5 +185,33 @@ test('failed editor loading cannot submit blank movie data', async () => {
         assert.equal(find(dialog, el => el.tag === 'button' && text(el) === 'Save changes').props.disabled, true);
         assert.equal(find(dialog, el => el.tag === 'form'), undefined); assert.equal(writes.length, 0);
         assert.match(text(dialog), /Retry record/);
+    } finally { app.unmount(); }
+});
+
+test('movie details render without waiting for slow playback links', async () => {
+    route.params = {}; route.query = { movie: movie.id };
+    let finishLinks;
+    globalThis.__resourceApi = path => path.includes('/links?') ? new Promise(resolve => { finishLinks = resolve; }) : Promise.resolve(movie);
+    const { root, app } = mount(MoviesPage);
+    try {
+        await settle(); assert.match(text(root), /Movie synopsis/); assert.match(text(root), /Loading playback links/);
+        finishLinks({ links: { hls_url: 'https://cdn.example/ready.m3u8' } }); await settle();
+        assert.ok(find(root, el => el.tag === 'a' && el.props.href === 'https://cdn.example/ready.m3u8'));
+    } finally { app.unmount(); }
+});
+
+test('lookup pagination works without an expensive total count', async () => {
+    route.params = {}; route.query = {};
+    globalThis.__resourceApi = async path => {
+        const page = Number(new URL(path, 'https://test.invalid').searchParams.get('page'));
+        return { data: [movie], pagination: { current_page: page, has_more: page === 1 } };
+    };
+    const { root, app } = mount(MoviesPage);
+    try {
+        await settle(); const search = find(root, el => el.tag === 'input');
+        search.props['onUpdate:modelValue']('Film'); search.props.onInput(); await new Promise(resolve => setTimeout(resolve, 330)); await settle();
+        const next = find(root, el => el.tag === 'button' && text(el) === 'Next'); assert.equal(next.props.disabled, false);
+        next.props.onClick(); await settle();
+        assert.match(text(root), /Page 2/); assert.equal(next.props.disabled, true);
     } finally { app.unmount(); }
 });
