@@ -30,6 +30,7 @@ function closePlanPicker() {
     }
     planQuery.value = '';
 }
+const deviceOrder = ['mobile', 'tv', 'desktop', 'browser'];
 const groups = computed(() => {
     const grouped = new Map();
     filteredPlans.value.forEach(plan => {
@@ -37,7 +38,11 @@ const groups = computed(() => {
         if (!grouped.has(device)) grouped.set(device, []);
         grouped.get(device).push(plan);
     });
-    return [...grouped];
+    const rank = device => {
+        const index = deviceOrder.indexOf(device);
+        return index < 0 ? deviceOrder.length : index;
+    };
+    return [...grouped].sort(([left], [right]) => rank(left) - rank(right));
 });
 const selectedPlans = computed(() => props.plans.filter(plan => (props.model.plan_id || []).map(String).includes(String(plan.id))));
 const total = computed(() => selectedPlans.value.reduce((sum, plan) => sum + Number(props.model.amount === '' || props.model.amount == null ? plan.price || 0 : props.model.amount), 0));
@@ -172,7 +177,7 @@ onBeforeUnmount(() => { clearTimeout(timer); ++searchVersion; });
 .plan-picker summary{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:48px;padding:12px 14px;list-style:none;cursor:pointer;font-size:13px;font-weight:600}
 .plan-picker summary::-webkit-details-marker{display:none}.plan-picker summary>span:first-child{display:flex;align-items:center;gap:10px}.plan-picker summary svg{color:var(--a-muted);width:18px;height:18px}.picker-chevron{color:var(--a-muted);font-size:18px}.plan-picker[open] .picker-chevron{transform:rotate(180deg)}
 .plan-picker[open] summary{border-bottom:1px solid var(--a-line)}.plan-picker-panel{padding:12px}.plan-search input{height:40px}.plan-search .subscriber-search>svg{top:10px;width:18px;height:18px}
-.plan-options{max-height:300px;overflow-y:auto;overscroll-behavior:contain;margin-top:10px}.plan-option-group h3{position:sticky;top:0;z-index:1;margin:0;padding:10px 8px;background:var(--surface-field);color:var(--a-muted);font-size:11px;font-weight:700}
+.plan-options{max-height:300px;overflow-y:auto;overscroll-behavior:contain;margin-top:10px}.plan-option-group h3{position:sticky;top:0;z-index:1;margin:0;padding:10px 8px;background:var(--surface-field);color:var(--a-text);font-size:14px;font-weight:800}
 .plan-option{display:flex;align-items:center;gap:11px;padding:11px 9px;border-radius:7px;cursor:pointer}.plan-option:hover,.plan-option.is-selected{background:var(--surface-hover)}.plan-option input{width:17px;height:17px;flex:none;accent-color:var(--a-cyan)}.plan-option-copy{display:grid;gap:4px;flex:1;min-width:0}.plan-option strong{font-size:13px;overflow-wrap:anywhere}.plan-option small{color:var(--a-muted);font-size:11px;line-height:1.5}.plan-option>b{flex:none;font-size:12px;white-space:nowrap}
 .plan-picker-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:10px;padding-top:10px;border-top:1px solid var(--a-line)}.plan-picker-footer>span{font-size:12px;color:var(--a-muted)}.no-plan-results{margin:0;padding:20px 8px;color:var(--a-muted);font-size:12px;line-height:1.6}
 .selected-plan-list{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:14px}.selected-plan-chip{display:inline-flex;align-items:center;gap:10px;max-width:100%;padding:8px 10px;border:1px solid var(--a-line);border-radius:8px;background:var(--a-soft)}.selected-plan-chip>span{min-width:0;font-size:12px;font-weight:600;overflow-wrap:anywhere}.selected-plan-chip small{display:block;margin-top:3px;color:var(--a-muted);font-size:10px;font-weight:400}.selected-plan-chip button{display:grid;place-items:center;flex:none;width:28px;height:28px;padding:4px;border:0;border-radius:5px;background:transparent;color:var(--a-muted)}.selected-plan-chip button:hover{background:var(--surface-field);color:var(--a-red)}.selected-plan-chip svg{width:15px;height:15px}.clear-plans{border:0;padding:8px;background:transparent;color:var(--a-muted);font-size:12px;text-decoration:underline}.clear-plans:hover{color:var(--a-text)}
