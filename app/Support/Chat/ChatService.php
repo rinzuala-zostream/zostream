@@ -18,7 +18,17 @@ final class ChatService
         abort_unless(config('chat.enabled'), 503, 'Chat is currently unavailable.');
         $room = $this->remember('chat:room:'.$id, 30, fn () => ChatDatabase::connection()->table('chat_rooms')->find($id));
         abort_unless($room, 404);
+        $this->assertRoomAccess($r, $room, $writing);
+
+        return $room;
+    }
+
+    /** Reuse freshly loaded discovery rows without fetching each room again. */
+    public function assertRoomAccess(Request $r, object $room, bool $writing = false): void
+    {
+        abort_unless(config('chat.enabled'), 503, 'Chat is currently unavailable.');
         abort_if($room->closed, 403, 'This room is closed.');
+        $id = (int) $room->id;
         $uid = (string) $r->input('auth_user_id');
         $ban = false;
         foreach ([0, $id] as $scope) {
@@ -58,8 +68,6 @@ final class ChatService
                 }
             }
         }
-
-        return $room;
     }
 
     // Watch players publish minute heartbeats, independently of legacy ping.

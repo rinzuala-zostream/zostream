@@ -612,6 +612,61 @@ class ChatApiTest extends TestCase
             'channels' => [\App\Support\Chat\ChatReadService::userChannel('bob')]]))->assertForbidden();
     }
 
+    public function test_global_badge_authorization_does_not_query_or_refresh_playback_storage(): void
+    {
+        $this->liveCreatorStream('movie', 'film-a');
+        $global = \App\Support\Chat\ChatReadService::contextChannel('global');
+        $primary = DB::connection('chat_testing');
+        foreach ([false, true] as $withRoom) {
+            if ($withRoom) { $this->room(); }
+            $primary->flushQueryLog();
+            $primary->enableQueryLog();
+            try {
+                $this->withHeaders(['X-Playback-Token' => 'play-a'])->postJson('/api/v4/chat/unread/auth-batch',
+                    $this->identity(['socket_id' => '1.2', 'channels' => [
+                        \App\Support\Chat\ChatReadService::userChannel('alice'), $global,
+                    ]]))->assertOk()->assertJsonPath('data.authorizations.'.$global.'.channel', ChatChannels::leased($global));
+                $this->assertSame([], $primary->getQueryLog(), 'Global badge authorization must not access the playback/account database.');
+            } finally {
+                $primary->disableQueryLog();
+            }
+        }
+    }
+
+    public function test_public_badges_recheck_room_closure_even_when_room_metadata_is_cached(): void
+    {
+        $room = $this->room();
+        $global = \App\Support\Chat\ChatReadService::contextChannel('global');
+        $payload = $this->identity(['socket_id' => '1.2', 'channels' => [$global]]);
+        $this->postJson('/api/v4/chat/unread/auth-batch', $payload)->assertOk();
+        ChatDatabase::connection()->table('chat_rooms')->where('id', $room)->update(['closed' => true]);
+        $this->postJson('/api/v4/chat/unread/auth-batch', $payload)->assertForbidden();
+        $this->unread()->assertOk()->assertJsonCount(0, 'data.rooms')
+            ->assertJsonMissingPath('data.channels.1');
+    }
+
+    public function test_unread_latest_ids_stay_room_scoped_and_include_deleted_messages_and_empty_rooms(): void
+    {
+        $global = $this->room();
+        $private = $this->createPrivateRoom();
+        $first = $this->message($global, 'bob');
+        $deleted = $this->message($global, 'bob');
+        ChatDatabase::connection()->table('chat_messages')->where('id', $deleted)->update(['deleted_at' => now()]);
+        // A newer ID in another room must not advance the global cursor.
+        $privateMessage = $this->message($private, 'bob');
+        $rooms = collect($this->unread()->assertOk()->json('data.rooms'))->keyBy('room_id');
+        $this->assertSame((string) $deleted, $rooms[$global]['last_message_id']);
+        $this->assertSame((string) $first, $rooms[$global]['first_unread_id']);
+        $this->assertSame(1, $rooms[$global]['unread_count']);
+        $this->assertSame((string) $privateMessage, $rooms[$private]['last_message_id']);
+
+        ChatDatabase::connection()->table('chat_messages')->where('room_id', $private)->delete();
+        $rooms = collect($this->unread()->assertOk()->json('data.rooms'))->keyBy('room_id');
+        $this->assertSame('0', $rooms[$private]['last_message_id']);
+        $this->assertSame(0, $rooms[$private]['unread_count']);
+        $this->assertNull($rooms[$private]['first_unread_id']);
+    }
+
     public function test_live_private_watch_survives_idle_deadline_in_discovery_links_and_notifications(): void
     {
         $room = $this->privateWatchFixture();

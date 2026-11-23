@@ -25,21 +25,32 @@ final class ChatReadService
         $uid = (string) $r->input('auth_user_id');
         if ($channel === self::userChannel($uid)) { return; }
         if (preg_match('/^private-chat\.([1-9][0-9]*)$/', $channel, $match)) { $this->chat->room($r, (int) $match[1]); return; }
+
+        // A global badge is independent of playback. Most viewers subscribe to
+        // it even when they never open chat; do not query/write MySQL for it.
+        if ($channel === self::contextChannel('global')) {
+            $this->authorizeContext($r, 'global');
+            return;
+        }
+        abort_unless(preg_match('/^private-chat-context-[a-f0-9]{64}$/', $channel), 403);
         $this->chat->refreshPlayback($r);
-        $contexts = [['global', null]];
+        if ((string) $r->header('X-Playback-Token') === '') { abort(403); }
         $stream = DB::table('n_active_streams as s')->join('n_devices as d', 'd.id', '=', 's.device_id')
             ->where('d.user_id', $uid)->where('d.device_token', $r->input('auth_device_id'))
             ->where('s.stream_token', (string) $r->header('X-Playback-Token'))->where('s.status', 'active')->first(['s.content_type', 's.content_key']);
-        if ($stream && in_array($stream->content_type, ['movie', 'episode'], true)) { $contexts[] = [$stream->content_type, $stream->content_key]; }
-        foreach ($contexts as [$type, $id]) {
-            if ($channel === self::contextChannel($type, $id)) {
-                $room = ChatDatabase::connection()->table('chat_rooms')->where('room_key', $type === 'global' ? 'global' : $type.':'.$id)->first();
-                if ($room) { $this->chat->room($r, $room->id); }
-                else { abort_if($this->rootBanned($uid), 403); }
-                return;
-            }
+        if ($stream && in_array($stream->content_type, ['movie', 'episode'], true)
+            && $channel === self::contextChannel($stream->content_type, $stream->content_key)) {
+            $this->authorizeContext($r, $stream->content_type, $stream->content_key);
+            return;
         }
         abort(403);
+    }
+
+    private function authorizeContext(Request $request, string $type, ?string $id = null): void
+    {
+        $room = ChatDatabase::connection()->table('chat_rooms')->where('room_key', $type === 'global' ? 'global' : $type.':'.$id)->first();
+        if ($room) { $this->chat->assertRoomAccess($request, $room); }
+        else { abort_if($this->rootBanned((string) $request->input('auth_user_id')), 403); }
     }
 
     private function rootBanned(string $uid): bool
@@ -70,7 +81,7 @@ final class ChatReadService
                     $q->orWhere(fn ($watch) => $watch->where('ir.content_type', $type)->where('ir.content_id', $contentId));
                 }
             });
-        $candidates = ChatDatabase::connection()->table('chat_rooms')->where('closed', false)->where(function ($q) use ($invites, $type, $contentId) {
+        $candidates = ChatDatabase::connection()->table('chat_rooms')->where(function ($q) use ($invites, $type, $contentId) {
             $q->where('type', 'global')->orWhereIn('id', $invites);
             if ($type !== 'global') {
                 $q->orWhere(fn ($movie) => $movie->where('type', $type)->where('content_id', $contentId));
@@ -79,7 +90,7 @@ final class ChatReadService
         $rooms = [];
         foreach ($candidates as $room) {
             try {
-                $this->chat->room($request, $room->id);
+                $this->chat->assertRoomAccess($request, $room);
                 $rooms[] = $room;
             } catch (HttpExceptionInterface $error) {
                 if (! in_array($error->getStatusCode(), [403, 404], true)) {
@@ -91,18 +102,23 @@ final class ChatReadService
         $reads = ChatDatabase::connection()->table('chat_room_reads')->where('user_id', $uid)->whereIn('room_id', $ids)->pluck('last_read_message_id', 'room_id');
         // Constant ranges use the existing (room_id, id) index instead of scanning
         // already-read history through a per-message read-state join.
-        $unread = ChatDatabase::connection()->table('chat_messages as m')->where(function ($query) use ($ids, $reads) {
-            if ($ids === []) {
-                $query->whereRaw('1 = 0');
-            }
+        $blocked = $this->chat->blocked($uid);
+        $unread = $ids === [] ? collect() : ChatDatabase::connection()->table('chat_messages as m')->where(function ($query) use ($ids, $reads) {
             foreach ($ids as $id) {
                 $query->orWhere(fn ($range) => $range->where('m.room_id', $id)->where('m.id', '>', $reads[$id] ?? 0));
             }
         })->where('m.user_id', '!=', $uid)->whereNull('m.deleted_at')
-            ->whereNotIn('m.user_id', $this->chat->blocked($uid))
+            ->whereNotIn('m.user_id', $blocked)
             ->where('m.created_at', '>=', now()->subDays(config('chat.retention_days')))
             ->groupBy('m.room_id')->selectRaw('m.room_id, COUNT(*) as unread_count, MIN(m.id) as first_unread_id')->get()->keyBy('room_id');
-        $latest = ChatDatabase::connection()->table('chat_messages')->whereIn('room_id', $ids)->groupBy('room_id')->selectRaw('room_id, MAX(id) as last_id')->pluck('last_id', 'room_id');
+        // GROUP BY/MAX walks the room history. A bounded lookup per room can
+        // seek directly to the end of the existing (room_id, id) index instead.
+        $latest = $ids === [] ? collect() : ChatDatabase::connection()->table('chat_rooms')
+            ->whereIn('id', $ids)->select('id')->selectSub(
+                ChatDatabase::connection()->table('chat_messages')->select('id')
+                    ->whereColumn('room_id', 'chat_rooms.id')->orderByDesc('id')->limit(1),
+                'last_id'
+            )->get()->pluck('last_id', 'id');
         $result = array_map(function ($room) use ($reads, $unread, $latest) {
             $state = $unread[$room->id] ?? null;
             return ['room_id' => (string) $room->id,
@@ -122,13 +138,13 @@ final class ChatReadService
         if ($type !== 'global' && $contentId !== null && $this->chat->playbackAllowed($request, $type, $contentId)) { $contexts[] = [$type, $contentId]; }
         if (! $this->rootBanned($uid)) {
             foreach ($contexts as [$context, $id]) {
-                $existing = ChatDatabase::connection()->table('chat_rooms')->where('room_key', $context === 'global' ? 'global' : $context.':'.$id)->value('id');
+                $existing = $candidates->firstWhere('room_key', $context === 'global' ? 'global' : $context.':'.$id)?->id;
                 if (! $existing || in_array($existing, $ids)) { $channels[] = self::contextChannel($context, $id); }
             }
         }
         return ['rooms' => $result, 'total_unread' => array_sum(array_column($result, 'unread_count')),
             'auth_batch' => true,
-            'event_cursor' => $cursor, 'user_id' => $uid, 'blocked_user_ids' => $this->chat->blocked($uid),
+            'event_cursor' => $cursor, 'user_id' => $uid, 'blocked_user_ids' => $blocked,
             'server_time_ms' => now()->getTimestampMs(),
             'channels' => $channels,
             'websocket_url' => config('chat.websocket_url')];
