@@ -366,7 +366,7 @@ td small { display: block; opacity: .7; margin-top: 5px; }
 .studio-cover>small { color: #c3e5df; font-size: 11px; }.reopen-batch { margin-bottom: 20px; }
 .preview-dialog { width: min(440px, calc(100vw - 32px)); max-width: none; max-height: calc(100dvh - 32px); padding: 0; border: 1px solid var(--a-line); border-radius: 18px; background: var(--a-bg); color: var(--a-text); box-shadow: 0 30px 100px #0008; }
 .preview-dialog[open] { display: flex; flex-direction: column; }.preview-dialog.is-pdf { width: min(1120px, calc(100vw - 32px)); height: min(1100px, calc(100dvh - 32px)); }
-.preview-dialog::backdrop { background: #020713b8; backdrop-filter: blur(5px); }
+.preview-dialog::backdrop { background: #020713b8; backdrop-filter: none; }
 .preview-header { display: flex; flex: none; justify-content: space-between; gap: 20px; align-items: flex-start; padding: 20px 24px; border-bottom: 1px solid var(--a-line); }.preview-header>div:first-child { min-width: 0; }.preview-header h2 { margin: 0; font-size: 21px; overflow-wrap: anywhere; }.preview-header p { margin: 8px 0 0; color: var(--a-muted); font-size: 12px; }.preview-header .studio-kicker { margin-bottom: 7px; }
 .preview-actions { display: flex; gap: 10px; align-items: center; flex: none; }.preview-close { min-width: 38px; }.preview-content { min-height: 0; overflow: auto; }.preview-dialog.is-pdf .preview-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }.preview-content>.admin-status { flex: none; margin: 12px 16px; }
 .qr-content { display: flex; flex-direction: column; gap: 16px; align-items: center; padding: 24px; }.qr-content p { margin: 0; }.qr-content>small { color: var(--a-muted); text-align: center; font-size: 12px; line-height: 1.5; }

@@ -12,6 +12,9 @@ import { loadSubscriptionPlans } from '../lib/subscription-plans';
 
 const route = useRoute(); const router = useRouter();
 const key = computed(() => route.params.resource); const resource = computed(() => resources[key.value]);
+const listTarget = computed(() => ['movies', 'seasons', 'episodes'].includes(key.value)
+    ? { path: `/manage/${key.value}`, query: route.query }
+    : `/manage/${key.value}`);
 const editing = computed(() => route.params.id && route.params.id !== 'new');
 const creatingSubscription = computed(() => key.value === 'subscriptions' && !editing.value);
 const editingSubscription = computed(() => key.value === 'subscriptions' && editing.value);
@@ -312,7 +315,7 @@ async function save() {
                 await api(resource.value.createEndpoint, { method: 'POST', body: { ...payload, plan_id: planId, transaction_id: planIds.length > 1 && payload.transaction_id ? `${payload.transaction_id}-${planId}` : payload.transaction_id } });
             }
             notice.value = `${planIds.length} subscription${planIds.length === 1 ? '' : 's'} created with payment history.`;
-            router.push(`/manage/${key.value}`); return;
+            router.push(listTarget.value); return;
         }
         const endpoint = editing.value ? `${resource.value.endpoint}/${route.params.id}` : (resource.value.createEndpoint || resource.value.endpoint);
         let requestBody = payload; let method = editing.value ? 'PUT' : 'POST';
@@ -330,7 +333,7 @@ async function save() {
         if (key.value === 'plans') await syncPlanFeatures(id, planFeatures, discount);
         if (key.value === 'polls' && editing.value) await syncPollOptions(id, pollOptions);
         notice.value = `${resource.value.singular} saved successfully.`;
-        router.push(`/manage/${key.value}`);
+        router.push(listTarget.value);
     } catch (reason) { error.value = reason.message; }
     finally { saving.value = false; }
 }
@@ -343,7 +346,7 @@ onMounted(load);
 
 <template>
     <div v-if="resource" class="admin-page" :class="{ narrow: !creatingSubscription }">
-        <PageHeader :eyebrow="creatingSubscription ? 'Subscriber management' : editing ? 'Edit record' : 'New record'" :title="`${editing ? 'Update' : 'Add'} ${resource.singular}`" :description="creatingSubscription ? 'Set up access, choose plans and record a payment in one place.' : 'Admin3-compatible workflow with validated relationships and nested records.'" :back="`/manage/${key}`" />
+        <PageHeader :eyebrow="creatingSubscription ? 'Subscriber management' : editing ? 'Edit record' : 'New record'" :title="`${editing ? 'Update' : 'Add'} ${resource.singular}`" :description="creatingSubscription ? 'Set up access, choose plans and record a payment in one place.' : 'Admin3-compatible workflow with validated relationships and nested records.'" :back="listTarget" />
         <StatusPanel tone="success" :message="notice" /><StatusPanel tone="error" :message="error" />
         <div v-if="loading" class="admin-loading">Loading record…</div>
         <SubscriptionCreateForm v-else-if="creatingSubscription" :model="model" :plans="plans" :saving="saving" @save="save" />
@@ -425,7 +428,7 @@ onMounted(load);
                 <div><p>EPISODE PPV</p><h2>{{ model.isPayPerView ? 'Episode pricing' : 'Episode pricing disabled' }}</h2><span>{{ episodePpvSelectedCount }} selected · Season amount {{ Number(model.amount || 0).toLocaleString() }} · Episode total {{ episodePpvTotal.toLocaleString() }}</span></div>
                 <button type="button" class="admin-secondary" :disabled="!model.isPayPerView" @click="openEpisodePpv">View episodes</button>
             </section>
-            <footer><RouterLink :to="`/manage/${key}`" class="admin-secondary">Cancel</RouterLink><button class="admin-primary" :disabled="saving">{{saving?'Saving…':`${editing?'Save changes':'Create'} ${resource.singular}`}}</button></footer>
+            <footer><RouterLink :to="listTarget" class="admin-secondary">Cancel</RouterLink><button class="admin-primary" :disabled="saving">{{saving?'Saving…':`${editing?'Save changes':'Create'} ${resource.singular}`}}</button></footer>
         </form>
         <Teleport to=".admin-root">
             <div v-if="episodePpvOpen" class="admin-episode-ppv-backdrop" @click.self="episodePpvOpen = false">
