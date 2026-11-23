@@ -1,4 +1,5 @@
 <script setup>
+import UserLookup from '../components/UserLookup.vue';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { onBeforeRouteLeave, onBeforeRouteUpdate, useRoute, useRouter } from 'vue-router';
 import PageHeader from '../components/PageHeader.vue';
@@ -198,7 +199,7 @@ onBeforeUnmount(() => { generation++; contentGeneration++; historyGeneration++; 
                     <button v-if="['plans', 'contents'].includes(tab)" class="admin-primary" type="button" :disabled="locked" @click="openEditor(tab === 'plans' ? 'plan' : 'content')">{{ tab === 'plans' ? 'Add plan' : 'Add content' }}</button>
                     <form v-if="filterOptions.length || tab === 'history'" class="channel-filter" @submit.prevent="load(1)">
                         <label v-if="filterOptions.length">Status<select v-model="filter"><option value="">All statuses</option><option v-for="state in filterOptions" :key="state">{{ state }}</option></select></label>
-                        <label v-else>User UID<input v-model="userFilter" placeholder="Any member"></label>
+                        <label v-else>User UID<UserLookup v-model="userFilter" /></label>
                         <button class="admin-secondary" type="submit" :disabled="locked">Apply</button>
                     </form>
                 </div>

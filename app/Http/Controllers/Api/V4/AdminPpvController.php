@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V4;
 
 use App\Http\Controllers\Controller;
 use App\Models\MovieModel;
+use App\Models\UserModel;
 use App\Models\New\Episode;
 use App\Models\New\PaymentHistory;
 use App\Models\New\Season;
@@ -83,8 +84,14 @@ class AdminPpvController extends Controller
         }
         $userId = trim((string) $request->query('user_id', ''));
         if ($userId !== '') {
-            $new->where('user_id', 'like', '%'.$userId.'%');
-            $legacy->where('user_id', 'like', '%'.$userId.'%');
+            $matchingUsers = UserModel::query()->select('uid')
+                ->where('username', 'like', '%'.ltrim($userId, '@').'%');
+            foreach ([$new, $legacy] as $payments) {
+                $payments->where(function ($query) use ($userId, $matchingUsers) {
+                    $query->where('user_id', 'like', '%'.$userId.'%')
+                        ->orWhereIn('user_id', clone $matchingUsers);
+                });
+            }
         }
         $summary = [
             'purchase_count' => (clone $new)->count() + (clone $legacy)->count(),

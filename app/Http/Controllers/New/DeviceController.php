@@ -48,6 +48,7 @@ class DeviceController extends Controller
                 $query->where('uid', 'like', '%' . $term . '%')
                     ->orWhere('mail', 'like', '%' . $term . '%')
                     ->orWhere('name', 'like', '%' . $term . '%')
+                                ->orWhere('username', 'like', '%' . ltrim($term, '@') . '%')
                     ->orWhere('call', 'like', '%' . $term . '%')
                     ->orWhere('auth_phone', 'like', '%' . $term . '%');
 

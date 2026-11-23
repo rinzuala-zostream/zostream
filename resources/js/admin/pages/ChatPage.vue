@@ -1,4 +1,5 @@
 <script setup>
+import UserLookup from '../components/UserLookup.vue';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import PageHeader from '../components/PageHeader.vue';
@@ -136,7 +137,7 @@ onUnmounted(() => { active = false; listSeq++; roomSeq++; window.clearInterval(t
         <template v-else>
             <form class="chat-toolbar" @submit.prevent="load()">
                 <template v-if="tab === 'rooms'"><label>Room / content ID<input v-model.trim="search" maxlength="150" placeholder="Search rooms"></label><label>Type<select v-model="roomType"><option value="">All types</option><option value="global">Global</option><option value="movie">Movie</option><option value="episode">Episode</option><option value="invite">Private / Watch room</option></select></label><label>State<select v-model="roomState"><option value="">All states</option><option value="open">Open</option><option value="closed">Closed</option></select></label></template>
-                <template v-else><label>Room ID<input v-model="roomFilter" type="number" :min="tab==='reports'?1:0" placeholder="All rooms"></label><label v-if="tab==='reports'">Status<select v-model="reportStatus"><option value="pending">Pending</option><option value="resolved">Resolved</option><option value="all">All</option></select></label><label v-if="tab==='restrictions'">Viewer ID<input v-model.trim="userFilter" maxlength="191" placeholder="All viewers"></label></template>
+                <template v-else><label>Room ID<input v-model="roomFilter" type="number" :min="tab==='reports'?1:0" placeholder="All rooms"></label><label v-if="tab==='reports'">Status<select v-model="reportStatus"><option value="pending">Pending</option><option value="resolved">Resolved</option><option value="all">All</option></select></label><label v-if="tab==='restrictions'">Viewer ID<UserLookup v-model="userFilter" /></label></template>
                 <button class="admin-primary" :disabled="loading">Apply filters</button>
             </form>
             <div v-if="loading" class="admin-loading" role="status">Loading chat records…</div>
@@ -150,7 +151,7 @@ onUnmounted(() => { active = false; listSeq++; roomSeq++; window.clearInterval(t
                 </section>
                 <div class="chat-pagination"><button class="admin-secondary" :disabled="pager.current_page<=1" @click="load(pager.current_page-1)">Previous</button><span>{{ number(pager.total) }} records · Page {{ pager.current_page }} of {{ pager.last_page }}</span><button class="admin-secondary" :disabled="pager.current_page>=pager.last_page" @click="load(pager.current_page+1)">Next</button></div>
             </template>
-            <section v-if="tab==='restrictions'" class="admin-panel chat-card"><h2>Restrict a viewer</h2><form class="chat-toolbar" @submit.prevent="manualRestriction('mute')"><label>Viewer ID<input v-model.trim="userIdInput" maxlength="191" required></label><label>Room ID · 0 = all rooms<input v-model="roomIdInput" type="number" min="0" required></label><button class="admin-secondary">Mute viewer</button><button class="admin-secondary" type="button" @click="manualRestriction('ban')">Ban viewer</button></form></section>
+            <section v-if="tab==='restrictions'" class="admin-panel chat-card"><h2>Restrict a viewer</h2><form class="chat-toolbar" @submit.prevent="manualRestriction('mute')"><label>Viewer ID<UserLookup v-model="userIdInput" required /></label><label>Room ID · 0 = all rooms<input v-model="roomIdInput" type="number" min="0" required></label><button class="admin-secondary">Mute viewer</button><button class="admin-secondary" type="button" @click="manualRestriction('ban')">Ban viewer</button></form></section>
             <section v-if="selected || roomLoading || roomError" class="admin-panel chat-card">
                 <header class="chat-room-header"><div><h2>{{ title }}</h2><p v-if="selected">{{ selected.room_key }} · {{ selected.closed ? 'Closed' : 'Open' }} · Admin review</p></div><div class="chat-actions"><button v-if="selected" class="admin-secondary" @click="roomAction">{{ selected.closed ? 'Open room' : 'Close room' }}</button><button v-if="selected" class="admin-secondary" :disabled="roomLoading" @click="history(selected.id)">Refresh history</button><button class="admin-secondary" @click="roomSeq++; selected=null; messages=[]; roomLoading=false; roomError=''">Close review</button></div></header>
                 <StatusPanel tone="error" :message="roomError" />

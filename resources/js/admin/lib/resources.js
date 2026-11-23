@@ -5,7 +5,7 @@ const movieGenres = ['Action', 'Adventure', 'Animation', 'Comedy', 'Crime', 'Dra
 
 export const resources = {
     users: {
-        label: 'Users', singular: 'User', icon: 'users', endpoint: '/admin/users', searchEndpoint: '/admin/users-search', columns: ['uid', 'name', 'auth_phone', 'mail', 'isACActive'],
+        label: 'Users', singular: 'User', icon: 'users', endpoint: '/admin/users', searchEndpoint: '/admin/users-search', columns: ['uid', 'name', 'username', 'auth_phone', 'mail', 'isACActive'],
         fields: [f('uid', 'User ID', 'text', { placeholder: 'Auto: phone, email, or generated ID' }), f('name', 'Name'), f('country_code', 'Country code', 'text', { placeholder: '+91' }), f('auth_phone', 'Phone'), f('call', 'Alternate phone'), f('mail', 'Email', 'email'), f('dob', 'Date of birth', 'date'), f('khua', 'Town'), f('veng', 'Locality'), f('img', 'Profile image URL', 'url', { wide: true }), f('device_name', 'Device name'), f('device_id', 'Device ID'), f('token', 'FCM token', 'text', { wide: true }), f('created_date', 'Created date', 'datetime-local'), f('edit_date', 'Edited date', 'datetime-local'), f('lastLogin', 'Last login', 'datetime-local'), f('isACActive', 'Account active', 'checkbox', { default: true }), f('isAccountComplete', 'Account complete', 'checkbox'), f('is_auth_phone_active', 'Phone verified', 'checkbox', { default: true })],
     },
     movies: {

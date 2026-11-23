@@ -1,4 +1,5 @@
 <script setup>
+import UserLookup from '../components/UserLookup.vue';
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import PageHeader from '../components/PageHeader.vue';
 import StatusPanel from '../components/StatusPanel.vue';
@@ -271,7 +272,7 @@ onUnmounted(() => {
             <label>Platform<select v-model="filters.platform"><option value="">All platforms</option><option v-for="item in analyticsPlatforms" :key="item.value" :value="item.value">{{ item.label }}</option></select></label>
             <label>App version<input v-model="filters.app_version" placeholder="All versions"></label>
             <label>Content type<select v-model="filters.content_type"><option value="">All content</option><option value="movie">Movie</option><option value="episode">Episode</option><option value="live">Live</option></select></label>
-            <label>User ID<input v-model="filters.user_id" placeholder="All users"></label>
+            <label>User ID<UserLookup v-model="filters.user_id" /></label>
             <button class="admin-primary" type="submit" :disabled="loading">{{ loading ? 'Loading…' : 'Apply filters' }}</button>
         </form>
 

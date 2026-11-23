@@ -542,10 +542,13 @@ class AnalyticsReportController extends Controller
         }
         if ($request->filled('q')) {
             $term = '%'.str_replace(['%', '_'], ['\\%', '\\_'], (string) $request->query('q')).'%';
-            $query->where(function ($search) use ($term) {
+            $username = '%'.str_replace(['%', '_'], ['\\%', '\\_'], ltrim((string) $request->query('q'), '@')).'%';
+            $query->where(function ($search) use ($term, $username) {
                 $search->where('session_id', 'like', $term)
                     ->orWhere('content_id', 'like', $term)
-                    ->orWhere('user_id', 'like', $term);
+                    ->orWhere('user_id', 'like', $term)
+                    ->orWhereIn('user_id', \App\Models\UserModel::query()->select('uid')
+                        ->where('username', 'like', $username));
             });
         }
 

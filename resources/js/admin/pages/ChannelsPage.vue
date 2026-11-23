@@ -1,4 +1,5 @@
 <script setup>
+import UserLookup from '../components/UserLookup.vue';
 import { computed, onBeforeUnmount, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import PageHeader from '../components/PageHeader.vue';
@@ -50,7 +51,7 @@ load();
         <form class="channel-filters admin-panel" @submit.prevent="load(1)">
             <label>Search<input v-model="search" type="search" placeholder="Channel name or slug"></label>
             <label>Status<select v-model="status"><option value="">All statuses</option><option v-for="state in ['pending', 'active', 'suspended', 'deleted']" :key="state">{{ state }}</option></select></label>
-            <label>Owner UID<input v-model="owner" placeholder="Any owner"></label>
+            <label>Owner UID<UserLookup v-model="owner" /></label>
             <button class="admin-secondary" type="submit" :disabled="loading">Apply filters</button>
             <button v-if="search || status || owner" class="admin-secondary" type="button" :disabled="loading" @click="clearFilters">Clear filters</button>
         </form>

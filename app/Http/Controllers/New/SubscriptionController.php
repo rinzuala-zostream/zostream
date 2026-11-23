@@ -66,6 +66,9 @@ class SubscriptionController extends Controller
                     $q->where('user_id', 'like', '%' . $search . '%')
                         ->orWhere('id', $search)
                         ->orWhere('plan_id', $search)
+                        ->orWhereHas('user', function ($userQuery) use ($search) {
+                            $userQuery->where('username', 'like', '%' . ltrim($search, '@') . '%');
+                        })
                         ->orWhereHas('plan', function ($planQuery) use ($search) {
                             $planQuery->where('name', 'like', '%' . $search . '%');
                         });
@@ -159,7 +162,7 @@ class SubscriptionController extends Controller
             $query = Subscription::with([
                 'plan',
                 'devices',
-                'user:num,uid,name,mail,call,auth_phone',
+                'user:num,uid,name,username,mail,call,auth_phone',
             ])->where(function ($subscriptionQuery) use ($search, $phone) {
                 $subscriptionQuery
                     ->where('user_id', 'like', '%' . $search . '%')
@@ -170,6 +173,7 @@ class SubscriptionController extends Controller
                         $userQuery->where(function ($userSearch) use ($search, $phone) {
                             $userSearch->where('uid', 'like', '%' . $search . '%')
                                 ->orWhere('name', 'like', '%' . $search . '%')
+                                ->orWhere('username', 'like', '%' . ltrim($search, '@') . '%')
                                 ->orWhere('mail', 'like', '%' . $search . '%')
                                 ->orWhere('call', 'like', '%' . $search . '%')
                                 ->orWhere('auth_phone', 'like', '%' . $search . '%');

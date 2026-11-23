@@ -217,7 +217,7 @@ onBeforeUnmount(() => { clearTimeout(debounce); requestId++; });
         </PageHeader>
         <StatusPanel tone="success" :message="notice" /><StatusPanel tone="error" :message="error" />
         <section class="admin-list-toolbar">
-            <label class="admin-search"><AdminIcon name="search" /><input v-model="search" :placeholder="resource.searchOnly ? 'Type at least 2 characters…' : `Search ${resource.label.toLowerCase()}…`"></label>
+            <label class="admin-search"><AdminIcon name="search" /><input v-model="search" :placeholder="['users', 'subscriptions', 'devices'].includes(key) ? 'Search by username, name, phone, email or UID…' : resource.searchOnly ? 'Type at least 2 characters…' : `Search ${resource.label.toLowerCase()}…`"></label>
             <label v-if="supportsDeviceFilter" class="admin-parent-filter"><span>Device type</span><select v-model="deviceType"><option value="">All devices</option><option v-for="item in deviceTypes" :key="item.value" :value="item.value">{{ item.label }}</option></select></label>
             <label v-if="key === 'devices' && (!deviceType || deviceType === 'desktop')" class="admin-parent-filter"><span>Desktop platform</span><select v-model="platform" @change="load(true)"><option value="">Mac &amp; Windows</option><option v-for="item in desktopPlatforms" :key="item.value" :value="item.value">{{ item.label }}</option></select></label>
             <label v-if="resource.parentKey" class="admin-parent-filter"><span>{{ resource.parentKey.replace('_', ' ') }}</span><input v-model="parent" placeholder="Enter ID, or search by movie title" @keyup.enter="load(true)"><button @click="load(true)">Load</button></label>

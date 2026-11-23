@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import UserLookup from '../components/UserLookup.vue';
 import ArtworkUpload from '../components/ArtworkUpload.vue';
 import PageHeader from '../components/PageHeader.vue';
 import StatusPanel from '../components/StatusPanel.vue';
@@ -181,7 +182,7 @@ const relationContext = computed(() => {
     };
 });
 const relationSearchLabel = computed(() => {
-    if (key.value === 'subscriptions') return 'Find user by name, phone, email or UID';
+    if (key.value === 'subscriptions') return 'Find user by username, name, phone, email or UID';
     if (key.value === 'banners') return 'Find a movie or series by title';
     if (editing.value && key.value === 'seasons') return 'Change movie by movie title';
     if (editing.value && key.value === 'episodes') return 'Change season by movie title';
@@ -392,6 +393,7 @@ onMounted(load);
                                 </div>
                                 <select v-else-if="field.type==='select'" v-model="model[field.name]" :required="field.required"><option value="">Choose…</option><option v-for="option in field.options" :key="option" :value="option">{{ optionLabel(field, option) }}</option></select>
                                 <ArtworkUpload v-else-if="field.upload" v-model="model[field.name]" :field="field" :file="files[field.name]" @file-change="setUpload(field.name, $event)" />
+                                <UserLookup v-else-if="field.relation === 'user' && !field.readOnly" v-model="model[field.name]" :required="field.required" :disabled="saving" />
                                 <input v-else v-model="model[field.name]" :type="field.type" :readonly="field.readOnly" :required="field.required" :placeholder="field.placeholder" :step="field.type==='number'?'any':undefined" :min="field.min" :max="field.max">
                             </template>
                         </div>
@@ -416,6 +418,7 @@ onMounted(load);
                         <select v-else-if="field.relation === 'plan'" v-model="model[field.name]" :required="field.required"><option value="">Choose a plan…</option><optgroup v-for="[deviceType, devicePlans] in plansByDevice" :key="deviceType" :label="deviceTypeLabel(deviceType)"><option v-for="plan in devicePlans" :key="plan.id" :value="plan.id" :disabled="plan.is_active === false && String(plan.id) !== String(currentRecord?.plan_id)">{{ plan.name }} · {{ deviceTypeLabel(plan.device_type) }} · ₹{{ plan.price }}</option></optgroup></select>
                         <select v-else-if="field.type==='select'" v-model="model[field.name]" :required="field.required"><option value="">Choose…</option><option v-for="option in field.options" :key="option" :value="option">{{ optionLabel(field, option) }}</option></select>
                         <ArtworkUpload v-else-if="field.upload" v-model="model[field.name]" :field="field" :file="files[field.name]" @file-change="setUpload(field.name, $event)" />
+                        <UserLookup v-else-if="field.relation === 'user' && !field.readOnly" v-model="model[field.name]" :required="field.required" :disabled="saving" />
                         <input v-else v-model="model[field.name]" :type="field.type" :readonly="field.readOnly" :required="field.required" :placeholder="field.placeholder" :step="field.type==='number'?'any':undefined" :min="field.min" :max="field.max">
                     </template>
                 </label>

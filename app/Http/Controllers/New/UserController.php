@@ -70,7 +70,7 @@ class UserController extends Controller
     }
 
 
-    // Search users by name, email, phone, UID, or numeric ID
+    // Search users by username, name, email, phone, UID, or numeric ID
     public function search(Request $request)
     {
         try {
@@ -79,6 +79,7 @@ class UserController extends Controller
                 'q' => 'nullable|string|max:120',
                 'search' => 'nullable|string|max:120',
                 'name' => 'nullable|string|max:120',
+                'username' => 'nullable|string|max:120',
                 'mail' => 'nullable|string|max:120',
                 'email' => 'nullable|string|max:120',
                 'phone' => 'nullable|string|max:40',
@@ -89,11 +90,12 @@ class UserController extends Controller
 
             $term = $this->cleanSearchTerm($request->get('q', $request->get('search', '')));
             $name = $this->cleanSearchTerm($request->get('name', ''));
+            $username = ltrim($this->cleanSearchTerm($request->get('username', '')), '@');
             $mail = $this->cleanSearchTerm($request->get('mail', $request->get('email', '')));
             $phone = $this->normalizePhone($request->get('phone', ''));
             $uid = $this->cleanSearchTerm($request->get('uid', ''));
 
-            if ($term === '' && $name === '' && $mail === '' && $phone === '' && $uid === '') {
+            if ($term === '' && $name === '' && $mail === '' && $phone === '' && $uid === '' && $username === '') {
                 return response()->json([
                     'status' => 'error',
                     'message' => 'Search query is required'
@@ -105,16 +107,21 @@ class UserController extends Controller
             $limit = $this->perPage($request);
 
             $users = UserModel::query()
-                ->where(function ($query) use ($term, $name, $mail, $phone, $uid, $termPhone, $mailNeedles) {
+                ->where(function ($query) use ($term, $name, $username, $mail, $phone, $uid, $termPhone, $mailNeedles) {
                     if ($term !== '') {
                         $query->orWhere('uid', 'like', '%' . $term . '%')
                             ->orWhere('num', $term)
                             ->orWhere('name', 'like', '%' . $term . '%')
+                            ->orWhere('username', 'like', '%' . ltrim($term, '@') . '%')
                             ->orWhere('mail', 'like', '%' . $term . '%')
                             ->orWhere('call', 'like', '%' . $term . '%')
                             ->orWhere('auth_phone', 'like', '%' . $term . '%')
                             ->orWhere('device_id', 'like', '%' . $term . '%')
                             ->orWhere('device_name', 'like', '%' . $term . '%');
+                    }
+
+                    if ($username !== '') {
+                        $query->orWhere('username', 'like', '%' . $username . '%');
                     }
 
                     if ($name !== '') {
@@ -143,7 +150,7 @@ class UserController extends Controller
                             ->orWhere('auth_phone', 'like', '%' . $termPhone . '%');
                     }
                 })
-                ->orderByRaw($this->searchRankSql(), $this->searchRankBindings($term, $name, $mail, $phone, $uid, $termPhone, $mailNeedles))
+                ->orderByRaw($this->searchRankSql(), $this->searchRankBindings($term, $name, $mail, $phone, $uid, $termPhone, $mailNeedles, $username))
                 ->orderBy('name')
                 ->orderByDesc('num')
                 ->paginate($limit)
@@ -433,6 +440,7 @@ class UserController extends Controller
     private function searchRankSql()
     {
         return "CASE
+            WHEN `username` = ? THEN 1010
             WHEN `uid` = ? THEN 1000
             WHEN `num` = ? THEN 990
             WHEN `mail` = ? THEN 980
@@ -456,15 +464,16 @@ class UserController extends Controller
     }
 
 
-    private function searchRankBindings($term, $name, $mail, $phone, $uid, $termPhone, array $mailNeedles)
+    private function searchRankBindings($term, $name, $mail, $phone, $uid, $termPhone, array $mailNeedles, $username)
     {
-        $primary = $term !== '' ? $term : ($uid !== '' ? $uid : ($mail !== '' ? $mail : ($phone !== '' ? $phone : $name)));
+        $primary = $term !== '' ? $term : ($uid !== '' ? $uid : ($mail !== '' ? $mail : ($phone !== '' ? $phone : ($username !== '' ? $username : $name))));
         $primaryPhone = $termPhone !== '' ? $termPhone : $phone;
         $phoneRankNeedle = $primaryPhone !== '' ? $primaryPhone : '__NO_PHONE_MATCH__';
         $primaryMail = $mail !== '' ? $mail : $primary;
         $expandedMail = $mailNeedles[0] ?? $primaryMail;
 
         return [
+            ltrim($primary, '@'),
             $uid !== '' ? $uid : $primary,
             is_numeric($primary) ? $primary : -1,
             $primaryMail,

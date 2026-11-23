@@ -1,7 +1,8 @@
 <script setup>
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
+import UserLookup from '../UserLookup.vue';
 import ChannelIdentity from './ChannelIdentity.vue';
-import { api, queryString } from '../../lib/api';
+import { api } from '../../lib/api';
 import FileDropzone from './FileDropzone.vue';
 import { formValues, formPayload } from '../../lib/channels';
 
@@ -9,29 +10,10 @@ const props = defineProps({ fields: Array, record: Object, busy: Boolean, title:
 const emit = defineEmits(['save', 'cancel', 'busy']);
 const values = ref({}); const uploading = ref(false);
 const profile = computed(() => props.fields.some(field => field.name === 'logo'));
-const hints = { user_id: 'Choose an existing Zo Stream account. Search below or paste its UID.', slug: 'Use lowercase letters, numbers and hyphens. New channels can leave this blank to generate it from the name.', description: 'Tell viewers what they can expect from this channel or video.', logo: 'Square artwork works best. JPG, PNG or WebP, up to 10 MB.', banner: 'Use a wide landscape image. JPG, PNG or WebP, up to 10 MB.', thumbnail: 'Use landscape artwork that clearly represents this video.', release_date: 'Your local time. Published content stays hidden until this date.', status: 'Only active channels and published, released content appear in the public catalog.', discount_percent: 'The final plan price is calculated from the price and discount.' };
+const hints = { user_id: 'Choose an existing Zo Stream account. Search by username, name, phone, email or UID.', slug: 'Use lowercase letters, numbers and hyphens. New channels can leave this blank to generate it from the name.', description: 'Tell viewers what they can expect from this channel or video.', logo: 'Square artwork works best. JPG, PNG or WebP, up to 10 MB.', banner: 'Use a wide landscape image. JPG, PNG or WebP, up to 10 MB.', thumbnail: 'Use landscape artwork that clearly represents this video.', release_date: 'Your local time. Published content stays hidden until this date.', status: 'Only active channels and published, released content appear in the public catalog.', discount_percent: 'The final plan price is calculated from the price and discount.' };
 watch(uploading, value => emit('busy', value));
 function save() { if (!props.busy && !uploading.value) emit('save', formPayload(props.fields, values.value)); }
-const search = ref(''); const results = ref([]); const searchError = ref(''); const searching = ref(false);
-let generation = 0; let timer;
 watch(() => [props.fields, props.record], () => { values.value = formValues(props.fields, props.record); }, { immediate: true });
-watch(search, term => {
-    clearTimeout(timer);
-    const current = ++generation;
-    results.value = []; searchError.value = ''; searching.value = false;
-    if (term.trim().length < 2) return;
-    timer = setTimeout(async () => {
-        searching.value = true;
-        try {
-            const response = await api(`/admin/users-search${queryString({ q: term.trim(), per_page: 10 })}`);
-            const data = response?.status ? response.data : response;
-            if (current === generation) results.value = Array.isArray(data) ? data : data?.data || [];
-        } catch (reason) { if (current === generation) searchError.value = reason.message; }
-        finally { if (current === generation) searching.value = false; }
-    }, 300);
-});
-onBeforeUnmount(() => { clearTimeout(timer); generation++; });
-function selectUser(user) { values.value.user_id = user.uid; search.value = ''; }
 </script>
 
 <template>
@@ -47,17 +29,11 @@ function selectUser(user) { values.value.user_id = user.uid; search.value = ''; 
                     <select v-else-if="field.type === 'select'" v-model="values[field.name]" :required="field.required">
                         <option v-for="option in field.options" :key="option" :value="option">{{ option.replaceAll('_', ' ') }}</option>
                     </select>
+                    <UserLookup v-else-if="field.type === 'user'" v-model="values[field.name]" :required="field.required" :disabled="busy" label="Find channel owner" />
                     <input v-else v-model="values[field.name]" :type="field.type === 'user' ? 'text' : field.type" :required="field.required" :min="field.min" :max="field.type === 'number' ? field.max : undefined" :maxlength="field.type !== 'number' ? field.max : undefined" :step="field.step || (field.type === 'datetime-local' ? '1' : undefined)">
                     <small v-if="hints[field.name]" class="field-hint">{{ hints[field.name] }}</small>
                     <FileDropzone v-if="channelId && ['logo', 'banner', 'thumbnail'].includes(field.name)" :api="uploadApi" :channel-id="channelId" :content-id="contentId" :audience="audience" :disabled="busy || uploading" :label="`Upload ${field.label}`" @busy="uploading = $event" @uploaded="values[field.name] = $event.url" />
-                    <template v-if="field.type === 'user'">
-                        <input v-model="search" type="search" aria-label="Find channel owner" placeholder="Find owner by name, phone, email or UID" autocomplete="off">
-                        <small v-if="searching">Searching users…</small>
-                        <small v-if="searchError" role="alert">{{ searchError }}</small>
-                        <div v-if="results.length" class="channel-owner-results">
-                            <button v-for="user in results" :key="user.uid" type="button" @click="selectUser(user)">{{ user.name || 'Unnamed user' }} · {{ user.uid }}</button>
-                        </div>
-                    </template>
+
                 </label>
             </div>
         </fieldset>

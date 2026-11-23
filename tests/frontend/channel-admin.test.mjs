@@ -86,6 +86,7 @@ function input(root, label, value) {
     assert.ok(parent, `Missing field: ${label}`);
     const field = find(parent, el => ['input', 'select', 'textarea'].includes(el.tag));
     field.props['onUpdate:modelValue'](value);
+    field.props.onInput?.({ target: field });
 }
 async function submit(root, title) {
     const form = find(root, el => el.tag === 'form' && text(el).includes(title));
