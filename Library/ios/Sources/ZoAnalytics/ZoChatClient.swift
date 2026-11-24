@@ -25,6 +25,17 @@ public struct ChatMoment: Codable, Sendable, Equatable {
     }
 }
 
+public struct ChatTypist: Decodable, Identifiable, Equatable, Sendable {
+    public let user_id: String
+    public let name: String
+    public let expires_in: Int?
+    public var id: String { user_id }
+}
+
+public struct ChatTypingSnapshot: Decodable, Sendable {
+    public let users: [ChatTypist]
+}
+
 public struct ChatMessage: Decodable, Identifiable, Sendable {
     public let id: String
     public let room_id: String
@@ -102,12 +113,14 @@ public final class ZoChatClient {
     public private(set) var isConnected = false
     public var onBadgeEvent: (([String: Any]) -> Void)?
     public var onMessage: ((ChatMessage) -> Void)?
+    public var onTyping: (([ChatTypist]) -> Void)?
     public var onOverlayMessage: ((ChatMessage) -> Void)?
     private var controlToken: String?
     private var controlChannel: String?
     private var controlSubscribed = false
     private var feedChannel: String?
     private var feedSubscribed = false
+    private var typingVersion: UInt64 = 0
     private var visibilityAcknowledged: Int64 = 0
     private var recoveryDelay: Double = 5
     private var liveVersions: [String: UInt64] = [:]
@@ -434,7 +447,7 @@ public final class ZoChatClient {
 
     private func clearFeed() {
         if let feedChannel { Task { try? await self.sendEvent("pusher:unsubscribe", data: ["channel": feedChannel]) } }
-        feedChannel = nil; feedSubscribed = false
+        feedChannel = nil; feedSubscribed = false; typingVersion = 0
     }
 
     private func recoverLiveMessage(_ id: String, kind: String) {
@@ -514,6 +527,15 @@ public final class ZoChatClient {
                            let sequence = payload["visibility_sequence"] as? NSNumber {
                             self.visibilityAcknowledged = max(self.visibilityAcknowledged, sequence.int64Value)
                         }
+                    case "chat.typing":
+                        guard self.feedSubscribed, event["channel"] as? String == self.feedChannel,
+                              payload["room_id"] as? String == self.room?.room_id,
+                              let version = (payload["event_id"] as? String).flatMap(UInt64.init),
+                              version > self.typingVersion,
+                              let data = try? JSONSerialization.data(withJSONObject: payload),
+                              let snapshot = try? JSONDecoder().decode(ChatTypingSnapshot.self, from: data) else { continue }
+                        self.typingVersion = version
+                        self.onTyping?(snapshot.users)
                     case "chat.message":
                         guard self.feedSubscribed, event["channel"] as? String == self.feedChannel,
                               payload["room_id"] as? String == self.room?.room_id,
@@ -543,6 +565,8 @@ public final class ZoChatClient {
                         }
                         guard let channel = self.channel, event["channel"] as? String == channel else { continue }
                         let kind = payload["kind"] as? String ?? "sync"
+                        if kind == "typing", self.feedSubscribed, self.onTyping != nil,
+                           payload["typing_feed"] as? Bool == true { continue }
                         if let invite = payload["room_invite"] as? [String: Any] { self.onRoomInviteState?(invite) }
                         if let watch = payload["watch"] as? [String: Any] {
                             self.onWatchState?(watch)
@@ -591,6 +615,6 @@ public final class ZoChatClient {
         receiveTask?.cancel(); retryTask?.cancel(); syncTask?.cancel(); recoveryTask?.cancel(); liveRecoveryTask?.cancel(); liveRecoveryTask = nil
         socket?.cancel(with: .goingAway, reason: nil); socket = nil
         session.invalidateAndCancel()
-        onChanged = nil; onConnection = nil
+        onChanged = nil; onConnection = nil; onTyping = nil
     }
 }

@@ -25,12 +25,14 @@ class ZoChatClient(
     private val executor = Executors.newSingleThreadExecutor()
     var onBadgeEvent: ((JSONObject) -> Unit)? = null
     var onMessage: ((JSONObject) -> Unit)? = null
+    var onTyping: ((org.json.JSONArray) -> Unit)? = null
     var onOverlayMessage: ((JSONObject) -> Unit)? = null
     private var controlToken: String? = null
     private var controlChannel: String? = null
     private var controlSubscribed = false
     private var feedChannel: String? = null
     private var feedSubscribed = false
+    private var typingVersion = 0L
     private var visibilityAcknowledged = 0L
     private var recoveryDelay = 5_000L
     private val liveVersions = linkedMapOf<String, Long>()
@@ -369,7 +371,7 @@ class ZoChatClient(
 
     private fun clearFeed() {
         feedChannel?.let { sendEvent("pusher:unsubscribe", JSONObject().put("channel", it)) }
-        feedChannel = null; feedSubscribed = false
+        feedChannel = null; feedSubscribed = false; typingVersion = 0L
     }
 
     private fun connect() {
@@ -434,6 +436,15 @@ class ZoChatClient(
                                 if (event.optString("channel") == controlChannel && ack?.optString("visibility_id") == visibilityId) visibilityAcknowledged = maxOf(visibilityAcknowledged, ack.optLong("visibility_sequence"))
                                 Unit
                             }
+                            "chat.typing" -> {
+                                if (!feedSubscribed || event.optString("channel") != feedChannel) return@post
+                                val data = event.opt("data").let { if (it is JSONObject) it else JSONObject(it?.toString() ?: "{}") }
+                                val version = data.optLong("event_id")
+                                val users = data.optJSONArray("users") ?: return@post
+                                if (data.optString("room_id") != room?.optString("room_id") || version <= typingVersion) return@post
+                                typingVersion = version
+                                onTyping?.invoke(users)
+                            }
                             "chat.message" -> {
                                 if (feedSubscribed && event.optString("channel") == feedChannel) {
                                     val data = event.opt("data").let { if (it is JSONObject) it else JSONObject(it?.toString() ?: "{}") }
@@ -464,6 +475,7 @@ class ZoChatClient(
                                 if (channel == null || event.optString("channel") != channel) return@post
                                 val data = event.opt("data").let { if (it is JSONObject) it else JSONObject(it?.toString() ?: "{}") }
                                 val kind = data.getString("kind")
+                                if (kind == "typing" && feedSubscribed && onTyping != null && data.optBoolean("typing_feed")) return@post
                                 data.optJSONObject("room_invite")?.let { onRoomInviteState?.invoke(it) }
                                 val watch = data.optJSONObject("watch")
                                 if (watch != null) onWatchState?.invoke(watch)

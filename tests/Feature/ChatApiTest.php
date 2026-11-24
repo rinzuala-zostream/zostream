@@ -886,6 +886,31 @@ class ChatApiTest extends TestCase
         $this->assertSame(0, ChatDatabase::connection()->table('chat_outbox')->whereIn('kind', ['message_push', 'interaction_push'])->count());
     }
 
+    public function test_typing_snapshots_only_reach_allowed_private_feeds_and_clear_on_stop(): void
+    {
+        $room = $this->room();
+        $bob = $this->socketAuth($room, 'bob', $this->socketSession('bob'), '1.2');
+        $carol = $this->socketAuth($room, 'carol', $this->socketSession('carol'), '1.3');
+        ChatDatabase::connection()->table('chat_blocks')->insert(['user_id' => 'alice', 'blocked_user_id' => 'carol']);
+        $this->postJson("/api/v4/chat/rooms/$room/typing", $this->identity(['active' => true]))->assertOk();
+        Http::fake();
+        $this->artisan('chat:deliver', ['--once' => true, '--lane' => 'realtime'])->assertSuccessful();
+        $snapshot = fn ($request) => json_decode(json_decode($request->body(), true)['data'], true);
+        $sentTo = fn ($request, $channel) => in_array($channel, json_decode($request->body(), true)['channels'], true);
+        Http::assertSent(fn ($request) => $sentTo($request, $bob['feed_channel'])
+            && ($snapshot($request)['users'][0]['user_id'] ?? null) === 'alice'
+            && $snapshot($request)['users'][0]['expires_in'] > 0);
+        Http::assertSent(fn ($request) => $sentTo($request, $carol['feed_channel']) && ($snapshot($request)['users'] ?? null) === []);
+        Http::assertNotSent(fn ($request) => $sentTo($request, $carol['feed_channel']) && ! empty($snapshot($request)['users']));
+        Http::assertSent(fn ($request) => ($snapshot($request)['kind'] ?? null) === 'typing'
+            && ($snapshot($request)['typing_feed'] ?? false) && ! array_key_exists('users', $snapshot($request)));
+
+        $this->postJson("/api/v4/chat/rooms/$room/typing", $this->identity(['active' => false]))->assertOk();
+        Http::fake();
+        $this->artisan('chat:deliver', ['--once' => true, '--lane' => 'realtime'])->assertSuccessful();
+        Http::assertSent(fn ($request) => $sentTo($request, $bob['feed_channel']) && ($snapshot($request)['users'] ?? null) === []);
+    }
+
     public function test_movie_and_episode_typing_require_current_matching_playback(): void
     {
         $this->liveCreatorStream('movie', 'film-a');

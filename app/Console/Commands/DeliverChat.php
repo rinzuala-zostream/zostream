@@ -56,6 +56,9 @@ final class DeliverChat extends Command
                         app(\App\Support\Chat\ChatInteractionNotifications::class)->deliver($row);
                     } elseif (in_array($row->kind, ['feed_created', 'feed_deleted'], true)) {
                         app(\App\Support\Chat\ChatLiveDelivery::class)->deliver($row, $renew);
+                    } elseif ($row->kind === 'typing') {
+                        $typingFeed = app(\App\Support\Chat\ChatLiveDelivery::class)->deliverTyping($row, $renew);
+                        $this->publish($row, $typingFeed);
                     } elseif ($row->kind !== 'reported') {
                         $this->publish($row);
                     }
@@ -105,7 +108,7 @@ final class DeliverChat extends Command
         return self::SUCCESS;
     }
 
-    private function publish(object $row): void
+    private function publish(object $row, bool $typingFeed = false): void
     {
         if (! config('chat.enabled')) {
             throw new \RuntimeException('Chat is disabled');
@@ -116,6 +119,7 @@ final class DeliverChat extends Command
         }
         $recipient = $row->recipient_user_id ?? null;
         $event = ['kind' => $row->kind, 'message_id' => $row->message_id ? (string) $row->message_id : null];
+        if ($typingFeed) { $event['typing_feed'] = true; }
         if ($recipient !== null) {
             $badge = $row->kind === 'read'
                 ? app(\App\Support\Chat\ChatReadService::class)->readState($recipient, (int) $row->room_id)
@@ -124,7 +128,7 @@ final class DeliverChat extends Command
             $channel = \App\Support\Chat\ChatReadService::userChannel($recipient);
         } else {
             $channel = 'private-chat.'.$row->room_id;
-            $watch = app(\App\Support\Chat\PrivateWatchService::class)->snapshot((int) $row->room_id);
+            $watch = $row->kind === 'typing' ? null : app(\App\Support\Chat\PrivateWatchService::class)->snapshot((int) $row->room_id);
             if ($watch !== null) { $event['watch'] = $watch + ['event_id' => (string) $row->id]; }
             if (in_array($row->kind, ['created', 'deleted', 'ended'], true)) {
                 $message = $row->message_id ? ChatDatabase::connection()->table('chat_messages')->find($row->message_id) : null;
@@ -155,7 +159,7 @@ final class DeliverChat extends Command
         $host = $c['options']['scheme'].'://'.$c['options']['host'].':'.$c['options']['port'];
         // Receivers can fetch history as soon as Reverb accepts the event,
         // before this publish request returns to the worker.
-        app(ChatService::class)->invalidate($row->room_id);
+        if ($row->kind !== 'typing') { app(ChatService::class)->invalidate($row->room_id); }
         Http::connectTimeout(2)->timeout(5)->withBody($body, 'application/json')
             ->post($host.$path.'?'.http_build_query($query, '', '&', PHP_QUERY_RFC3986))->throw();
     }
