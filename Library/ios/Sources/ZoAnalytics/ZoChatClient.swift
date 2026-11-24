@@ -121,7 +121,6 @@ public final class ZoChatClient {
     private var feedChannel: String?
     private var feedSubscribed = false
     private var typingVersion: UInt64 = 0
-    private var visibilityAcknowledged: Int64 = 0
     private var recoveryDelay: Double = 5
     private var liveVersions: [String: UInt64] = [:]
     private var liveKinds: [String: String] = [:]
@@ -144,6 +143,7 @@ public final class ZoChatClient {
         let revision = roomRevision
         if let channel { try? await sendEvent("pusher:unsubscribe", data: ["channel": channel]) }
         guard !closed, roomRevision == revision else { return }
+        cancelVisibilityFallback()
         roomRevision += 1; room = nil; channel = nil; isConnected = false
         onConnection?(false); onChanged?("access_denied", nil)
     }
@@ -210,24 +210,48 @@ public final class ZoChatClient {
     private var roomVisible: Bool?
     private var visibilitySequence: Int64 = 0
     private let visibilityID = UUID().uuidString
+    private var visibilityFallbackSequence: Int64?
+    private var visibilityFallbackTask: Task<Void, Never>?
     private func visibilityBody(_ visible: Bool) -> [String: Any] {
         visibilitySequence = max(visibilitySequence + 1, Int64(Date().timeIntervalSince1970 * 1000))
         return ["visible": visible, "visibility_sequence": visibilitySequence, "visibility_id": visibilityID]
     }
 
-    // This final visibility request must survive closing the chat transport.
+    private func cancelVisibilityFallback() {
+        visibilityFallbackTask?.cancel()
+        visibilityFallbackTask = nil
+        visibilityFallbackSequence = nil
+    }
+
+    // A room switch or close can interrupt the socket before it acknowledges a hide.
+    private func finishVisibility() {
+        let needsHide = roomVisible == true || visibilityFallbackSequence != nil
+        cancelVisibilityFallback()
+        if needsHide, let room {
+            reportVisibilityHTTP(room.room_id, body: visibilityBody(false))
+        }
+    }
+
     private func reportVisibility(_ id: String, visible: Bool) {
+        cancelVisibilityFallback()
         let body = visibilityBody(visible)
-        if isConnected, controlSubscribed, controlToken != nil, let channel = controlChannel, let socket {
+        if controlSubscribed, controlToken != nil, let channel = controlChannel, let socket {
             let frame: [String: Any] = ["event": "chat:presence", "channel": channel, "data": body]
-            let sequence = body["visibility_sequence"] as? Int64 ?? 0
-            Task { [weak self] in
+            let sequence = visibilitySequence
+            visibilityFallbackSequence = sequence
+            visibilityFallbackTask = Task { [weak self] in
                 do {
+                    try Task.checkCancellation()
                     let raw = try JSONSerialization.data(withJSONObject: frame)
                     try await socket.send(.string(String(decoding: raw, as: UTF8.self)))
                     try await Task.sleep(nanoseconds: 2_500_000_000)
-                    if let self, self.visibilityAcknowledged < sequence { self.reportVisibilityHTTP(id, body: body) }
-                } catch { self?.reportVisibilityHTTP(id, body: body) }
+                } catch {
+                    if Task.isCancelled { return }
+                }
+                guard let self, self.visibilityFallbackSequence == sequence else { return }
+                self.visibilityFallbackSequence = nil
+                self.visibilityFallbackTask = nil
+                self.reportVisibilityHTTP(id, body: body)
             }
         } else { reportVisibilityHTTP(id, body: body) }
     }
@@ -248,10 +272,11 @@ public final class ZoChatClient {
     }
 
     public func setRoomVisible(_ visible: Bool) {
+        let changed = roomVisible != visible
         roomVisible = visible
         if !visible { clearFeed() }
         else if onMessage != nil, feedChannel == nil, isConnected { subscribe() }
-        if let room, unreadChannels == nil { reportVisibility(room.room_id, visible: visible) }
+        if changed, let room, unreadChannels == nil { reportVisibility(room.room_id, visible: visible) }
     }
 
     public func join(type: String, contentId: String?) async throws -> ChatRoom {
@@ -260,7 +285,7 @@ public final class ZoChatClient {
             throw ChatFailure(message: "Account changed. Reopen chat.")
         }
         owner = identity
-        if let room, roomVisible != nil { reportVisibility(room.room_id, visible: false) }
+        finishVisibility()
         roomRevision += 1; let revision = roomRevision
         clearFeed(); controlToken = nil; controlChannel = nil; liveVersions.removeAll(); liveKinds.removeAll(); pendingLive.removeAll()
         subscriptionTask?.cancel()
@@ -524,8 +549,9 @@ public final class ZoChatClient {
                     case "chat:presence_ack":
                         if event["channel"] as? String == self.controlChannel,
                            payload["visibility_id"] as? String == self.visibilityID,
-                           let sequence = payload["visibility_sequence"] as? NSNumber {
-                            self.visibilityAcknowledged = max(self.visibilityAcknowledged, sequence.int64Value)
+                           let sequence = payload["visibility_sequence"] as? NSNumber,
+                           let pending = self.visibilityFallbackSequence, sequence.int64Value >= pending {
+                            self.cancelVisibilityFallback()
                         }
                     case "chat.typing":
                         guard self.feedSubscribed, event["channel"] as? String == self.feedChannel,
@@ -608,7 +634,8 @@ public final class ZoChatClient {
     }
 
     public func close() {
-        if let room, roomVisible != nil { reportVisibility(room.room_id, visible: false) }
+        guard !closed else { return }
+        finishVisibility()
         isConnected = false
         closed = true; generation += 1; roomRevision += 1
         subscriptionTask?.cancel(); channel = nil; socketId = nil; room = nil

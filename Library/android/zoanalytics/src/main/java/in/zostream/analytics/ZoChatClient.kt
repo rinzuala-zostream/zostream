@@ -33,7 +33,6 @@ class ZoChatClient(
     private var feedChannel: String? = null
     private var feedSubscribed = false
     private var typingVersion = 0L
-    private var visibilityAcknowledged = 0L
     private var recoveryDelay = 5_000L
     private val liveVersions = linkedMapOf<String, Long>()
     private val liveKinds = linkedMapOf<String, String>()
@@ -58,6 +57,7 @@ class ZoChatClient(
     private class HttpFailure(val status: Int, message: String) : IllegalStateException(message)
 
     private fun revokeRoom() {
+        cancelVisibilityFallback()
         channel?.let { sendEvent("pusher:unsubscribe", JSONObject().put("channel", it)) }
         roomRevision++; room = null; channel = null; controlToken = null; controlChannel?.let { sendEvent("pusher:unsubscribe", JSONObject().put("channel", it)) }; controlChannel = null; clearFeed(); isConnected = false
         onConnection(false); onChanged("access_denied", null)
@@ -191,21 +191,43 @@ class ZoChatClient(
     private var roomVisible: Boolean? = null
     private var visibilitySequence = 0L
     private val visibilityId = java.util.UUID.randomUUID().toString()
+    private var visibilityFallbackSequence: Long? = null
+    private var visibilityFallback: Runnable? = null
     private fun visibilityBody(visible: Boolean): JSONObject {
         visibilitySequence = maxOf(visibilitySequence + 1, System.currentTimeMillis())
         return JSONObject().put("visible", visible).put("visibility_sequence", visibilitySequence).put("visibility_id", visibilityId)
     }
+    private fun cancelVisibilityFallback() {
+        visibilityFallback?.let { main.removeCallbacks(it) }
+        visibilityFallback = null
+        visibilityFallbackSequence = null
+    }
+
+    // A room switch or close can interrupt the socket before it acknowledges a hide.
+    private fun finishVisibility() {
+        val needsHide = roomVisible == true || visibilityFallbackSequence != null
+        cancelVisibilityFallback()
+        if (needsHide) room?.let { reportVisibilityHTTP(it.getString("room_id"), visibilityBody(false)) }
+    }
+
     private fun reportVisibility(id: String, visible: Boolean) {
+        cancelVisibilityFallback()
         val body = visibilityBody(visible)
         val token = controlToken
         val currentChannel = controlChannel
-        if (isConnected && controlSubscribed && token != null && currentChannel != null) {
+        if (controlSubscribed && token != null && currentChannel != null) {
             val sequence = body.getLong("visibility_sequence")
             val sent = socket?.send(JSONObject().put("event", "chat:presence").put("channel", currentChannel).put("data", body).toString()) == true
             if (sent) {
-                Handler(Looper.getMainLooper()).postDelayed({
-                    if (visibilityAcknowledged < sequence && credentials()?.ownerKey == owner) reportVisibilityHTTP(id, body)
-                }, 2_500)
+                visibilityFallbackSequence = sequence
+                val fallback = Runnable {
+                    if (visibilityFallbackSequence != sequence) return@Runnable
+                    visibilityFallbackSequence = null
+                    visibilityFallback = null
+                    reportVisibilityHTTP(id, body)
+                }
+                visibilityFallback = fallback
+                main.postDelayed(fallback, 2_500)
                 return
             }
         }
@@ -229,10 +251,11 @@ class ZoChatClient(
         })
     }
     fun setRoomVisible(visible: Boolean) {
+        val changed = roomVisible != visible
         roomVisible = visible
         if (!visible) clearFeed()
         else if (onMessage != null && feedChannel == null && isConnected) subscribe()
-        room?.takeIf { unreadChannels == null }?.let { reportVisibility(it.getString("room_id"), visible) }
+        if (changed && unreadChannels == null) room?.let { reportVisibility(it.getString("room_id"), visible) }
     }
 
     fun join(type: String, contentId: String?, callback: (JSONObject?, String?) -> Unit) {
@@ -240,7 +263,7 @@ class ZoChatClient(
         val identity = credentials()?.ownerKey
         if (owner != null && owner != identity) { close(); callback(null, "Account changed. Reopen chat."); return }
         owner = identity
-        if (roomVisible != null) room?.let { reportVisibility(it.getString("room_id"), false) }
+        finishVisibility()
         val revision = ++roomRevision
         clearFeed(); controlToken = null; controlChannel?.let { sendEvent("pusher:unsubscribe", JSONObject().put("channel", it)) }; controlChannel = null; liveVersions.clear(); liveKinds.clear(); pendingLive.clear()
         channel?.let { sendEvent("pusher:unsubscribe", JSONObject().put("channel", it)) }
@@ -433,7 +456,11 @@ class ZoChatClient(
                             "pusher:error" -> { webSocket.cancel(); reconnect(current) }
                             "chat:presence_ack" -> {
                                 val ack = event.optJSONObject("data")
-                                if (event.optString("channel") == controlChannel && ack?.optString("visibility_id") == visibilityId) visibilityAcknowledged = maxOf(visibilityAcknowledged, ack.optLong("visibility_sequence"))
+                                val pending = visibilityFallbackSequence
+                                if (pending != null && event.optString("channel") == controlChannel &&
+                                    ack?.optString("visibility_id") == visibilityId && ack.optLong("visibility_sequence") >= pending) {
+                                    cancelVisibilityFallback()
+                                }
                                 Unit
                             }
                             "chat.typing" -> {
@@ -516,7 +543,7 @@ class ZoChatClient(
 
     override fun close() {
         if (closed) return
-        if (roomVisible != null) room?.let { reportVisibility(it.getString("room_id"), false) }
+        finishVisibility()
         isConnected = false
         closed = true; generation++; roomRevision++; main.removeCallbacksAndMessages(null)
         channel = null; socketId = null; room = null
