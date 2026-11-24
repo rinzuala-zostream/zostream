@@ -14,6 +14,12 @@ const userIdSearch = ref('');
 const loading = ref(true); const purchaseLoading = ref(false); const error = ref(''); const purchaseError = ref('');
 const typeLabel = computed(() => ({ movie: 'Movie', parent: 'Parent movie', season: 'Season', episode: 'Episode' }[route.params.type] || 'PPV item'));
 const item = computed(() => detail.value?.item || {});
+const publicUrl = computed(() => new URL(`/ppv/${encodeURIComponent(route.params.type)}/${encodeURIComponent(route.params.id)}`, window.location.origin).href);
+const linkMessage = ref('');
+async function copyPublicUrl() {
+    try { await navigator.clipboard.writeText(publicUrl.value); linkMessage.value = 'Public link copied.'; }
+    catch { linkMessage.value = `Copy this link: ${publicUrl.value}`; }
+}
 const money = (value, currency = 'INR') => new Intl.NumberFormat('en-IN', { style: 'currency', currency: currency || 'INR', maximumFractionDigits: 2 }).format(Number(value) || 0);
 const totalAmountLabel = computed(() => {
     const totals = purchaseSummary.value.currency_totals || [];
@@ -47,6 +53,12 @@ watch(() => [route.params.type, route.params.id], load);
         <StatusPanel tone="error" :message="error" />
         <div v-if="loading" class="admin-loading">Loading PPV item…</div>
         <template v-else-if="detail">
+            <section class="admin-panel" style="padding:16px;margin-bottom:15px">
+                <p>Public sales report · Login not required</p>
+                <a class="admin-secondary" :href="publicUrl" target="_blank" rel="noopener">Open public page ↗</a>
+                <button class="admin-secondary" type="button" @click="copyPublicUrl">Copy public URL</button>
+                <p v-if="linkMessage" role="status">{{ linkMessage }}</p>
+            </section>
             <section class="ppv-detail-card">
                 <div class="ppv-detail-heading"><img v-if="item.poster || item.thumbnail || item.thumbnail_url" :src="item.poster || item.thumbnail || item.thumbnail_url" :alt="item.title || typeLabel"><div><span>{{ typeLabel }} · Pay per view</span><h2>{{ item.title || `${typeLabel} #${item.num || item.id}` }}</h2><p v-if="item.description || item.desc">{{ item.description || item.desc }}</p></div><div class="ppv-total"><small>All purchase total</small><b>{{ totalAmountLabel }}</b><small v-if="purchaseSummary.currency_totals?.length > 1">{{ purchaseSummary.currency_totals.map(row => `${row.currency}: ${money(row.total_amount, row.currency)}`).join(' · ') }}</small></div></div>
                 <dl>

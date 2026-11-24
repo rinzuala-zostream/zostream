@@ -26,6 +26,10 @@ Route::view('/admin/{path?}', 'welcome')
 
 Route::view('/creator/{path?}', 'welcome')->where('path', '.*')->name('creator.spa');
 
+Route::get('/ppv/{type}/{id}', [\App\Http\Controllers\PublicPpvController::class, 'show'])
+    ->where('type', 'movie|parent|season|episode')->where('id', '[A-Za-z0-9_-]+')
+    ->middleware('throttle:60,1')->name('ppv.public');
+
 Route::view('/about-us', 'welcome');
 Route::view('/contact-us', 'welcome');
 Route::view('/download', 'welcome');
