@@ -199,7 +199,10 @@ class ZoChatClient(
                 val diagnosticPath = if (path.startsWith("invitation-links/")) "invitation-links/[redacted]" else path
                 val diagnostic = "Chat request failed (${response.code}) at $diagnosticPath (success=$successValue, status=${json.optString("status")}, fields=$keys)"
                 android.util.Log.e("ZoChatClient", diagnostic)
-                throw HttpFailure(response.code, message ?: "Chat request failed. Please try again.")
+                // Keep the server message when present; otherwise surface the
+                // status and endpoint so endpoint-specific failures can be
+                // diagnosed from the chat UI on real devices.
+                throw HttpFailure(response.code, message ?: diagnostic)
             }
             data ?: json.optJSONObject("result") ?: json
         }
