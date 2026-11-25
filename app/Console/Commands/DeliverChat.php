@@ -121,9 +121,11 @@ final class DeliverChat extends Command
         $event = ['kind' => $row->kind, 'message_id' => $row->message_id ? (string) $row->message_id : null];
         if ($typingFeed) { $event['typing_feed'] = true; }
         if ($recipient !== null) {
-            $badge = $row->kind === 'read'
-                ? app(\App\Support\Chat\ChatReadService::class)->readState($recipient, (int) $row->room_id)
-                : ['kind' => 'sync', 'room_id' => (string) $row->room_id];
+            $badge = match ($row->kind) {
+                'read' => app(\App\Support\Chat\ChatReadService::class)->readState($recipient, (int) $row->room_id),
+                'identity' => ['kind' => 'identity', 'is_admin' => app(\App\Support\AdminAccess::class)->isAdmin($recipient)],
+                default => ['kind' => 'sync', 'room_id' => (string) $row->room_id],
+            };
             $event['badge'] = $badge + ['event_id' => (string) $row->id];
             $channel = \App\Support\Chat\ChatReadService::userChannel($recipient);
         } else {

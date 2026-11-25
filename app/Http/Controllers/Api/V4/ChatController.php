@@ -23,7 +23,9 @@ final class ChatController extends Controller
         abort_unless(config('chat.enabled'), 503, 'Chat is currently unavailable.');
         $v = $r->validate(['type' => ['sometimes', Rule::in(['global', 'movie', 'episode'])], 'content_id' => 'nullable|string|max:150']);
         $this->chat->refreshPlayback($r);
-        return V4Response::success($reads->summary($r, $v['type'] ?? 'global', $v['content_id'] ?? null));
+        return V4Response::success($reads->summary($r, $v['type'] ?? 'global', $v['content_id'] ?? null) + [
+            'is_admin' => app(\App\Support\AdminAccess::class)->isAdmin((string) $r->input('auth_user_id')),
+        ]);
     }
 
     public function unreadAuth(Request $r)

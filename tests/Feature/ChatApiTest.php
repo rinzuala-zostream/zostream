@@ -1133,6 +1133,9 @@ class ChatApiTest extends TestCase
         Schema::create('admin_users', function (Blueprint $t) {
             $t->id();
             $t->string('admin_uid');
+            $t->string('fcm_token')->nullable();
+            $t->string('device_name')->nullable();
+            $t->timestamps();
         });
         Schema::create('user', function (Blueprint $t) {
             $t->id();
@@ -1663,6 +1666,33 @@ class ChatApiTest extends TestCase
     private function unread(array $identity = [], array $headers = [])
     {
         return $this->withHeaders($headers)->getJson('/api/v4/chat/unread?'.http_build_query(array_merge($this->identity(), $identity)));
+    }
+
+    public function test_badge_snapshot_and_private_socket_follow_admin_status_without_a_room_join(): void
+    {
+        config(['services.admin_qr.allowed_uids' => [], 'services.admin_whatsapp.allowed_numbers' => []]);
+        $this->unread()->assertOk()->assertJsonPath('data.is_admin', false)->assertJsonCount(0, 'data.rooms');
+        $support = app(\App\Http\Controllers\New\CustomerSupportController::class);
+        $device = new \Illuminate\Http\Request(['admin_uid' => 'alice', 'fcm_token' => 'fixture-device']);
+        $this->assertSame(201, $support->registerAdminDevice($device)->getStatusCode());
+        $this->unread()->assertOk()->assertJsonPath('data.is_admin', true);
+        $this->unread(['auth_user_id' => 'bob'])->assertOk()->assertJsonPath('data.is_admin', false);
+
+        $channel = ChatChannels::leased(\App\Support\Chat\ChatReadService::userChannel('alice'));
+        foreach ([true, false] as $isAdmin) {
+            if (! $isAdmin) {
+                $this->assertSame(200, $support->deleteAdminDevice($device)->getStatusCode());
+                $this->unread()->assertOk()->assertJsonPath('data.is_admin', false);
+            }
+            Http::fake(['*' => Http::response('{}', 200)]);
+            $this->artisan('chat:deliver', ['--once' => true])->assertSuccessful();
+            Http::assertSent(function ($request) use ($channel, $isAdmin) {
+                $body = json_decode($request->body(), true);
+                $badge = json_decode($body['data'], true)['badge'];
+                return $body['name'] === 'chat.badge' && $body['channels'] === [$channel]
+                    && $badge['kind'] === 'identity' && $badge['is_admin'] === $isAdmin;
+            });
+        }
     }
 
     public function test_badge_channel_auth_is_scoped_to_the_account_and_authorized_rooms(): void
