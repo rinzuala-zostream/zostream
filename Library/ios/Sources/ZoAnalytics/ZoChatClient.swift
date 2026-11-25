@@ -16,7 +16,7 @@ public struct ChatRoomInvitation: Codable, Sendable, Equatable {
 
 public struct ChatReaction: Codable, Sendable, Equatable { public let emoji: String; public let count: Int }
 public struct ChatReply: Codable, Sendable, Equatable {
-    public let id: String; public let user_id: String?; public let display_name: String; public let body: String?; public let spoiler: Bool; public let deleted: Bool
+    public let id: String; public let user_id: String?; public let display_name: String; public let is_admin: Bool?; public let body: String?; public let spoiler: Bool; public let deleted: Bool
 }
 public struct ChatMoment: Codable, Sendable, Equatable {
     public let seconds: Int; public let content_type: String; public let content_id: String
@@ -54,6 +54,7 @@ public struct ChatMessage: Codable, Identifiable, Sendable {
     public let user_id: String
     public let request_id: String
     public let display_name: String
+    public let is_admin: Bool?
     public let body: String?
     public let spoiler: Bool
     public let deleted: Bool

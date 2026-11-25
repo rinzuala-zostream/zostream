@@ -32,6 +32,7 @@ final class ChatDisplayNames
             if (! $message['deleted']) { $ids[] = $message['user_id']; }
             if (isset($message['reply']) && ! $message['reply']['deleted']) { $ids[] = $message['reply']['user_id']; }
         }
+        $adminIds = app(\App\Support\AdminAccess::class)->adminIds($ids);
         $usernames = [];
         foreach (self::users($ids) as $user) {
             $username = trim((string) ($user->username ?? ''));
@@ -39,10 +40,21 @@ final class ChatDisplayNames
         }
         foreach ($messages as &$message) {
             if (! $message['deleted']) {
-                $message['display_name'] = self::prefixed($usernames[$message['user_id']] ?? $message['display_name']);
+                $message['is_admin'] = in_array((string) $message['user_id'], $adminIds, true);
+                $message['display_name'] = $message['is_admin']
+                    ? 'Zo Stream'
+                    : self::prefixed($usernames[$message['user_id']] ?? $message['display_name']);
+            } else {
+                $message['is_admin'] = false;
             }
             if (isset($message['reply']) && ! $message['reply']['deleted']) {
-                $message['reply']['display_name'] = self::prefixed($usernames[$message['reply']['user_id']] ?? $message['reply']['display_name']);
+                $replyIsAdmin = in_array((string) $message['reply']['user_id'], $adminIds, true);
+                $message['reply']['is_admin'] = $replyIsAdmin;
+                $message['reply']['display_name'] = $replyIsAdmin
+                    ? 'Zo Stream'
+                    : self::prefixed($usernames[$message['reply']['user_id']] ?? $message['reply']['display_name']);
+            } elseif (isset($message['reply'])) {
+                $message['reply']['is_admin'] = false;
             }
         }
         unset($message);

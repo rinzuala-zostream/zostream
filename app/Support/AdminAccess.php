@@ -45,6 +45,35 @@ final class AdminAccess
         return $this->isWhitelistedAdmin($userId);
     }
 
+    /** @return list<string> User IDs that satisfy the configured admin rules. */
+    public function adminIds(iterable $userIds): array
+    {
+        $ids = collect($userIds)->filter(fn ($id) => $id !== null && (string) $id !== '')
+            ->map(fn ($id) => (string) $id)->unique()->values()->all();
+        if ($ids === []) { return []; }
+
+        $admins = AdminUser::whereIn('admin_uid', $ids)->pluck('admin_uid')->map(fn ($id) => (string) $id)->all();
+        $allowedUids = array_intersect($ids, config('services.admin_qr.allowed_uids', []));
+        $admins = array_merge($admins, $allowedUids);
+
+        $allowedPhones = array_values(array_filter(array_map(
+            fn ($number) => preg_replace('/\D+/', '', (string) $number),
+            config('services.admin_whatsapp.allowed_numbers', [])
+        )));
+        if ($allowedPhones !== []) {
+            foreach (UserModel::whereIn('uid', $ids)->get(['uid', 'auth_phone']) as $user) {
+                $phone = preg_replace('/\D+/', '', (string) ($user->auth_phone ?? ''));
+                if ($phone !== '' && collect($allowedPhones)->contains(fn ($allowed) => $allowed !== '' && (
+                    $allowed === $phone || substr($allowed, -10) === substr($phone, -10)
+                ))) {
+                    $admins[] = (string) $user->uid;
+                }
+            }
+        }
+
+        return array_values(array_unique($admins));
+    }
+
     public function isWhitelistedAdmin(string $userId): bool
     {
         if ($userId === '') {
