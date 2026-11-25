@@ -493,7 +493,9 @@ class ZoChatClient(
                                 val users = data.optJSONArray("users") ?: return@post
                                 if (data.optString("room_id") != room?.optString("room_id") || version <= typingVersion) return@post
                                 typingVersion = version
-                                onTyping?.invoke(users)
+                                if ((0 until users.length()).any { users.optJSONObject(it)?.opt("is_admin") !is Boolean }) {
+                                    onChanged("typing", null)
+                                } else onTyping?.invoke(users)
                             }
                             "chat.message" -> {
                                 if (feedSubscribed && event.optString("channel") == feedChannel) {
@@ -508,6 +510,19 @@ class ZoChatClient(
                                     while (liveVersions.size > 500) { val first = liveVersions.keys.first(); liveVersions.remove(first); liveKinds.remove(first) }
                                     // The card and its action become available together.
                                     data.optJSONObject("watch")?.let { onWatchState?.invoke(it) }
+                                    if (!message.optBoolean("deleted") && message.opt("is_admin") !is Boolean) {
+                                        val revision = roomRevision
+                                        val overlay = data.optBoolean("overlay_live")
+                                        request("rooms/${message.optString("room_id")}/messages/$messageId") { canonical, _ ->
+                                            if (roomRevision != revision || liveVersions[messageId] != version || liveKinds[messageId] == "deleted") return@request
+                                            if (canonical == null) onChanged("created", messageId)
+                                            else {
+                                                onMessage?.invoke(canonical)
+                                                if (overlay && !canonical.optBoolean("deleted")) onOverlayMessage?.invoke(canonical)
+                                            }
+                                        }
+                                        return@post
+                                    }
                                     onMessage?.invoke(message)
                                     if (data.optBoolean("overlay_live") && !message.optBoolean("deleted")) onOverlayMessage?.invoke(message)
                                 }

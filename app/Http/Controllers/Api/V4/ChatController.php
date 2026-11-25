@@ -692,7 +692,8 @@ final class ChatController extends Controller
             abort(503, 'Chat is temporarily unavailable. Please retry.');
         }
         abort_unless($allowed, 429, 'Please wait before sending another message.');
-        $m = ChatDatabase::connection()->transaction(function () use ($r, $room, $uid, $v, $body, $roomInfo, $suggestion) {
+        $senderIsAdmin = app(\App\Support\AdminAccess::class)->isAdmin($uid);
+        $m = ChatDatabase::connection()->transaction(function () use ($r, $room, $uid, $v, $body, $roomInfo, $suggestion, $senderIsAdmin) {
             // Serialize messages with host termination, and recheck expiry after acquiring the lock.
             if ($roomInfo->type === 'invite') {
                 $inviteRoom = ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $room)->lockForUpdate()->first();
@@ -716,7 +717,7 @@ final class ChatController extends Controller
                 if ($roomInfo->type === 'invite' && $inviteRoom->content_type === null) {
                     ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $room)->update(['idle_expires_at' => now()->addHour()]);
                 }
-                $this->chat->outbox($r, $room, 'created', $m->id, 'chat_message_sent');
+                $this->chat->outbox($r, $room, 'created', $m->id, 'chat_message_sent', senderIsAdmin: $senderIsAdmin);
                 $replyRecipient = app(\App\Support\Chat\ChatInteractionNotifications::class)->reply($m);
                 if ($roomInfo->type === 'invite') {
                     app(\App\Support\Chat\ChatMessageNotifications::class)->queue($m, $inviteRoom, $replyRecipient);
@@ -727,7 +728,9 @@ final class ChatController extends Controller
         });
         $this->chat->invalidate($room);
 
-        return V4Response::success(app(\App\Support\Chat\ChatInteractions::class)->decorate(app(\App\Support\Chat\PrivateWatchService::class)->hydrate([$this->chat->message($m)]), $uid)[0], status: 201);
+        return V4Response::success(app(\App\Support\Chat\ChatInteractions::class)->decorate(
+            app(\App\Support\Chat\PrivateWatchService::class)->hydrate([$this->chat->message($m)]), $uid, [$uid => $senderIsAdmin]
+        )[0], status: 201);
     }
 
     public function claimRoomInvitation(Request $r, int $room, int $message)

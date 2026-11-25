@@ -10,7 +10,7 @@ final class ChatInteractions
 {
     public const EMOJI = ['😂', '❤️', '🔥', '😢', '👏', '😮'];
 
-    public function decorate(array $messages, string $uid): array
+    public function decorate(array $messages, string $uid, array $adminOverrides = []): array
     {
         if ($messages === []) { return []; }
         $db = ChatDatabase::connection();
@@ -32,7 +32,7 @@ final class ChatInteractions
                     'spoiler' => ! $hidden && (bool) $parent->spoiler, 'deleted' => (bool) $hidden];
             }
         }
-        return ChatDisplayNames::messages($messages);
+        return ChatDisplayNames::messages($messages, $adminOverrides);
     }
 
     public function target(Request $r, int $room, int $message): object
@@ -63,9 +63,10 @@ final class ChatInteractions
         $cache = Cache::store(config('chat.cache_store'));
         $key = 'chat:typists:'.$room;
         if ($active !== null) {
+            $isAdmin = $active && app(\App\Support\AdminAccess::class)->isAdmin($uid);
             // Keep a bounded room index so public rooms need no membership scan.
             // Serialize updates: two simultaneous typists must not overwrite one another.
-            $changed = $cache->lock($key.':lock', 3)->block(1, function () use ($cache, $key, $active, $uid, $r): bool {
+            $changed = $cache->lock($key.':lock', 3)->block(1, function () use ($cache, $key, $active, $uid, $r, $isAdmin): bool {
                 // A delayed start must never resurrect typing after an idle stop.
                 if ($r->filled('typing_session_id')) {
                     $sequenceKey = $key.':sequence:'.hash('sha256', $uid.':'.$r->input('typing_session_id'));
@@ -80,7 +81,8 @@ final class ChatInteractions
                 unset($users[$userKey]);
                 if ($active) {
                     $name = $previous['name'] ?? ChatDisplayNames::name(DB::table('user')->where('uid', $uid)->first(['username', 'name']));
-                    $users[$userKey] = ['user_id' => $uid, 'name' => mb_substr(trim($name), 0, 100), 'expires_at' => now()->timestamp + 6];
+                    $users[$userKey] = ['user_id' => $uid, 'name' => mb_substr(trim($name), 0, 100),
+                        'is_admin' => $isAdmin, 'expires_at' => now()->timestamp + 6];
                 }
                 $cache->put($key, array_slice($users, -20, null, true), 6);
 

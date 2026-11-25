@@ -528,22 +528,30 @@ class ChatApiTest extends TestCase
     public function test_admin_message_is_branded_in_the_send_response_and_first_live_frame(): void
     {
         $room = $this->room();
-        DB::table('admin_users')->insert(['admin_uid' => 'alice']);
+        config(['services.admin_qr.allowed_uids' => ['alice'], 'services.admin_whatsapp.allowed_numbers' => []]);
         $sender = $this->socketAuth($room, 'alice', $this->socketSession('alice'), '1.2');
         $receiver = $this->socketAuth($room, 'bob', $this->socketSession('bob'), '1.3');
+        $this->postJson("/api/v4/chat/rooms/$room/typing", $this->identity(['active' => true]))->assertOk();
         $id = $this->send($room)->assertCreated()
             ->assertJsonPath('data.is_admin', true)->assertJsonPath('data.display_name', 'Zo Stream')->json('data.id');
 
-        $row = ChatDatabase::connection()->table('chat_outbox')->where('kind', 'feed_created')->where('message_id', $id)->first();
+        // The worker can have a different cached whitelist from the HTTP process.
+        config(['services.admin_qr.allowed_uids' => []]);
         Http::fake();
-        app(\App\Support\Chat\ChatLiveDelivery::class)->deliver($row, fn () => null);
+        $this->artisan('chat:deliver', ['--once' => true, '--lane' => 'realtime'])->assertSuccessful();
         Http::assertSent(function ($request) use ($sender, $receiver, $id) {
             $frame = json_decode($request->body(), true);
+            if ($frame['name'] !== 'chat.message') { return false; }
             $message = json_decode($frame['data'], true)['message'];
-            return $frame['name'] === 'chat.message'
-                && in_array($sender['feed_channel'], $frame['channels'], true)
+            return in_array($sender['feed_channel'], $frame['channels'], true)
                 && in_array($receiver['feed_channel'], $frame['channels'], true)
                 && $message['id'] === $id && $message['is_admin'] === true && $message['display_name'] === 'Zo Stream';
+        });
+        Http::assertSent(function ($request) use ($receiver) {
+            $frame = json_decode($request->body(), true);
+            if ($frame['name'] !== 'chat.typing' || $frame['channels'] !== [$receiver['feed_channel']]) { return false; }
+            $typist = json_decode($frame['data'], true)['users'][0] ?? [];
+            return ($typist['user_id'] ?? null) === 'alice' && $typist['is_admin'] === true && $typist['name'] === 'Zo Stream';
         });
     }
 
@@ -1130,6 +1138,7 @@ class ChatApiTest extends TestCase
         (require database_path('migrations/chat/2026_10_31_000001_add_chat_interaction_notifications.php'))->up();
         (require database_path('migrations/chat/2026_11_25_000001_add_chat_movie_suggestions.php'))->up();
         (require database_path('migrations/chat/2026_11_25_000002_create_chat_pins.php'))->up();
+        (require database_path('migrations/chat/2026_11_25_000003_add_sender_admin_to_chat_outbox.php'))->up();
         Schema::create('admin_users', function (Blueprint $t) {
             $t->id();
             $t->string('admin_uid');
@@ -1191,7 +1200,7 @@ class ChatApiTest extends TestCase
     {
         ChatDatabase::schema()->dropAllTables();
         $this->artisan('chat:migrate', ['--force' => true])->assertSuccessful();
-        $this->assertSame(17, ChatDatabase::connection()->table('migrations')->count());
+        $this->assertSame(18, ChatDatabase::connection()->table('migrations')->count());
         $this->assertFalse(Schema::hasTable('migrations'));
         $this->assertSame('chat_testing', DB::getDefaultConnection());
         $this->send($this->room())->assertCreated();

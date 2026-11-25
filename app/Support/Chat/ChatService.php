@@ -254,7 +254,7 @@ final class ChatService
         $this->invalidateBlocks($uid);
     }
 
-    public function outbox(Request $r, int $room, string $kind, ?int $message, ?string $event, ?string $recipient = null): void
+    public function outbox(Request $r, int $room, string $kind, ?int $message, ?string $event, ?string $recipient = null, ?bool $senderIsAdmin = null): void
     {
         $analytics = null;
         if ($event && $r->input('app_session_id') && app(\App\Support\Analytics\AnalyticsCollectionSetting::class)->enabled()) {
@@ -268,7 +268,8 @@ final class ChatService
             + ($recipient !== null ? ['recipient_user_id' => $recipient] : []));
         if ($message !== null && $recipient === null && in_array($kind, ['created', 'deleted'], true)) {
             ChatDatabase::connection()->table('chat_outbox')->insert(['room_id' => $room, 'kind' => 'feed_'.$kind, 'message_id' => $message,
-                'created_at' => now(), 'updated_at' => now()]);
+                'created_at' => now(), 'updated_at' => now()]
+                + ($senderIsAdmin === null ? [] : ['sender_is_admin' => $senderIsAdmin]));
         }
     }
 }

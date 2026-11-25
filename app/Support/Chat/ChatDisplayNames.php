@@ -24,16 +24,17 @@ final class ChatDisplayNames
         return $names;
     }
 
-    /** Resolve typing names from current account/admin state, not the short-lived typing cache. */
+    /** Use the role confirmed by the API when typing started. Older entries may lack it. */
     public static function typists(array $typists): array
     {
         $ids = array_column($typists, 'user_id');
-        $admins = app(\App\Support\AdminAccess::class)->adminIds($ids);
+        $unclassified = array_filter($typists, fn ($typist) => ! isset($typist['is_admin']));
+        $admins = app(\App\Support\AdminAccess::class)->adminIds(array_column($unclassified, 'user_id'));
         $profiles = [];
         foreach (self::users($ids) as $user) { $profiles[(string) $user->uid] = $user; }
         foreach ($typists as &$typist) {
             $id = (string) ($typist['user_id'] ?? '');
-            $typist['is_admin'] = in_array($id, $admins, true);
+            $typist['is_admin'] ??= in_array($id, $admins, true);
             $typist['name'] = $typist['is_admin'] ? 'Zo Stream'
                 : self::name($profiles[$id] ?? null, (string) ($typist['name'] ?? 'Viewer'));
         }
@@ -42,14 +43,16 @@ final class ChatDisplayNames
     }
 
     /** Refresh old message snapshots too, without replacing legacy names or deleted identities. */
-    public static function messages(array $messages): array
+    public static function messages(array $messages, array $adminOverrides = []): array
     {
         $ids = [];
         foreach ($messages as $message) {
             if (! $message['deleted']) { $ids[] = $message['user_id']; }
             if (isset($message['reply']) && ! $message['reply']['deleted']) { $ids[] = $message['reply']['user_id']; }
         }
-        $adminIds = app(\App\Support\AdminAccess::class)->adminIds($ids);
+        $adminIds = app(\App\Support\AdminAccess::class)->adminIds(
+            array_filter($ids, fn ($id) => ! isset($adminOverrides[$id]))
+        );
         $usernames = [];
         foreach (self::users($ids) as $user) {
             $username = trim((string) ($user->username ?? ''));
@@ -57,7 +60,7 @@ final class ChatDisplayNames
         }
         foreach ($messages as &$message) {
             if (! $message['deleted']) {
-                $message['is_admin'] = in_array((string) $message['user_id'], $adminIds, true);
+                $message['is_admin'] = $adminOverrides[$message['user_id']] ?? in_array((string) $message['user_id'], $adminIds, true);
                 $message['display_name'] = $message['is_admin']
                     ? 'Zo Stream'
                     : self::prefixed($usernames[$message['user_id']] ?? $message['display_name']);
@@ -65,7 +68,7 @@ final class ChatDisplayNames
                 $message['is_admin'] = false;
             }
             if (isset($message['reply']) && ! $message['reply']['deleted']) {
-                $replyIsAdmin = in_array((string) $message['reply']['user_id'], $adminIds, true);
+                $replyIsAdmin = $adminOverrides[$message['reply']['user_id']] ?? in_array((string) $message['reply']['user_id'], $adminIds, true);
                 $message['reply']['is_admin'] = $replyIsAdmin;
                 $message['reply']['display_name'] = $replyIsAdmin
                     ? 'Zo Stream'

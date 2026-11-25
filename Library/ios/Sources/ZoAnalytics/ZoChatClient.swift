@@ -599,6 +599,10 @@ public final class ZoChatClient {
                               let data = try? JSONSerialization.data(withJSONObject: payload),
                               let snapshot = try? JSONDecoder().decode(ChatTypingSnapshot.self, from: data) else { continue }
                         self.typingVersion = version
+                        guard snapshot.users.allSatisfy({ $0.is_admin != nil }) else {
+                            self.onChanged?("typing", nil)
+                            continue
+                        }
                         self.onTyping?(snapshot.users)
                     case "chat.message":
                         guard self.feedSubscribed, event["channel"] as? String == self.feedChannel,
@@ -617,6 +621,20 @@ public final class ZoChatClient {
                         // Apply state before rendering the card so its action
                         // does not wait for the separate metadata event.
                         if let watch = payload["watch"] as? [String: Any] { self.onWatchState?(watch) }
+                        if !message.deleted, message.is_admin == nil {
+                            let revision = self.roomRevision
+                            let overlay = payload["overlay_live"] as? Bool == true
+                            Task { [weak self] in
+                                guard let self else { return }
+                                let canonical = try? await self.request("rooms/\(message.room_id)/messages/\(message.id)", as: ChatMessage.self)
+                                guard self.roomRevision == revision, self.liveVersions[message.id] == version,
+                                      self.liveKinds[message.id] != "deleted" else { return }
+                                guard let canonical else { self.onChanged?("created", message.id); return }
+                                self.onMessage?(canonical)
+                                if overlay, !canonical.deleted { self.onOverlayMessage?(canonical) }
+                            }
+                            continue
+                        }
                         self.onMessage?(message)
                         if payload["overlay_live"] as? Bool == true, !message.deleted { self.onOverlayMessage?(message) }
                     case "chat.changed", "chat.badge":
