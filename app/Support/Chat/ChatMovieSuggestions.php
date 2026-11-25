@@ -28,7 +28,8 @@ final class ChatMovieSuggestions
     private function card(object $movie): array
     {
         $poster = trim((string) ($movie->opt_poster_url ?: $movie->poster));
-        return ['id' => (string) $movie->id, 'title' => (string) $movie->title,
+        $id = $movie->id === null || $movie->id === '' ? $movie->num : $movie->id;
+        return ['id' => (string) $id, 'title' => (string) $movie->title,
             'poster' => filter_var($poster, FILTER_VALIDATE_URL) && strtolower((string) parse_url($poster, PHP_URL_SCHEME)) === 'https' ? $poster : null];
     }
 
@@ -43,6 +44,9 @@ final class ChatMovieSuggestions
     {
         $this->assertRoom($room);
         $movie = $this->visible($request)->where('id', $id)->first();
+        if (! $movie && ctype_digit($id)) {
+            $movie = $this->visible($request)->where('num', $id)->first();
+        }
         abort_unless($movie, 422, 'This movie is no longer available to suggest. Choose a published movie.');
         return $this->card($movie);
     }

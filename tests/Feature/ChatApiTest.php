@@ -963,7 +963,7 @@ class ChatApiTest extends TestCase
     private function movieSuggestionCatalog(): void
     {
         Schema::create('movie', function (Blueprint $t) {
-            $t->increments('num'); $t->string('id'); $t->string('title'); $t->string('status')->default('Published');
+            $t->increments('num'); $t->string('id')->nullable(); $t->string('title'); $t->string('status')->default('Published');
             $t->boolean('isEnable')->default(true); $t->boolean('isAgeRestricted')->default(false);
             $t->boolean('isChildMode')->default(true); $t->boolean('isMizo')->default(true);
             $t->string('poster')->nullable(); $t->string('opt_poster_url')->nullable(); $t->string('url')->nullable();
@@ -986,6 +986,24 @@ class ChatApiTest extends TestCase
             ->assertJsonPath('data.movies.0.id', 'avatar')->assertJsonMissingPath('data.movies.0.url');
         DB::table('movie')->where('id', 'avatar')->update(['isChildMode' => false]);
         $this->withHeader('X-Mode', 'kids')->getJson($url.'?auth_user_id=alice&q=ava')->assertOk()->assertJsonCount(0, 'data.movies');
+    }
+
+    public function test_movie_suggestion_supports_legacy_numeric_catalog_keys_and_prefers_public_ids(): void
+    {
+        $this->movieSuggestionCatalog();
+        $num = DB::table('movie')->insertGetId(['id' => null, 'title' => 'Legacy Film']);
+        $room = $this->room();
+        $this->getJson("/api/v4/chat/rooms/$room/movie-suggestions?auth_user_id=alice&q=legacy")
+            ->assertOk()->assertJsonPath('data.movies.0.id', (string) $num);
+        $url = "/api/v4/chat/rooms/$room/messages";
+        $payload = fn () => $this->identity(['request_id' => (string) Str::uuid(), 'body' => 'Suggest',
+            'movie_suggestion' => ['id' => (string) $num]]);
+        $this->postJson($url, $payload())->assertCreated()
+            ->assertJsonPath('data.movie_suggestion.id', (string) $num)
+            ->assertJsonPath('data.movie_suggestion.title', 'Legacy Film');
+        DB::table('movie')->insert(['id' => (string) $num, 'title' => 'Public ID Film']);
+        $this->travel(2)->seconds();
+        $this->postJson($url, $payload())->assertCreated()->assertJsonPath('data.movie_suggestion.title', 'Public ID Film');
     }
 
     public function test_movie_suggestion_is_canonical_idempotent_in_history_and_removed_when_deleted(): void
