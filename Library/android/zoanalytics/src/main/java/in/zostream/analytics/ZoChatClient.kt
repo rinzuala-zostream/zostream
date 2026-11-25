@@ -186,7 +186,7 @@ class ZoChatClient(
             // Chat endpoints on some deployed API versions return their payload directly.
             val successUndeclared = successValue == null || successValue == JSONObject.NULL
             val payloadKeys = listOf(
-                "room_id", "user_id", "messages", "invites", "rooms", "ended", "accepted", "position_ms",
+                "room_id", "user_id", "messages", "pins", "pinned", "invites", "rooms", "ended", "accepted", "position_ms",
                 "online_count", "auth", "blocked", "left", "users", "reported", "resolved", "updated", "movies"
             )
             val hasDirectPayload = payloadKeys.any { key -> json.has(key) && json.opt(key) != JSONObject.NULL }

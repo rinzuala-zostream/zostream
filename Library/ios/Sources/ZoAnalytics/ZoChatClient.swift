@@ -84,6 +84,7 @@ public struct ChatRoom: Decodable, Sendable {
     public let channel: String
     public let websocket_url: String
     public let user_id: String
+    public let is_admin: Bool?
     public let is_host: Bool?
     public let room_name: String?
     public let content_type: String?
@@ -208,7 +209,7 @@ public final class ZoChatClient {
         if let number = successValue as? NSNumber { declaredSuccess = number.intValue != 0 }
         else if let string = successValue as? String { declaredSuccess = string.lowercased() == "true" || string == "1" }
         else { declaredSuccess = (json["status"] as? String)?.lowercased() == "success" }
-        let payloadKeys = ["room_id", "user_id", "messages", "invites", "rooms", "ended", "accepted", "position_ms",
+        let payloadKeys = ["room_id", "user_id", "messages", "pins", "pinned", "invites", "rooms", "ended", "accepted", "position_ms",
                            "online_count", "auth", "blocked", "left", "users", "reported", "resolved", "updated"]
         let undeclared = successValue == nil || successValue is NSNull
         let directPayload = payloadKeys.contains { json[$0] != nil && !(json[$0] is NSNull) }
@@ -356,7 +357,7 @@ public final class ZoChatClient {
         let removed = (unreadChannels ?? []).subtracting(wanted)
         unreadChannels = wanted; unreadSubscribed.formIntersection(wanted)
         room = ChatRoom(room_id: "", room_type: "unread", channel: "", websocket_url: websocketURL,
-                        user_id: "", is_host: nil, room_name: nil, content_type: nil, watch_session: nil)
+                        user_id: "", is_admin: nil, is_host: nil, room_name: nil, content_type: nil, watch_session: nil)
         let removedPhysical = removed.compactMap { unreadPhysical.removeValue(forKey: $0) }
         for target in removed { unreadExpiry.removeValue(forKey: target) }
         Task { for channel in removedPhysical { try? await sendEvent("pusher:unsubscribe", data: ["channel": channel]) } }

@@ -199,6 +199,9 @@ Route::prefix('v4')
                 Route::post('/unread/auth-batch', [\App\Http\Controllers\Api\V4\ChatController::class, 'unreadAuthBatch'])->middleware(\App\Http\Middleware\ChatThrottle::class.':240');
                 Route::get('/unread', [\App\Http\Controllers\Api\V4\ChatController::class, 'unread'])->middleware(\App\Http\Middleware\ChatThrottle::class.':240');
                 Route::post('/rooms/{room}/read', [\App\Http\Controllers\Api\V4\ChatController::class, 'markRead'])->whereNumber('room')->middleware(\App\Http\Middleware\ChatThrottle::class.':240');
+                Route::get('/rooms/{room}/pins', [\App\Http\Controllers\Api\V4\ChatController::class, 'pins'])->whereNumber('room')->middleware(\App\Http\Middleware\ChatThrottle::class.':120');
+                Route::post('/rooms/{room}/messages/{message}/pin', [\App\Http\Controllers\Api\V4\ChatController::class, 'pin'])->whereNumber(['room', 'message'])->middleware(\App\Http\Middleware\ChatThrottle::class.':30');
+                Route::post('/rooms/{room}/messages/{message}/unpin', [\App\Http\Controllers\Api\V4\ChatController::class, 'unpin'])->whereNumber(['room', 'message'])->middleware(\App\Http\Middleware\ChatThrottle::class.':30');
                 Route::get('/blocks', [\App\Http\Controllers\Api\V4\ChatController::class, 'blocks'])->whereNumber(['room', 'message', 'report'])->middleware(\App\Http\Middleware\ChatThrottle::class.':60');
                 Route::post('/rooms/{room}/heartbeat', [\App\Http\Controllers\Api\V4\ChatController::class, 'heartbeat'])->whereNumber(['room', 'message', 'report'])->middleware(\App\Http\Middleware\ChatThrottle::class.':60');
                 Route::post('/rooms/{room}/leave', [\App\Http\Controllers\Api\V4\ChatController::class, 'leave'])->whereNumber(['room', 'message', 'report'])->middleware(\App\Http\Middleware\ChatThrottle::class.':60');

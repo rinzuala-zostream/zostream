@@ -69,7 +69,48 @@ final class ChatController extends Controller
         return V4Response::success(['room_id' => (string) $room->id, 'room_type' => $room->type,
             'channel' => 'private-chat.'.$room->id, 'websocket_url' => config('chat.websocket_url'),
             'online_count' => $this->chat->presence($r, $room->id),
-            'user_id' => (string) $r->input('auth_user_id'), 'slow_mode_seconds' => config('chat.slow_mode_seconds')]);
+            'user_id' => (string) $r->input('auth_user_id'),
+            'is_admin' => app(\App\Support\AdminAccess::class)->isAdmin((string) $r->input('auth_user_id')),
+            'slow_mode_seconds' => config('chat.slow_mode_seconds')]);
+    }
+
+    public function pins(Request $r, int $room)
+    {
+        $this->chat->room($r, $room);
+        $rows = ChatDatabase::connection()->table('chat_pins as p')->join('chat_messages as m', 'm.id', '=', 'p.message_id')
+            ->where('p.room_id', $room)->whereNull('m.deleted_at')->where('m.created_at', '>=', now()->subDays(config('chat.retention_days')))
+            ->orderByDesc('p.created_at')->select('p.created_at as pinned_at', 'm.*')->get();
+        $messages = $rows->map(function ($row) {
+            $message = $this->chat->message($row);
+            $message['pinned_at'] = (string) $row->pinned_at;
+            return $message;
+        })->all();
+        $messages = app(\App\Support\Chat\ChatInteractions::class)->decorate($messages, (string) $r->input('auth_user_id'));
+        return V4Response::success(['pins' => $messages]);
+    }
+
+    public function pin(Request $r, int $room, int $message)
+    {
+        $uid = (string) $r->input('auth_user_id');
+        abort_unless(app(\App\Support\AdminAccess::class)->isAdmin($uid), 403, 'Only chat admins can pin messages.');
+        $this->chat->room($r, $room);
+        $exists = ChatDatabase::connection()->table('chat_messages')->where('id', $message)->where('room_id', $room)
+            ->whereNull('deleted_at')->where('created_at', '>=', now()->subDays(config('chat.retention_days')))->exists();
+        abort_unless($exists, 404, 'Message not found.');
+        ChatDatabase::connection()->table('chat_pins')->insertOrIgnore(['room_id' => $room, 'message_id' => $message,
+            'pinned_by' => $uid, 'created_at' => now()]);
+        $this->chat->outbox($r, $room, 'sync', null, null);
+        return V4Response::success(['pinned' => true]);
+    }
+
+    public function unpin(Request $r, int $room, int $message)
+    {
+        $uid = (string) $r->input('auth_user_id');
+        abort_unless(app(\App\Support\AdminAccess::class)->isAdmin($uid), 403, 'Only chat admins can unpin messages.');
+        $this->chat->room($r, $room);
+        ChatDatabase::connection()->table('chat_pins')->where('room_id', $room)->where('message_id', $message)->delete();
+        $this->chat->outbox($r, $room, 'sync', null, null);
+        return V4Response::success(['pinned' => false]);
     }
 
     public function registerPushToken(Request $r)
@@ -448,6 +489,7 @@ final class ChatController extends Controller
             'user_id' => (string) $r->input('auth_user_id'), 'room_name' => $inviteRoom->room_name, 'content_type' => $inviteRoom->content_type,
             'content_id' => $inviteRoom->content_id, 'watch_position_ms' => (int) $inviteRoom->watch_position_ms,
             'is_host' => $inviteRoom->host_user_id === (string) $r->input('auth_user_id'),
+            'is_admin' => app(\App\Support\AdminAccess::class)->isAdmin((string) $r->input('auth_user_id')),
             'content_title' => $content->title ?? null, 'season_id' => $seasonId,
             'season_number' => $seasonId ? DB::table('seasons')->where('id', $seasonId)->value('season_number') : null,
             'episode_number' => $content->episode_number ?? null,
