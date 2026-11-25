@@ -19,6 +19,30 @@ use Tests\TestCase;
 
 class ChatApiTest extends TestCase
 {
+    public function test_pins_follow_message_time_and_hide_blocked_senders(): void
+    {
+        DB::table('admin_users')->insert(['admin_uid' => 'alice']);
+        $room = $this->room();
+        $newest = $this->message($room);
+        $oldest = $this->message($room, 'bob');
+        $sameTime = $this->message($room);
+        ChatDatabase::connection()->table('chat_messages')->whereIn('id', [$oldest, $sameTime])
+            ->update(['created_at' => now()->subMinute()]);
+
+        foreach ([$oldest, $newest, $sameTime] as $id) {
+            $this->postJson("/api/v4/chat/rooms/$room/messages/$id/pin", $this->identity())->assertOk();
+            $this->travel(1)->seconds();
+        }
+
+        $url = "/api/v4/chat/rooms/$room/pins?".http_build_query($this->identity());
+        $this->assertSame([(string) $oldest, (string) $sameTime, (string) $newest],
+            array_column($this->getJson($url)->assertOk()->json('data.pins'), 'id'));
+
+        $this->postJson('/api/v4/chat/blocks', $this->identity(['user_id' => 'bob', 'blocked' => true]))->assertOk();
+        $this->assertSame([(string) $sameTime, (string) $newest],
+            array_column($this->getJson($url)->assertOk()->json('data.pins'), 'id'));
+    }
+
     public function test_chat_uses_username_for_new_messages_and_keeps_legacy_name_without_one(): void
     {
         $room = $this->room();
@@ -499,6 +523,28 @@ class ChatApiTest extends TestCase
             ChatDatabase::connection()->table('chat_bans')->delete(); ChatDatabase::connection()->table('chat_blocks')->delete();
             ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
         }
+    }
+
+    public function test_admin_message_is_branded_in_the_send_response_and_first_live_frame(): void
+    {
+        $room = $this->room();
+        DB::table('admin_users')->insert(['admin_uid' => 'alice']);
+        $sender = $this->socketAuth($room, 'alice', $this->socketSession('alice'), '1.2');
+        $receiver = $this->socketAuth($room, 'bob', $this->socketSession('bob'), '1.3');
+        $id = $this->send($room)->assertCreated()
+            ->assertJsonPath('data.is_admin', true)->assertJsonPath('data.display_name', 'Zo Stream')->json('data.id');
+
+        $row = ChatDatabase::connection()->table('chat_outbox')->where('kind', 'feed_created')->where('message_id', $id)->first();
+        Http::fake();
+        app(\App\Support\Chat\ChatLiveDelivery::class)->deliver($row, fn () => null);
+        Http::assertSent(function ($request) use ($sender, $receiver, $id) {
+            $frame = json_decode($request->body(), true);
+            $message = json_decode($frame['data'], true)['message'];
+            return $frame['name'] === 'chat.message'
+                && in_array($sender['feed_channel'], $frame['channels'], true)
+                && in_array($receiver['feed_channel'], $frame['channels'], true)
+                && $message['id'] === $id && $message['is_admin'] === true && $message['display_name'] === 'Zo Stream';
+        });
     }
 
     public function test_new_feed_never_overlays_messages_that_existed_before_authorization(): void
@@ -1083,6 +1129,11 @@ class ChatApiTest extends TestCase
         (require database_path('migrations/chat/2026_10_30_000001_add_chat_interactions.php'))->up();
         (require database_path('migrations/chat/2026_10_31_000001_add_chat_interaction_notifications.php'))->up();
         (require database_path('migrations/chat/2026_11_25_000001_add_chat_movie_suggestions.php'))->up();
+        (require database_path('migrations/chat/2026_11_25_000002_create_chat_pins.php'))->up();
+        Schema::create('admin_users', function (Blueprint $t) {
+            $t->id();
+            $t->string('admin_uid');
+        });
         Schema::create('user', function (Blueprint $t) {
             $t->id();
             $t->string('uid');
@@ -1137,7 +1188,7 @@ class ChatApiTest extends TestCase
     {
         ChatDatabase::schema()->dropAllTables();
         $this->artisan('chat:migrate', ['--force' => true])->assertSuccessful();
-        $this->assertSame(16, ChatDatabase::connection()->table('migrations')->count());
+        $this->assertSame(17, ChatDatabase::connection()->table('migrations')->count());
         $this->assertFalse(Schema::hasTable('migrations'));
         $this->assertSame('chat_testing', DB::getDefaultConnection());
         $this->send($this->room())->assertCreated();
@@ -1817,6 +1868,9 @@ class ChatApiTest extends TestCase
         $url = "/api/v4/chat/rooms/$room/messages?".http_build_query($this->identity(['initial' => 1]));
         $this->getJson($url)->assertOk()->assertJsonCount(20, 'data.messages')->assertJsonPath('data.has_more', true)
             ->assertJsonPath('data.messages.0.id', (string) $ids[0])->assertJsonPath('data.first_unread_id', (string) $ids[0]);
+        $this->getJson($url.'&latest=1')->assertOk()->assertJsonCount(20, 'data.messages')->assertJsonPath('data.has_more', true)
+            ->assertJsonPath('data.messages.0.id', (string) $ids[135])->assertJsonPath('data.messages.19.id', (string) $ids[154])
+            ->assertJsonPath('data.first_unread_id', (string) $ids[0])->assertJsonPath('data.initial_after', null);
         $this->postJson("/api/v4/chat/rooms/$room/read", $this->identity(['message_id' => $ids[149]]))->assertOk();
         $this->getJson($url)->assertOk()->assertJsonCount(5, 'data.messages')->assertJsonPath('data.has_more', false)
             ->assertJsonPath('data.messages.0.id', (string) $ids[150])->assertJsonPath('data.first_unread_id', (string) $ids[150]);
@@ -2111,10 +2165,6 @@ class ChatApiTest extends TestCase
 
     public function test_admin_chat_routes_reject_non_admins_and_anonymous_visitors(): void
     {
-        Schema::create('admin_users', function (Blueprint $t) {
-            $t->id();
-            $t->string('admin_uid');
-        });
         config(['services.admin_qr.allowed_uids' => [], 'services.admin_whatsapp.allowed_numbers' => []]);
         $this->withMiddleware(AdminTokenMiddleware::class);
         $this->getJson('/api/v4/admin/chat/rooms?'.http_build_query($this->identity()))->assertForbidden();

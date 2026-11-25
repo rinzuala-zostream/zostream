@@ -38,7 +38,8 @@ class ZoChatClient(
     private val liveVersions = linkedMapOf<String, Long>()
     private val liveKinds = linkedMapOf<String, String>()
     private val pendingLive = linkedMapOf<String, String>()
-    private var liveRecoveryDelay = 2_500L
+    private val initialLiveRecoveryDelay = 500L
+    private var liveRecoveryDelay = initialLiveRecoveryDelay
     private val liveRecovery = Runnable {
         if (pendingLive.isNotEmpty() && roomVisible != false && !closed) {
             val deleted = pendingLive.values.any { it == "deleted" }
@@ -286,6 +287,8 @@ class ZoChatClient(
         finishVisibility()
         val revision = ++roomRevision
         clearFeed(); controlToken = null; controlChannel?.let { sendEvent("pusher:unsubscribe", JSONObject().put("channel", it)) }; controlChannel = null; liveVersions.clear(); liveKinds.clear(); pendingLive.clear()
+        main.removeCallbacks(liveRecovery)
+        liveRecoveryDelay = initialLiveRecoveryDelay
         channel?.let { sendEvent("pusher:unsubscribe", JSONObject().put("channel", it)) }
         isConnected = false
         channel = null; room = null; subscriptionExpiry = 0; subscriptionPending = false
@@ -501,7 +504,7 @@ class ZoChatClient(
                                     if (data.optString("room_id") != room?.optString("room_id") || version <= (liveVersions[messageId] ?: -1)
                                         || liveKinds[messageId] == "deleted" && !message.optBoolean("deleted")) return@post
                                     liveVersions[messageId] = version; liveKinds[messageId] = data.optString("kind")
-                                    pendingLive.remove(messageId); liveRecoveryDelay = 2_500
+                                    pendingLive.remove(messageId); liveRecoveryDelay = initialLiveRecoveryDelay
                                     while (liveVersions.size > 500) { val first = liveVersions.keys.first(); liveVersions.remove(first); liveKinds.remove(first) }
                                     // The card and its action become available together.
                                     data.optJSONObject("watch")?.let { onWatchState?.invoke(it) }

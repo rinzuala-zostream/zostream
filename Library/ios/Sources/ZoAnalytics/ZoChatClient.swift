@@ -143,7 +143,8 @@ public final class ZoChatClient {
     private var liveKinds: [String: String] = [:]
     private var pendingLive: [String: String] = [:]
     private var liveRecoveryTask: Task<Void, Never>?
-    private var liveRecoveryDelay: Double = 2.5
+    private static let initialLiveRecoveryDelay: Double = 0.5
+    private var liveRecoveryDelay = ZoChatClient.initialLiveRecoveryDelay
     private var unreadChannels: Set<String>?
     private var batchAuthorization = false
     private var unreadSubscribed: Set<String> = []
@@ -323,6 +324,8 @@ public final class ZoChatClient {
         finishVisibility()
         roomRevision += 1; let revision = roomRevision
         clearFeed(); controlToken = nil; controlChannel = nil; liveVersions.removeAll(); liveKinds.removeAll(); pendingLive.removeAll()
+        liveRecoveryTask?.cancel(); liveRecoveryTask = nil
+        liveRecoveryDelay = Self.initialLiveRecoveryDelay
         subscriptionTask?.cancel()
         let previousChannel = channel
         isConnected = false
@@ -607,7 +610,7 @@ public final class ZoChatClient {
                               version > (self.liveVersions[message.id] ?? 0),
                               self.liveKinds[message.id] != "deleted" || message.deleted else { continue }
                         self.liveVersions[message.id] = version; self.liveKinds[message.id] = payload["kind"] as? String
-                        self.pendingLive.removeValue(forKey: message.id); self.liveRecoveryDelay = 2.5
+                        self.pendingLive.removeValue(forKey: message.id); self.liveRecoveryDelay = Self.initialLiveRecoveryDelay
                         while self.liveVersions.count > 500, let first = self.liveVersions.keys.first {
                             self.liveVersions.removeValue(forKey: first); self.liveKinds.removeValue(forKey: first)
                         }

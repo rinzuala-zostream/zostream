@@ -77,17 +77,19 @@ final class ChatController extends Controller
     public function pins(Request $r, int $room)
     {
         $this->chat->room($r, $room);
+        $uid = (string) $r->input('auth_user_id');
         $rows = ChatDatabase::connection()->table('chat_pins as p')->join('chat_messages as m', 'm.id', '=', 'p.message_id')
-            ->where('p.room_id', $room)->whereNull('m.deleted_at')->where('m.created_at', '>=', now()->subDays(config('chat.retention_days')))
-            ->orderByDesc('p.created_at')->select('p.created_at as pinned_at', 'm.*')->get();
+            ->where('p.room_id', $room)->whereNotIn('m.user_id', $this->chat->blocked($uid))
+            ->whereNull('m.deleted_at')->where('m.created_at', '>=', now()->subDays(config('chat.retention_days')))
+            ->orderBy('m.created_at')->orderBy('m.id')->select('p.created_at as pinned_at', 'm.*')->get();
         $messages = $rows->map(function ($row) {
             $message = $this->chat->message($row);
             $message['pinned_at'] = (string) $row->pinned_at;
             return $message;
         })->all();
-        $messages = app(\App\Support\Chat\ChatInteractions::class)->decorate($messages, (string) $r->input('auth_user_id'));
+        $messages = app(\App\Support\Chat\ChatInteractions::class)->decorate($messages, $uid);
         return V4Response::success(['pins' => $messages,
-            'is_admin' => app(\App\Support\AdminAccess::class)->isAdmin((string) $r->input('auth_user_id'))]);
+            'is_admin' => app(\App\Support\AdminAccess::class)->isAdmin($uid)]);
     }
 
     public function pin(Request $r, int $room, int $message)
@@ -594,6 +596,7 @@ final class ChatController extends Controller
         $this->chat->room($r, $room);
         $v = $r->validate([
             'initial' => 'sometimes|boolean',
+            'latest' => ['sometimes', 'boolean', Rule::prohibitedIf(! $r->boolean('initial'))],
             'before' => ['nullable', 'integer', 'min:1', Rule::prohibitedIf($r->filled('after') || $r->boolean('initial'))],
             'after' => ['nullable', 'integer', 'min:0', Rule::prohibitedIf($r->boolean('initial'))],
         ]);
@@ -611,7 +614,7 @@ final class ChatController extends Controller
             $firstUnread = ChatDatabase::connection()->table('chat_messages')->where('room_id', $room)
                 ->where('id', '>', $readThrough)->where('user_id', '!=', $uid)->whereNotIn('user_id', $blocked)
                 ->whereNull('deleted_at')->where('created_at', '>=', now()->subDays(config('chat.retention_days')))->min('id');
-            $after = $firstUnread === null ? null : max(0, (int) $firstUnread - 1);
+            $after = $firstUnread === null || ($v['latest'] ?? false) ? null : max(0, (int) $firstUnread - 1);
             $initial = ['first_unread_id' => $firstUnread === null ? null : (string) $firstUnread,
                 'initial_after' => $after === null ? null : (string) $after];
         }
