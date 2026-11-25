@@ -172,6 +172,7 @@ final class ChatService
     {
         return ['id' => (string) $m->id, 'room_id' => (string) $m->room_id,
             'reply_to_id' => ! $m->deleted_at && ($m->reply_to_id ?? null) ? (string) $m->reply_to_id : null,
+            'movie_suggestion' => $m->deleted_at ? null : json_decode($m->movie_suggestion ?? 'null', true),
             'moment' => $m->deleted_at ? null : json_decode($m->moment ?? 'null', true),
             'user_id' => $m->user_id, 'request_id' => $m->request_id, 'display_name' => $m->display_name,
             'room_invite' => ! $m->deleted_at && ($m->invite_room_id ?? null) ? app(RoomInvitationService::class)->metadata((int) $m->invite_room_id) : null,
@@ -199,7 +200,8 @@ final class ChatService
             }
             ChatDatabase::connection()->table('chat_messages')->whereIn('id', $rows->pluck('id'))->update([
                 'body' => '', 'display_name' => 'Deleted viewer', 'user_id' => $anonymous, 'deleted_at' => now()]
-                + (ChatDatabase::schema()->hasColumn('chat_messages', 'watch_invite') ? ['watch_invite' => null] : []));
+                + (ChatDatabase::schema()->hasColumn('chat_messages', 'watch_invite') ? ['watch_invite' => null] : [])
+                + (ChatDatabase::schema()->hasColumn('chat_messages', 'movie_suggestion') ? ['movie_suggestion' => null] : []));
             foreach ($rows->pluck('room_id')->unique() as $room) {
                 ChatDatabase::connection()->afterCommit(fn () => $this->invalidate($room));
             }

@@ -960,6 +960,67 @@ class ChatApiTest extends TestCase
         $this->withHeaders(['X-Playback-Token' => 'play-a'])->postJson("/api/v4/chat/rooms/$global/messages", $payload)->assertUnprocessable();
     }
 
+    private function movieSuggestionCatalog(): void
+    {
+        Schema::create('movie', function (Blueprint $t) {
+            $t->increments('num'); $t->string('id'); $t->string('title'); $t->string('status')->default('Published');
+            $t->boolean('isEnable')->default(true); $t->boolean('isAgeRestricted')->default(false);
+            $t->boolean('isChildMode')->default(true); $t->boolean('isMizo')->default(true);
+            $t->string('poster')->nullable(); $t->string('opt_poster_url')->nullable(); $t->string('url')->nullable();
+        });
+        DB::table('movie')->insert([
+            ['id' => 'avatar', 'title' => 'The Avatar', 'status' => 'Published', 'isEnable' => 1, 'poster' => 'https://example.test/poster.jpg'],
+            ['id' => 'draft', 'title' => 'Avatar Draft', 'status' => 'Draft', 'isEnable' => 1, 'poster' => null],
+            ['id' => 'disabled', 'title' => 'Avatar Disabled', 'status' => 'Published', 'isEnable' => 0, 'poster' => null],
+        ]);
+    }
+
+    public function test_movie_suggestion_search_requires_three_space_free_characters_and_public_catalog_visibility(): void
+    {
+        $this->movieSuggestionCatalog();
+        $room = $this->room();
+        $url = "/api/v4/chat/rooms/$room/movie-suggestions";
+        $this->getJson($url.'?auth_user_id=alice&q=av')->assertUnprocessable();
+        $this->getJson($url.'?auth_user_id=alice&q=ava%20tar')->assertUnprocessable();
+        $this->getJson($url.'?auth_user_id=alice&q=theava')->assertOk()->assertJsonCount(1, 'data.movies')
+            ->assertJsonPath('data.movies.0.id', 'avatar')->assertJsonMissingPath('data.movies.0.url');
+        DB::table('movie')->where('id', 'avatar')->update(['isChildMode' => false]);
+        $this->withHeader('X-Mode', 'kids')->getJson($url.'?auth_user_id=alice&q=ava')->assertOk()->assertJsonCount(0, 'data.movies');
+    }
+
+    public function test_movie_suggestion_is_canonical_idempotent_in_history_and_removed_when_deleted(): void
+    {
+        $this->movieSuggestionCatalog();
+        $room = $this->room();
+        $url = "/api/v4/chat/rooms/$room/messages";
+        $payload = $this->identity(['request_id' => (string) Str::uuid(), 'body' => 'Untrusted text', 'movie_suggestion' => ['id' => 'avatar']]);
+        $sent = $this->postJson($url, $payload)->assertCreated()->assertJsonPath('data.movie_suggestion.title', 'The Avatar')
+            ->assertJsonPath('data.body', 'Movie suggestion: The Avatar');
+        $this->postJson($url, $payload)->assertOk()->assertJsonPath('data.id', $sent->json('data.id'));
+        $this->getJson($url.'?auth_user_id=bob')->assertOk()->assertJsonPath('data.messages.0.movie_suggestion.id', 'avatar');
+        ChatDatabase::connection()->table('chat_messages')->where('id', $sent->json('data.id'))->update(['deleted_at' => now()]);
+        app(\App\Support\Chat\ChatService::class)->invalidate((int) $room);
+        $this->getJson($url.'?auth_user_id=bob')->assertOk()->assertJsonPath('data.messages.0.movie_suggestion', null);
+    }
+
+    public function test_movie_suggestions_reject_spoofed_metadata_unpublished_titles_and_dedicated_watch_rooms(): void
+    {
+        $this->movieSuggestionCatalog();
+        $room = $this->createPrivateRoom();
+        $url = "/api/v4/chat/rooms/$room/messages";
+        foreach ([['id' => 'draft'], ['id' => 'disabled'], ['id' => 'avatar', 'title' => 'Forged title']] as $card) {
+            $this->postJson($url, $this->identity(['request_id' => (string) Str::uuid(), 'body' => 'Suggest', 'movie_suggestion' => $card]))->assertUnprocessable();
+        }
+        $this->getJson("/api/v4/chat/rooms/$room/movie-suggestions?auth_user_id=alice&q=ava")->assertOk()->assertJsonCount(1, 'data.movies');
+        $this->postJson($url, $this->identity(['request_id' => (string) Str::uuid(), 'body' => 'The Avatar', 'movie_suggestion' => ['id' => 'avatar']]))->assertCreated();
+        $this->assertSame(1, ChatDatabase::connection()->table('chat_messages')->count());
+        DB::table('movie')->where('id', 'avatar')->update(['status' => 'Draft']);
+        $this->postJson($url, $this->identity(['request_id' => (string) Str::uuid(), 'body' => 'The Avatar', 'movie_suggestion' => ['id' => 'avatar']]))->assertUnprocessable();
+        $service = app(\App\Support\Chat\ChatMovieSuggestions::class);
+        try { $service->assertRoom((object) ['id' => 999, 'type' => 'movie']); $this->fail('Movie chat must not accept movie suggestions'); }
+        catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) { $this->assertSame(422, $e->getStatusCode()); }
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -1003,6 +1064,7 @@ class ChatApiTest extends TestCase
         (require database_path('migrations/chat/2026_10_28_000003_add_chat_delivery_claims.php'))->up();
         (require database_path('migrations/chat/2026_10_30_000001_add_chat_interactions.php'))->up();
         (require database_path('migrations/chat/2026_10_31_000001_add_chat_interaction_notifications.php'))->up();
+        (require database_path('migrations/chat/2026_11_25_000001_add_chat_movie_suggestions.php'))->up();
         Schema::create('user', function (Blueprint $t) {
             $t->id();
             $t->string('uid');
@@ -1057,7 +1119,7 @@ class ChatApiTest extends TestCase
     {
         ChatDatabase::schema()->dropAllTables();
         $this->artisan('chat:migrate', ['--force' => true])->assertSuccessful();
-        $this->assertSame(15, ChatDatabase::connection()->table('migrations')->count());
+        $this->assertSame(16, ChatDatabase::connection()->table('migrations')->count());
         $this->assertFalse(Schema::hasTable('migrations'));
         $this->assertSame('chat_testing', DB::getDefaultConnection());
         $this->send($this->room())->assertCreated();

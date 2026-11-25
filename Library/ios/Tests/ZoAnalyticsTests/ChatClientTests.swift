@@ -18,6 +18,22 @@ private final class ChatURLProtocol: URLProtocol {
 }
 
 final class ChatClientTests: XCTestCase {
+    func testMovieSuggestionQueryAndCacheRoundTrip() throws {
+        XCTAssertNil(ChatMovieSuggestion.query(in: "/av"))
+        XCTAssertEqual(ChatMovieSuggestion.query(in: "/ava"), "ava")
+        XCTAssertNil(ChatMovieSuggestion.query(in: "/ava tar"))
+        XCTAssertNil(ChatMovieSuggestion.query(in: "/watch"))
+        XCTAssertNil(ChatMovieSuggestion.query(in: "/invite"))
+        let data = Data(#"{"id":"1","room_id":"2","user_id":"alice","request_id":"r","display_name":"Alice","body":"Movie suggestion: Avatar","spoiler":false,"deleted":false,"created_at":"2026-11-25T00:00:00Z","movie_suggestion":{"id":"movie-1","title":"Avatar","poster":"https://example.test/poster.jpg"}}"#.utf8)
+        let message = try JSONDecoder().decode(ChatMessage.self, from: data)
+        let saved = try JSONEncoder().encode(message)
+        let restored = try JSONDecoder().decode(ChatMessage.self, from: saved)
+        XCTAssertEqual(restored.movie_suggestion?.id, "movie-1")
+        XCTAssertEqual(restored.movie_suggestion, message.movie_suggestion)
+        let old = try JSONDecoder().decode(ChatMessage.self, from: Data(#"{"id":"2","room_id":"2","user_id":"alice","request_id":"old","display_name":"Alice","body":"Old cached message","spoiler":false,"deleted":false,"created_at":"2026-11-25T00:00:00Z"}"#.utf8))
+        XCTAssertNil(old.movie_suggestion)
+    }
+
     func testInteractionMetadataDecodesWithoutRevealingSpoilerQuotes() throws {
         let message = try JSONDecoder().decode(ChatMessage.self, from: Data(#"{"id":"1","room_id":"2","user_id":"alice","request_id":"request","display_name":"Alice","body":"Reply","spoiler":false,"deleted":false,"created_at":"2026-10-30T10:00:00Z","reply_to_id":"9","reply":{"id":"9","user_id":"bob","display_name":"Bob","body":null,"spoiler":true,"deleted":false},"reactions":[{"emoji":"😂","count":2}],"my_reactions":["😂"],"moment":{"seconds":755,"content_type":"movie","content_id":"film-a"}}"#.utf8))
         XCTAssertEqual(message.reply_to_id, "9")

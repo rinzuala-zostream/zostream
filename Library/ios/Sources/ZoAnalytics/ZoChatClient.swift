@@ -36,6 +36,18 @@ public struct ChatTypingSnapshot: Decodable, Sendable {
     public let users: [ChatTypist]
 }
 
+public struct ChatMovieSuggestion: Codable, Identifiable, Sendable, Equatable {
+    public let id: String
+    public let title: String
+    public let poster: String?
+    public static func query(in text: String) -> String? {
+        guard text.hasPrefix("/"), !text.contains(where: \.isWhitespace) else { return nil }
+        let query = String(text.dropFirst())
+        guard (3...80).contains(query.count), !query.contains("/"), !["watch", "invite"].contains(query.lowercased()) else { return nil }
+        return query
+    }
+}
+
 public struct ChatMessage: Codable, Identifiable, Sendable {
     public let id: String
     public let room_id: String
@@ -46,6 +58,7 @@ public struct ChatMessage: Codable, Identifiable, Sendable {
     public let spoiler: Bool
     public let deleted: Bool
     public let created_at: String
+    public let movie_suggestion: ChatMovieSuggestion?
     public let room_invite: ChatRoomInvitation?
     public let watch_invite: ChatWatchInvite?
     public let reply_to_id: String?

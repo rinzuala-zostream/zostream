@@ -597,10 +597,19 @@ final class ChatController extends Controller
         return V4Response::success(['messages' => app(\App\Support\Chat\ChatInteractions::class)->decorate(app(\App\Support\Chat\RoomInvitationService::class)->hydrate($rows), (string) $r->input('auth_user_id')), 'has_more' => $hasMore] + $initial);
     }
 
+    public function movieSuggestions(Request $r, int $room, \App\Support\Chat\ChatMovieSuggestions $suggestions)
+    {
+        $info = $this->chat->room($r, $room);
+        $suggestions->assertRoom($info);
+        $v = $r->validate(['q' => ['required', 'string', 'min:3', 'max:80', 'regex:/\A[^\s\/]+\z/u']]);
+        return V4Response::success(['movies' => $suggestions->search($r, $v['q'])]);
+    }
+
     public function send(Request $r, int $room)
     {
         $roomInfo = $this->chat->room($r, $room, true);
         $v = $r->validate(['request_id' => 'required|uuid', 'body' => 'required|string|max:1000',
+            'movie_suggestion' => 'sometimes|array:id', 'movie_suggestion.id' => 'required_with:movie_suggestion|string|max:191',
             'room_invite' => 'sometimes|array:room_id', 'room_invite.room_id' => 'required_with:room_invite|integer|min:1',
             'watch' => 'sometimes|array', 'watch.content_type' => ['required_with:watch', Rule::in(['movie', 'episode'])],
             'watch.content_id' => 'required_with:watch|string|max:191', 'watch.position_ms' => 'nullable|integer|min:0|max:86400000',
@@ -622,6 +631,12 @@ final class ChatController extends Controller
         }
         if (! empty($v['reply_to_id'])) { app(\App\Support\Chat\ChatInteractions::class)->target($r, $room, (int) $v['reply_to_id']); }
         if (isset($v['moment'])) { app(\App\Support\Chat\ChatInteractions::class)->validateMoment($r, $roomInfo, $v['moment']); }
+        $suggestion = null;
+        if (isset($v['movie_suggestion'])) {
+            abort_if(isset($v['watch']) || isset($v['room_invite']) || isset($v['moment']) || ($v['spoiler'] ?? false), 422, 'Send the movie suggestion as its own message.');
+            $suggestion = app(\App\Support\Chat\ChatMovieSuggestions::class)->resolve($r, $roomInfo, $v['movie_suggestion']['id']);
+            $body = 'Movie suggestion: '.$suggestion['title'];
+        }
         // Atomic Redis add also serializes sends from multiple app servers.
         try {
             $allowed = Cache::store(config('chat.cache_store'))->add('chat:send:'.hash('sha256', $uid), true, config('chat.slow_mode_seconds'));
@@ -629,7 +644,7 @@ final class ChatController extends Controller
             abort(503, 'Chat is temporarily unavailable. Please retry.');
         }
         abort_unless($allowed, 429, 'Please wait before sending another message.');
-        $m = ChatDatabase::connection()->transaction(function () use ($r, $room, $uid, $v, $body, $roomInfo) {
+        $m = ChatDatabase::connection()->transaction(function () use ($r, $room, $uid, $v, $body, $roomInfo, $suggestion) {
             // Serialize messages with host termination, and recheck expiry after acquiring the lock.
             if ($roomInfo->type === 'invite') {
                 $inviteRoom = ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $room)->lockForUpdate()->first();
@@ -640,6 +655,7 @@ final class ChatController extends Controller
             $inserted = ChatDatabase::connection()->table('chat_messages')->insertOrIgnore(['room_id' => $room, 'user_id' => $uid, 'request_id' => $v['request_id'],
                 'display_name' => $name, 'body' => $sharedRoom ? 'Invitation to '.$sharedRoom->room_name : $body,
                 'invite_room_id' => $sharedRoom?->room_id, 'reply_to_id' => $v['reply_to_id'] ?? null,
+                'movie_suggestion' => $suggestion ? json_encode($suggestion) : null,
                 'moment' => isset($v['moment']) ? json_encode($v['moment']) : null,
                 'spoiler' => $v['spoiler'] ?? false, 'created_at' => now(), 'updated_at' => now()]);
             $m = ChatDatabase::connection()->table('chat_messages')->where('user_id', $uid)->where('request_id', $v['request_id'])->first();
