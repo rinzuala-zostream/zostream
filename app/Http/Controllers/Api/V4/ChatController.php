@@ -86,7 +86,8 @@ final class ChatController extends Controller
             return $message;
         })->all();
         $messages = app(\App\Support\Chat\ChatInteractions::class)->decorate($messages, (string) $r->input('auth_user_id'));
-        return V4Response::success(['pins' => $messages]);
+        return V4Response::success(['pins' => $messages,
+            'is_admin' => app(\App\Support\AdminAccess::class)->isAdmin((string) $r->input('auth_user_id'))]);
     }
 
     public function pin(Request $r, int $room, int $message)

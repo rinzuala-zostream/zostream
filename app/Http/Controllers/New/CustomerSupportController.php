@@ -255,6 +255,10 @@ class CustomerSupportController extends Controller
                 ]
             );
 
+            if ($adminUser->wasRecentlyCreated) {
+                $this->notifyChatIdentityChanged((string) $adminUser->admin_uid);
+            }
+
             $adminUser->load('user');
 
             return response()->json([
@@ -298,6 +302,8 @@ class CustomerSupportController extends Controller
                 ], 404);
             }
 
+            $this->notifyChatIdentityChanged((string) $validated['admin_uid']);
+
             return response()->json([
                 'status' => 'success',
                 'message' => 'Admin device removed successfully',
@@ -317,6 +323,24 @@ class CustomerSupportController extends Controller
                 'message' => 'Failed to remove admin device',
                 'error' => $e->getMessage(),
             ], 500);
+        }
+    }
+
+    private function notifyChatIdentityChanged(string $userId): void
+    {
+        try {
+            $schema = \App\Support\Chat\ChatDatabase::schema();
+            if (! config('chat.enabled') || ! $schema->hasTable('chat_messages') || ! $schema->hasTable('chat_outbox')) { return; }
+            $connection = \App\Support\Chat\ChatDatabase::connection();
+            $roomIds = $connection->table('chat_messages')->where('user_id', $userId)
+                ->distinct()->pluck('room_id')->map(fn ($id) => (int) $id)->all();
+            foreach ($roomIds as $roomId) {
+                app(\App\Support\Chat\ChatService::class)->invalidate($roomId);
+                $connection->table('chat_outbox')->insert(['room_id' => $roomId, 'kind' => 'sync', 'message_id' => null,
+                    'analytics' => null, 'created_at' => now(), 'updated_at' => now()]);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Chat identity refresh could not be queued', ['user_id' => $userId, 'exception' => $e::class]);
         }
     }
 

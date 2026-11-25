@@ -28,6 +28,7 @@ public struct ChatMoment: Codable, Sendable, Equatable {
 public struct ChatTypist: Decodable, Identifiable, Equatable, Sendable {
     public let user_id: String
     public let name: String
+    public let is_admin: Bool?
     public let expires_in: Int?
     public var id: String { user_id }
 }

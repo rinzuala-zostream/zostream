@@ -24,6 +24,23 @@ final class ChatDisplayNames
         return $names;
     }
 
+    /** Resolve typing names from current account/admin state, not the short-lived typing cache. */
+    public static function typists(array $typists): array
+    {
+        $ids = array_column($typists, 'user_id');
+        $admins = app(\App\Support\AdminAccess::class)->adminIds($ids);
+        $profiles = [];
+        foreach (self::users($ids) as $user) { $profiles[(string) $user->uid] = $user; }
+        foreach ($typists as &$typist) {
+            $id = (string) ($typist['user_id'] ?? '');
+            $typist['is_admin'] = in_array($id, $admins, true);
+            $typist['name'] = $typist['is_admin'] ? 'Zo Stream'
+                : self::name($profiles[$id] ?? null, (string) ($typist['name'] ?? 'Viewer'));
+        }
+        unset($typist);
+        return $typists;
+    }
+
     /** Refresh old message snapshots too, without replacing legacy names or deleted identities. */
     public static function messages(array $messages): array
     {

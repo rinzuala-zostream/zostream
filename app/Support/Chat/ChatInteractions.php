@@ -99,9 +99,10 @@ final class ChatInteractions
         }
         $users = array_filter($this->activeTypists($room), fn ($user) => $user['user_id'] !== $uid && ! in_array($user['user_id'], $blocked, true)
             && ($members === null || in_array($user['user_id'], $members, true)));
+        $users = ChatDisplayNames::typists(array_values($users));
         $now = now()->timestamp;
 
-        return array_values(array_map(fn ($user) => ['user_id' => $user['user_id'], 'name' => $user['name'],
+        return array_values(array_map(fn ($user) => ['user_id' => $user['user_id'], 'name' => $user['name'], 'is_admin' => $user['is_admin'],
             'expires_in' => max(0, $user['expires_at'] - $now)], $users));
     }
 

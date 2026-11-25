@@ -73,6 +73,7 @@ final class ChatLiveDelivery
                 ->pluck('invitee_user_id')->push($host)->flip();
             $typing = array_values(array_filter($typing, fn ($user) => $members->has($user['user_id'])));
         }
+        $typing = ChatDisplayNames::typists($typing);
         $typistIds = array_column($typing, 'user_id');
         $blocks = [];
         if ($typistIds !== []) {
@@ -99,7 +100,7 @@ final class ChatLiveDelivery
                 $users = [];
                 foreach ($group['users'] as $user) {
                     if ($user['expires_at'] > $now) {
-                        $users[] = ['user_id' => $user['user_id'], 'name' => $user['name'],
+                        $users[] = ['user_id' => $user['user_id'], 'name' => $user['name'], 'is_admin' => $user['is_admin'],
                             'expires_in' => $user['expires_at'] - $now];
                     }
                 }
