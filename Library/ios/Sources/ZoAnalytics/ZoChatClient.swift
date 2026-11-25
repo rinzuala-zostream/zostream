@@ -1,6 +1,6 @@
 import Foundation
 
-public struct ChatWatchInvite: Decodable, Sendable {
+public struct ChatWatchInvite: Codable, Sendable {
     public let session_id: String
     public let content_type: String
     public let content_id: String
@@ -8,14 +8,14 @@ public struct ChatWatchInvite: Decodable, Sendable {
     public let active: Bool?
 }
 
-public struct ChatRoomInvitation: Decodable, Sendable, Equatable {
+public struct ChatRoomInvitation: Codable, Sendable, Equatable {
     public let room_id: String
     public let room_name: String
     public let active: Bool
 }
 
-public struct ChatReaction: Decodable, Sendable, Equatable { public let emoji: String; public let count: Int }
-public struct ChatReply: Decodable, Sendable, Equatable {
+public struct ChatReaction: Codable, Sendable, Equatable { public let emoji: String; public let count: Int }
+public struct ChatReply: Codable, Sendable, Equatable {
     public let id: String; public let user_id: String?; public let display_name: String; public let body: String?; public let spoiler: Bool; public let deleted: Bool
 }
 public struct ChatMoment: Codable, Sendable, Equatable {
@@ -36,7 +36,7 @@ public struct ChatTypingSnapshot: Decodable, Sendable {
     public let users: [ChatTypist]
 }
 
-public struct ChatMessage: Decodable, Identifiable, Sendable {
+public struct ChatMessage: Codable, Identifiable, Sendable {
     public let id: String
     public let room_id: String
     public let user_id: String
@@ -112,6 +112,7 @@ public final class ZoChatClient {
     private var hasSubscribedRoom = false
     public private(set) var isConnected = false
     public var onBadgeEvent: (([String: Any]) -> Void)?
+    public var onUnreadRoomChange: ((_ kind: String, _ roomID: String, _ messageID: String?) -> Void)?
     public var onMessage: ((ChatMessage) -> Void)?
     public var onTyping: (([ChatTypist]) -> Void)?
     public var onOverlayMessage: ((ChatMessage) -> Void)?
@@ -587,6 +588,9 @@ public final class ZoChatClient {
                                   let target = self.unreadPhysical.first(where: { $0.value == physical })?.key,
                                   targets.contains(target), self.unreadSubscribed.contains(target) else { continue }
                             if let badge = payload["badge"] as? [String: Any] { self.onBadgeEvent?(badge) }
+                            if let roomID = payload["room_id"] as? String {
+                                self.onUnreadRoomChange?(payload["kind"] as? String ?? "sync", roomID, payload["message_id"] as? String)
+                            }
                             continue
                         }
                         guard let channel = self.channel, event["channel"] as? String == channel else { continue }
