@@ -911,6 +911,25 @@ class ChatApiTest extends TestCase
         Http::assertSent(fn ($request) => $sentTo($request, $bob['feed_channel']) && ($snapshot($request)['users'] ?? null) === []);
     }
 
+    public function test_delayed_typing_start_cannot_override_a_newer_idle_stop(): void
+    {
+        $room = $this->room();
+        $url = "/api/v4/chat/rooms/$room/typing";
+        $session = (string) Str::uuid();
+        $body = fn (bool $active, int $sequence) => $this->identity([
+            'active' => $active, 'typing_session_id' => $session, 'typing_sequence' => $sequence,
+        ]);
+        $this->postJson($url, $body(true, 1))->assertOk();
+        $this->postJson($url, $body(false, 3))->assertOk();
+        $this->postJson($url, $body(true, 2))->assertOk();
+        $this->getJson($url.'?auth_user_id=bob')->assertOk()->assertJsonCount(0, 'data.users');
+        $this->postJson($url, $body(true, 4))->assertOk();
+        $this->getJson($url.'?auth_user_id=bob')->assertOk()->assertJsonPath('data.users.0.user_id', 'alice');
+        $this->postJson($url, $body(false, 3))->assertOk();
+        $this->getJson($url.'?auth_user_id=bob')->assertOk()->assertJsonCount(1, 'data.users');
+        $this->assertSame(0, ChatDatabase::connection()->table('chat_messages')->count());
+    }
+
     public function test_movie_and_episode_typing_require_current_matching_playback(): void
     {
         $this->liveCreatorStream('movie', 'film-a');

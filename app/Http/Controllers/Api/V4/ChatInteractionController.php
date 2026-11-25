@@ -38,7 +38,8 @@ final class ChatInteractionController extends Controller
     }
     public function typing(Request $r, int $room, ChatInteractions $interactions)
     {
-        $v = $r->validate(['active' => 'required|boolean']);
+        $v = $r->validate(['active' => 'required|boolean', 'typing_session_id' => 'sometimes|uuid',
+            'typing_sequence' => 'required_with:typing_session_id|integer|min:1|max:9007199254740991']);
         return V4Response::success(['users' => $interactions->typing($r, $room, $v['active'])]);
     }
     public function typists(Request $r, int $room, ChatInteractions $interactions)

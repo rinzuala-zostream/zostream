@@ -132,6 +132,35 @@ final class ChatClientTests: XCTestCase {
         client.close()
     }
 
+    @MainActor
+    func testTypingStopSurvivesImmediateRoomTransportClose() async throws {
+        let delivered = expectation(description: "typing stop delivered")
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [ChatURLProtocol.self]
+        ChatURLProtocol.handle = { request in
+            XCTAssertEqual(request.url?.path, "/api/v4/chat/rooms/1/typing")
+            XCTAssertEqual(request.httpMethod, "POST")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer token")
+            var body = request.httpBody ?? Data()
+            if let stream = request.httpBodyStream {
+                stream.open(); defer { stream.close() }
+                var buffer = [UInt8](repeating: 0, count: 1024)
+                while stream.hasBytesAvailable { let n = stream.read(&buffer, maxLength: buffer.count); if n <= 0 { break }; body.append(buffer, count: n) }
+            }
+            let json = try JSONSerialization.jsonObject(with: body) as! [String: Any]
+            XCTAssertEqual(json["active"] as? Bool, false)
+            XCTAssertEqual(json["typing_sequence"] as? Int, 2)
+            delivered.fulfill()
+            return (200, #"{"success":true,"data":{"users":[]}}"#)
+        }
+        let client = ZoChatClient(baseURL: URL(string: "https://example.test")!, version: "test", credentials: {
+            AnalyticsCredentials(accessToken: "token", deviceToken: "device", ownerKey: "alice")
+        }, session: URLSession(configuration: configuration))
+        client.stopTyping(roomID: "1", sessionID: UUID().uuidString, sequence: 2)
+        client.close()
+        await fulfillment(of: [delivered], timeout: 2)
+    }
+
     func testHistoryDecodesLargeStringIdentifiersAndDeletedMessages() throws {
         let data = Data(#"{"messages":[{"id":"9007199254740993","room_id":"2","user_id":"alice","request_id":"request","display_name":"Alice","body":null,"spoiler":false,"deleted":true,"created_at":"2026-10-24 10:00:00"}],"has_more":true}"#.utf8)
         let page = try JSONDecoder().decode(ChatPage.self,from:data)

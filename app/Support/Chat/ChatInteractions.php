@@ -65,7 +65,14 @@ final class ChatInteractions
         if ($active !== null) {
             // Keep a bounded room index so public rooms need no membership scan.
             // Serialize updates: two simultaneous typists must not overwrite one another.
-            $changed = $cache->lock($key.':lock', 3)->block(1, function () use ($cache, $key, $active, $uid): bool {
+            $changed = $cache->lock($key.':lock', 3)->block(1, function () use ($cache, $key, $active, $uid, $r): bool {
+                // A delayed start must never resurrect typing after an idle stop.
+                if ($r->filled('typing_session_id')) {
+                    $sequenceKey = $key.':sequence:'.hash('sha256', $uid.':'.$r->input('typing_session_id'));
+                    $sequence = (int) $r->input('typing_sequence');
+                    if ($sequence <= (int) $cache->get($sequenceKey, 0)) { return false; }
+                    $cache->put($sequenceKey, $sequence, 60);
+                }
                 $users = array_filter($cache->get($key, []), fn ($user) => $user['expires_at'] > now()->timestamp);
                 $userKey = hash('sha256', $uid);
                 $previous = $users[$userKey] ?? null;

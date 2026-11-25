@@ -24,6 +24,7 @@ class ZoChatClient(
     private val main = Handler(Looper.getMainLooper())
     private val executor = Executors.newSingleThreadExecutor()
     var onBadgeEvent: ((JSONObject) -> Unit)? = null
+    var onUnreadRoomChange: ((JSONObject) -> Unit)? = null
     var onMessage: ((JSONObject) -> Unit)? = null
     var onTyping: ((org.json.JSONArray) -> Unit)? = null
     var onOverlayMessage: ((JSONObject) -> Unit)? = null
@@ -140,6 +141,22 @@ class ZoChatClient(
                     })
             }
         }
+    }
+
+    /** Final stop is independent of the room request queue so close cannot cancel it. */
+    fun stopTyping(roomId: String, sessionId: String, sequence: Long) {
+        val c = credentials()?.takeIf { owner == null || owner == it.ownerKey } ?: return
+        val body = JSONObject().put("active", false).put("typing_session_id", sessionId).put("typing_sequence", sequence)
+        val request = Request.Builder().url(baseUrl.trimEnd('/') + "/api/v4/chat/rooms/$roomId/typing")
+            .header("Authorization", "Bearer " + c.accessToken.removePrefix("Bearer "))
+            .header("Device-Token", c.deviceToken).header("Accept", "application/json")
+            .header("X-Client-Platform", "android").header("X-Client-Version", version)
+            .post(body.toString().toRequestBody("application/json".toMediaType()))
+        playbackToken()?.takeIf { it.isNotBlank() }?.let { request.header("X-Playback-Token", it) }
+        http.newCall(request.build()).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: java.io.IOException) { }
+            override fun onResponse(call: Call, response: Response) { response.close() }
+        })
     }
 
     private fun perform(path: String, body: JSONObject?, requestOwner: String?, requestPlaybackToken: String?): JSONObject {
@@ -497,6 +514,7 @@ class ZoChatClient(
                                     if (logical !in unreadSubscribed || logical !in unreadChannels.orEmpty()) return@post
                                     val data = event.opt("data").let { if (it is JSONObject) it else JSONObject(it?.toString() ?: "{}") }
                                     data.optJSONObject("badge")?.let { onBadgeEvent?.invoke(it) }
+                                    onUnreadRoomChange?.invoke(data)
                                     return@post
                                 }
                                 if (channel == null || event.optString("channel") != channel) return@post

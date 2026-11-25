@@ -272,6 +272,24 @@ public final class ZoChatClient {
         URLSession.shared.dataTask(with: request).resume()
     }
 
+    /// A final idle/close signal must survive cancellation of the room transport.
+    public func stopTyping(roomID: String, sessionID: String, sequence: Int64) {
+        guard let c = credentials(), owner == nil || owner == c.ownerKey,
+              let url = URL(string: baseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/api/v4/chat/rooms/\(roomID)/typing") else { return }
+        var request = URLRequest(url: url, timeoutInterval: 5)
+        request.httpMethod = "POST"
+        request.setValue("Bearer " + c.accessToken.replacingOccurrences(of: "Bearer ", with: ""), forHTTPHeaderField: "Authorization")
+        request.setValue(c.deviceToken, forHTTPHeaderField: "Device-Token")
+        request.setValue("ios", forHTTPHeaderField: "X-Client-Platform")
+        request.setValue(version, forHTTPHeaderField: "X-Client-Version")
+        request.setValue(playbackToken(), forHTTPHeaderField: "X-Playback-Token")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["active": false, "typing_session_id": sessionID, "typing_sequence": sequence])
+        let terminal = URLSession(configuration: session.configuration)
+        terminal.dataTask(with: request) { _, _, _ in terminal.finishTasksAndInvalidate() }.resume()
+    }
+
     public func setRoomVisible(_ visible: Bool) {
         let changed = roomVisible != visible
         roomVisible = visible
