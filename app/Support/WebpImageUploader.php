@@ -84,7 +84,7 @@ class WebpImageUploader
         imagesavealpha($image, true);
 
         for ($resizeAttempt = 0; $resizeAttempt < 12; $resizeAttempt++) {
-            foreach ([85, 75, 65, 55, 45, 35] as $quality) {
+            foreach ([25, 15, 5] as $quality) {
                 $encoded = $this->encodeWebp($image, $quality);
 
                 if (strlen($encoded) <= $maxBytes) {

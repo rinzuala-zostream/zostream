@@ -14,7 +14,7 @@ class ExtractEpisodeThumbnail
 {
     use Dispatchable;
 
-    private const MAX_THUMBNAIL_BYTES = 100 * 1024;
+    private const MAX_THUMBNAIL_BYTES = 5 * 1024;
 
     public function __construct(
         private readonly string $episodeId,
