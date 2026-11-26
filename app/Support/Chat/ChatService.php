@@ -97,15 +97,16 @@ final class ChatService
             $redis = \Illuminate\Support\Facades\Redis::connection('cache');
             $key = 'chat:presence:'.$room;
             $member = hash('sha256', $r->input('auth_user_id').':'.$r->input('auth_device_id'));
-            if ($leave) {
-                $redis->zrem($key, $member);
-            } else {
-                $redis->zadd($key, time(), $member);
-            }
-            $redis->zremrangebyscore($key, '-inf', time() - 90);
-            $redis->expire($key, 150);
+            $now = time();
+            $result = $redis->pipeline(function ($pipeline) use ($key, $member, $leave, $now): void {
+                if ($leave) { $pipeline->zrem($key, $member); }
+                else { $pipeline->zadd($key, $now, $member); }
+                $pipeline->zremrangebyscore($key, '-inf', $now - 90);
+                $pipeline->expire($key, 150);
+                $pipeline->zcard($key);
+            });
 
-            return (int) $redis->zcard($key);
+            return (int) end($result);
         } catch (\Throwable $e) {
             return 0;
         }

@@ -90,14 +90,20 @@ final class ChatInteractions
                 $previous = $users[$userKey] ?? null;
                 if (! $active && $previous === null) { return false; }
                 unset($users[$userKey]);
+                $changed = false;
                 if ($active) {
                     $name = $previous['name'] ?? ChatDisplayNames::name(DB::table('user')->where('uid', $uid)->first(['username', 'name']));
+                    $broadcastAt = (int) ($previous['broadcast_at'] ?? 0);
+                    $changed = $previous === null || $broadcastAt <= now()->timestamp - 3;
                     $users[$userKey] = ['user_id' => $uid, 'name' => mb_substr(trim($name), 0, 100),
-                        'is_admin' => $isAdmin, 'expires_at' => now()->timestamp + 6];
+                        'is_admin' => $isAdmin, 'expires_at' => now()->timestamp + 6,
+                        'broadcast_at' => $changed ? now()->timestamp : $broadcastAt];
+                } else {
+                    $changed = true;
                 }
                 $cache->put($key, array_slice($users, -20, null, true), 6);
 
-                return true;
+                return $changed;
             });
             if ($changed) { $chat->outbox($r, $room, 'typing', null, null); }
         }
@@ -106,9 +112,10 @@ final class ChatInteractions
             ->map(fn ($block) => (string) ($block->user_id === $uid ? $block->blocked_user_id : $block->user_id))->all();
         $members = null;
         if ($info->type === 'invite') {
-            $members = ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $room)->where('status', 'accepted')
-                ->pluck('invitee_user_id')->push(ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $room)->value('host_user_id'))
-                ->map(fn ($id) => (string) $id)->all();
+            $accepted = ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $room)->where('status', 'accepted')
+                ->select('invitee_user_id as user_id');
+            $members = $accepted->union(ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $room)
+                ->select('host_user_id as user_id'))->pluck('user_id')->map(fn ($id) => (string) $id)->all();
         }
         $users = array_filter($this->activeTypists($room), fn ($user) => $user['user_id'] !== $uid && ! in_array($user['user_id'], $blocked, true)
             && ($members === null || in_array($user['user_id'], $members, true)));

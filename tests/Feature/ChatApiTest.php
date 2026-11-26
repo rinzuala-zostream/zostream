@@ -43,6 +43,29 @@ class ChatApiTest extends TestCase
             array_column($this->getJson($url)->assertOk()->json('data.pins'), 'id'));
     }
 
+    public function test_pins_support_opt_in_keyset_pages_without_changing_the_legacy_array(): void
+    {
+        DB::table('admin_users')->insert(['admin_uid' => 'alice']);
+        $room = $this->room();
+        $ids = [];
+        foreach (range(1, 3) as $index) { $ids[] = $this->message($room, 'bob', 'pin '.$index); }
+        foreach ($ids as $id) { $this->postJson("/api/v4/chat/rooms/$room/messages/$id/pin", $this->identity())->assertOk(); }
+
+        $legacy = $this->getJson("/api/v4/chat/rooms/$room/pins?auth_user_id=alice&auth_device_id=device-a")
+            ->assertOk()->assertJsonCount(3, 'data.pins');
+        $first = $this->getJson("/api/v4/chat/rooms/$room/pins?auth_user_id=alice&auth_device_id=device-a&limit=2")
+            ->assertOk()->assertJsonCount(2, 'data.pins')->assertJsonPath('data.has_more', true);
+        $cursorAt = $first->json('data.next_after_at');
+        $cursorId = $first->json('data.next_after_id');
+        $next = $this->getJson('/api/v4/chat/rooms/'.$room.'/pins?'.http_build_query([
+            'auth_user_id' => 'alice', 'auth_device_id' => 'device-a', 'limit' => 2,
+            'after_at' => $cursorAt, 'after_id' => $cursorId,
+        ]))->assertOk()->assertJsonCount(1, 'data.pins')->assertJsonPath('data.has_more', false);
+        $this->assertSame(array_map('strval', $ids), array_merge(
+            array_column($first->json('data.pins'), 'id'), array_column($next->json('data.pins'), 'id')));
+        $this->assertArrayNotHasKey('has_more', $legacy->json('data'));
+    }
+
     public function test_chat_uses_username_for_new_messages_and_keeps_legacy_name_without_one(): void
     {
         $room = $this->room();
@@ -657,6 +680,28 @@ class ChatApiTest extends TestCase
         $this->assertNotNull(ChatDatabase::connection()->table('chat_outbox')->where('kind', 'created')->value('delivered_at'));
     }
 
+    public function test_outbox_worker_claims_a_bounded_batch_with_one_update(): void
+    {
+        $room = $this->room();
+        foreach (range(1, 3) as $_) {
+            ChatDatabase::connection()->table('chat_outbox')->insert(['room_id' => $room, 'kind' => 'reported',
+                'created_at' => now(), 'updated_at' => now()]);
+        }
+        $claims = [];
+        DB::listen(function ($query) use (&$claims): void {
+            $sql = strtolower($query->sql);
+            if (str_starts_with($sql, 'update') && str_contains($sql, 'chat_outbox') && str_contains($sql, 'claim_token')) {
+                $claims[] = $sql;
+            }
+        });
+
+        $this->artisan('chat:deliver', ['--once' => true, '--lane' => 'realtime'])->assertSuccessful();
+
+        $batchClaims = array_filter($claims, fn ($sql) => str_contains($sql, 'where "id" in') || str_contains($sql, 'where `id` in'));
+        $this->assertCount(1, $batchClaims);
+        $this->assertSame(3, ChatDatabase::connection()->table('chat_outbox')->where('kind', 'reported')->whereNotNull('delivered_at')->count());
+    }
+
     public function test_badge_authorization_batch_rejects_another_accounts_channel(): void
     {
         $channel = \App\Support\Chat\ChatReadService::userChannel('alice');
@@ -952,6 +997,21 @@ class ChatApiTest extends TestCase
         });
         $this->assertSame(0, ChatDatabase::connection()->table('chat_messages')->count());
         $this->assertSame(0, ChatDatabase::connection()->table('chat_outbox')->whereIn('kind', ['message_push', 'interaction_push'])->count());
+    }
+
+    public function test_repeated_typing_refreshes_state_but_throttles_outbox_events(): void
+    {
+        $room = $this->room();
+        $url = "/api/v4/chat/rooms/$room/typing";
+        $this->postJson($url, $this->identity(['active' => true]))->assertOk();
+        $this->travel(1)->seconds();
+        $this->postJson($url, $this->identity(['active' => true]))->assertOk();
+        $this->assertSame(1, ChatDatabase::connection()->table('chat_outbox')->where('room_id', $room)->where('kind', 'typing')->count());
+        $this->assertCount(1, app(\App\Support\Chat\ChatInteractions::class)->activeTypists((int) $room));
+
+        $this->travel(3)->seconds();
+        $this->postJson($url, $this->identity(['active' => true]))->assertOk();
+        $this->assertSame(2, ChatDatabase::connection()->table('chat_outbox')->where('room_id', $room)->where('kind', 'typing')->count());
     }
 
     public function test_typing_snapshots_only_reach_allowed_private_feeds_and_clear_on_stop(): void
@@ -1316,6 +1376,20 @@ class ChatApiTest extends TestCase
 
         config(['chat.enabled' => false]);
         $this->getJson('/api/v4/chat/invite-rooms?'.http_build_query($this->identity()))->assertStatus(503);
+    }
+
+    public function test_invite_room_discovery_supports_opt_in_bounded_pages_and_legacy_shape(): void
+    {
+        $ids = [];
+        foreach (range(1, 3) as $_) { $ids[] = (int) $this->createPrivateRoom(); }
+        $url = '/api/v4/chat/invite-rooms?'.http_build_query($this->identity());
+        $legacy = $this->getJson($url)->assertOk()->assertJsonCount(3, 'data.rooms');
+        $first = $this->getJson($url.'&limit=2')->assertOk()->assertJsonCount(2, 'data.rooms')->assertJsonPath('data.has_more', true);
+        $second = $this->getJson($url.'&limit=2&before_room_id='.$first->json('data.next_before_room_id'))
+            ->assertOk()->assertJsonCount(1, 'data.rooms')->assertJsonPath('data.has_more', false);
+        $this->assertSame(array_map('strval', array_reverse($ids)), array_merge(
+            array_column($first->json('data.rooms'), 'room_id'), array_column($second->json('data.rooms'), 'room_id')));
+        $this->assertArrayNotHasKey('has_more', $legacy->json('data'));
     }
 
     private function createPrivateRoom(): string

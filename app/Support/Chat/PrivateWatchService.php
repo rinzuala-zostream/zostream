@@ -177,7 +177,6 @@ final class PrivateWatchService
     {
         $this->chat->refreshPlayback($r);
         $this->chat->room($r, $room);
-        $this->publishStatus($r, $room);
         if ($session !== null) {
             $watch = $this->resolve($r, $room, $session);
             $this->touchParticipant($r, $watch);

@@ -34,13 +34,21 @@ final class DeliverChat extends Command
                 ->where(fn ($q) => $q->whereNull('available_at')->orWhere('available_at', '<=', now()));
             if ($lane === 'push') { $pending->whereIn('kind', ['message_push', 'interaction_push']); }
             if ($lane === 'realtime') { $pending->whereNotIn('kind', ['message_push', 'interaction_push']); }
-            $rows = $lane === 'analytics' ? collect() : $pending->orderBy('id')->limit(100)->get();
-            foreach ($rows as $row) {
+            $candidateIds = $lane === 'analytics' ? collect() : $pending->orderBy('id')->limit(100)->pluck('id');
+            $rows = collect();
+            if ($candidateIds->isNotEmpty()) {
+                // Claim a bounded batch in one conditional update. A competing
+                // worker can win individual rows; only rows bearing this token
+                // are delivered below.
                 $claim = (string) \Illuminate\Support\Str::uuid();
-                $owned = ChatDatabase::connection()->table('chat_outbox')->where('id', $row->id)->whereNull('delivered_at')
+                ChatDatabase::connection()->table('chat_outbox')->whereIn('id', $candidateIds)
+                    ->whereNull('delivered_at')
                     ->where(fn ($q) => $q->whereNull('claimed_until')->orWhere('claimed_until', '<=', now()))
+                    ->where(fn ($q) => $q->whereNull('available_at')->orWhere('available_at', '<=', now()))
                     ->update(['claim_token' => $claim, 'claimed_until' => now()->addMinutes(2)]);
-                if (! $owned) { continue; }
+                $rows = ChatDatabase::connection()->table('chat_outbox')->where('claim_token', $claim)->orderBy('id')->get();
+            }
+            foreach ($rows as $row) {
                 $renew = function () use ($row, $claim): void {
                     if (! ChatDatabase::connection()->table('chat_outbox')->where('id', $row->id)->where('claim_token', $claim)
                         // MySQL reports zero changed rows when this runs in the

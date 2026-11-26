@@ -79,19 +79,35 @@ final class ChatController extends Controller
     public function pins(Request $r, int $room)
     {
         $this->chat->room($r, $room);
+        $v = $r->validate(['limit' => 'sometimes|integer|between:1,100',
+            'after_at' => ['required_with:after_id', 'date'], 'after_id' => ['required_with:after_at', 'integer', 'min:1']]);
+        abort_if(isset($v['after_at']) !== isset($v['after_id']), 422, 'Both pin cursor fields are required.');
         $uid = (string) $r->input('auth_user_id');
-        $rows = ChatDatabase::connection()->table('chat_pins as p')->join('chat_messages as m', 'm.id', '=', 'p.message_id')
+        $query = ChatDatabase::connection()->table('chat_pins as p')->join('chat_messages as m', 'm.id', '=', 'p.message_id')
             ->where('p.room_id', $room)->whereNotIn('m.user_id', $this->chat->blocked($uid))
             ->whereNull('m.deleted_at')->where('m.created_at', '>=', now()->subDays(config('chat.retention_days')))
-            ->orderBy('m.created_at')->orderBy('m.id')->select('p.created_at as pinned_at', 'm.*')->get();
+            ->when(isset($v['after_at']), fn ($q) => $q->where(fn ($cursor) => $cursor->where('m.created_at', '>', $v['after_at'])
+                ->orWhere(fn ($tie) => $tie->where('m.created_at', $v['after_at'])->where('m.id', '>', $v['after_id']))))
+            ->orderBy('m.created_at')->orderBy('m.id');
+        if (isset($v['limit'])) { $query->limit($v['limit'] + 1); }
+        $messageColumns = array_map(fn ($column) => 'm.'.$column, $this->chat->messageColumns());
+        $rows = $query->get(array_merge(['p.created_at as pinned_at'], $messageColumns));
+        $hasMore = isset($v['limit']) && $rows->count() > $v['limit'];
+        if (isset($v['limit'])) { $rows = $rows->take($v['limit'])->values(); }
         $messages = $rows->map(function ($row) {
-            $message = $this->chat->message($row);
+            $message = $this->chat->message($row, false);
             $message['pinned_at'] = (string) $row->pinned_at;
             return $message;
         })->all();
+        $messages = app(\App\Support\Chat\RoomInvitationService::class)->hydrate($messages);
         $messages = app(\App\Support\Chat\ChatInteractions::class)->decorate($messages, $uid);
-        return V4Response::success(['pins' => $messages,
-            'is_admin' => app(\App\Support\AdminAccess::class)->isAdmin($uid)]);
+        $data = ['pins' => $messages, 'is_admin' => app(\App\Support\AdminAccess::class)->isAdmin($uid)];
+        if (isset($v['limit'])) {
+            $last = $rows->last();
+            $data += ['has_more' => $hasMore, 'next_after_at' => $hasMore && $last ? (string) $last->created_at : null,
+                'next_after_id' => $hasMore && $last ? (string) $last->id : null];
+        }
+        return V4Response::success($data);
     }
 
     public function pin(Request $r, int $room, int $message)
@@ -329,10 +345,11 @@ final class ChatController extends Controller
     public function inviteRooms(Request $r)
     {
         abort_unless(config('chat.enabled'), 503, 'Chat is currently unavailable.');
-        $v = $r->validate(['recipient_user_id' => 'sometimes|string|max:191']);
+        $v = $r->validate(['recipient_user_id' => 'sometimes|string|max:191', 'limit' => 'sometimes|integer|between:1,100',
+            'before_room_id' => 'nullable|integer|min:1']);
         $recipient = $v['recipient_user_id'] ?? null;
         $uid = (string) $r->input('auth_user_id');
-        $rooms = ChatDatabase::connection()->table('chat_invite_rooms as ir')
+        $query = ChatDatabase::connection()->table('chat_invite_rooms as ir')
             ->join('chat_rooms as r', 'r.id', '=', 'ir.room_id')
             ->where('ir.active', true)->where('r.closed', false)
             ->tap(fn ($q) => app(InviteRoomLifecycle::class)->candidates($q))
@@ -343,9 +360,13 @@ final class ChatController extends Controller
                         ->where('i.invitee_user_id', $uid)->where('i.status', 'accepted');
                 });
             })
-            ->orderByDesc('ir.room_id')
-            ->get(['ir.room_id', 'ir.room_name', 'ir.content_type', 'ir.content_id', 'ir.host_user_id', 'ir.idle_expires_at', 'ir.active'])
-            ->filter(fn ($room) => app(InviteRoomLifecycle::class)->active($room))->values();
+            ->when(isset($v['before_room_id']), fn ($q) => $q->where('ir.room_id', '<', $v['before_room_id']))
+            ->orderByDesc('ir.room_id');
+        if (isset($v['limit'])) { $query->limit($v['limit'] + 1); }
+        $candidateRows = $query->get(['ir.room_id', 'ir.room_name', 'ir.content_type', 'ir.content_id', 'ir.host_user_id', 'ir.idle_expires_at', 'ir.active']);
+        $hasMore = isset($v['limit']) && $candidateRows->count() > $v['limit'];
+        if (isset($v['limit'])) { $candidateRows = $candidateRows->take($v['limit'])->values(); }
+        $rooms = $candidateRows->filter(fn ($room) => app(InviteRoomLifecycle::class)->active($room))->values();
         $joined = $recipient === null ? [] : ChatDatabase::connection()->table('chat_room_invites')
             ->whereIn('room_id', $rooms->where('host_user_id', $uid)->pluck('room_id'))
             ->where('invitee_user_id', $recipient)->where('status', 'accepted')->pluck('room_id')->map(fn ($id) => (string) $id)->all();
@@ -360,7 +381,12 @@ final class ChatController extends Controller
             return $room;
         });
 
-        return V4Response::success(['rooms' => $rooms]);
+        $data = ['rooms' => $rooms];
+        if (isset($v['limit'])) {
+            $last = $candidateRows->last();
+            $data += ['has_more' => $hasMore, 'next_before_room_id' => $hasMore && $last ? (string) $last->room_id : null];
+        }
+        return V4Response::success($data);
     }
 
     public function endInviteRoom(Request $r, int $room)
@@ -487,7 +513,6 @@ final class ChatController extends Controller
         $content = $inviteRoom->content_type && $inviteRoom->content_id
             ? \App\Support\Chat\ChatContent::find($inviteRoom->content_type, $inviteRoom->content_id) : null;
         $seasonId = $inviteRoom->content_type === 'episode' ? ($content->season_id ?? null) : null;
-        $this->chat->room($r, $room);
         $watch = app(\App\Support\Chat\PrivateWatchService::class)->liveSession($room);
         return V4Response::success(['watch_session' => $watch ? app(\App\Support\Chat\PrivateWatchService::class)->metadata($watch) : null, 'room_id' => (string) $room, 'room_type' => 'invite', 'channel' => 'private-chat.'.$room,
             'websocket_url' => config('chat.websocket_url'), 'online_count' => $this->chat->presence($r, $room),
