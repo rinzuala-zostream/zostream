@@ -721,6 +721,20 @@ class ChatApiTest extends TestCase
         $this->assertNull($rooms[$private]['first_unread_id']);
     }
 
+    public function test_unread_summary_reuses_the_root_ban_lookup_from_room_authorization(): void
+    {
+        $room = $this->room();
+        app(\App\Support\Chat\ChatService::class)->invalidateBan('alice', 0);
+        app(\App\Support\Chat\ChatService::class)->invalidateBan('alice', (int) $room);
+        $queries = [];
+        DB::listen(function ($query) use (&$queries): void { $queries[] = strtolower($query->sql); });
+
+        $this->unread()->assertOk();
+
+        $banQueries = array_filter($queries, fn ($sql) => str_contains($sql, 'chat_bans'));
+        $this->assertCount(2, $banQueries, 'Root and room bans should each be read once; the final channel check should reuse the root result.');
+    }
+
     public function test_live_private_watch_survives_idle_deadline_in_discovery_links_and_notifications(): void
     {
         $room = $this->privateWatchFixture();

@@ -55,8 +55,7 @@ final class ChatReadService
 
     private function rootBanned(string $uid): bool
     {
-        return ChatDatabase::connection()->table('chat_bans')->where('user_id', $uid)->where('room_id', 0)->where('kind', 'ban')
-            ->where(fn ($q) => $q->whereNull('expires_at')->orWhere('expires_at', '>', now()))->exists();
+        return $this->chat->isRootBanned($uid);
     }
 
     public function summary(Request $request, string $type, ?string $contentId): array

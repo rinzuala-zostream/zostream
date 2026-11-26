@@ -135,6 +135,15 @@ final class ChatService
         $this->forget($this->banKey($uid, $room));
     }
 
+    /** Share the root-ban lookup with the room authorization checks in this request. */
+    public function isRootBanned(string $uid): bool
+    {
+        return $this->remember($this->banKey($uid, 0), 15, fn () => ChatDatabase::connection()->table('chat_bans')
+            ->where('user_id', $uid)->where('room_id', 0)
+            ->where(fn ($q) => $q->whereNull('expires_at')->orWhere('expires_at', '>', now()))
+            ->value('kind') ?: false) === 'ban';
+    }
+
     public function invalidateBlocks(string $uid): void
     {
         $this->forget('chat:blocks:'.hash('sha256', $uid));
