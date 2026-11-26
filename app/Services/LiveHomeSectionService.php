@@ -18,6 +18,7 @@ class LiveHomeSectionService
         'trending_now',
         'last_month_top_10',
         'new_releases',
+        'free_content',
         'your_wishlist',
         'next_episode',
         'ppv_seasons',
@@ -122,6 +123,18 @@ class LiveHomeSectionService
                 sprintf('new-releases:%d:%s:%d', $fetchLimit, $mode, (int) $includeAgeRestricted),
                 fn (): array => $this->movies(
                     $this->allowedMovies($mode, $includeAgeRestricted)->whereNotNull('release_on')->orderByDesc('release_on')->orderByDesc('num')->limit($fetchLimit)->get(self::MOVIE_CARD_COLUMNS)
+                )
+            );
+        }
+        if (in_array('free_content', $requested, true)) {
+            $sections['free_content'] = $this->rememberLiveSection(
+                sprintf('free-content:%d:%s:%d', $fetchLimit, $mode, (int) $includeAgeRestricted),
+                fn (): array => $this->movies(
+                    $this->allowedMovies($mode, $includeAgeRestricted)
+                        ->where('isPremium', false)
+                        ->orderByDesc('num')
+                        ->limit($fetchLimit)
+                        ->get(self::MOVIE_CARD_COLUMNS)
                 )
             );
         }
