@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\EpisodeModel;
 use App\Models\MovieModel;
+use App\Support\Catalog\PublicMovieCatalogCache;
 use Carbon\Carbon;
 use Firebase\JWT\JWT;
 use Illuminate\Http\JsonResponse;
@@ -73,40 +74,6 @@ class MovieController extends Controller
             }
         }
 
-        // ✅ Skip checks for hidden categories
-        $skipChecks = [
-            'Hollywood' => fn($m) => (int) ($m->isHollywood ?? 0) === 1,
-            'Bollywood' => fn($m) => (int) ($m->isBollywood ?? 0) === 1,
-            'Mizo' => fn($m) => (int) ($m->isMizo ?? 0) === 1,
-            'Asian' => fn($m) => (int) ($m->isKorean ?? 0) === 1,
-            'Series' => fn($m) => (int) ($m->isSeason ?? 0) === 1,
-            'Documentary' => fn($m) => (int) ($m->isDocumentary ?? 0) === 1,
-            'Pay Per View' => fn($m) => (int) ($m->isPayPerView ?? 0) === 1,
-            '18+' => fn($m) => (int) ($m->isAgeRestricted ?? 0) === 1,
-            'Free' => fn($m) => (int) ($m->isPremium ?? 0) === 0,
-            'Animation' => fn($m) => stripos((string) ($m->genre ?? ''), 'animation') !== false,
-        ];
-
-        $shouldSkip = function ($movie) use ($isKidsMode, $hiddenCategories, $skipChecks, $onlyMizoUser) {
-            // ✅ Restrict non-Mizo content for Mizo-only user or empty user ID
-            if ($onlyMizoUser && (int) ($movie->isMizo ?? 0) !== 1) {
-                return true;
-            }
-
-            // ✅ Kids mode restriction
-            if ($isKidsMode && (int) ($movie->isChildMode ?? 0) !== 1) {
-                return true;
-            }
-
-            foreach ($hiddenCategories as $name) {
-                if (isset($skipChecks[$name]) && $skipChecks[$name]($movie)) {
-                    return true;
-                }
-            }
-
-            return false;
-        };
-
         $id = $request->query('id') ?? null;
         $range = $request->query('range') ?? null;
         $categoryKey = strtolower($request->query('category') ?? '');
@@ -119,6 +86,15 @@ class MovieController extends Controller
 
         $isEnableRequest = filter_var($request->query('is_enable', true), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
         $isEnableRequest = $isEnableRequest === null ? true : $isEnableRequest;
+        $catalogCache = app(PublicMovieCatalogCache::class);
+        $cacheDimensions = $catalogCache->dimensions(
+            'legacy-movies',
+            $request,
+            $isKidsMode,
+            $onlyMizoUser,
+            (bool) $ageRestriction,
+            $isEnableRequest,
+        );
 
         $applyKidsFilter = function (\Illuminate\Database\Eloquent\Builder $q) use ($isKidsMode) {
             if ($isKidsMode) {
@@ -129,21 +105,31 @@ class MovieController extends Controller
 
         // ✅ Single Movie by ID
         if ($id) {
-            $query = $isEnableRequest
-                ? MovieModel::where('status', 'Published')->where('isEnable', 1)
-                : MovieModel::query();
+            $movie = $catalogCache->remember('legacy-movies-item', $cacheDimensions, function () use (
+                $isEnableRequest,
+                $applyKidsFilter,
+                $onlyMizoUser,
+                $id,
+            ): array {
+                $query = $isEnableRequest
+                    ? MovieModel::with(['trailerRecords:id,movie_id,url'])->where('status', 'Published')->where('isEnable', 1)
+                    : MovieModel::with(['trailerRecords:id,movie_id,url']);
 
-            $query = $applyKidsFilter($query);
-            if ($onlyMizoUser) {
-                $query->where('isMizo', 1);
-            }
+                $query = $applyKidsFilter($query);
+                if ($onlyMizoUser) {
+                    $query->where('isMizo', 1);
+                }
 
-            $movie = $query->where('id', $id)->first();
-            if (!$movie) {
+                $model = $query->where('id', $id)->first();
+
+                return $model ? $this->transformMovie($model)->toArray() : [];
+            });
+
+            if ($movie === []) {
                 return response()->json(['status' => 'error', 'message' => 'Movie not found']);
             }
 
-            return response()->json($this->transformMovie($movie))
+            return response()->json($movie)
                 ->header('Content-Type', 'application/json');
         }
 
@@ -223,15 +209,19 @@ class MovieController extends Controller
                     ->orderByDesc('num');
             }
 
-            $movies = $query->offset($start)->limit($count)->get();
+            $movies = $catalogCache->remember('legacy-movies-list', $cacheDimensions, function () use (
+                $query,
+                $start,
+                $count,
+            ): array {
+                $results = $query->with(['trailerRecords:id,movie_id,url'])
+                    ->offset($start)
+                    ->limit($count)
+                    ->get();
+                return $results->map(fn ($movie) => $this->transformMovie($movie)->toArray())->values()->all();
+            });
 
-            if ($isKidsMode && !$onlyMizoUser) {
-                $movies = $movies->reject($shouldSkip)->values();
-            }
-
-            return response()->json(
-                data: $movies->map(fn($m) => $this->transformMovie($m))
-            )->header('Content-Type', 'application/json');
+            return response()->json(data: $movies)->header('Content-Type', 'application/json');
         }
 
         // ✅ Full sections response
@@ -262,45 +252,48 @@ class MovieController extends Controller
                 unset($categories["18+"]);
             }
 
-            $data = [];
             $fetchSize = $isKidsMode ? 50 : 10;
 
-            foreach ($categories as $name => $clause) {
-                if ($name === "18+" && !$ageRestriction)
-                    continue;
+            $data = $catalogCache->remember('legacy-movies-home', $cacheDimensions, function () use (
+                $categories,
+                $ageRestriction,
+                $fetchSize,
+                $isKidsMode,
+                $onlyMizoUser,
+            ): array {
+                $data = [];
+                foreach ($categories as $name => $clause) {
+                    if ($name === "18+" && !$ageRestriction) {
+                        continue;
+                    }
 
-                $where = $clause['where'];
-                $order = $clause['order'];
+                    $where = $clause['where'];
+                    $order = $clause['order'];
+                    $list = MovieModel::with(['trailerRecords:id,movie_id,url'])
+                        ->whereRaw("isEnable = 1 AND $where")
+                        ->where('status', 'Published')
+                        ->when($isKidsMode, fn ($query) => $query->where('isChildMode', 1))
+                        ->when($onlyMizoUser, fn ($query) => $query->where('isMizo', 1))
+                        ->when(
+                            !$ageRestriction && strpos($where, 'isAgeRestricted') === false,
+                            fn ($query) => $query->where('isAgeRestricted', 0)
+                        )
+                        ->orderByRaw($order)
+                        ->limit($fetchSize)
+                        ->get();
 
-                $builder = MovieModel::whereRaw("isEnable = 1 AND $where")
-                    ->where('status', 'Published');
+                    $list = $list->take(10);
 
-                if ($isKidsMode) {
-                    $builder->where('isChildMode', 1);
+                    if (!$list->isEmpty()) {
+                        $data[$name] = $list
+                            ->map(fn ($movie) => $this->transformMovie($movie)->toArray())
+                            ->values()
+                            ->all();
+                    }
                 }
-                if ($onlyMizoUser) {
-                    $builder->where('isMizo', 1);
-                }
 
-                $builder = $builder->when(
-                    !$ageRestriction && strpos($where, 'isAgeRestricted') === false,
-                    fn($q) => $q->where('isAgeRestricted', $ageRestriction)
-                )
-                    ->orderByRaw($order)
-                    ->limit($fetchSize);
-
-                $list = $builder->get();
-
-                if ($isKidsMode && !$onlyMizoUser) {
-                    $list = $list->reject($shouldSkip)->values();
-                }
-
-                $list = $list->take(10);
-
-                if (!$list->isEmpty()) {
-                    $data[$name] = $list->map(fn($m) => $this->transformMovie($m));
-                }
-            }
+                return $data;
+            });
 
             return response()->json($data)->header('Content-Type', 'application/json');
         }

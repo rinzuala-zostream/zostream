@@ -11,6 +11,7 @@ class AnalyticsCollectionSetting
 {
     // Firebase remains authoritative. Direct Firebase edits propagate within 15s.
     private const TTL_SECONDS = 15;
+    private const FAILURE_TTL_SECONDS = 3;
 
     private function key(): string
     {
@@ -26,12 +27,23 @@ class AnalyticsCollectionSetting
             // A shared lock makes the short TTL safe when many workers hit an
             // expired setting together. Recheck after acquiring it because a
             // previous waiter may already have refreshed the value.
-            return $cache->lock($key.':refresh-lock', 10)->block(4, function () use ($cache, $key): bool {
+            return $cache->lock($this->lockKey($key), 10)->block(4, function () use ($cache, $key): bool {
                 if ($cache->has($key)) {
                     return $cache->get($key) === true;
                 }
 
-                $enabled = $this->readRemote();
+                try {
+                    $enabled = $this->readRemote();
+                } catch (Throwable $error) {
+                    // Fail closed and briefly cache outages so sequential
+                    // requests do not each block on the same failed Firebase
+                    // read. Admin publish still replaces this value at once.
+                    report($error);
+                    $cache->put($key, false, self::FAILURE_TTL_SECONDS);
+
+                    return false;
+                }
+
                 $cache->put($key, $enabled, self::TTL_SECONDS);
 
                 return $enabled;
@@ -46,7 +58,11 @@ class AnalyticsCollectionSetting
     public function publish(bool $enabled): void
     {
         try {
-            Cache::put($this->key(), $enabled, self::TTL_SECONDS);
+            $cache = Cache::store();
+            $key = $this->key();
+            $cache->lock($this->lockKey($key), 10)->block(4, function () use ($cache, $key, $enabled): void {
+                $cache->put($key, $enabled, self::TTL_SECONDS);
+            });
         } catch (Throwable $error) {
             // Firebase was already saved; do not report the admin update as failed.
             report($error);
@@ -70,5 +86,10 @@ class AnalyticsCollectionSetting
             ->withDatabaseUri($url)
             ->createDatabase()
             ->getReference('config/analytics/enabled')->getValue() === true;
+    }
+
+    private function lockKey(string $key): string
+    {
+        return $key.':refresh-lock';
     }
 }

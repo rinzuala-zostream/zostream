@@ -252,6 +252,72 @@ class WhatsAppWebhookTest extends TestCase
         $this->assertSame(1, $conversation['unread_count']);
     }
 
+    public function test_conversation_summary_reads_one_row_per_contact_in_one_query(): void
+    {
+        foreach (range(1, 300) as $index) {
+            WhatsAppMessage::create([
+                'wamid' => "wamid.perf.{$index}",
+                'contact_phone' => '91940000'.str_pad((string) (intdiv($index - 1, 30) + 1), 4, '0', STR_PAD_LEFT),
+                'direction' => $index % 2 === 0 ? 'outbound' : 'inbound',
+                'type' => 'text',
+                'body' => "Message {$index}",
+                'status' => 'sent',
+                'message_at' => now()->addSeconds($index),
+            ]);
+        }
+
+        $queries = [];
+        DB::listen(function ($query) use (&$queries): void {
+            if (str_starts_with(strtolower(ltrim($query->sql)), 'select')) {
+                $queries[] = ['sql' => $query->sql, 'time_ms' => $query->time];
+            }
+        });
+
+        $response = app(AdminWhatsAppInboxController::class)->conversations(request());
+        $responseBytes = strlen($response->getContent());
+
+        $this->assertCount(10, $response->getData(true));
+        $this->assertCount(1, $queries);
+        $this->assertSame(10, count($response->getData(true)));
+        $this->assertGreaterThanOrEqual(0, $queries[0]['time_ms']);
+        $this->assertLessThan(10_000, $responseBytes);
+        $this->assertStringNotContainsString('latest.reply_to_wamid', strtolower($queries[0]['sql']));
+    }
+
+    public function test_message_history_pagination_is_opt_in_and_keeps_chronological_array_contract(): void
+    {
+        foreach (range(1, 5) as $index) {
+            WhatsAppMessage::create([
+                'wamid' => "wamid.history.{$index}",
+                'contact_phone' => '919555555555',
+                'direction' => 'inbound',
+                'type' => 'text',
+                'body' => "Message {$index}",
+                'status' => 'received',
+                // Same-second timestamps exercise the ID tie-break cursor.
+                'message_at' => now()->startOfSecond(),
+            ]);
+        }
+
+        $controller = app(AdminWhatsAppInboxController::class);
+        $legacy = $controller->messages(request(), '919555555555');
+        $this->assertCount(5, $legacy->getData(true));
+        $this->assertNull($legacy->headers->get('X-Has-More'));
+
+        $first = $controller->messages(\Illuminate\Http\Request::create('/?limit=2', 'GET'), '919555555555');
+        $firstPage = $first->getData(true);
+        $this->assertSame(['Message 4', 'Message 5'], array_column($firstPage, 'body'));
+        $this->assertSame('true', $first->headers->get('X-Has-More'));
+        $this->assertSame((string) $firstPage[0]['id'], $first->headers->get('X-Next-Before-Id'));
+
+        $next = $controller->messages(\Illuminate\Http\Request::create('/?limit=2', 'GET', [
+            'limit' => 2,
+            'before_at' => $first->headers->get('X-Next-Before-At'),
+            'before_id' => $first->headers->get('X-Next-Before-Id'),
+        ]), '919555555555');
+        $this->assertSame(['Message 2', 'Message 3'], array_column($next->getData(true), 'body'));
+    }
+
     public function test_opening_a_conversation_marks_only_its_inbound_messages_read(): void
     {
         foreach (['919111111111', '919222222222'] as $phone) {

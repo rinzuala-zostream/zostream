@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\WhatsAppMessage;
 use App\Models\WhatsAppSetting;
 use App\Services\WhatsAppCloudService;
+use Illuminate\Support\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -82,55 +83,88 @@ class AdminWhatsAppInboxController extends Controller
             ->orderByDesc('latest.message_at')
             ->orderByDesc('latest.id')
             ->get([
-                'latest.*',
+                'latest.id',
+                'latest.contact_phone',
+                'latest.contact_name',
+                'latest.direction',
+                'latest.type',
+                'latest.body',
+                'latest.status',
+                'latest.payload',
+                'latest.message_at',
                 'conversations.contact_name as conversation_name',
                 'conversations.message_count',
                 'conversations.unread_count',
             ]);
 
-        // Hydrate only one message per contact so payload casts and preview
-        // behavior remain identical without loading the full conversation log.
+        // Hydrate only the fields used by the response and preview. This keeps
+        // payload casts while avoiding full message history and unused columns.
         $messages = $rows->map(function ($row) {
             $message = new WhatsAppMessage();
             $message->setRawAttributes((array) $row, true);
             $message->setAttribute('contact_name', $row->conversation_name);
 
             return [
-                'message' => $message,
+                'phone' => $message->contact_phone,
+                'name' => $message->contact_name,
+                'last_message' => $this->conversationPreview($message),
+                'last_message_at' => $message->message_at,
+                'direction' => $message->direction,
+                'status' => $message->status,
                 'message_count' => (int) $row->message_count,
                 'unread_count' => (int) $row->unread_count,
-            ];
-        })->map(function (array $row) {
-            /** @var WhatsAppMessage $latest */
-            $latest = $row['message'];
-
-            return [
-                'phone' => $latest->contact_phone,
-                'name' => $latest->contact_name,
-                'last_message' => $this->conversationPreview($latest),
-                'last_message_at' => $latest->message_at,
-                'direction' => $latest->direction,
-                'status' => $latest->status,
-                'message_count' => $row['message_count'],
-                'unread_count' => $row['unread_count'],
             ];
         })->values();
 
         return response()->json($messages);
     }
 
-    public function messages(string $phone)
+    public function messages(Request $request, string $phone)
     {
         $phone = preg_replace('/\D+/', '', $phone);
+        $validated = $request->validate([
+            'limit' => 'sometimes|integer|min:1|max:200',
+            'before_at' => 'required_with:before_id|date',
+            'before_id' => 'required_with:before_at|integer|min:1',
+        ]);
+        $paginated = array_key_exists('limit', $validated)
+            || array_key_exists('before_at', $validated)
+            || array_key_exists('before_id', $validated);
 
-        // Keep the legacy full-history response intact until pagination can be
-        // introduced through a separately versioned/opt-in contract.
-        return response()->json(
-            WhatsAppMessage::where('contact_phone', $phone)
-                ->orderBy('message_at')
-                ->orderBy('id')
-                ->get()
-        );
+        $query = WhatsAppMessage::where('contact_phone', $phone);
+        if (! $paginated) {
+            return response()->json($query->orderBy('message_at')->orderBy('id')->get());
+        }
+
+        $limit = (int) ($validated['limit'] ?? 50);
+        if (isset($validated['before_at'], $validated['before_id'])) {
+            $beforeAt = Carbon::parse($validated['before_at'])->toDateTimeString();
+            $query->where(function ($cursor) use ($validated, $beforeAt): void {
+                $cursor->where('message_at', '<', $beforeAt)
+                    ->orWhere(function ($tie) use ($validated, $beforeAt): void {
+                        $tie->where('message_at', '=', $beforeAt)
+                            ->where('id', '<', $validated['before_id']);
+                    });
+            });
+        }
+
+        // Fetch newest-first to bound the query, then return the selected page
+        // in the same chronological order as the legacy endpoint.
+        $page = $query->orderByDesc('message_at')->orderByDesc('id')->limit($limit + 1)->get();
+        $hasMore = $page->count() > $limit;
+        if ($hasMore) {
+            $page->pop();
+        }
+        $page = $page->reverse()->values();
+        $response = response()->json($page);
+        $response->headers->set('X-Has-More', $hasMore ? 'true' : 'false');
+        if ($hasMore && $page->isNotEmpty()) {
+            $oldest = $page->first();
+            $response->headers->set('X-Next-Before-At', $oldest->message_at?->toDateTimeString() ?? '');
+            $response->headers->set('X-Next-Before-Id', (string) $oldest->id);
+        }
+
+        return $response;
     }
 
     public function markRead(string $phone)

@@ -21,11 +21,22 @@ class AnalyticsPresenceStoreTest extends TestCase
         CarbonImmutable::setTestNow('2026-10-07T12:00:00Z');
         $connection = Mockery::mock();
         $commands = [];
-        Redis::shouldReceive('connection')->once()->with('cache')->andReturn($connection);
-        $connection->shouldReceive('command')->times(11)->andReturnUsing(
-            function (string $command, array $arguments) use (&$commands) {
-                $commands[] = [$command, $arguments];
+        $pipeline = new class($commands) {
+            private array $commands;
+
+            public function __construct(array &$commands)
+            {
+                $this->commands =& $commands;
             }
+
+            public function __call(string $method, array $arguments): void
+            {
+                $this->commands[] = [strtolower($method), $arguments];
+            }
+        };
+        Redis::shouldReceive('connection')->once()->with('cache')->andReturn($connection);
+        $connection->shouldReceive('pipeline')->once()->andReturnUsing(
+            fn (callable $callback) => $callback($pipeline)
         );
 
         $result = app(AnalyticsPresenceStore::class)->heartbeat([
@@ -40,6 +51,7 @@ class AnalyticsPresenceStoreTest extends TestCase
             && $call[1][0] === 'analytics:presence:devices'
             && $call[1][1] === 1791374400
         ));
+        $this->assertCount(11, $commands);
         $this->assertTrue(collect($commands)->contains(fn (array $call) => $call[0] === 'setex'
             && str_starts_with($call[1][0], 'analytics:presence:device:')
             && $call[1][1] === 150
@@ -82,5 +94,27 @@ class AnalyticsPresenceStoreTest extends TestCase
         $this->assertSame(1, $snapshot['online_users']);
         $this->assertSame(2, $snapshot['online_devices']);
         $this->assertCount(2, $snapshot['platforms']);
+    }
+
+    public function test_web_presence_platforms_are_removed_immediately_when_offline(): void
+    {
+        CarbonImmutable::setTestNow('2026-10-07T12:00:00Z');
+        $connection = Mockery::mock();
+        $commands = [];
+        Redis::shouldReceive('connection')->once()->with('cache')->andReturn($connection);
+        $connection->shouldReceive('command')->andReturnUsing(function (string $command, array $arguments) use (&$commands) {
+            $commands[] = [$command, $arguments];
+
+            return $command === 'zcard' ? 0 : true;
+        });
+
+        app(AnalyticsPresenceStore::class)->offline('user-1', 'device-1', 'web');
+
+        $this->assertTrue(collect($commands)->contains(fn (array $call) => $call[0] === 'zrem'
+            && $call[1][0] === 'analytics:presence:platform:web:devices'
+        ));
+        $this->assertTrue(collect($commands)->contains(fn (array $call) => $call[0] === 'zrem'
+            && $call[1][0] === 'analytics:presence:platform:web:users'
+        ));
     }
 }

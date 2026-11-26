@@ -9,6 +9,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Kreait\Firebase\Factory;
+use Kreait\Firebase\Http\HttpClientOptions;
 
 class AdminAnalyticsController extends Controller
 {
@@ -73,6 +74,11 @@ class AdminAnalyticsController extends Controller
         }
 
         return (new Factory)
+            ->withHttpClientOptions(
+                HttpClientOptions::default()
+                    ->withConnectTimeout(2.0)
+                    ->withTimeout(4.0)
+            )
             ->withServiceAccount((string) config('firebase.credentials'))
             ->withDatabaseUri($url)
             ->createDatabase();

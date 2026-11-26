@@ -9,6 +9,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
+use RuntimeException;
 use Tests\TestCase;
 
 class AnalyticsApiTest extends TestCase
@@ -106,6 +107,60 @@ class AnalyticsApiTest extends TestCase
         $this->assertSame([$event['event_id']], $first->getData(true)['data']['accepted']);
         $this->assertSame([$event['event_id']], $second->getData(true)['data']['ignored']);
         $this->assertSame(1, DB::connection('analytics')->table('analytics_events')->count());
+    }
+
+    public function test_event_batch_keeps_privacy_filtering_and_rolls_back_a_partial_write(): void
+    {
+        $payload = [
+            'schema_version' => 1,
+            'events' => [
+                [
+                    'event_id' => '019b1234-a222-7000-a123-456789abc001',
+                    'name' => 'content_opened',
+                    'occurred_at' => now('UTC')->toIso8601String(),
+                    'app_session_id' => '019b1234-a000-7000-a123-456789abcdef',
+                    'properties' => ['content_id' => 'movie-123', 'search_query' => 'private search'],
+                ],
+                [
+                    'event_id' => '019b1234-a222-7000-a123-456789abc002',
+                    'name' => 'screen_viewed',
+                    'occurred_at' => now('UTC')->toIso8601String(),
+                    'app_session_id' => '019b1234-a000-7000-a123-456789abcdef',
+                    'properties' => ['screen_name' => 'home'],
+                ],
+            ],
+            'context' => ['platform' => 'android', 'app_version' => '2.4.0'],
+        ];
+        $shouldFail = true;
+        $insertStatements = 0;
+        DB::listen(function ($query) use (&$shouldFail, &$insertStatements): void {
+            $sql = strtolower($query->sql);
+            if (str_starts_with($sql, 'insert') && str_contains($sql, 'analytics_events') && $shouldFail) {
+                $insertStatements++;
+                if ($insertStatements === 2) {
+                    $shouldFail = false;
+                    throw new RuntimeException('Simulated analytics DB interruption');
+                }
+            }
+        });
+
+        try {
+            app(AnalyticsIngestionController::class)->batchEvents($this->analyticsRequest($payload));
+            $this->fail('The simulated database interruption should escape the request.');
+        } catch (RuntimeException $error) {
+            $this->assertSame('Simulated analytics DB interruption', $error->getMessage());
+        }
+
+        $this->assertSame(0, DB::connection('analytics')->table('analytics_events')->count());
+
+        $response = app(AnalyticsIngestionController::class)->batchEvents($this->analyticsRequest($payload));
+        $this->assertCount(2, $response->getData(true)['data']['accepted']);
+        $storedProperties = json_decode(
+            DB::connection('analytics')->table('analytics_events')->where('event_id', $payload['events'][0]['event_id'])->value('properties_json'),
+            true,
+        );
+        $this->assertSame(['content_id' => 'movie-123'], $storedProperties);
+        $this->assertSame(2, DB::connection('analytics')->table('analytics_events')->count());
     }
 
     public function test_batch_playback_and_error_ingestion_are_idempotent(): void

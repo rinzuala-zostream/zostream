@@ -12,7 +12,7 @@ class AnalyticsPresenceStore
 
     private const USER_INDEX_KEY = 'analytics:presence:users';
 
-    private const PLATFORMS = ['ios', 'tvos', 'android', 'tv', 'windows', 'macos'];
+    private const PLATFORMS = ['ios', 'tvos', 'android', 'tv', 'tizen', 'webos', 'web', 'windows', 'macos'];
 
     private const META_PREFIX = 'analytics:presence:device:';
 
@@ -35,17 +35,33 @@ class AnalyticsPresenceStore
         $cutoff = $now->copy()->subSeconds(self::TTL_SECONDS)->timestamp;
         $userDeviceKey = $this->userDeviceKey($metadata['user_id']);
         $platformUserDeviceKey = $this->platformUserDeviceKey($metadata['platform'], $metadata['user_id']);
-        $redis->command('zadd', [self::INDEX_KEY, $now->timestamp, $member]);
-        $redis->command('zadd', [self::USER_INDEX_KEY, $now->timestamp, (string) $presence['user_id']]);
-        $redis->command('zadd', [$this->platformDeviceKey($metadata['platform']), $now->timestamp, $member]);
-        $redis->command('zadd', [$this->platformUserKey($metadata['platform']), $now->timestamp, (string) $presence['user_id']]);
-        $redis->command('zremrangebyscore', [$userDeviceKey, '-inf', $cutoff]);
-        $redis->command('zadd', [$userDeviceKey, $now->timestamp, $member]);
-        $redis->command('expire', [$userDeviceKey, self::TTL_SECONDS]);
-        $redis->command('zremrangebyscore', [$platformUserDeviceKey, '-inf', $cutoff]);
-        $redis->command('zadd', [$platformUserDeviceKey, $now->timestamp, $member]);
-        $redis->command('expire', [$platformUserDeviceKey, self::TTL_SECONDS]);
-        $redis->command('setex', [self::META_PREFIX.$member, self::TTL_SECONDS, json_encode($metadata, JSON_THROW_ON_ERROR)]);
+        // These index and metadata updates are independent Redis commands for
+        // the same heartbeat. Pipeline them to use one network round-trip
+        // while retaining every score, expiry and index update.
+        $redis->pipeline(function ($pipeline) use (
+            $metadata,
+            $member,
+            $now,
+            $userDeviceKey,
+            $platformUserDeviceKey,
+            $cutoff,
+        ): void {
+            $pipeline->zAdd(self::INDEX_KEY, $now->timestamp, $member);
+            $pipeline->zAdd(self::USER_INDEX_KEY, $now->timestamp, $metadata['user_id']);
+            $pipeline->zAdd($this->platformDeviceKey($metadata['platform']), $now->timestamp, $member);
+            $pipeline->zAdd($this->platformUserKey($metadata['platform']), $now->timestamp, $metadata['user_id']);
+            $pipeline->zRemRangeByScore($userDeviceKey, '-inf', $cutoff);
+            $pipeline->zAdd($userDeviceKey, $now->timestamp, $member);
+            $pipeline->expire($userDeviceKey, self::TTL_SECONDS);
+            $pipeline->zRemRangeByScore($platformUserDeviceKey, '-inf', $cutoff);
+            $pipeline->zAdd($platformUserDeviceKey, $now->timestamp, $member);
+            $pipeline->expire($platformUserDeviceKey, self::TTL_SECONDS);
+            $pipeline->setex(
+                self::META_PREFIX.$member,
+                self::TTL_SECONDS,
+                json_encode($metadata, JSON_THROW_ON_ERROR),
+            );
+        });
 
         return $metadata;
     }

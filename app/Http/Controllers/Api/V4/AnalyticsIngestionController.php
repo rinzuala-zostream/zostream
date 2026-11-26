@@ -282,38 +282,57 @@ class AnalyticsIngestionController extends Controller
         $now = now('UTC');
         $accepted = [];
         $ignored = [];
+        $acceptedEvents = [];
+        $sanitizedEvents = array_map(function (array $event): array {
+            $event['properties'] = $this->sanitizeProperties($event['properties']);
 
-        foreach ($data['events'] as $event) {
-            $stored = DB::connection('analytics')->table('analytics_events')->insertOrIgnore([
-                'event_id' => $event['event_id'],
-                'user_id' => (string) $request->input('auth_user_id'),
-                'device_id' => (string) $request->input('auth_device_id'),
-                'app_session_id' => $event['app_session_id'],
-                'name' => $event['name'],
-                'occurred_at' => CarbonImmutable::parse($event['occurred_at'])->utc(),
-                'platform' => $platform,
-                'app_version' => $data['context']['app_version'],
-                'properties_json' => json_encode(
-                    $this->sanitizeProperties($event['properties']),
-                    JSON_THROW_ON_ERROR
-                ),
-                'created_at' => $now,
-                'updated_at' => $now,
-            ]) === 1;
-            if ($stored) {
-                $accepted[] = $event['event_id'];
-            } else {
-                $ignored[] = $event['event_id'];
+            return $event;
+        }, $data['events']);
+
+        // Keep per-event insert results (needed for exact idempotency and
+        // engagement side effects), but commit one batch atomically instead of
+        // paying a transaction/commit per event. A failed batch rolls back and
+        // clients can safely retry because event_id is unique.
+        DB::connection('analytics')->transaction(function () use (
+            $sanitizedEvents,
+            $request,
+            $platform,
+            $data,
+            $now,
+            &$accepted,
+            &$ignored,
+            &$acceptedEvents,
+        ): void {
+            foreach ($sanitizedEvents as $event) {
+                $stored = DB::connection('analytics')->table('analytics_events')->insertOrIgnore([
+                    'event_id' => $event['event_id'],
+                    'user_id' => (string) $request->input('auth_user_id'),
+                    'device_id' => (string) $request->input('auth_device_id'),
+                    'app_session_id' => $event['app_session_id'],
+                    'name' => $event['name'],
+                    'occurred_at' => CarbonImmutable::parse($event['occurred_at'])->utc(),
+                    'platform' => $platform,
+                    'app_version' => $data['context']['app_version'],
+                    'properties_json' => json_encode($event['properties'], JSON_THROW_ON_ERROR),
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]) === 1;
+
+                if ($stored) {
+                    $accepted[] = $event['event_id'];
+                    $acceptedEvents[] = $event;
+                } else {
+                    $ignored[] = $event['event_id'];
+                }
             }
-        }
+        });
 
-        app(\App\Services\Engagement\EngagementTracker::class)->events(
-            (string) $request->input('auth_user_id'),
-            array_values(array_map(
-                fn ($event) => array_replace($event, ['properties' => $this->sanitizeProperties($event['properties'])]),
-                array_filter($data['events'], fn ($event) => in_array($event['event_id'], $accepted, true))
-            ))
-        );
+        if ($acceptedEvents !== []) {
+            app(\App\Services\Engagement\EngagementTracker::class)->events(
+                (string) $request->input('auth_user_id'),
+                $acceptedEvents,
+            );
+        }
 
         return V4Response::success([
             'accepted' => $accepted,

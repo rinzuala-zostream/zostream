@@ -81,9 +81,9 @@ class MovieModel extends Model
 
     protected static function booted(): void
     {
-        // Recommendation membership and ranking depend on these attributes.
-        // Bump on both sides of a write so concurrent readers cannot cache the
-        // old candidate set under the post-write generation.
+        // Recommendation indexes and public catalog lists share this
+        // generation. Bump on both sides of writes so concurrent readers
+        // cannot publish stale data under the post-write generation.
         static::creating(function (): void {
             MovieCatalogRevision::bumpIfAvailable();
         });
@@ -91,12 +91,12 @@ class MovieModel extends Model
             MovieCatalogRevision::bumpIfAvailable();
         });
         static::updating(function (MovieModel $movie): void {
-            if ($movie->isDirty(MovieCatalogRevision::RANKING_FIELDS)) {
+            if ($movie->isDirty()) {
                 MovieCatalogRevision::bumpIfAvailable();
             }
         });
         static::updated(function (MovieModel $movie): void {
-            if ($movie->wasChanged(MovieCatalogRevision::RANKING_FIELDS)) {
+            if ($movie->wasChanged()) {
                 MovieCatalogRevision::bumpIfAvailable();
             }
         });

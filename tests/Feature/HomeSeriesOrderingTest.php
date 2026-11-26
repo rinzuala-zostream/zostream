@@ -10,6 +10,7 @@ use App\Support\WebpImageUploader;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
 use Mockery;
 use Tests\TestCase;
@@ -25,6 +26,7 @@ class HomeSeriesOrderingTest extends TestCase
         $this->originalConnection = (string) config('database.default');
         config([
             'database.default' => 'home_series_ordering_testing',
+            'cache.default' => 'array',
             'database.connections.home_series_ordering_testing' => [
                 'driver' => 'sqlite',
                 'database' => ':memory:',
@@ -34,6 +36,13 @@ class HomeSeriesOrderingTest extends TestCase
         ]);
         DB::purge('home_series_ordering_testing');
         DB::reconnect('home_series_ordering_testing');
+        Cache::store('array')->flush();
+
+        Schema::create('movie_catalog_revisions', function (Blueprint $table) {
+            $table->unsignedTinyInteger('id')->primary();
+            $table->unsignedBigInteger('revision')->default(1);
+        });
+        DB::table('movie_catalog_revisions')->insert(['id' => 1, 'revision' => 1]);
 
         Schema::create('movie', function (Blueprint $table) {
             $table->increments('num');
@@ -54,6 +63,12 @@ class HomeSeriesOrderingTest extends TestCase
             $table->unsignedInteger('movie_id')->unique();
             $table->text('url');
             $table->timestamps();
+        });
+        Schema::create('wist_list', function (Blueprint $table) {
+            $table->id();
+            $table->string('uid');
+            $table->string('movie_id');
+            $table->timestamp('created_at')->nullable();
         });
         Schema::create('seasons', function (Blueprint $table) {
             $table->increments('num');
@@ -204,6 +219,199 @@ class HomeSeriesOrderingTest extends TestCase
         $data = $this->controller()->getMovies($request)->getData(true);
 
         $this->assertSame(['newer-series', 'older-series'], array_column($data, 'id'));
+    }
+
+    public function test_shared_home_cache_is_invalidated_by_movie_create_update_disable_and_delete(): void
+    {
+        $controller = $this->controller();
+        $request = new Request();
+
+        $created = MovieModel::create([
+            'id' => 'new-movie',
+            'title' => 'New movie',
+            'create_date' => '2026-08-20',
+            'release_on' => '2026-08-20',
+            'status' => 'Published',
+            'isEnable' => true,
+            'isMizo' => true,
+        ]);
+
+        $first = $controller->getMovies($request)->getData(true);
+        $this->assertSame('New movie', $first['Latest Update'][0]['title']);
+
+        $created->update(['title' => 'Renamed movie']);
+        $renamed = $controller->getMovies($request)->getData(true);
+        $this->assertSame('Renamed movie', $renamed['Latest Update'][0]['title']);
+
+        $created->update(['isEnable' => false]);
+        $disabled = $controller->getMovies($request)->getData(true);
+        $this->assertNotContains('new-movie', array_column($disabled['Latest Update'], 'id'));
+
+        $created->delete();
+        $deleted = $controller->getMovies($request)->getData(true);
+        $this->assertNotContains('new-movie', array_column($deleted['Latest Update'], 'id'));
+    }
+
+    public function test_shared_catalog_cache_keeps_watch_lists_private_and_visibility_dimensions_separate(): void
+    {
+        DB::table('movie')->where('id', 'older-series')->update(['isMizo' => false, 'isChildMode' => true]);
+        DB::table('wist_list')->insert([
+            ['uid' => 'user-a', 'movie_id' => 'newer-series', 'created_at' => '2026-01-02 00:00:00'],
+            ['uid' => 'user-a', 'movie_id' => 'older-series', 'created_at' => '2026-01-01 00:00:00'],
+        ]);
+        $controller = $this->controller();
+
+        $userA = $controller->getMovies(Request::create('/movies/home', 'GET', ['user_id' => 'user-a']))->getData(true);
+        $watchListQueries = 0;
+        DB::listen(function ($query) use (&$watchListQueries): void {
+            if (str_starts_with(strtolower(ltrim($query->sql)), 'select')) {
+                $watchListQueries++;
+            }
+        });
+        $userAAgain = $controller->getMovies(Request::create('/movies/home', 'GET', ['user_id' => 'user-a']))->getData(true);
+        $repeatWatchListQueries = $watchListQueries;
+        $userB = $controller->getMovies(Request::create('/movies/home', 'GET', ['user_id' => 'user-b']))->getData(true);
+        $mizoOnly = $controller->getMovies(new Request())->getData(true);
+        $kids = $controller->getMovies(Request::create('/movies/home', 'GET', [
+            'user_id' => 'user-b',
+            'isChildMode' => 'true',
+        ]))->getData(true);
+
+        $this->assertSame(['Newer Series', 'Older Series'], array_column($userA['Watch List'], 'title'));
+        $this->assertSame($userA['Watch List'], $userAAgain['Watch List']);
+        $this->assertSame(3, $repeatWatchListQueries); // revision, one watch-list query and one eager trailer query
+        $this->assertArrayNotHasKey('Watch List', $userB);
+        $this->assertContains('older-series', array_column($userA['Latest Update'], 'id'));
+        $this->assertSame(['newer-series'], array_column($mizoOnly['Latest Update'], 'id'));
+        $this->assertSame(['older-series'], array_column($kids['Latest Update'], 'id'));
+    }
+
+    public function test_home_cache_hit_avoids_reloading_each_catalog_section(): void
+    {
+        $controller = $this->controller();
+        $request = new Request();
+        $queryCount = 0;
+        DB::listen(function ($query) use (&$queryCount): void {
+            if (str_starts_with(strtolower(ltrim($query->sql)), 'select')) {
+                $queryCount++;
+            }
+        });
+
+        $coldResponse = $controller->getMovies($request);
+        $coldQueryCount = $queryCount;
+        $queryCount = 0;
+        $warmResponse = $controller->getMovies($request);
+        $rows = array_sum(array_map('count', $warmResponse->getData(true)));
+
+        $this->assertGreaterThan(1, $coldQueryCount);
+        $this->assertSame(1, $queryCount); // catalog revision lookup; sections came from shared cache
+        $this->assertSame(10, $rows);
+        $this->assertSame(5234, strlen($warmResponse->getContent()));
+        $this->assertSame($coldResponse->getContent(), $warmResponse->getContent());
+    }
+
+    public function test_trailer_admin_update_invalidates_cached_home_sections(): void
+    {
+        $controller = $this->controller();
+        $request = new Request();
+        $initial = $controller->getMovies($request)->getData(true);
+        $this->assertArrayNotHasKey('Trailer', $initial);
+
+        $controller->updateTrailer(
+            Request::create('/admin/catalog/items/newer-series/trailer', 'PUT', [
+                'trailer' => 'https://example.com/new-trailer.m3u8',
+            ]),
+            'newer-series',
+        );
+
+        $updated = $controller->getMovies($request)->getData(true);
+        $this->assertSame('https://example.com/new-trailer.m3u8', $updated['Trailer'][0]['trailer']);
+    }
+
+    public function test_age_restriction_request_dimension_does_not_reuse_the_unrestricted_home_payload(): void
+    {
+        MovieModel::create([
+            'id' => 'age-restricted-movie',
+            'title' => 'Restricted title',
+            'create_date' => '2026-08-21',
+            'release_on' => '2026-08-21',
+            'status' => 'Published',
+            'isEnable' => true,
+            'isMizo' => true,
+            'isAgeRestricted' => true,
+        ]);
+
+        $controller = $this->controller();
+        $ordinary = $controller->getMovies(new Request())->getData(true);
+        $includeRestricted = $controller->getMovies(Request::create('/movies/home', 'GET', [
+            'age_restriction' => 'true',
+        ]))->getData(true);
+
+        $this->assertArrayNotHasKey('18+', $ordinary);
+        $this->assertSame(['age-restricted-movie'], array_column($includeRestricted['18+'], 'id'));
+    }
+
+    public function test_catalog_cache_dimensions_include_category_and_platform(): void
+    {
+        $cache = app(\App\Support\Catalog\PublicMovieCatalogCache::class);
+        $ios = Request::create('/movies/home', 'GET', [
+            'category' => 'series',
+            'platform' => 'ios',
+        ]);
+        $ios->headers->set('X-Platform', 'ios');
+        $web = Request::create('/movies/home', 'GET', [
+            'category' => 'series',
+            'platform' => 'web',
+        ]);
+        $web->headers->set('X-Platform', 'web');
+
+        $iosDimensions = $cache->dimensions('v2-home', $ios, false, false, false, true);
+        $webDimensions = $cache->dimensions('v2-home', $web, false, false, false, true);
+
+        $this->assertSame('series', $iosDimensions['category']);
+        $this->assertNotSame($iosDimensions, $webDimensions);
+        $this->assertSame('ios', $iosDimensions['platform_header']);
+    }
+
+    public function test_legacy_movie_listing_uses_shared_revision_cache_and_trailer_eager_load(): void
+    {
+        config(['app.api_key' => 'catalog-test-key']);
+        $controller = new \App\Http\Controllers\MovieController(
+            Mockery::mock(FCMNotificationController::class),
+        );
+        $request = Request::create('/movies', 'GET');
+        $request->headers->set('X-Api-Key', 'catalog-test-key');
+
+        $first = $controller->getMovies($request)->getData(true);
+        MovieModel::where('id', 'newer-series')->firstOrFail()->update(['title' => 'Fresh title']);
+        $second = $controller->getMovies($request)->getData(true);
+
+        $this->assertSame('Fresh title', $second['Latest Update'][0]['title']);
+        $this->assertSame(['newer-series', 'older-series'], array_column($first['Latest Update'], 'id'));
+    }
+
+    public function test_genre_listing_keeps_legacy_token_matching_while_hydrating_only_the_page(): void
+    {
+        DB::table('movie')->where('id', 'older-series')->update(['genre' => 'Drama|Action']);
+        DB::table('movie')->where('id', 'newer-series')->update(['genre' => 'Comedy/Drama']);
+        $controller = $this->controller();
+
+        $anyMatch = $controller->genre(Request::create('/movies/genre', 'GET', [
+            'genre' => 'drama',
+            'per_page' => 1,
+            'sort_by' => 'num',
+            'sort_dir' => 'asc',
+        ]))->getData(true);
+        $allMatch = $controller->genre(Request::create('/movies/genre', 'GET', [
+            'genres' => ['Drama', 'Action'],
+            'match' => 'all',
+            'sort_by' => 'num',
+            'sort_dir' => 'asc',
+        ]))->getData(true);
+
+        $this->assertSame(2, $anyMatch['pagination']['total']);
+        $this->assertSame(['older-series'], array_column($anyMatch['data'], 'id'));
+        $this->assertSame(['older-series'], array_column($allMatch['data'], 'id'));
     }
 
     private function insertSeries(int $num, string $id, string $title, string $createDate): void

@@ -8,12 +8,6 @@ use RuntimeException;
 
 final class MovieCatalogRevision
 {
-    public const RANKING_FIELDS = [
-        'id', 'title', 'genre', 'status', 'isEnable', 'isAgeRestricted',
-        'isChildMode', 'isMizo', 'isBollywood', 'isHollywood', 'isKorean',
-        'isDocumentary', 'isSeason',
-    ];
-
     public static function current(): int
     {
         $revision = DB::table('movie_catalog_revisions')->where('id', 1)->value('revision');
@@ -26,10 +20,10 @@ final class MovieCatalogRevision
     }
 
     /**
-     * Advance the shared recommendation catalog generation.
+     * Advance the shared public and recommendation catalog generation.
      *
      * Call both before and after non-transactional writes so a concurrent
-     * reader cannot publish a stale candidate index under the final revision.
+     * reader cannot publish a stale catalog snapshot under the final revision.
      */
     public static function bump(): void
     {

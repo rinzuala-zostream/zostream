@@ -10,6 +10,8 @@ use App\Models\New\Subscription;
 use App\Models\New\VideoUrl;
 use App\Support\WebpImageUploader;
 use App\Support\MpdDurationExtractor;
+use App\Support\Catalog\PublicMovieCatalogCache;
+use App\Support\Catalog\MovieCatalogRevision;
 use App\Services\PpvPricingService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -106,6 +108,7 @@ class MovieController extends Controller
         ]);
 
         $query = MovieModel::query()
+            ->with(['trailerRecords:id,movie_id,url'])
             ->where('status', 'Published')
             ->where('isEnable', 1);
         $search = trim((string) ($validated['q'] ?? ''));
@@ -151,6 +154,7 @@ class MovieController extends Controller
         ]);
 
         $movies = MovieModel::query()
+            ->with(['trailerRecords:id,movie_id,url'])
             ->leftJoin('seasons', 'seasons.movie_id', '=', 'movie.num')
             ->leftJoin('episodes', 'episodes.season_id', '=', 'seasons.id')
             ->where('movie.status', 'Published')
@@ -446,6 +450,7 @@ class MovieController extends Controller
             ->values();
 
         \DB::transaction(function () use ($movie, $urls): void {
+            MovieCatalogRevision::bumpIfAvailable();
             $movie->trailerRecords()->delete();
             $trailers = $urls->map(fn (string $url): array => [
                 'url' => $url,
@@ -453,6 +458,7 @@ class MovieController extends Controller
                 'updated_at' => now(),
             ]);
             $movie->trailerRecords()->createMany($trailers->all());
+            MovieCatalogRevision::bumpIfAvailable();
         });
 
         return response()->json([
@@ -1485,40 +1491,6 @@ class MovieController extends Controller
             }
         }
 
-        // ✅ Skip checks for hidden categories
-        $skipChecks = [
-            'Hollywood' => fn($m) => (int) ($m->isHollywood ?? 0) === 1,
-            'Bollywood' => fn($m) => (int) ($m->isBollywood ?? 0) === 1,
-            'Mizo' => fn($m) => (int) ($m->isMizo ?? 0) === 1,
-            'Asian' => fn($m) => (int) ($m->isKorean ?? 0) === 1,
-            'Series' => fn($m) => (int) ($m->isSeason ?? 0) === 1,
-            'Documentary' => fn($m) => (int) ($m->isDocumentary ?? 0) === 1,
-            'Pay Per View' => fn($m) => (int) ($m->isPayPerView ?? 0) === 1,
-            '18+' => fn($m) => (int) ($m->isAgeRestricted ?? 0) === 1,
-            'Free' => fn($m) => (int) ($m->isPremium ?? 0) === 0,
-            'Animation' => fn($m) => stripos((string) ($m->genre ?? ''), 'animation') !== false,
-        ];
-
-        $shouldSkip = function ($movie) use ($isKidsMode, $hiddenCategories, $skipChecks, $onlyMizoUser) {
-            // ✅ Restrict non-Mizo content for Mizo-only user or empty user ID
-            if ($onlyMizoUser && (int) ($movie->isMizo ?? 0) !== 1) {
-                return true;
-            }
-
-            // ✅ Kids mode restriction
-            if ($isKidsMode && (int) ($movie->isChildMode ?? 0) !== 1) {
-                return true;
-            }
-
-            foreach ($hiddenCategories as $name) {
-                if (isset($skipChecks[$name]) && $skipChecks[$name]($movie)) {
-                    return true;
-                }
-            }
-
-            return false;
-        };
-
         $id = $request->query('id') ?? null;
         $range = $request->query('range') ?? null;
         $categoryKey = strtolower($request->query('category') ?? '');
@@ -1531,6 +1503,15 @@ class MovieController extends Controller
 
         $isEnableRequest = filter_var($request->query('is_enable', true), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
         $isEnableRequest = $isEnableRequest === null ? true : $isEnableRequest;
+        $catalogCache = app(PublicMovieCatalogCache::class);
+        $cacheDimensions = $catalogCache->dimensions(
+            'v2-home',
+            $request,
+            $isKidsMode,
+            $onlyMizoUser,
+            (bool) $ageRestriction,
+            $isEnableRequest,
+        );
 
         $applyKidsFilter = function (\Illuminate\Database\Eloquent\Builder $q) use ($isKidsMode) {
             if ($isKidsMode) {
@@ -1541,21 +1522,28 @@ class MovieController extends Controller
 
         // ✅ Single Movie by ID
         if ($id) {
-            $query = $isEnableRequest
-                ? MovieModel::with('trailerRecord')->where('status', 'Published')->where('isEnable', 1)
-                : MovieModel::with('trailerRecord');
+            $movie = $catalogCache->remember('v2-home-item', $cacheDimensions, function () use (
+                $isEnableRequest,
+                $applyKidsFilter,
+                $onlyMizoUser,
+                $id,
+            ): array {
+                $query = $isEnableRequest
+                    ? MovieModel::with(['trailerRecords:id,movie_id,url'])->where('status', 'Published')->where('isEnable', 1)
+                    : MovieModel::with(['trailerRecords:id,movie_id,url']);
+                $query = $applyKidsFilter($query);
+                if ($onlyMizoUser) {
+                    $query->where('isMizo', 1);
+                }
+                $model = $query->where('id', $id)->first();
 
-            $query = $applyKidsFilter($query);
-            if ($onlyMizoUser) {
-                $query->where('isMizo', 1);
-            }
-
-            $movie = $query->where('id', $id)->first();
-            if (!$movie) {
+                return $model ? $this->transformMovie($model)->toArray() : [];
+            });
+            if ($movie === []) {
                 return response()->json(['status' => 'error', 'message' => 'Movie not found']);
             }
 
-            return response()->json($this->transformMovie($movie))
+            return response()->json($movie)
                 ->header('Content-Type', 'application/json');
         }
 
@@ -1587,7 +1575,7 @@ class MovieController extends Controller
                 return response()->json(['status' => 'error', 'message' => 'Invalid category']);
             }
 
-            $query = MovieModel::with('trailerRecord')
+            $query = MovieModel::query()
                 ->where('isEnable', 1)
                 ->where('status', 'Published');
 
@@ -1645,15 +1633,19 @@ class MovieController extends Controller
                 $this->orderByUpdatedAtWithFallback($query, $fallbackOrder);
             }
 
-            $movies = $query->offset($start)->limit($count)->get();
+            $movies = $catalogCache->remember('v2-home-list', $cacheDimensions, function () use (
+                $query,
+                $start,
+                $count,
+            ): array {
+                $results = $query->with(['trailerRecords:id,movie_id,url'])
+                    ->offset($start)
+                    ->limit($count)
+                    ->get();
+                return $results->map(fn ($movie) => $this->transformMovie($movie)->toArray())->values()->all();
+            });
 
-            if ($isKidsMode && !$onlyMizoUser) {
-                $movies = $movies->reject($shouldSkip)->values();
-            }
-
-            return response()->json(
-                data: $movies->map(fn($m) => $this->transformMovie($m))
-            )->header('Content-Type', 'application/json');
+            return response()->json(data: $movies)->header('Content-Type', 'application/json');
         }
 
         // ✅ Full sections response
@@ -1685,12 +1677,12 @@ class MovieController extends Controller
                 unset($categories["18+"]);
             }
 
-            $data = [];
             $fetchSize = $isKidsMode ? 50 : 10;
             $watchList = collect();
 
             if (!empty($userId)) {
-                $watchListBuilder = MovieModel::with('trailerRecord')
+                $watchListBuilder = MovieModel::query()
+                    ->with(['trailerRecords:id,movie_id,url'])
                     ->join('wist_list', 'wist_list.movie_id', '=', 'movie.id')
                     ->where('wist_list.uid', $userId)
                     ->where('movie.isEnable', 1)
@@ -1711,67 +1703,78 @@ class MovieController extends Controller
 
                 $watchList = $watchListBuilder->get();
 
-                if ($isKidsMode && !$onlyMizoUser) {
-                    $watchList = $watchList->reject($shouldSkip)->values();
-                }
-
                 $watchList = $watchList->take(10);
             }
 
-            foreach ($categories as $name => $clause) {
-                if ($name === "18+" && !$ageRestriction)
-                    continue;
+            $publicSections = $catalogCache->remember('v2-home-sections', $cacheDimensions, function () use (
+                $categories,
+                $ageRestriction,
+                $fetchSize,
+                $isKidsMode,
+                $onlyMizoUser,
+            ): array {
+                $sections = [];
+                foreach ($categories as $name => $clause) {
+                    if ($name === "18+" && !$ageRestriction) {
+                        continue;
+                    }
 
-                $where = $clause['where'];
-                $order = $clause['order'];
+                    $where = $clause['where'];
+                    $order = $clause['order'];
+                    $builder = MovieModel::query()
+                        ->where('isEnable', 1)
+                        ->where('status', 'Published');
 
-                $builder = MovieModel::with('trailerRecord')
-                    ->where('isEnable', 1)
-                    ->where('status', 'Published');
+                    if ($name === 'Trailer') {
+                        $builder->whereHas('trailerRecord', fn ($trailerQuery) => $trailerQuery
+                            ->whereRaw("TRIM(url) <> ''"));
+                    } else {
+                        $builder->whereRaw($where);
+                    }
 
-                if ($name === 'Trailer') {
-                    $builder->whereHas('trailerRecord', fn ($trailerQuery) => $trailerQuery
-                        ->whereRaw("TRIM(url) <> ''"));
-                } else {
-                    $builder->whereRaw($where);
-                }
+                    if ($isKidsMode) {
+                        $builder->where('isChildMode', 1);
+                    }
+                    if ($onlyMizoUser) {
+                        $builder->where('isMizo', 1);
+                    }
 
-                if ($isKidsMode) {
-                    $builder->where('isChildMode', 1);
-                }
-                if ($onlyMizoUser) {
-                    $builder->where('isMizo', 1);
-                }
-
-                $builder = $builder->when(
-                    !$ageRestriction && strpos((string) $where, 'isAgeRestricted') === false,
-                    fn($q) => $q->where('isAgeRestricted', $ageRestriction)
-                );
-
-                if ($name === 'Latest Update') {
-                    $this->orderByMovieUpdate($builder);
-                } else {
-                    $this->orderByUpdatedAtWithFallback($builder, $order);
-                }
-
-                $builder->limit($fetchSize);
-
-                $list = $builder->get();
-
-                if ($isKidsMode && !$onlyMizoUser) {
-                    $list = $list->reject($shouldSkip)->values();
-                }
-
-                $list = $list->take(10);
-
-                if (!$list->isEmpty()) {
-                    $data[$name] = $list->map(fn($m) => $this->transformMovie($m));
-                }
-
-                if ($name === "Latest Update" && !$watchList->isEmpty()) {
-                    $data["Watch List"] = $watchList->map(
-                        fn($movie) => $this->transformMovie($movie)
+                    $builder->when(
+                        !$ageRestriction && strpos((string) $where, 'isAgeRestricted') === false,
+                        fn ($query) => $query->where('isAgeRestricted', 0)
                     );
+
+                    if ($name === 'Latest Update') {
+                        $this->orderByMovieUpdate($builder);
+                    } else {
+                        $this->orderByUpdatedAtWithFallback($builder, $order);
+                    }
+
+                    $list = $builder->with(['trailerRecords:id,movie_id,url'])
+                        ->limit($fetchSize)
+                        ->get();
+
+                    $list = $list->take(10);
+
+                    if (!$list->isEmpty()) {
+                        $sections[$name] = $list
+                            ->map(fn ($movie) => $this->transformMovie($movie)->toArray())
+                            ->values()
+                            ->all();
+                    }
+                }
+
+                return $sections;
+            });
+
+            $data = [];
+            foreach ($publicSections as $name => $movies) {
+                $data[$name] = $movies;
+                if ($name === 'Latest Update' && !$watchList->isEmpty()) {
+                    $data['Watch List'] = $watchList
+                        ->map(fn ($movie) => $this->transformMovie($movie)->toArray())
+                        ->values()
+                        ->all();
                 }
             }
 
@@ -1822,6 +1825,7 @@ class MovieController extends Controller
             ];
 
             $query = MovieModel::query()
+                ->with(['trailerRecords:id,movie_id,url'])
                 ->where('isEnable', $request->filled('is_enable') ? (int) $request->boolean('is_enable') : 1)
                 ->where('status', $validated['status'] ?? 'Published');
 
@@ -1967,8 +1971,10 @@ class MovieController extends Controller
 
             $query->orderBy($sortBy, $sortDir);
 
-            $matchedMovies = $query
-                ->get()
+            // Genre tokenization supports legacy comma/pipe/slash and JSON
+            // values, so keep its exact PHP semantics while selecting only
+            // the compact fields needed to decide membership/order.
+            $matchedNums = (clone $query)->toBase()->get(['num', 'genre'])
                 ->filter(function ($movie) use ($matchMode, $requestedGenres) {
                     $movieGenres = $this->parseMovieGenreTokens($movie->genre);
 
@@ -1982,11 +1988,12 @@ class MovieController extends Controller
                         ? count($matches) === count($requestedGenres)
                         : count($matches) > 0;
                 })
+                ->pluck('num')
                 ->values();
 
             if (!empty($validated['range'])) {
                 [$offset, $limit] = $this->parseMovieRange($validated['range']);
-                $movies = $matchedMovies->slice($offset, $limit)->values();
+                $movies = $this->loadCatalogMoviesByNumber($matchedNums->slice($offset, $limit)->all());
 
                 return response()->json([
                     'status' => 'success',
@@ -1995,17 +2002,17 @@ class MovieController extends Controller
                         'match' => $matchMode,
                     ],
                     'data' => $movies->map(fn($movie) => $this->transformMovie($movie))->values(),
-                    'total' => $matchedMovies->count(),
+                    'total' => $matchedNums->count(),
                 ]);
             }
 
             $perPage = (int) ($validated['per_page'] ?? 15);
             $currentPage = max((int) ($validated['page'] ?? 1), 1);
-            $total = $matchedMovies->count();
+            $total = $matchedNums->count();
             $lastPage = max((int) ceil($total / $perPage), 1);
-            $movies = $matchedMovies
+            $movies = $this->loadCatalogMoviesByNumber($matchedNums
                 ->slice(($currentPage - 1) * $perPage, $perPage)
-                ->values();
+                ->all());
 
             return response()->json([
                 'status' => 'success',
@@ -2097,6 +2104,22 @@ class MovieController extends Controller
         $to = max($to, $from);
 
         return [$from - 1, min(($to - $from) + 1, 100)];
+    }
+
+    /** Hydrate only the requested genre result page, preserving its SQL order. */
+    private function loadCatalogMoviesByNumber(array $nums)
+    {
+        if ($nums === []) {
+            return collect();
+        }
+
+        $moviesByNum = MovieModel::query()
+            ->with(['trailerRecords:id,movie_id,url'])
+            ->whereIn('num', $nums)
+            ->get()
+            ->keyBy('num');
+
+        return collect($nums)->map(fn ($num) => $moviesByNum->get($num))->filter()->values();
     }
 
     private function normalizeRequestedGenres(Request $request): array
