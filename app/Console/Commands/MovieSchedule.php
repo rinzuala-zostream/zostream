@@ -6,6 +6,7 @@ use App\Http\Controllers\FCMNotificationController;
 use App\Models\MovieModel;
 use App\Models\New\Episode;
 use App\Models\New\Season;
+use App\Support\Catalog\MovieCatalogRevision;
 use Illuminate\Http\Request;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
@@ -45,10 +46,12 @@ class MovieSchedule extends Command
         if ($movies->isEmpty()) {
             $this->info('No scheduled movies to publish.');
         } else {
+            MovieCatalogRevision::bump();
             MovieModel::whereIn('id', $movies->pluck('id'))->update([
                 'status' => 'Published',
                 'updated_at' => now(),
             ]);
+            MovieCatalogRevision::bump();
             $this->info("Published {$movies->count()} movies.");
         }
 

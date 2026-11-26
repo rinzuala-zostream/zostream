@@ -218,6 +218,40 @@ class WhatsAppWebhookTest extends TestCase
         $this->assertSame(1, $conversations[0]['unread_count']);
     }
 
+    public function test_admin_inbox_keeps_latest_preview_and_latest_non_empty_name(): void
+    {
+        WhatsAppMessage::create([
+            'wamid' => 'wamid.old',
+            'contact_phone' => '919333333333',
+            'contact_name' => 'Earlier name',
+            'direction' => 'inbound',
+            'type' => 'text',
+            'body' => 'Earlier message',
+            'status' => 'received',
+            'message_at' => now()->subMinute(),
+        ]);
+        WhatsAppMessage::create([
+            'wamid' => 'wamid.latest',
+            'contact_phone' => '919333333333',
+            'contact_name' => null,
+            'direction' => 'outbound',
+            'type' => 'text',
+            'body' => 'Latest reply',
+            'status' => 'sent',
+            'message_at' => now(),
+        ]);
+
+        $response = app(AdminWhatsAppInboxController::class)->conversations(request());
+        $conversation = collect($response->getData(true))->firstWhere('phone', '919333333333');
+
+        $this->assertSame('Earlier name', $conversation['name']);
+        $this->assertSame('Latest reply', $conversation['last_message']);
+        $this->assertSame('outbound', $conversation['direction']);
+        $this->assertSame('sent', $conversation['status']);
+        $this->assertSame(2, $conversation['message_count']);
+        $this->assertSame(1, $conversation['unread_count']);
+    }
+
     public function test_opening_a_conversation_marks_only_its_inbound_messages_read(): void
     {
         foreach (['919111111111', '919222222222'] as $phone) {

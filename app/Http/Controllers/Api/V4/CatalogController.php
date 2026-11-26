@@ -11,6 +11,7 @@ use App\Models\SessionTokenModel;
 use App\Support\Api\V4Response;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class CatalogController extends Controller
 {
@@ -118,12 +119,14 @@ class CatalogController extends Controller
 
     public function recommendations(Request $request, string $contentId)
     {
-        $movie = MovieModel::query()
-            ->where('id', $contentId)
-            ->when(
-                ctype_digit($contentId),
-                fn ($query) => $query->orWhere('num', (int) $contentId)
-            )
+        $movie = DB::table('movie')
+            ->select(['num', 'id', 'title'])
+            ->where(function ($query) use ($contentId): void {
+                $query->where('id', $contentId);
+                if (ctype_digit($contentId)) {
+                    $query->orWhere('num', (int) $contentId);
+                }
+            })
             ->first();
 
         if (! $movie) {

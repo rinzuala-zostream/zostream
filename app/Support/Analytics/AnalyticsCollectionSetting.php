@@ -4,6 +4,7 @@ namespace App\Support\Analytics;
 
 use Illuminate\Support\Facades\Cache;
 use Kreait\Firebase\Factory;
+use Kreait\Firebase\Http\HttpClientOptions;
 use Throwable;
 
 class AnalyticsCollectionSetting
@@ -19,7 +20,22 @@ class AnalyticsCollectionSetting
     public function enabled(): bool
     {
         try {
-            return Cache::remember($this->key(), self::TTL_SECONDS, fn (): bool => $this->readRemote()) === true;
+            $cache = Cache::store();
+            $key = $this->key();
+
+            // A shared lock makes the short TTL safe when many workers hit an
+            // expired setting together. Recheck after acquiring it because a
+            // previous waiter may already have refreshed the value.
+            return $cache->lock($key.':refresh-lock', 10)->block(4, function () use ($cache, $key): bool {
+                if ($cache->has($key)) {
+                    return $cache->get($key) === true;
+                }
+
+                $enabled = $this->readRemote();
+                $cache->put($key, $enabled, self::TTL_SECONDS);
+
+                return $enabled;
+            }) === true;
         } catch (Throwable $error) {
             report($error);
 
@@ -45,6 +61,11 @@ class AnalyticsCollectionSetting
         }
 
         return (new Factory)
+            ->withHttpClientOptions(
+                HttpClientOptions::default()
+                    ->withConnectTimeout(2.0)
+                    ->withTimeout(4.0)
+            )
             ->withServiceAccount((string) config('firebase.credentials'))
             ->withDatabaseUri($url)
             ->createDatabase()

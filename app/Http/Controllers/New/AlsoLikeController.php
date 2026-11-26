@@ -4,6 +4,7 @@ namespace App\Http\Controllers\New;
 
 use App\Http\Controllers\Controller;
 use App\Models\MovieModel;
+use App\Support\Catalog\MovieRecommendationIndex;
 use App\Support\MizoOnlyContent;
 use Illuminate\Http\Request;
 
@@ -32,11 +33,25 @@ class AlsoLikeController extends Controller
             || $userId === 'guest'
             || MizoOnlyContent::appliesTo($userId);
 
-        // ✅ Fetch movies based on Mizo-only + restriction
-        $movies = $this->fetchMovies($ageRestriction, $onlyMizoUser, $isKidsMode);
+        $ranking = app(MovieRecommendationIndex::class)->ranking(
+            (string) $movieTitle,
+            $ageRestriction,
+            $onlyMizoUser,
+            $isKidsMode,
+        );
+        $recommendedNums = $this->selectRecommendations($ranking);
 
-        // ✅ Generate recommendations
-        $recommended = $this->getRecommendations($movieTitle, $movies);
+        // The legacy endpoint returns every movie column except playback
+        // secrets. Fetch full models only for the final (at most 20) results so
+        // casts and its JSON contract remain identical.
+        $models = MovieModel::query()->whereIn('num', $recommendedNums)->get()->keyBy('num');
+        $recommended = [];
+        foreach ($recommendedNums as $num) {
+            $model = $models->get($num);
+            if ($model) {
+                $recommended[] = $model->toArray();
+            }
+        }
 
         return response()->json(array_values(array_map(
             fn ($movie) => $this->transformMovie($movie),
@@ -44,123 +59,25 @@ class AlsoLikeController extends Controller
         )));
     }
 
-    private function fetchMovies(bool $ageRestriction, bool $onlyMizoUser = false, bool $isKidsMode = false)
+    private function selectRecommendations(array $ranking): array
     {
-        $query = MovieModel::where('isEnable', 1)
-            ->where('status', 'Published');
+        $movies = $ranking['candidates'];
 
-        if (! $ageRestriction) {
-            $query->where('isAgeRestricted', 0);
-        }
-
-        if ($isKidsMode) {
-            $query->where('isChildMode', 1);
-        }
-
-        // ✅ Return only Mizo movies for special user or empty user ID
-        if ($onlyMizoUser) {
-            $query->where('isMizo', 1);
-        }
-
-        $movies = $query->get()->toArray();
-
-        // Convert specific fields to boolean
-        $booleanFields = [
-            'isEnable',
-            'isAgeRestricted',
-            'isBollywood',
-            'isHollywood',
-            'isKorean',
-            'isMizo',
-            'isDocumentary',
-            'isPayPerView',
-            'isPremium',
-            'isSeason',
-            'isSubtitle',
-            'isChildMode',
-        ];
-
-        foreach ($movies as &$movie) {
-            foreach ($booleanFields as $field) {
-                if (isset($movie[$field])) {
-                    $movie[$field] = (bool) $movie[$field];
-                }
-            }
-        }
-
-        return $movies;
-    }
-
-    private function findBestMatch($inputTitle, $movies)
-    {
-        $bestMatch = null;
-        $bestScore = 0;
-
-        foreach ($movies as $movie) {
-            similar_text(strtolower($inputTitle), strtolower(trim($movie['title'])), $score);
-
-            if ($score > $bestScore) {
-                $bestScore = $score;
-                $bestMatch = $movie;
-            }
-        }
-
-        return ($bestScore >= 60) ? $bestMatch : null;
-    }
-
-    private function filterSequels($match, $movies)
-    {
-        $sequels = [];
-
-        foreach ($movies as $movie) {
-            if ($movie['title'] !== $match['title']) {
-                similar_text($match['title'], $movie['title'], $score);
-                if ($score > 80) {
-                    $sequels[$movie['id']] = $movie;
-                }
-            }
-        }
-
-        return array_values($sequels);
-    }
-
-    private function filterGenreAndCategory($match, $movies)
-    {
-        $filtered = [];
-        $genre = $match['genre'];
-        $categories = ['isBollywood', 'isHollywood', 'isKorean', 'isMizo', 'isDocumentary', 'isSeason'];
-
-        foreach ($movies as $movie) {
-            if ($movie['title'] !== $match['title'] && strpos($movie['genre'], $genre) !== false) {
-                foreach ($categories as $cat) {
-                    if (! empty($match[$cat]) && ! empty($movie[$cat])) {
-                        $filtered[$movie['id']] = $movie;
-                        break;
-                    }
-                }
-            }
-        }
-
-        return array_values($filtered);
-    }
-
-    private function getRecommendations($title, $movies)
-    {
-        $match = $this->findBestMatch($title, $movies);
-
-        if (! $match) {
+        if (! $ranking['matched']) {
             shuffle($movies);
 
-            return array_slice($movies, 0, 20);
+            return array_column(array_slice($movies, 0, 20), 'num');
         }
 
-        $sequels = $this->filterSequels($match, $movies);
-        $related = $this->filterGenreAndCategory($match, $movies);
+        $movies = $ranking['candidates'];
+        $sequels = array_map(static fn (int $index): array => $movies[$index], array_values($ranking['sequels']));
+        $related = array_map(static fn (int $index): array => $movies[$index], array_values($ranking['related']));
 
         shuffle($related);
 
         $recommendations = array_merge($sequels, $related);
         $unique = [];
+        $matchTitle = $ranking['match_title'];
 
         foreach ($recommendations as $movie) {
             $unique[$movie['id']] = $movie;
@@ -169,7 +86,8 @@ class AlsoLikeController extends Controller
         if (count($unique) < 20) {
             shuffle($movies);
             foreach ($movies as $movie) {
-                if ($movie['title'] !== $match['title'] && ! isset($unique[$movie['id']])) {
+                if ($movie['title'] !== $matchTitle
+                    && ! isset($unique[$movie['id']])) {
                     $unique[$movie['id']] = $movie;
                 }
                 if (count($unique) >= 20) {
@@ -178,7 +96,7 @@ class AlsoLikeController extends Controller
             }
         }
 
-        return array_slice(array_values($unique), 0, 20);
+        return array_column(array_slice(array_values($unique), 0, 20), 'num');
     }
 
     private function transformMovie(array $movie): array

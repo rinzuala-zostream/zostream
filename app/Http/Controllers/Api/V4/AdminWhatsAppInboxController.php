@@ -7,6 +7,7 @@ use App\Models\WhatsAppMessage;
 use App\Models\WhatsAppSetting;
 use App\Services\WhatsAppCloudService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class AdminWhatsAppInboxController extends Controller
@@ -55,28 +56,65 @@ class AdminWhatsAppInboxController extends Controller
 
     public function conversations(Request $request)
     {
-        $messages = WhatsAppMessage::query()
-            ->orderByDesc('message_at')
-            ->orderByDesc('id')
-            ->get()
-            ->groupBy('contact_phone')
-            ->map(function ($rows) {
-                $latest = $rows->first();
+        $latestMessageId = DB::table('whatsapp_messages as candidate')
+            ->select('candidate.id')
+            ->whereColumn('candidate.contact_phone', 'summary.contact_phone')
+            ->orderByDesc('candidate.message_at')
+            ->orderByDesc('candidate.id')
+            ->limit(1);
+        $latestContactName = DB::table('whatsapp_messages as named')
+            ->select('named.contact_name')
+            ->whereColumn('named.contact_phone', 'summary.contact_phone')
+            ->whereNotNull('named.contact_name')
+            ->orderByDesc('named.message_at')
+            ->orderByDesc('named.id')
+            ->limit(1);
+        $summaries = DB::table('whatsapp_messages as summary')
+            ->select('summary.contact_phone')
+            ->selectRaw('COUNT(*) as message_count')
+            ->selectRaw("SUM(CASE WHEN summary.direction = 'inbound' AND summary.read_at IS NULL THEN 1 ELSE 0 END) as unread_count")
+            ->selectSub($latestMessageId, 'latest_message_id')
+            ->selectSub($latestContactName, 'contact_name')
+            ->groupBy('summary.contact_phone');
 
-                return [
-                    'phone' => $latest->contact_phone,
-                    'name' => $rows->firstWhere('contact_name', '!=', null)?->contact_name,
-                    'last_message' => $this->conversationPreview($latest),
-                    'last_message_at' => $latest->message_at,
-                    'direction' => $latest->direction,
-                    'status' => $latest->status,
-                    'message_count' => $rows->count(),
-                    'unread_count' => $rows->where('direction', 'inbound')
-                        ->whereNull('read_at')
-                        ->count(),
-                ];
-            })
-            ->values();
+        $rows = DB::query()->fromSub($summaries, 'conversations')
+            ->join('whatsapp_messages as latest', 'latest.id', '=', 'conversations.latest_message_id')
+            ->orderByDesc('latest.message_at')
+            ->orderByDesc('latest.id')
+            ->get([
+                'latest.*',
+                'conversations.contact_name as conversation_name',
+                'conversations.message_count',
+                'conversations.unread_count',
+            ]);
+
+        // Hydrate only one message per contact so payload casts and preview
+        // behavior remain identical without loading the full conversation log.
+        $messages = $rows->map(function ($row) {
+            $message = new WhatsAppMessage();
+            $message->setRawAttributes((array) $row, true);
+            $message->setAttribute('contact_name', $row->conversation_name);
+
+            return [
+                'message' => $message,
+                'message_count' => (int) $row->message_count,
+                'unread_count' => (int) $row->unread_count,
+            ];
+        })->map(function (array $row) {
+            /** @var WhatsAppMessage $latest */
+            $latest = $row['message'];
+
+            return [
+                'phone' => $latest->contact_phone,
+                'name' => $latest->contact_name,
+                'last_message' => $this->conversationPreview($latest),
+                'last_message_at' => $latest->message_at,
+                'direction' => $latest->direction,
+                'status' => $latest->status,
+                'message_count' => $row['message_count'],
+                'unread_count' => $row['unread_count'],
+            ];
+        })->values();
 
         return response()->json($messages);
     }
@@ -85,6 +123,8 @@ class AdminWhatsAppInboxController extends Controller
     {
         $phone = preg_replace('/\D+/', '', $phone);
 
+        // Keep the legacy full-history response intact until pagination can be
+        // introduced through a separately versioned/opt-in contract.
         return response()->json(
             WhatsAppMessage::where('contact_phone', $phone)
                 ->orderBy('message_at')

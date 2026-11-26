@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\New\Season;
+use App\Support\Catalog\MovieCatalogRevision;
 use Illuminate\Database\Eloquent\Model;
 
 class MovieModel extends Model
@@ -80,8 +81,33 @@ class MovieModel extends Model
 
     protected static function booted(): void
     {
+        // Recommendation membership and ranking depend on these attributes.
+        // Bump on both sides of a write so concurrent readers cannot cache the
+        // old candidate set under the post-write generation.
+        static::creating(function (): void {
+            MovieCatalogRevision::bumpIfAvailable();
+        });
+        static::created(function (): void {
+            MovieCatalogRevision::bumpIfAvailable();
+        });
+        static::updating(function (MovieModel $movie): void {
+            if ($movie->isDirty(MovieCatalogRevision::RANKING_FIELDS)) {
+                MovieCatalogRevision::bumpIfAvailable();
+            }
+        });
+        static::updated(function (MovieModel $movie): void {
+            if ($movie->wasChanged(MovieCatalogRevision::RANKING_FIELDS)) {
+                MovieCatalogRevision::bumpIfAvailable();
+            }
+        });
+        static::deleting(function (): void {
+            MovieCatalogRevision::bumpIfAvailable();
+        });
         static::deleting(function (MovieModel $movie): void {
             $movie->trailerRecords()->delete();
+        });
+        static::deleted(function (): void {
+            MovieCatalogRevision::bumpIfAvailable();
         });
     }
 
