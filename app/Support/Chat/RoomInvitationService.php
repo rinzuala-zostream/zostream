@@ -10,19 +10,37 @@ final class RoomInvitationService
 {
     public function metadata(int $room): array
     {
-        $target = ChatDatabase::connection()->table('chat_invite_rooms as ir')->join('chat_rooms as r', 'r.id', '=', 'ir.room_id')
-            ->where('ir.room_id', $room)->first(['ir.*', 'r.closed']);
-        return ['room_id' => (string) $room, 'room_name' => $target->room_name ?? 'Private room',
-            'active' => $target && $target->content_type === null && app(InviteRoomLifecycle::class)->active($target)];
+        return $this->metadataForRooms([$room])[$room] ?? ['room_id' => (string) $room, 'room_name' => 'Private room', 'active' => false];
+    }
+
+    /** Resolve invitation cards with one chat database read, regardless of page size. */
+    private function metadataForRooms(array $rooms): array
+    {
+        if ($rooms === []) { return []; }
+        $targets = ChatDatabase::connection()->table('chat_invite_rooms as ir')->join('chat_rooms as r', 'r.id', '=', 'ir.room_id')
+            ->whereIn('ir.room_id', array_values(array_unique($rooms)))
+            ->get(['ir.room_id', 'ir.room_name', 'ir.content_type', 'ir.active', 'ir.idle_expires_at', 'ir.host_user_id',
+                'ir.content_id', 'ir.host_stream_id', 'ir.stream_token_hash', 'r.closed'])->keyBy('room_id');
+        $states = [];
+        foreach ($rooms as $room) {
+            $target = $targets->get($room);
+            $states[$room] = ['room_id' => (string) $room, 'room_name' => $target->room_name ?? 'Private room',
+                'active' => $target && $target->content_type === null && app(InviteRoomLifecycle::class)->active($target)];
+        }
+
+        return $states;
     }
 
     public function hydrate(array $messages): array
     {
-        $states = [];
+        $ids = [];
+        foreach ($messages as $message) {
+            if (! empty($message['room_invite']['room_id'])) { $ids[] = (int) $message['room_invite']['room_id']; }
+        }
+        $states = $this->metadataForRooms(array_values(array_unique($ids)));
         foreach ($messages as &$message) {
-            if (! empty($message['room_invite'])) {
-                $id = (int) $message['room_invite']['room_id'];
-                $message['room_invite'] = $states[$id] ??= $this->metadata($id);
+            if (! empty($message['room_invite']['room_id'])) {
+                $message['room_invite'] = $states[(int) $message['room_invite']['room_id']];
             }
         }
         return $messages;

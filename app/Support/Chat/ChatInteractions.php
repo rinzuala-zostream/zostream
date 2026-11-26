@@ -16,13 +16,24 @@ final class ChatInteractions
         $db = ChatDatabase::connection();
         $blocked = app(ChatService::class)->blocked($uid);
         $ids = array_column($messages, 'id');
-        $counts = $db->table('chat_reactions')->whereIn('message_id', $ids)->whereNotIn('user_id', $blocked)
-            ->selectRaw('message_id, emoji, COUNT(*) as count')->groupBy('message_id', 'emoji')->get()->groupBy('message_id');
-        $mine = $db->table('chat_reactions')->whereIn('message_id', $ids)->where('user_id', $uid)->get()->groupBy('message_id');
+        // One grouped scan supplies both public counts and the requesting
+        // viewer's reactions. Keep own reactions even if that viewer is also
+        // in the blocked list; the old independent query did so.
+        $visibleCase = $blocked === [] ? '1 = 1' : 'user_id NOT IN ('.implode(',', array_fill(0, count($blocked), '?')).')';
+        $reactionRows = $db->table('chat_reactions')->whereIn('message_id', $ids)
+            ->selectRaw('message_id, emoji, SUM(CASE WHEN '.$visibleCase.' THEN 1 ELSE 0 END) as visible_count, '
+                .'MAX(CASE WHEN user_id = ? THEN 1 ELSE 0 END) as is_mine', [...$blocked, $uid])
+            ->groupBy('message_id', 'emoji')->get();
+        $counts = $mine = [];
+        foreach ($reactionRows as $reaction) {
+            $id = (string) $reaction->message_id;
+            if ((int) $reaction->visible_count > 0) { $counts[$id][] = ['emoji' => $reaction->emoji, 'count' => (int) $reaction->visible_count]; }
+            if ((int) $reaction->is_mine === 1) { $mine[$id][] = $reaction->emoji; }
+        }
         $parents = $db->table('chat_messages')->whereIn('id', array_filter(array_column($messages, 'reply_to_id')))->get()->keyBy('id');
         foreach ($messages as &$m) {
-            $m['reactions'] = $m['deleted'] ? [] : collect($counts->get($m['id'], []))->map(fn ($r) => ['emoji' => $r->emoji, 'count' => (int) $r->count])->values()->all();
-            $m['my_reactions'] = $m['deleted'] ? [] : collect($mine->get($m['id'], []))->pluck('emoji')->all();
+            $m['reactions'] = $m['deleted'] ? [] : ($counts[$m['id']] ?? []);
+            $m['my_reactions'] = $m['deleted'] ? [] : ($mine[$m['id']] ?? []);
             $m['reply'] = null;
             if (! $m['deleted'] && ($parent = $parents->get($m['reply_to_id'] ?? 0))) {
                 $hidden = $parent->deleted_at || in_array($parent->user_id, $blocked, true)

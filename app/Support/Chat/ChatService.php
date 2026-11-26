@@ -150,11 +150,26 @@ final class ChatService
 
     public function recent(int $room): array
     {
-        $load = fn () => ChatDatabase::connection()->table('chat_messages')->where('room_id', $room)
-            ->where('created_at', '>=', now()->subDays(config('chat.retention_days')))
-            ->orderByDesc('id')->limit(config('chat.recent_limit'))->get()->map(fn ($m) => $this->message($m))->all();
+        $load = function () use ($room): array {
+            $messages = ChatDatabase::connection()->table('chat_messages')->where('room_id', $room)
+                ->where('created_at', '>=', now()->subDays(config('chat.retention_days')))
+                ->orderByDesc('id')->limit(config('chat.recent_limit'))
+                ->get($this->messageColumns())->map(fn ($m) => $this->message($m, false))->all();
+
+            return app(RoomInvitationService::class)->hydrate($messages);
+        };
         try {
-            return Cache::store(config('chat.cache_store'))->remember('chat:recent:'.$room, 10, $load);
+            $cache = Cache::store(config('chat.cache_store'));
+            $key = 'chat:recent:'.$room;
+
+            return $cache->lock($key.':lock', 5)->block(1, function () use ($cache, $key, $load): array {
+                $cached = $cache->get($key);
+                if (is_array($cached)) { return $cached; }
+                $messages = $load();
+                $cache->put($key, $messages, 10);
+
+                return $messages;
+            });
         } catch (\Throwable $e) {
             return $load();
         }
@@ -168,14 +183,22 @@ final class ChatService
         }
     }
 
-    public function message(object $m): array
+    /** Columns needed by the public chat message serializer. */
+    public function messageColumns(): array
+    {
+        return ['id', 'room_id', 'reply_to_id', 'movie_suggestion', 'moment', 'user_id', 'request_id',
+            'display_name', 'invite_room_id', 'watch_invite', 'body', 'spoiler', 'deleted_at', 'created_at'];
+    }
+
+    public function message(object $m, bool $loadInviteMetadata = true): array
     {
         return ['id' => (string) $m->id, 'room_id' => (string) $m->room_id,
             'reply_to_id' => ! $m->deleted_at && ($m->reply_to_id ?? null) ? (string) $m->reply_to_id : null,
             'movie_suggestion' => $m->deleted_at ? null : json_decode($m->movie_suggestion ?? 'null', true),
             'moment' => $m->deleted_at ? null : json_decode($m->moment ?? 'null', true),
             'user_id' => $m->user_id, 'request_id' => $m->request_id, 'display_name' => $m->display_name,
-            'room_invite' => ! $m->deleted_at && ($m->invite_room_id ?? null) ? app(RoomInvitationService::class)->metadata((int) $m->invite_room_id) : null,
+            'room_invite' => ! $m->deleted_at && ($m->invite_room_id ?? null)
+                ? ($loadInviteMetadata ? app(RoomInvitationService::class)->metadata((int) $m->invite_room_id) : ['room_id' => (string) $m->invite_room_id]) : null,
             'watch_invite' => $m->deleted_at ? null : json_decode($m->watch_invite ?? 'null', true),
             'body' => $m->deleted_at ? null : $m->body, 'spoiler' => (bool) $m->spoiler,
             'deleted' => $m->deleted_at !== null,

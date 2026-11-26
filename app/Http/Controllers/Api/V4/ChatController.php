@@ -633,7 +633,7 @@ final class ChatController extends Controller
                 ->where('created_at', '>=', now()->subDays(config('chat.retention_days')))
                 ->when($before !== null, fn ($q) => $q->where('id', '<', $before))
                 ->when($after !== null, fn ($q) => $q->where('id', '>', $after));
-            $rows = $q->orderBy('id', $after !== null ? 'asc' : 'desc')->limit($limit + 1)->get()->map(fn ($m) => $this->chat->message($m))->all();
+            $rows = $q->orderBy('id', $after !== null ? 'asc' : 'desc')->limit($limit + 1)->get($this->chat->messageColumns())->map(fn ($m) => $this->chat->message($m, false))->all();
             $hasMore = count($rows) > $limit;
             $rows = array_slice($rows, 0, $limit);
         }

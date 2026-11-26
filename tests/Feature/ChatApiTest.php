@@ -1899,6 +1899,49 @@ class ChatApiTest extends TestCase
         $this->assertSame([(string) $first, (string) $last], array_column($page->json('data.messages'), 'id'));
     }
 
+    public function test_recent_message_invitation_metadata_is_loaded_in_one_batched_query(): void
+    {
+        $source = $this->room();
+        $inviteIds = [];
+        foreach (['Friends', 'Family'] as $name) {
+            $id = ChatDatabase::connection()->table('chat_rooms')->insertGetId([
+                'room_key' => 'invite:'.Str::uuid(), 'type' => 'invite', 'closed' => false,
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+            ChatDatabase::connection()->table('chat_invite_rooms')->insert([
+                'room_id' => $id, 'host_user_id' => 'alice', 'room_name' => $name, 'active' => true,
+                'idle_expires_at' => now()->addHour(), 'created_at' => now(), 'updated_at' => now(),
+            ]);
+            $inviteIds[] = $id;
+        }
+        foreach ($inviteIds as $id) {
+            $message = $this->message($source);
+            ChatDatabase::connection()->table('chat_messages')->where('id', $message)->update(['invite_room_id' => $id]);
+        }
+
+        Cache::store(config('chat.cache_store'))->forget('chat:recent:'.$source);
+        $queries = [];
+        DB::listen(function ($query) use (&$queries): void { $queries[] = $query->sql; });
+        $messages = app(\App\Support\Chat\ChatService::class)->recent((int) $source);
+
+        $metadataQueries = array_filter($queries, fn ($sql) => str_contains($sql, 'chat_invite_rooms') && str_contains($sql, 'select'));
+        $this->assertCount(1, $metadataQueries);
+        $cards = collect($messages)->pluck('room_invite')->keyBy('room_name');
+        $this->assertTrue($cards['Friends']['active']);
+        $this->assertTrue($cards['Family']['active']);
+    }
+
+    public function test_latest_message_request_with_no_new_rows_returns_an_empty_delta(): void
+    {
+        $room = $this->room();
+        $this->message($room, 'bob');
+        $last = ChatDatabase::connection()->table('chat_messages')->where('room_id', $room)->max('id');
+        $response = $this->getJson('/api/v4/chat/rooms/'.$room.'/messages?'.http_build_query($this->identity(['after' => $last])))
+            ->assertOk()->assertJsonPath('data.messages', [])->assertJsonPath('data.has_more', false);
+
+        $this->assertSame([], $response->json('data.messages'));
+    }
+
     public function test_initial_history_starts_at_oldest_unread_and_restores_advanced_read_position(): void
     {
         $room = $this->room();
