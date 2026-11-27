@@ -13,6 +13,225 @@ use Throwable;
 
 class ChatMessageController extends Controller
 {
+    public function join(Request $request): JsonResponse
+    {
+        $payload = $request->validate([
+            'type' => ['required', 'in:global,movie,episode'],
+            'content_id' => ['nullable', 'string', 'max:80'],
+        ]);
+        if ($payload['type'] !== 'global' && blank($payload['content_id'] ?? null)) {
+            return V4Response::error('content_required', 'Choose a title before opening this chat room.', 422);
+        }
+        $contentId = (string) ($payload['content_id'] ?? '');
+        if ($payload['type'] !== 'global' && ! ctype_digit($contentId)) {
+            return V4Response::error('content_unavailable', 'This chat room is unavailable for the selected title.', 404);
+        }
+
+        $userId = trim((string) $request->input('auth_user_id'));
+        if ($userId === '') {
+            return V4Response::error('unauthenticated', 'Your sign-in session is no longer valid.', 401);
+        }
+
+        try {
+            $contentTitle = null;
+            if ($payload['type'] === 'movie') {
+                $contentTitle = DB::table('movie')->where('num', $contentId)->where('isEnable', true)->value('title');
+            } elseif ($payload['type'] === 'episode') {
+                $contentTitle = DB::table('episode')->where('num', $contentId)->where('isEnable', true)->value('title');
+            }
+            if ($payload['type'] !== 'global' && ! is_string($contentTitle)) {
+                return V4Response::error('content_unavailable', 'This chat room is unavailable for the selected title.', 404);
+            }
+
+            $user = DB::table('user')->where('num', $userId)->first(['uid', 'name']);
+            $firebaseUid = trim((string) ($user->uid ?? ''));
+            if ($firebaseUid === '' || preg_match('/^[A-Za-z0-9_-]+$/', $firebaseUid) !== 1) {
+                return V4Response::error('chat_identity_unavailable', 'Your chat identity is unavailable.', 403);
+            }
+
+            $roomId = $payload['type'] === 'global'
+                ? 'global'
+                : $payload['type'].'-'.preg_replace('/[^A-Za-z0-9_-]/', '-', (string) $payload['content_id']);
+            $database = $this->database();
+            $stateRef = $database->getReference("chat_v1/rooms/{$roomId}/state");
+            $state = $stateRef->getValue();
+            if (! is_array($state)) {
+                $state = [
+                    'active' => true,
+                    'can_send' => true,
+                    'room_type' => $payload['type'],
+                    'content_id' => $payload['content_id'] ?? null,
+                    'created_at' => now()->utc()->toIso8601String(),
+                    'sync_cursor' => 0,
+                ];
+                $stateRef->set($state);
+            }
+            if (($state['active'] ?? false) !== true || ($state['can_send'] ?? false) !== true) {
+                return V4Response::error('room_unavailable', 'This chat room is unavailable.', 403);
+            }
+
+            $memberRef = $database->getReference("chat_v1/rooms/{$roomId}/members/{$firebaseUid}");
+            $membership = $memberRef->getValue();
+            if (! is_array($membership) || ($membership['active'] ?? false) !== true) {
+                $memberRef->set([
+                    'active' => true,
+                    'can_send' => true,
+                    'user_id' => $userId,
+                    'display_name' => trim((string) ($user->name ?? '')) ?: 'Viewer',
+                    'joined_at' => now()->utc()->toIso8601String(),
+                ]);
+            }
+
+            $lastMessage = $database->getReference("chat_v1/rooms/{$roomId}/last_message_id")->getValue();
+            return V4Response::success([
+                'room_id' => $roomId,
+                'room_type' => $payload['type'],
+                'channel' => "private-chat.{$roomId}",
+                'websocket_url' => '',
+                'user_id' => $userId,
+                'room_name' => $payload['type'] === 'global' ? 'Global Chat' : null,
+                'content_type' => $payload['type'] === 'global' ? null : $payload['type'],
+                'content_id' => $payload['content_id'] ?? null,
+                'content_title' => $contentTitle,
+                'is_admin' => false,
+                'is_host' => false,
+                'firebase_realtime' => true,
+                'sync_cursor' => (int) ($lastMessage ?: 0),
+            ]);
+        } catch (Throwable $error) {
+            report($error);
+            return V4Response::error('chat_unavailable', 'Chat is temporarily unavailable. Please try again.', 503);
+        }
+    }
+
+    public function firebaseToken(Request $request): JsonResponse
+    {
+        $userId = trim((string) $request->input('auth_user_id'));
+        if ($userId === '') {
+            return V4Response::error('unauthenticated', 'Your sign-in session is no longer valid.', 401);
+        }
+        try {
+            $uid = trim((string) DB::table('user')->where('num', $userId)->value('uid'));
+            if ($uid === '' || preg_match('/^[A-Za-z0-9_-]+$/', $uid) !== 1) {
+                return V4Response::error('chat_identity_unavailable', 'Your chat identity is unavailable.', 403);
+            }
+            $auth = (new Factory)->withServiceAccount((string) config('firebase.credentials'))->createAuth();
+            $token = $auth->createCustomToken($uid);
+            return V4Response::success(['firebase_uid' => $uid, 'custom_token' => $token->toString()]);
+        } catch (Throwable $error) {
+            report($error);
+            return V4Response::error('firebase_auth_unavailable', 'Firebase chat authentication is unavailable.', 503);
+        }
+    }
+
+    public function firebaseLease(Request $request): JsonResponse
+    {
+        $userId = trim((string) $request->input('auth_user_id'));
+        $roomId = trim((string) $request->input('active_room_id', ''));
+        try {
+            $uid = trim((string) DB::table('user')->where('num', $userId)->value('uid'));
+            if ($uid === '' || preg_match('/^[A-Za-z0-9_-]+$/', $uid) !== 1) {
+                return V4Response::error('chat_identity_unavailable', 'Your chat identity is unavailable.', 403);
+            }
+            if ($roomId !== '') {
+                if (preg_match('/^[A-Za-z0-9_-]+$/', $roomId) !== 1) {
+                    return V4Response::error('room_access_denied', 'This chat room is unavailable.', 403);
+                }
+                $database = $this->database();
+                $state = $database->getReference("chat_v1/rooms/{$roomId}/state")->getValue();
+                $member = $database->getReference("chat_v1/rooms/{$roomId}/members/{$uid}")->getValue();
+                if (! is_array($state) || ($state['active'] ?? false) !== true || ! is_array($member) || ($member['active'] ?? false) !== true) {
+                    return V4Response::error('room_access_denied', 'You no longer have access to this chat room.', 403);
+                }
+            }
+            return V4Response::success(['room_projection_refreshed' => true, 'refresh_after_seconds' => 60]);
+        } catch (Throwable $error) {
+            report($error);
+            return V4Response::error('chat_unavailable', 'Chat is temporarily unavailable. Please try again.', 503);
+        }
+    }
+
+    public function sync(Request $request, string $roomId): JsonResponse
+    {
+        $userId = trim((string) $request->input('auth_user_id'));
+        $cursor = max(0, (int) $request->query('cursor', 0));
+        try {
+            $uid = trim((string) DB::table('user')->where('num', $userId)->value('uid'));
+            $database = $this->database();
+            $member = $database->getReference("chat_v1/rooms/{$roomId}/members/{$uid}")->getValue();
+            if (! is_array($member) || ($member['active'] ?? false) !== true) {
+                return V4Response::error('room_access_denied', 'You no longer have access to this chat room.', 403);
+            }
+            $startKey = str_pad((string) ($cursor + 1), 20, '0', STR_PAD_LEFT);
+            $events = $database->getReference("chat_v1/user_sync_events/{$uid}/{$roomId}")
+                ->orderByKey()->startAt($startKey)->limitToFirst(101)->getValue() ?? [];
+            $events = is_array($events) ? $events : [];
+            ksort($events, SORT_STRING);
+            $hasMore = count($events) > 100;
+            $events = array_slice($events, 0, 100, true);
+            $result = [];
+            $next = $cursor;
+            foreach ($events as $event) {
+                if (! is_array($event)) continue;
+                $eventCursor = (int) ($event['cursor'] ?? 0);
+                $messageId = isset($event['message_id']) ? (string) $event['message_id'] : null;
+                $item = ['kind' => $event['kind'] ?? 'sync', 'cursor' => $eventCursor, 'message_id' => $messageId];
+                if (in_array($item['kind'], ['created', 'deleted'], true) && $messageId !== null) {
+                    $record = $database->getReference("chat_v1/user_messages/{$uid}/{$roomId}/{$messageId}")->getValue();
+                    if (is_array($record)) $item['message'] = $this->publicMessage($record);
+                }
+                $result[] = $item;
+                $next = max($next, $eventCursor);
+            }
+            return V4Response::success([
+                'cursor_expired' => false,
+                'next_cursor' => $next,
+                'has_more' => $hasMore,
+                'events' => $result,
+            ]);
+        } catch (Throwable $error) {
+            report($error);
+            return V4Response::error('chat_unavailable', 'Chat is temporarily unavailable. Please try again.', 503);
+        }
+    }
+
+    public function history(Request $request, string $roomId): JsonResponse
+    {
+        $userId = trim((string) $request->input('auth_user_id'));
+        try {
+            $uid = trim((string) DB::table('user')->where('num', $userId)->value('uid'));
+            $database = $this->database();
+            $member = $database->getReference("chat_v1/rooms/{$roomId}/members/{$uid}")->getValue();
+            if (! is_array($member) || ($member['active'] ?? false) !== true) {
+                return V4Response::error('room_access_denied', 'You no longer have access to this chat room.', 403);
+            }
+            $reference = $database->getReference("chat_v1/user_messages/{$uid}/{$roomId}")->orderByChild('cursor');
+            $limit = 31;
+            if ($request->filled('before')) {
+                $items = $reference->endAt(max(0, (int) $request->query('before') - 1))->limitToLast($limit)->getValue() ?? [];
+            } elseif ($request->filled('after')) {
+                $items = $reference->startAt((int) $request->query('after') + 1)->limitToFirst($limit)->getValue() ?? [];
+            } else {
+                $items = $reference->limitToLast($limit)->getValue() ?? [];
+            }
+            $items = is_array($items) ? array_values($items) : [];
+            usort($items, fn ($a, $b) => (int) ($a['cursor'] ?? 0) <=> (int) ($b['cursor'] ?? 0));
+            $hasMore = count($items) > 30;
+            if ($hasMore) {
+                if ($request->filled('after')) array_pop($items); else array_shift($items);
+            }
+            return V4Response::success([
+                'messages' => array_map(fn ($item) => $this->publicMessage($item), $items),
+                'has_more' => $hasMore,
+                'first_unread_id' => null,
+                'initial_after' => null,
+            ]);
+        } catch (Throwable $error) {
+            report($error);
+            return V4Response::error('chat_unavailable', 'Chat is temporarily unavailable. Please try again.', 503);
+        }
+    }
+
     public function store(Request $request, string $roomId): JsonResponse
     {
         $payload = $request->validate([
@@ -103,6 +322,7 @@ class ChatMessageController extends Controller
                 "chat_v1/rooms/{$roomId}/messages/{$messageId}" => $record,
                 "chat_v1/room_requests/{$roomId}/{$userId}/{$requestId}" => $messageId,
                 "chat_v1/rooms/{$roomId}/last_message_id" => $messageId,
+                "chat_v1/rooms/{$roomId}/state/sync_cursor" => (int) $messageId,
             ];
             foreach ($members as $memberId => $member) {
                 if (preg_match('/^[A-Za-z0-9_-]+$/', (string) $memberId) !== 1) {

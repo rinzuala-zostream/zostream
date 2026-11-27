@@ -2,6 +2,28 @@
   "rules": {
     ".read": false,
     ".write": false,
+    "chat_v1": {
+      "user_messages": {
+        "$uid": {
+          ".read": "auth != null && auth.uid === $uid"
+        }
+      },
+      "user_sync_events": {
+        "$uid": {
+          ".read": "auth != null && auth.uid === $uid"
+        }
+      },
+      "user_account_events": {
+        "$uid": {
+          ".read": "auth != null && auth.uid === $uid"
+        }
+      },
+      "user_typing": {
+        "$uid": {
+          ".read": "auth != null && auth.uid === $uid"
+        }
+      }
+    },
     "config": {
       "analytics": {
         ".read": true,

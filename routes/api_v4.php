@@ -174,8 +174,15 @@ Route::prefix('v4')
 
         Route::middleware('auth.token')->group(function () {
             Route::prefix('chat')->middleware('throttle:30,1')->group(function () {
+                Route::post('/rooms/join', [ChatMessageController::class, 'join']);
                 Route::post('/rooms/{roomId}/messages', [ChatMessageController::class, 'store'])
                     ->where('roomId', '[A-Za-z0-9_-]+');
+                Route::get('/rooms/{roomId}/messages', [ChatMessageController::class, 'history'])
+                    ->where('roomId', '[A-Za-z0-9_-]+');
+                Route::get('/rooms/{roomId}/sync', [ChatMessageController::class, 'sync'])
+                    ->where('roomId', '[A-Za-z0-9_-]+');
+                Route::post('/firebase/token', [ChatMessageController::class, 'firebaseToken']);
+                Route::post('/firebase/lease', [ChatMessageController::class, 'firebaseLease']);
             });
 
             Route::prefix('creator')->middleware('throttle:60,1')->group(function () {
