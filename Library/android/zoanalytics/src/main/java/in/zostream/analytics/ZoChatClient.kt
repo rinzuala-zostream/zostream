@@ -59,6 +59,7 @@ class ZoChatClient(
     private class HttpFailure(val status: Int, message: String) : IllegalStateException(message)
 
     private fun revokeRoom() {
+        stopFirebase()
         cancelVisibilityFallback()
         channel?.let { sendEvent("pusher:unsubscribe", JSONObject().put("channel", it)) }
         roomRevision++; room = null; channel = null; controlToken = null; controlChannel?.let { sendEvent("pusher:unsubscribe", JSONObject().put("channel", it)) }; controlChannel = null; clearFeed(); isConnected = false
@@ -71,6 +72,11 @@ class ZoChatClient(
     var onWatchState: ((JSONObject) -> Unit)? = null
     var isConnected = false
         private set
+    var firebaseSource: ChatFirebaseSource? = null
+    var usesFirebaseRealtime = false
+        private set
+    private var firebaseStream: ChatFirebaseStream? = null
+    private var firebaseCursor = 0L
     private var socket: WebSocket? = null
     private var room: JSONObject? = null
     @Volatile private var closed = false
@@ -113,7 +119,7 @@ class ZoChatClient(
             if (room != null && unreadChannels == null && isConnected && now - lastTranscriptReconcile >= 300_000) {
                 lastTranscriptReconcile = now; onChanged("reconcile", null)
             }
-            if (isConnected) {
+            if (isConnected && !usesFirebaseRealtime) {
                 if (now - lastSocketActivity > 90_000) reconnect(generation)
                 else sendEvent("pusher:ping", JSONObject())
             }
@@ -274,6 +280,9 @@ class ZoChatClient(
     fun setRoomVisible(visible: Boolean) {
         val changed = roomVisible != visible
         roomVisible = visible
+        if (usesFirebaseRealtime) {
+            if (visible) startFirebase() else stopFirebase()
+        }
         if (!visible) clearFeed()
         else if (onMessage != null && feedChannel == null && isConnected) subscribe()
         if (changed && unreadChannels == null) room?.let { reportVisibility(it.getString("room_id"), visible) }
@@ -285,6 +294,8 @@ class ZoChatClient(
         if (owner != null && owner != identity) { close(); callback(null, "Account changed. Reopen chat."); return }
         owner = identity
         finishVisibility()
+        stopFirebase()
+        usesFirebaseRealtime = false
         val revision = ++roomRevision
         clearFeed(); controlToken = null; controlChannel?.let { sendEvent("pusher:unsubscribe", JSONObject().put("channel", it)) }; controlChannel = null; liveVersions.clear(); liveKinds.clear(); pendingLive.clear()
         main.removeCallbacks(liveRecovery)
@@ -308,7 +319,10 @@ class ZoChatClient(
             if (data != null) roomVisible?.let { reportVisibility(data.getString("room_id"), it) }
             callback(data, error)
             if (data != null && revision == roomRevision && !closed) {
-                if (socket != null && socketUrl == data.optString("websocket_url")) subscribe()
+                usesFirebaseRealtime = firebaseSource != null && data.optBoolean("firebase_realtime")
+                firebaseCursor = data.optLong("sync_cursor")
+                if (usesFirebaseRealtime) startFirebase()
+                else if (socket != null && socketUrl == data.optString("websocket_url")) subscribe()
                 else connect()
                 main.removeCallbacks(reconcile); main.postDelayed(reconcile, 30_000)
                 main.removeCallbacks(recoverTranscript); main.postDelayed(recoverTranscript, 5_000)
@@ -323,6 +337,18 @@ class ZoChatClient(
         val identity = credentials()?.ownerKey ?: return
         if (owner != null && owner != identity) { close(); return }
         owner = identity
+        if (firebaseSource != null && summary.optBoolean("firebase_realtime")) {
+            usesFirebaseRealtime = true
+            main.removeCallbacks(reconcile)
+            unreadChannels = emptySet()
+            room = summary
+            firebaseCursor = summary.optLong("event_cursor")
+            firebaseStream?.updateAccountCursor(firebaseCursor)
+            startFirebase()
+            return
+        }
+        if (usesFirebaseRealtime) stopFirebase()
+        usesFirebaseRealtime = false
         val list = summary.optJSONArray("channels") ?: return
         val wanted = (0 until list.length()).map { list.getString(it) }.toSet()
         val previous = unreadChannels.orEmpty()
@@ -337,6 +363,45 @@ class ZoChatClient(
         if (socket != null && socketUrl == summary.optString("websocket_url")) subscribe()
         else connect()
         main.removeCallbacks(reconcile); main.postDelayed(reconcile, 30_000)
+    }
+
+    private fun startFirebase() {
+        if (firebaseStream != null || closed || !usesFirebaseRealtime) return
+        val source = firebaseSource ?: return
+        val identity = owner ?: return
+        val roomId = if (unreadChannels == null) room?.optString("room_id") ?: return else null
+        if (roomId != null && roomVisible == false) return
+        if (socket != null) {
+            generation++
+            socket?.cancel(); socket = null; socketId = null; socketUrl = null
+            controlToken = null
+        }
+        val revision = roomRevision
+        firebaseStream = ChatFirebaseStream(source, identity, roomId, firebaseCursor,
+            { !closed && owner == credentials()?.ownerKey && roomRevision == revision },
+            { path, body, callback -> request(path, body, callback) },
+            { live -> if (isConnected != live) { isConnected = live; onConnection(live) } },
+            { kind, id ->
+                when (kind) {
+                    "access_denied" -> revokeRoom()
+                    "room_state_invalidated" -> onBadgeEvent?.invoke(JSONObject().put("kind", "sync"))
+                    else -> onChanged(kind, id)
+                }
+            },
+            { message, overlay ->
+                onMessage?.invoke(message)
+                if (overlay && !message.optBoolean("deleted")) onOverlayMessage?.invoke(message)
+            },
+            { users -> onTyping?.invoke(users) },
+        ).also { it.start() }
+    }
+
+    private fun stopFirebase() {
+        val stream = firebaseStream ?: return
+        firebaseCursor = stream.lastCursor
+        stream.close()
+        firebaseStream = null
+        isConnected = false
     }
 
     private fun sendEvent(event: String, data: JSONObject): Boolean =
@@ -421,6 +486,7 @@ class ZoChatClient(
     }
 
     private fun connect() {
+        if (usesFirebaseRealtime) return
         if (closed) return
         val info = room ?: return
         val url = info.optString("websocket_url")
@@ -583,6 +649,7 @@ class ZoChatClient(
     override fun close() {
         if (closed) return
         finishVisibility()
+        stopFirebase()
         isConnected = false
         closed = true; generation++; roomRevision++; main.removeCallbacksAndMessages(null)
         channel = null; socketId = null; room = null

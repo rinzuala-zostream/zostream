@@ -34,6 +34,9 @@ final class PrivateWatchService
                 'content_id' => $watch['content_id'], 'content_title' => $content->title])];
         if (ChatDatabase::schema()->hasColumn('chat_messages', 'revision')) { $messageUpdate['revision'] = DB::raw('revision + 1'); }
         ChatDatabase::connection()->table('chat_messages')->where('id', $message)->update($messageUpdate);
+        if (ChatChannels::watchOnly()) {
+            $this->chat->outbox($r, (int) $inviteRoom->room_id, 'watch_status', null, null);
+        }
     }
 
     private function content(string $type, string $id): object

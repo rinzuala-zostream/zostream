@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V4;
 
+use App\Support\Chat\ChatChannels;
 use App\Support\Chat\ChatDatabase;
 use App\Support\Chat\ChatDisplayNames;
 use App\Http\Controllers\Controller;
@@ -67,14 +68,23 @@ final class ChatController extends Controller
             'content_id' => $v['type'] === 'global' ? null : $v['content_id'], 'created_at' => now(), 'updated_at' => now()]);
         $room = ChatDatabase::connection()->table('chat_rooms')->where('room_key', $key)->first();
         $this->chat->room($r, $room->id);
-        app(\App\Support\Chat\ChatAuthorizationProjector::class)->projectRoom($r, $room);
+        app(\App\Support\Chat\ChatAuthorizationProjector::class)->projectJoinedRoom($r, $room);
 
+        $reverb = ! ChatChannels::watchOnly();
         return V4Response::success(['room_id' => (string) $room->id, 'room_type' => $room->type,
-            'channel' => 'private-chat.'.$room->id, 'websocket_url' => config('chat.websocket_url'),
+            'channel' => $reverb ? 'private-chat.'.$room->id : '', 'websocket_url' => $reverb ? config('chat.websocket_url') : '',
             'online_count' => $this->chat->presence($r, $room->id),
             'user_id' => (string) $r->input('auth_user_id'),
             'is_admin' => app(\App\Support\AdminAccess::class)->isAdmin((string) $r->input('auth_user_id')),
-            'slow_mode_seconds' => config('chat.slow_mode_seconds')]);
+            'slow_mode_seconds' => config('chat.slow_mode_seconds')] + $this->firebaseRealtime((int) $room->id));
+    }
+
+    private function firebaseRealtime(int $room): array
+    {
+        if (! ChatChannels::firebaseAvailable()) { return []; }
+
+        return ['firebase_realtime' => true, 'sync_cursor' => (int) (ChatDatabase::connection()
+            ->table('chat_firebase_room_cursors')->where('room_id', $room)->value('cursor') ?? 0)];
     }
 
     public function pins(Request $r, int $room)
@@ -514,14 +524,15 @@ final class ChatController extends Controller
     {
         $roomInfo = $this->chat->room($r, $room);
         abort_unless($roomInfo->type === 'invite', 404);
-        app(\App\Support\Chat\ChatAuthorizationProjector::class)->projectRoom($r, $roomInfo);
+        app(\App\Support\Chat\ChatAuthorizationProjector::class)->projectJoinedRoom($r, $roomInfo);
         $inviteRoom = ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $room)->first();
         $content = $inviteRoom->content_type && $inviteRoom->content_id
             ? \App\Support\Chat\ChatContent::find($inviteRoom->content_type, $inviteRoom->content_id) : null;
         $seasonId = $inviteRoom->content_type === 'episode' ? ($content->season_id ?? null) : null;
         $watch = app(\App\Support\Chat\PrivateWatchService::class)->liveSession($room);
-        return V4Response::success(['watch_session' => $watch ? app(\App\Support\Chat\PrivateWatchService::class)->metadata($watch) : null, 'room_id' => (string) $room, 'room_type' => 'invite', 'channel' => 'private-chat.'.$room,
-            'websocket_url' => config('chat.websocket_url'), 'online_count' => $this->chat->presence($r, $room),
+        $reverb = ! ChatChannels::watchOnly() || $inviteRoom->content_type !== null || $watch !== null;
+        return V4Response::success(['watch_session' => $watch ? app(\App\Support\Chat\PrivateWatchService::class)->metadata($watch) : null, 'room_id' => (string) $room, 'room_type' => 'invite', 'channel' => $reverb ? 'private-chat.'.$room : '',
+            'websocket_url' => $reverb ? config('chat.websocket_url') : '', 'online_count' => $this->chat->presence($r, $room),
             'user_id' => (string) $r->input('auth_user_id'), 'room_name' => $inviteRoom->room_name, 'content_type' => $inviteRoom->content_type,
             'content_id' => $inviteRoom->content_id, 'watch_position_ms' => (int) $inviteRoom->watch_position_ms,
             'is_host' => $inviteRoom->host_user_id === (string) $r->input('auth_user_id'),
@@ -529,7 +540,7 @@ final class ChatController extends Controller
             'content_title' => $content->title ?? null, 'season_id' => $seasonId,
             'season_number' => $seasonId ? DB::table('seasons')->where('id', $seasonId)->value('season_number') : null,
             'episode_number' => $content->episode_number ?? null,
-            'slow_mode_seconds' => config('chat.slow_mode_seconds')]);
+            'slow_mode_seconds' => config('chat.slow_mode_seconds')] + $this->firebaseRealtime($room));
     }
 
     public function privateWatchStatus(Request $r, int $room)
@@ -614,7 +625,7 @@ final class ChatController extends Controller
 
     public function auth(Request $r, int $room)
     {
-        $this->chat->room($r, $room);
+        ChatChannels::assertWatchRoom($this->chat->room($r, $room));
         $v = $r->validate(['socket_id' => ['required', 'regex:/^[0-9]+\.[0-9]+$/']]);
         $auth = \App\Support\Chat\ChatChannels::authorization($v['socket_id'], 'private-chat.'.$room);
         if ($r->input('protocol') === 2) {

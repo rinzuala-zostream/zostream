@@ -28,7 +28,8 @@ final class ChatLiveChannels
         $controlChannel = 'private-chat-control.'.$room.'.'.bin2hex(random_bytes(16));
         $control = ChatChannels::authorization($socket, $controlChannel);
         $expires = min(now()->timestamp + $auth['expires_in'] + ChatChannels::GRACE_SECONDS, $session->access_expires_at->timestamp);
-        $feed = $request->boolean('messages') ? ChatChannels::authorization($socket, 'private-chat-feed.'.$room.'.'.substr(hash('sha256', $token), 0, 32)) : null;
+        $feed = ! ChatChannels::watchOnly() && $request->boolean('messages')
+            ? ChatChannels::authorization($socket, 'private-chat-feed.'.$room.'.'.substr(hash('sha256', $token), 0, 32)) : null;
         $claim = ['room_id' => $room, 'socket_id' => $socket, 'channel' => $auth['channel'], 'control_channel' => $control['channel'], 'ticket_key' => $key,
             'feed_channel' => $feed['channel'] ?? null, 'expires' => $expires,
             // A reconnect/overlay toggle must never replay messages already present at authorization.

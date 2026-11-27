@@ -5,6 +5,8 @@ namespace App\Support\Chat;
 use App\Models\SessionTokenModel;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Log;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
 /**
  * Mirrors only a decision that ChatService has already authorized in SQL.
@@ -14,6 +16,19 @@ use Illuminate\Support\Carbon;
 final class ChatAuthorizationProjector
 {
     public function __construct(private readonly ChatFirebase $firebase, private readonly ChatService $chat) {}
+
+    /** Legacy joins and SQL history also work before a Firebase session is issued. */
+    public function projectJoinedRoom(Request $request, object $room): void
+    {
+        try {
+            $this->projectRoom($request, $room);
+        } catch (HttpExceptionInterface $error) {
+            if ($error->getStatusCode() !== 401) { throw $error; }
+        } catch (\Throwable $error) {
+            // The client can retry projection through the Firebase lease endpoint.
+            Log::warning('Firebase chat join projection deferred', ['room_id' => (int) $room->id, 'exception' => $error::class]);
+        }
+    }
 
     public function projectRoom(Request $request, object $room): ?int
     {

@@ -25,7 +25,7 @@ final class ChatFirebaseAccountEvents
         if ($userIds === []) { return; }
 
         $id = str_pad((string) $outbox->id, 20, '0', STR_PAD_LEFT);
-        $unreadEvent = in_array($outbox->kind, ['feed_created', 'feed_deleted', 'read'], true)
+        $unreadEvent = in_array($outbox->kind, ['feed_created', 'feed_deleted', 'read', 'identity'], true)
             || ($outbox->kind === 'badge_sync' && (int) $outbox->room_id === 0);
         $event = ['revision' => (string) $outbox->id,
             'kind' => $unreadEvent ? 'unread_invalidated' : 'room_state_invalidated',

@@ -22,6 +22,7 @@ return [
     'watch_member_limit' => 5,
     'socket_protocol_enabled' => env('CHAT_SOCKET_PROTOCOL_ENABLED', true),
     'websocket_url' => env('CHAT_WEBSOCKET_URL', ''),
+    'reverb_watch_only' => env('CHAT_REVERB_WATCH_ONLY', false),
     'firebase' => [
         // Deliberately disabled until supported clients and the authorization
         // projections have passed the phased rollout checks.

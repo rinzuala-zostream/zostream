@@ -38,12 +38,13 @@
     },
     "user_messages/{firebaseUid}/{roomId}/{messageId}": {
       "owner": "trusted backend only; per-user live feed filtered by current SQL block and room authorization policy",
-      "fields": ["id", "room_id", "message_type", "sender_uid", "sender_name", "body", "spoiler", "reply_to", "client_op_id", "created_at", "revision", "deleted", "deleted_at", "suggestion", "invitation", "watch_invite", "moment", "pinned", "cursor"],
+      "fields": ["id", "room_id", "message_type", "sender_uid", "sender_id", "sender_name", "sender_is_admin", "body", "spoiler", "reply_to", "client_op_id", "created_at", "created_at_iso", "revision", "deleted", "deleted_at", "suggestion", "invitation", "watch_invite", "moment", "pinned", "cursor"],
       "purpose": "recently authorized per-user realtime cache without exposing messages from users blocked by the recipient; retains at most 100 messages per room and 7 days, with SQL reconciliation for older history"
     },
     "user_sync_events/{firebaseUid}/{roomId}/{eventId}": {
       "owner": "trusted backend only; per-user event stream after SQL authorization and block filtering",
       "fields": ["cursor", "kind", "message_id", "revision", "server_at"],
+      "optional_fields": ["unread_delta", "read_state", "overlay_live"],
       "retention": "at most 500 events per user and room and 7 days; SQL provides block-filtered reconciliation when a cursor expires"
     },
     "user_typing/{firebaseUid}/{roomId}/{typistFirebaseUid}": {

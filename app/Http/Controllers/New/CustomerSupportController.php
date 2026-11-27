@@ -332,15 +332,14 @@ class CustomerSupportController extends Controller
             $schema = \App\Support\Chat\ChatDatabase::schema();
             if (! config('chat.enabled') || ! $schema->hasTable('chat_messages') || ! $schema->hasTable('chat_outbox')) { return; }
             $connection = \App\Support\Chat\ChatDatabase::connection();
-            $connection->table('chat_outbox')->insert([
-                'room_id' => 0, 'kind' => 'identity', 'recipient_user_id' => $userId,
-                'created_at' => now(), 'updated_at' => now(),
-            ]);
+            $chat = app(\App\Support\Chat\ChatService::class);
+            $request = Request::create('/');
+            $chat->outbox($request, 0, 'identity', null, null, $userId);
             $roomIds = $connection->table('chat_messages')->where('user_id', $userId)
                 ->distinct()->pluck('room_id')->map(fn ($id) => (int) $id)->all();
             foreach ($roomIds as $roomId) {
-                app(\App\Support\Chat\ChatService::class)->invalidate($roomId);
-                app(\App\Support\Chat\ChatService::class)->outbox(\Illuminate\Http\Request::create('/'), $roomId, 'sync', null, null);
+                $chat->invalidate($roomId);
+                $chat->outbox($request, $roomId, 'sync', null, null);
             }
         } catch (\Throwable $e) {
             Log::warning('Chat identity refresh could not be queued', ['user_id' => $userId, 'exception' => $e::class]);

@@ -77,6 +77,8 @@ Use SQL `event_cursor` as the committed account outbox watermark. Register one a
 
 Rules permit only the authenticated HMAC UID's own account event path when the separate session `account_events_access` projection, account session, and lease are valid. The client gate remains false by default. Room content listeners still require the independent room authorization projection.
 
+Admin identity changes send a targeted `unread_invalidated` event. The unread snapshot includes the account's current `is_admin` value.
+
 ## Block filtering and data visibility
 
 Rules deny room-wide message-list reads because RTDB rules cannot filter a list by each recipient's block list. Trusted delivery instead writes only to `user_messages/{firebaseUid}/{roomId}` after current SQL session, membership/playback, ban, invitation/subscription and block checks. A new block atomically disables that account's RTDB reads and clears its per-user feed/event branches; the next authorized room join can restore the session gate, while future fan-out continues to omit senders the recipient blocked. SQL history and sync endpoints apply the same server-side block filter. Client-side filtering remains useful for already-downloaded local cache, but it is not the access control.
@@ -158,7 +160,7 @@ Platform implementations are Android Mobile (`ZoStreamNew`), iOS Mobile (`Zo Str
 
 ### Android Mobile and iOS Mobile staged integration checklist
 
-This subsection applies only after backend readiness approval. It does not authorize a client code change or production Firebase gate change.
+Android and iOS opt into Firebase when join and unread responses advertise `firebase_realtime: true`. The join response includes a `sync_cursor` for the first catch-up. Older servers and builds continue to use the existing Reverb chat transport during rollout.
 
 | Concern | Android Mobile (`ZoStreamNew`) | iOS Mobile (`Zo Stream apple thar`) |
 |---|---|---|
@@ -166,13 +168,13 @@ This subsection applies only after backend readiness approval. It does not autho
 | Initial Firebase sign-in | `POST /api/v4/chat/firebase/token`; Firebase Android Auth `signInWithCustomToken` only when no Firebase user/session token is available | Same endpoint; Firebase iOS Auth `signIn(withCustomToken:)` |
 | Lease and account listener | Attach one account listener while foregrounded. `POST /api/v4/chat/firebase/lease` accepts `{}` for account-only renewal or `{active_room_id}` to renew account and room together; use the server-returned deadline, no token mint | Same endpoint and lifecycle |
 | Local store upgrade | Add versioned account/room message revision, event cursor, read position, pin/reaction state, and durable send queue to existing database/store; migrate cached rows as revision 1 | Add equivalent fields/tables to existing local store migration; preserve current message UI models and cache namespace |
-| Open room | Render local rows immediately; on first empty cache request `messages?initial=true&latest=true&limit=30`; listen to per-user feed/events (bounded query), then call sync from returned `sync_cursor` | Same ordering and limits; attach listeners after authorization lease success |
+| Open room | Keep local/history rendering and attach bounded per-user message, event and typing listeners after lease success. Match each live event to its RTDB message by ID and cursor. Use SQL sync for first catch-up, reconnect, missing records and viewer-specific reply quotes. | Same ordering and limits |
 | Reconnect | Renew once on foreground if deadline reached; attach bounded listeners; call `/sync` from saved cursor; avoid reloading latest history page | Same |
 | Offline send | Persist exact request UUID and payload before existing Laravel send API; retry same UUID; only show as accepted after canonical SQL response, keep pending/error state per existing UX | Same; preserve current compose/retry UX |
 | Room switch/background | Detach both RTDB listeners; call existing SQL leave/join; never keep listeners on old room; foreground revalidates lease | Same |
 | Watch Together | Keep existing playback/control channel, host authority, playback reconciliation, and Reverb subscription unchanged; Firebase chat listener is independent | Same |
 
-Use `limitToLast(30)` on `user_messages/{uid}/{room}` only for the first empty-cache history/feed bootstrap, and `limitToLast(500)` on sync events only when no local cursor exists. On reconnect, resume events from the saved cursor using `startAt(savedCursor + 1)` and bounded `limitToFirst(100)`; do not download the latest 30 message rows or latest 500 events again. Keep listener registrations per account+room and remove them on leave/logout. During listener/history overlap, commit by `(account,room,SQL message id)` and max revision in the local transaction. This keeps UI behavior driven by existing local models while backend/client parity work is completed.
+The mobile clients serve loaded history from their local cache and save newly loaded SQL pages as the viewer paginates. App launch restores unread badges and prefetches unread for rooms the viewer has visited. A room with neither cached history nor a read watermark gets its first paginated request on open. RTDB room listeners start strictly after the room cursor and cap live message snapshots at 30 and events at 100. Deploy the `cursor` message index in the RTDB Rules before releasing these clients. Initial and reconnect recovery use the SQL cursor. The overlay only shows new, live-eligible events that arrive after the subscription begins.
 
 ## Security Rules and rollout
 
@@ -180,10 +182,11 @@ The combined rules preserve existing QR/configuration/payment/release paths. The
 
 ### Backend deployment and rollback
 
-1. Back up the configured chat database and provision the Firebase Admin service account/database URL plus a stable `CHAT_FIREBASE_UID_KEY` in the secret store. Keep both Firebase gates false.
-2. Deploy the backend code and run `php artisan chat:migrate --force` against the configured chat database. Confirm the cursor/revision/recipient tables and columns before starting workers.
-3. Start the existing `chat:deliver` worker and scheduled `chat:prune` command. With `CHAT_FIREBASE_ENABLED=false`, the Firebase lane does no RTDB work; SQL/Reverb and existing FCM continue.
-4. Keep production rules unchanged. Any staging authorization/fan-out trial requires separately provisioned staging credentials and explicit approval; this repository phase does not approve enabling either gate.
+1. Provision the Firebase Admin service account/database URL and a stable `CHAT_FIREBASE_UID_KEY` in the secret store. Keep both Firebase gates false. Existing chat history stays in SQL and requires no backup or import for this cutover.
+2. For the first deployment, run `php artisan chat:migrate --force` against the configured chat database with `CHAT_FIREBASE_ENABLED=false`. This skips Firebase delivery for the pre-enable backlog while keeping SQL history and its cursors. Messages accepted while Firebase is disabled remain available through SQL history.
+3. Start the existing `chat:deliver` worker and scheduled `chat:prune` command. A worker running `--lane=all` includes Firebase. If lanes are supervised separately, run `chat:deliver --lane=firebase` alongside the realtime, push, and analytics workers.
+4. Enable the Firebase gates in staging to verify SQL acceptance, RTDB delivery, and client parity while legacy Reverb chat is still available.
+5. Once all supported clients use RTDB for chat, set `CHAT_REVERB_WATCH_ONLY=true` and restart workers with refreshed configuration. This mode requires both Firebase gates. Ordinary chat and unread responses advertise empty Reverb fields. Active Watch Together rooms continue to advertise and authorize a socket for playback control and status. Set `CHAT_REVERB_WATCH_ONLY=false` and refresh configuration to restore legacy chat broadcasts for new events. Clients can recover missed messages through SQL history or sync.
 
 To roll back while both gates remained false, stop the new code/workers and revert the code release. The chat migration runner has no dedicated rollback command; use Laravel's migration rollback against the chat connection and path (for example `php artisan migrate:rollback --database=<chat-connection> --path=database/migrations/chat --step=1 --force`) only after checking that this is the latest migration batch. If any Firebase records have been published, do not drop recipient indices/cursors until those records are pruned or a recovery plan is in place. Do not roll back this migration after enabling clients or publishing data without a reviewed data-preservation plan.
 
@@ -191,4 +194,4 @@ Useful API errors include HTTP 401 (Zo Stream/session invalid), 403 (platform or
 
 ## Current rollout state
 
-Token issuance, SQL authorization projection, trusted outbox delivery, bounded per-user fan-out, cursor recovery, and cleanup code are checked in. Neither Firebase feature gate is enabled by default, no client repository has been modified, no production Firebase settings/data/rules have been changed, and the existing SQL/Reverb clients remain authoritative. Firebase usage and production policy parity are not yet measured, so this contract describes the backend wire contract for review and staged client work, not an approved production cutover.
+The backend and Android/iOS transports are implemented. Both Firebase gates and Watch Together-only Reverb mode default to disabled. Production Firebase settings, data, and rules have not changed. Staging with real mobile accounts is still required to validate authorization, mobile behavior and production load before switching off legacy chat broadcasts.

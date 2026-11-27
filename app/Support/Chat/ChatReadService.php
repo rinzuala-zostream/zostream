@@ -23,6 +23,12 @@ final class ChatReadService
     public function authorizeChannel(Request $r, string $channel): void
     {
         $uid = (string) $r->input('auth_user_id');
+        if (ChatChannels::watchOnly()) {
+            abort_unless(preg_match('/^private-chat\.([1-9][0-9]*)$/', $channel, $match), 403,
+                'Reverb is only available for Watch Together.');
+            ChatChannels::assertWatchRoom($this->chat->room($r, (int) $match[1]));
+            return;
+        }
         if ($channel === self::userChannel($uid)) { return; }
         if (preg_match('/^private-chat\.([1-9][0-9]*)$/', $channel, $match)) { $this->chat->room($r, (int) $match[1]); return; }
 
@@ -145,13 +151,14 @@ final class ChatReadService
         // polling when no badge socket is advertised. Room/message sockets use
         // their own responses and remain live. Never return auth failures here:
         // older clients can turn those into a reconnect/reauthorization loop.
-        $realtime = (bool) config('chat.unread_realtime_enabled', true);
+        $realtime = config('chat.unread_realtime_enabled', true) && ! ChatChannels::watchOnly();
         return ['rooms' => $result, 'total_unread' => array_sum(array_column($result, 'unread_count')),
             'auth_batch' => true,
             'event_cursor' => $cursor, 'user_id' => $uid, 'blocked_user_ids' => $blocked,
             'server_time_ms' => now()->getTimestampMs(),
             'channels' => $realtime ? $channels : [],
-            'websocket_url' => $realtime ? config('chat.websocket_url') : ''];
+            'websocket_url' => $realtime ? config('chat.websocket_url') : '',
+            'firebase_realtime' => ChatChannels::firebaseAvailable()];
     }
 
     public function readState(string $uid, int $room): array

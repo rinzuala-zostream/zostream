@@ -12,6 +12,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import java.io.Closeable
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
@@ -20,6 +21,45 @@ import java.util.concurrent.atomic.AtomicReference
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28])
 class ChatRoomSwitchTest {
+    @Test fun firebaseDeliversLiveMessagesWithoutAnotherSqlRequestAndDetaches() {
+        val observers = mutableMapOf<String, (JSONObject) -> Unit>()
+        val source = object : ChatFirebaseSource {
+            override fun authenticate(owner: String, loadToken: ((JSONObject?) -> Unit) -> Unit, ready: (String?) -> Unit) = ready("uid")
+            override fun invalidate(owner: String, uid: String) = Unit
+            override fun observe(path: String, limit: Int?, afterCursor: Long?, onValue: (JSONObject) -> Unit, onError: () -> Unit): Closeable {
+                if (path.contains("user_messages") || path.contains("user_sync_events")) assertEquals(4L, afterCursor)
+                observers[path] = onValue
+                onValue(if (path == ".info/connected") JSONObject().put("value", true) else JSONObject())
+                return Closeable { observers.remove(path) }
+            }
+        }
+        var syncs = 0
+        val messages = mutableListOf<Pair<JSONObject, Boolean>>()
+        val stream = ChatFirebaseStream(source, "owner", "17", 4, { true }, { path, _, callback ->
+            val response = if (path == "firebase/lease") JSONObject().put("room_projection_refreshed", true).put("refresh_after_seconds", 60)
+            else {
+                assertEquals("rooms/17/sync?cursor=4", path)
+                syncs++
+                JSONObject().put("next_cursor", 4)
+            }
+            callback(response, null)
+        }, {}, { _, _ -> }, { item, overlay -> messages.add(item to overlay) }, {})
+        stream.start()
+        val looper = shadowOf(Looper.getMainLooper())
+        looper.idleFor(java.time.Duration.ofSeconds(1))
+        val record = JSONObject().put("id", "501").put("room_id", "17").put("sender_id", "bob").put("sender_name", "#Bob")
+            .put("client_op_id", "request").put("body", "Live").put("created_at_iso", "2026-11-27T00:00:00Z").put("cursor", 5)
+        observers.getValue("chat_v1/user_messages/uid/17")(JSONObject().put("00000000000000000501", record))
+        val event = JSONObject().put("cursor", 5).put("kind", "created").put("message_id", "501").put("overlay_live", true)
+        observers.getValue("chat_v1/user_sync_events/uid/17")(JSONObject().put("00000000000000000005", event))
+        looper.idleFor(java.time.Duration.ofSeconds(1))
+        assertEquals(1, syncs)
+        assertEquals("bob", messages.single().first.getString("user_id"))
+        assertTrue(messages.single().second)
+        stream.close()
+        assertTrue(observers.isEmpty())
+    }
+
     @Test fun visibleTranscriptPublishesHiddenStateOnSwitchAndCloseWithoutStoppingTheSocketEarly() {
         val reports = java.util.Collections.synchronizedList(mutableListOf<Pair<String, JSONObject>>())
         val http = OkHttpClient.Builder().addInterceptor { chain ->
@@ -259,7 +299,7 @@ class ChatRoomSwitchTest {
             assertTrue(socket.events.any { it.optString("event") == "chat:presence" })
             changes.clear()
             socket.emit("private-chat.global")
-            val message = JSONObject().put("id", "9").put("room_id", "global").put("body", "Live")
+            val message = JSONObject().put("id", "9").put("room_id", "global").put("body", "Live").put("is_admin", false)
             fun publish(version: String, overlay: Boolean = false) = socket.listener.onMessage(socket, JSONObject().put("event", "chat.message")
                 .put("channel", "private-chat-feed.global.ticket").put("data", JSONObject().put("room_id", "global")
                     .put("event_id", version).put("kind", "created").put("overlay_live", overlay).put("message", message)).toString())

@@ -90,6 +90,8 @@ public struct ChatRoom: Decodable, Sendable {
     public let room_name: String?
     public let content_type: String?
     public let watch_session: ChatWatchInvite?
+    public var firebase_realtime: Bool?
+    public var sync_cursor: UInt64?
 }
 public struct ChatFailure: LocalizedError {
     public let message: String
@@ -127,6 +129,10 @@ public final class ZoChatClient {
     private var lastTranscriptReconcile = ProcessInfo.processInfo.systemUptime
     private var hasSubscribedRoom = false
     public private(set) var isConnected = false
+    public var firebaseSource: ChatFirebaseSource?
+    public private(set) var usesFirebaseRealtime = false
+    private var firebaseStream: ChatFirebaseStream?
+    private var firebaseCursor: UInt64 = 0
     public var onBadgeEvent: (([String: Any]) -> Void)?
     public var onUnreadRoomChange: ((_ kind: String, _ roomID: String, _ messageID: String?) -> Void)?
     public var onMessage: ((ChatMessage) -> Void)?
@@ -158,6 +164,7 @@ public final class ZoChatClient {
     }
 
     private func revokeRoom() async {
+        stopFirebase()
         let revision = roomRevision
         if let channel { try? await sendEvent("pusher:unsubscribe", data: ["channel": channel]) }
         guard !closed, roomRevision == revision else { return }
@@ -310,6 +317,9 @@ public final class ZoChatClient {
     public func setRoomVisible(_ visible: Bool) {
         let changed = roomVisible != visible
         roomVisible = visible
+        if usesFirebaseRealtime {
+            if visible { startFirebase() } else { stopFirebase() }
+        }
         if !visible { clearFeed() }
         else if onMessage != nil, feedChannel == nil, isConnected { subscribe() }
         if changed, let room, unreadChannels == nil { reportVisibility(room.room_id, visible: visible) }
@@ -322,6 +332,8 @@ public final class ZoChatClient {
         }
         owner = identity
         finishVisibility()
+        stopFirebase()
+        usesFirebaseRealtime = false
         roomRevision += 1; let revision = roomRevision
         clearFeed(); controlToken = nil; controlChannel = nil; liveVersions.removeAll(); liveKinds.removeAll(); pendingLive.removeAll()
         liveRecoveryTask?.cancel(); liveRecoveryTask = nil
@@ -346,16 +358,31 @@ public final class ZoChatClient {
         guard !closed, revision == roomRevision, !Task.isCancelled else { throw CancellationError() }
         room = info
         if let roomVisible { reportVisibility(info.room_id, visible: roomVisible) }
-        if socket != nil, socketURL == info.websocket_url { subscribe() }
+        usesFirebaseRealtime = firebaseSource != nil && info.firebase_realtime == true
+        firebaseCursor = info.sync_cursor ?? 0
+        if usesFirebaseRealtime { startFirebase() }
+        else if socket != nil, socketURL == info.websocket_url { subscribe() }
         else { connect() }
         startReconciliation()
         return info
     }
 
-    public func configureUnread(channels: [String], websocketURL: String, batchAuthorization: Bool = false) {
+    public func configureUnread(channels: [String], websocketURL: String, batchAuthorization: Bool = false,
+                                firebaseRealtime: Bool = false, eventCursor: UInt64 = 0) {
         self.batchAuthorization = batchAuthorization
         guard !closed, let identity = credentials()?.ownerKey, owner == nil || owner == identity else { return }
         owner = identity
+        if firebaseRealtime && firebaseSource != nil {
+            usesFirebaseRealtime = true
+            syncTask?.cancel(); syncTask = nil
+            unreadChannels = []
+            firebaseCursor = eventCursor
+            firebaseStream?.updateAccountCursor(eventCursor)
+            startFirebase()
+            return
+        }
+        if usesFirebaseRealtime { stopFirebase() }
+        usesFirebaseRealtime = false
         let wanted = Set(channels)
         if !wanted.subtracting(unreadChannels ?? []).isEmpty { isConnected = false }
         let removed = (unreadChannels ?? []).subtracting(wanted)
@@ -367,6 +394,58 @@ public final class ZoChatClient {
         Task { for channel in removedPhysical { try? await sendEvent("pusher:unsubscribe", data: ["channel": channel]) } }
         if socket != nil && socketURL == websocketURL { subscribe() } else { connect() }
         startReconciliation()
+    }
+
+    private func startFirebase() {
+        guard firebaseStream == nil, usesFirebaseRealtime, !closed, let firebaseSource, let identity = owner else { return }
+        let roomID = unreadChannels == nil ? room?.room_id : nil
+        if unreadChannels == nil && (roomID == nil || roomVisible == false) { return }
+        if socket != nil {
+            generation += 1
+            receiveTask?.cancel(); retryTask?.cancel()
+            socket?.cancel(with: .goingAway, reason: nil)
+            socket = nil; socketURL = nil; socketId = nil; controlToken = nil
+        }
+        let revision = roomRevision
+        let stream = ChatFirebaseStream(source: firebaseSource, owner: identity, roomID: roomID, cursor: firebaseCursor, active: { [weak self] in
+            guard let self else { return false }
+            return !self.closed && self.credentials()?.ownerKey == identity && self.roomRevision == revision
+        }, token: { [weak self] in
+            guard let self else { throw CancellationError() }
+            return try await self.request("firebase/token", body: [:], as: ChatFirebaseToken.self)
+        }, lease: { [weak self] roomID in
+            guard let self else { throw CancellationError() }
+            let body = roomID.map { ["active_room_id": $0] } ?? [:]
+            return try await self.request("firebase/lease", body: body, as: ChatFirebaseLease.self)
+        }, sync: { [weak self] id, cursor in
+            guard let self else { throw CancellationError() }
+            return try await self.request("rooms/\(id)/sync?cursor=\(cursor)", as: ChatFirebaseSync.self)
+        }, connection: { [weak self] live in
+            guard let self, self.isConnected != live else { return }
+            self.isConnected = live
+            self.onConnection?(live)
+        }, changed: { [weak self] kind, id in
+            if kind == "access_denied" {
+                Task { [weak self] in
+                    if let self, self.roomRevision == revision { await self.revokeRoom() }
+                }
+            }
+            else if kind == "room_state_invalidated" { self?.onBadgeEvent?(["kind": "sync"]) }
+            else { self?.onChanged?(kind, id) }
+        }, message: { [weak self] message, overlay in
+            self?.onMessage?(message)
+            if overlay && !message.deleted { self?.onOverlayMessage?(message) }
+        }, typing: { [weak self] users in self?.onTyping?(users) })
+        firebaseStream = stream
+        stream.start()
+    }
+
+    private func stopFirebase() {
+        guard let firebaseStream else { return }
+        firebaseCursor = firebaseStream.cursor
+        firebaseStream.close()
+        self.firebaseStream = nil
+        isConnected = false
     }
 
     private func startReconciliation() {
@@ -503,8 +582,10 @@ public final class ZoChatClient {
         }
     }
 
-    public func history(roomId: String, before: String? = nil, after: String? = nil, initial: Bool = false) async throws -> ChatPage {
-        let query = initial ? "?initial=1" : (before.map { "?before=\($0)" } ?? after.map { "?after=\($0)" } ?? "")
+    public func history(roomId: String, before: String? = nil, after: String? = nil, initial: Bool = false,
+                        latest: Bool = false) async throws -> ChatPage {
+        let query = initial ? (latest ? "?initial=1&latest=1" : "?initial=1")
+            : (before.map { "?before=\($0)" } ?? after.map { "?after=\($0)" } ?? "")
         return try await request("rooms/\(roomId)/messages\(query)", as: ChatPage.self)
     }
 
@@ -532,6 +613,7 @@ public final class ZoChatClient {
     }
 
     private func connect() {
+        guard !usesFirebaseRealtime else { return }
         guard !closed, let room, let url = URL(string: room.websocket_url), url.scheme == "wss" else { onConnection?(false); return }
         generation += 1; let current = generation
         hasSubscribedRoom = false
@@ -695,6 +777,7 @@ public final class ZoChatClient {
     public func close() {
         guard !closed else { return }
         finishVisibility()
+        stopFirebase()
         isConnected = false
         closed = true; generation += 1; roomRevision += 1
         subscriptionTask?.cancel(); channel = nil; socketId = nil; room = nil

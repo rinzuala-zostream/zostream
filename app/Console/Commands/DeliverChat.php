@@ -2,16 +2,18 @@
 
 namespace App\Console\Commands;
 
-use App\Support\Chat\ChatDatabase;
 use App\Support\Analytics\AnalyticsCollectionSetting;
+use App\Support\Chat\ChatChannels;
+use App\Support\Chat\ChatDatabase;
 use App\Support\Chat\ChatService;
+use App\Support\Chat\PrivateWatchService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 
 final class DeliverChat extends Command
 {
-    protected $signature = 'chat:deliver {--once} {--lane=all : all, realtime, push, or analytics}';
+    protected $signature = 'chat:deliver {--once} {--lane=all : all, realtime, push, analytics, or firebase}';
 
     protected $description = 'Deliver durable chat change notifications and server analytics';
 
@@ -62,6 +64,8 @@ final class DeliverChat extends Command
                         app(\App\Support\Chat\ChatMessageNotifications::class)->deliver($row);
                     } elseif ($row->kind === 'interaction_push') {
                         app(\App\Support\Chat\ChatInteractionNotifications::class)->deliver($row);
+                    } elseif (ChatChannels::watchOnly()) {
+                        $this->publishWatch($row);
                     } elseif (in_array($row->kind, ['feed_created', 'feed_deleted'], true)) {
                         app(\App\Support\Chat\ChatLiveDelivery::class)->deliver($row, $renew);
                     } elseif ($row->kind === 'typing') {
@@ -122,7 +126,7 @@ final class DeliverChat extends Command
     private function deliverFirebaseOutbox(): void
     {
         if (! config('chat.firebase.enabled')) { return; }
-        $kinds = ['feed_created', 'feed_deleted', 'sync', 'reactions', 'read', 'room_invite_status', 'badge_sync', 'ended'];
+        $kinds = ['feed_created', 'feed_deleted', 'sync', 'reactions', 'read', 'room_invite_status', 'badge_sync', 'ended', 'identity'];
         $db = ChatDatabase::connection();
         $candidates = $db->table('chat_outbox')->whereNull('firebase_delivered_at')->whereNotNull('firebase_cursor')
             ->whereIn('kind', $kinds)
@@ -161,20 +165,29 @@ final class DeliverChat extends Command
                     'firebase_available_at' => now()->addSeconds(min(60, 2 ** min(6, $row->firebase_attempts + 1)) + random_int(0, 2)),
                 ]);
                 $this->warn('Firebase chat delivery pending: '.$row->id.' ('.class_basename($error).')');
-                // Per-room order is important; retry before this room advances.
-                break;
+                // The earlier-pending check keeps this room ordered. Other
+                // rooms can still publish in this pass.
             }
         }
+    }
+
+    private function publishWatch(object $row): void
+    {
+        if (! in_array($row->kind, ['watch_control', 'watch_status', 'ended'], true)) { return; }
+        if (! config('chat.enabled')) { throw new \RuntimeException('Chat is disabled'); }
+
+        $watch = app(PrivateWatchService::class)->snapshot((int) $row->room_id);
+        if ($watch === null || (array_key_exists('latest_session_id', $watch) && $watch['latest_session_id'] === null)) { return; }
+
+        $this->postReverb('chat.changed', ['private-chat.'.$row->room_id], [
+            'kind' => $row->kind, 'message_id' => null, 'watch' => $watch + ['event_id' => (string) $row->id],
+        ]);
     }
 
     private function publish(object $row, bool $typingFeed = false): void
     {
         if (! config('chat.enabled')) {
             throw new \RuntimeException('Chat is disabled');
-        }
-        $c = config('broadcasting.connections.reverb');
-        if (empty($c['app_id']) || empty($c['key']) || empty($c['secret'])) {
-            throw new \RuntimeException('Missing Reverb settings');
         }
         $recipient = $row->recipient_user_id ?? null;
         $event = ['kind' => $row->kind, 'message_id' => $row->message_id ? (string) $row->message_id : null];
@@ -189,7 +202,7 @@ final class DeliverChat extends Command
             $channel = \App\Support\Chat\ChatReadService::userChannel($recipient);
         } else {
             $channel = 'private-chat.'.$row->room_id;
-            $watch = $row->kind === 'typing' ? null : app(\App\Support\Chat\PrivateWatchService::class)->snapshot((int) $row->room_id);
+            $watch = $row->kind === 'typing' ? null : app(PrivateWatchService::class)->snapshot((int) $row->room_id);
             if ($watch !== null) { $event['watch'] = $watch + ['event_id' => (string) $row->id]; }
             if (in_array($row->kind, ['created', 'deleted', 'ended'], true)) {
                 $message = $row->message_id ? ChatDatabase::connection()->table('chat_messages')->find($row->message_id) : null;
@@ -210,7 +223,18 @@ final class DeliverChat extends Command
                 $channels[] = \App\Support\Chat\ChatReadService::contextChannel($room->type, $room->content_id);
             }
         }
-        $body = json_encode(['name' => $recipient !== null ? 'chat.badge' : 'chat.changed', 'channels' => \App\Support\Chat\ChatChannels::publishing($channels),
+        // Receivers can fetch history as soon as Reverb accepts the event.
+        if ($row->kind !== 'typing') { app(ChatService::class)->invalidate($row->room_id); }
+        $this->postReverb($recipient !== null ? 'chat.badge' : 'chat.changed', $channels, $event);
+    }
+
+    private function postReverb(string $name, array $channels, array $event): void
+    {
+        $c = config('broadcasting.connections.reverb');
+        if (empty($c['app_id']) || empty($c['key']) || empty($c['secret'])) {
+            throw new \RuntimeException('Missing Reverb settings');
+        }
+        $body = json_encode(['name' => $name, 'channels' => ChatChannels::publishing($channels),
             'data' => json_encode($event)], JSON_THROW_ON_ERROR);
         $path = '/apps/'.rawurlencode($c['app_id']).'/events';
         $query = ['auth_key' => $c['key'], 'auth_timestamp' => (string) time(), 'auth_version' => '1.0', 'body_md5' => md5($body)];
@@ -218,9 +242,6 @@ final class DeliverChat extends Command
         $encoded = http_build_query($query, '', '&', PHP_QUERY_RFC3986);
         $query['auth_signature'] = hash_hmac('sha256', "POST\n".$path."\n".$encoded, $c['secret']);
         $host = $c['options']['scheme'].'://'.$c['options']['host'].':'.$c['options']['port'];
-        // Receivers can fetch history as soon as Reverb accepts the event,
-        // before this publish request returns to the worker.
-        if ($row->kind !== 'typing') { app(ChatService::class)->invalidate($row->room_id); }
         Http::connectTimeout(2)->timeout(5)->withBody($body, 'application/json')
             ->post($host.$path.'?'.http_build_query($query, '', '&', PHP_QUERY_RFC3986))->throw();
     }

@@ -17,7 +17,55 @@ private final class ChatURLProtocol: URLProtocol {
     override func stopLoading() {}
 }
 
+@MainActor
+private final class FirebaseFixture: ChatFirebaseSource {
+    var observers: [String: @MainActor @Sendable ([String: Any]) -> Void] = [:]
+
+    func authenticate(owner: String, loadToken: @escaping @MainActor @Sendable () async throws -> ChatFirebaseToken) async throws -> String { "uid" }
+    func invalidate(owner: String, uid: String) {}
+    func observe(path: String, limit: UInt?, afterCursor: UInt64?, onValue: @escaping @MainActor @Sendable ([String: Any]) -> Void,
+                 onError: @escaping @MainActor @Sendable () -> Void) -> @MainActor @Sendable () -> Void {
+        if path.contains("user_messages") || path.contains("user_sync_events") { XCTAssertEqual(afterCursor, 4) }
+        observers[path] = onValue
+        onValue(path == ".info/connected" ? ["value": true] : [:])
+        return { [weak self] in self?.observers.removeValue(forKey: path) }
+    }
+}
+
 final class ChatClientTests: XCTestCase {
+    @MainActor
+    func testFirebaseDeliversLiveMessageWithoutAnotherSQLRequestAndDetaches() async {
+        let fixture = FirebaseFixture()
+        let catchUp = expectation(description: "SQL catch-up")
+        let delivered = expectation(description: "RTDB message")
+        var syncs = 0
+        let stream = ChatFirebaseStream(source: fixture, owner: "owner", roomID: "17", cursor: 4,
+            active: { true }, token: { throw CancellationError() },
+            lease: { _ in ChatFirebaseLease(room_projection_refreshed: true, refresh_after_seconds: 60) },
+            sync: { _, cursor in
+                XCTAssertEqual(cursor, 4)
+                syncs += 1
+                catchUp.fulfill()
+                return ChatFirebaseSync(cursor_expired: false, next_cursor: 4, has_more: false, events: [])
+            }, connection: { _ in }, changed: { _, _ in }, message: { item, overlay in
+                XCTAssertEqual(item.user_id, "bob")
+                XCTAssertTrue(overlay)
+                delivered.fulfill()
+            }, typing: { _ in })
+        stream.start()
+        await fulfillment(of: [catchUp], timeout: 3)
+        fixture.observers["chat_v1/user_messages/uid/17"]?(["00000000000000000501": [
+            "id": "501", "room_id": "17", "sender_id": "bob", "sender_name": "#Bob", "client_op_id": "request",
+            "body": "Live", "spoiler": false, "deleted": false, "created_at_iso": "2026-11-27T00:00:00Z", "cursor": 5
+        ]])
+        fixture.observers["chat_v1/user_sync_events/uid/17"]?(["00000000000000000005": [
+            "cursor": 5, "kind": "created", "message_id": "501", "overlay_live": true
+        ]])
+        await fulfillment(of: [delivered], timeout: 3)
+        XCTAssertEqual(syncs, 1)
+        stream.close()
+        XCTAssertTrue(fixture.observers.isEmpty)
+    }
     func testMovieSuggestionQueryAndCacheRoundTrip() throws {
         XCTAssertNil(ChatMovieSuggestion.query(in: "/av"))
         XCTAssertEqual(ChatMovieSuggestion.query(in: "/ava"), "ava")
@@ -60,6 +108,13 @@ final class ChatClientTests: XCTestCase {
         let page = try await client.history(roomId: "1", initial: true)
         XCTAssertEqual(page.first_unread_id, "9")
         XCTAssertEqual(page.initial_after, "8")
+        ChatURLProtocol.handle = { request in
+            XCTAssertEqual(request.url?.query, "initial=1&latest=1")
+            return (200, #"{"success":true,"data":{"messages":[],"has_more":true,"first_unread_id":"9","initial_after":null}}"#)
+        }
+        let firstPage = try await client.history(roomId: "1", initial: true, latest: true)
+        XCTAssertTrue(firstPage.has_more)
+        XCTAssertNil(firstPage.initial_after)
         let legacy = try JSONDecoder().decode(ChatPage.self, from: Data(#"{"messages":[],"has_more":false}"#.utf8))
         XCTAssertNil(legacy.first_unread_id)
         XCTAssertNil(legacy.initial_after)

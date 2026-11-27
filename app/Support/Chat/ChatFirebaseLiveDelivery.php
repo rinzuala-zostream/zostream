@@ -23,11 +23,11 @@ final class ChatFirebaseLiveDelivery
             $this->firebase->revokeRoomAuthorization($roomId);
             return;
         }
-        if (! in_array($outbox->kind, ['feed_created', 'feed_deleted', 'sync', 'reactions', 'read', 'room_invite_status', 'badge_sync'], true)) {
+        if (in_array($outbox->kind, ['badge_sync', 'identity'], true)) {
+            app(ChatFirebaseAccountEvents::class)->publish($outbox, $room);
             return;
         }
-        if ($outbox->kind === 'badge_sync') {
-            app(ChatFirebaseAccountEvents::class)->publish($outbox, $room);
+        if (! in_array($outbox->kind, ['feed_created', 'feed_deleted', 'sync', 'reactions', 'read', 'room_invite_status'], true)) {
             return;
         }
         if (! $room) { return; }
@@ -36,10 +36,11 @@ final class ChatFirebaseLiveDelivery
             : null;
         if (in_array($outbox->kind, ['feed_created', 'feed_deleted', 'reactions'], true) && ! $message) { return; }
         if ($message && Carbon::parse($message->created_at)->lt(now()->subDays(config('chat.retention_days')))) { return; }
-        // Account invalidations reach authenticated sessions that have no active
-        // room lease. They contain no room ID or private metadata; clients refresh
-        // the canonical SQL unread/discovery snapshots and enforce current policy.
-        app(ChatFirebaseAccountEvents::class)->publish($outbox, $room, $message);
+        // Pins and reactions affect the open room only. Account listeners
+        // refresh unread/discovery state for messages, reads and room changes.
+        if ($outbox->kind !== 'reactions' && ! ($outbox->kind === 'sync' && $outbox->message_id)) {
+            app(ChatFirebaseAccountEvents::class)->publish($outbox, $room, $message);
+        }
         if ($room->closed) { return; }
 
         $authorization = $this->firebase->roomAuthorizations($roomId);
@@ -103,6 +104,12 @@ final class ChatFirebaseLiveDelivery
         $event = ['cursor' => $cursor, 'kind' => $eventKind,
             'message_id' => $outbox->message_id ? (string) $outbox->message_id : null,
             'revision' => $revision, 'server_at' => $nowMs];
+        if ($eventKind === 'created' && $message) {
+            $event['overlay_live'] = Carbon::parse($message->created_at)->gte(now()->subSeconds(10));
+        }
+        if ($outbox->kind === 'read' && ($outbox->recipient_user_id ?? null) !== null) {
+            $event['read_state'] = app(ChatReadService::class)->readState((string) $outbox->recipient_user_id, $roomId);
+        }
         $readThrough = [];
         if ($message && in_array($outbox->kind, ['feed_created', 'feed_deleted'], true)) {
             foreach (array_chunk(array_keys($eligibleByUid), 500) as $ids) {
@@ -111,7 +118,10 @@ final class ChatFirebaseLiveDelivery
                 }
             }
         }
-        $record = $message ? $this->record($message, $roomId, $cursor) : null;
+        // Pin and reaction events invalidate the SQL view without copying old
+        // message bodies into the new Firebase namespace.
+        $record = $message && in_array($outbox->kind, ['feed_created', 'feed_deleted'], true)
+            ? $this->record($message, $roomId, $cursor, isset($outbox->sender_is_admin) ? (bool) $outbox->sender_is_admin : null) : null;
         $updates = [];
         foreach ($eligibleByUid as $userId => $firebaseUid) {
             if ($record !== null) {
@@ -177,13 +187,15 @@ final class ChatFirebaseLiveDelivery
         ]);
     }
 
-    private function record(object $message, int $roomId, int $cursor): array
+    private function record(object $message, int $roomId, int $cursor, ?bool $senderIsAdmin): array
     {
         $deleted = $message->deleted_at !== null;
-        $suggestion = $deleted ? null : json_decode($message->movie_suggestion ?? 'null', true);
-        $invitation = ! $deleted && ($message->invite_room_id ?? null) ? ['room_id' => (string) $message->invite_room_id] : null;
-        $watch = $deleted ? null : json_decode($message->watch_invite ?? 'null', true);
-        $moment = $deleted ? null : json_decode($message->moment ?? 'null', true);
+        $api = app(ChatService::class)->message($message);
+        $overrides = $senderIsAdmin === null ? [] : [$message->user_id => $senderIsAdmin];
+        $api = ChatDisplayNames::messages([$api], $overrides)[0];
+        $suggestion = $api['movie_suggestion'];
+        $invitation = $api['room_invite'];
+        $watch = $api['watch_invite'] === null ? null : app(PrivateWatchService::class)->hydrate([$api])[0]['watch_invite'];
         $type = $invitation !== null ? 'room_invitation' : ($watch !== null ? 'watch_invitation' : ($suggestion !== null ? 'movie_suggestion' : 'text'));
 
         return [
@@ -191,19 +203,22 @@ final class ChatFirebaseLiveDelivery
             'room_id' => (string) $roomId,
             'message_type' => $type,
             'sender_uid' => ChatFirebase::uid((string) $message->user_id),
-            'sender_name' => (string) $message->display_name,
+            'sender_id' => $api['user_id'],
+            'sender_name' => $api['display_name'],
+            'sender_is_admin' => $api['is_admin'],
             'body' => $deleted ? null : (string) $message->body,
             'spoiler' => (bool) $message->spoiler,
             'reply_to' => $deleted || ! $message->reply_to_id ? null : (string) $message->reply_to_id,
             'client_op_id' => (string) $message->request_id,
             'created_at' => Carbon::parse($message->created_at)->getTimestampMs(),
+            'created_at_iso' => $api['created_at'],
             'revision' => (int) ($message->revision ?? 1),
             'deleted' => $deleted,
             'deleted_at' => $deleted ? Carbon::parse($message->deleted_at)->getTimestampMs() : null,
             'suggestion' => $suggestion,
             'invitation' => $invitation,
             'watch_invite' => $watch,
-            'moment' => $moment,
+            'moment' => $api['moment'],
             'pinned' => ChatDatabase::connection()->table('chat_pins')->where('room_id', $roomId)->where('message_id', $message->id)->exists(),
             'cursor' => $cursor,
         ];

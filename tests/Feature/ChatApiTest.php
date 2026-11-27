@@ -1275,7 +1275,7 @@ class ChatApiTest extends TestCase
     {
         ChatDatabase::schema()->dropAllTables();
         $this->artisan('chat:migrate', ['--force' => true])->assertSuccessful();
-        $this->assertSame(19, ChatDatabase::connection()->table('migrations')->count());
+        $this->assertSame(20, ChatDatabase::connection()->table('migrations')->count());
         $this->assertFalse(Schema::hasTable('migrations'));
         $this->assertSame('chat_testing', DB::getDefaultConnection());
         $this->send($this->room())->assertCreated();
@@ -1296,6 +1296,30 @@ class ChatApiTest extends TestCase
         }
         $this->assertSame(0, ChatDatabase::connection()->table('chat_messages')->count());
         $this->assertSame(0, ChatDatabase::connection()->table('chat_outbox')->count());
+    }
+
+    public function test_firebase_outbox_starts_with_messages_accepted_after_enablement(): void
+    {
+        config(['chat.firebase.enabled' => false]);
+        $db = ChatDatabase::connection();
+        $room = $this->room();
+        $oldId = $this->send($room)->assertCreated()->json('data.id');
+        $this->assertNotNull($db->table('chat_outbox')->where('kind', 'feed_created')->where('message_id', $oldId)
+            ->value('firebase_delivered_at'));
+
+        // Simulate a legacy outbox row written by an older deployment.
+        $db->table('chat_outbox')->where('message_id', $oldId)->update(['firebase_delivered_at' => null]);
+        (require database_path('migrations/chat/2026_11_27_000002_skip_pre_firebase_chat_delivery.php'))->up();
+        $this->assertSame(0, $db->table('chat_outbox')->where('message_id', $oldId)->whereNull('firebase_delivered_at')->count());
+
+        config(['chat.firebase.enabled' => true]);
+        $this->travel(3)->seconds();
+        $this->postJson("/api/v4/chat/rooms/$room/messages", $this->identity(['body' => ' ', 'request_id' => (string) Str::uuid()]))
+            ->assertUnprocessable();
+        $newId = $this->send($room)->assertCreated()->json('data.id');
+        $this->assertSame([$newId], $db->table('chat_outbox')->where('kind', 'feed_created')->whereNull('firebase_delivered_at')
+            ->pluck('message_id')->map('strval')->all());
+        $this->assertSame(2, $db->table('chat_messages')->where('room_id', $room)->count());
     }
 
     public function test_expired_cursor_recovery_keeps_one_watermark_across_large_inventory_batches(): void
@@ -1823,7 +1847,7 @@ class ChatApiTest extends TestCase
             Http::assertSent(function ($request) use ($channel, $isAdmin) {
                 $body = json_decode($request->body(), true);
                 $badge = json_decode($body['data'], true)['badge'];
-                return $body['name'] === 'chat.badge' && $body['channels'] === [$channel]
+                return $body['name'] === 'chat.badge' && in_array($channel, $body['channels'], true)
                     && $badge['kind'] === 'identity' && $badge['is_admin'] === $isAdmin;
             });
         }
@@ -2865,6 +2889,55 @@ class ChatApiTest extends TestCase
         $this->artisan('chat:deliver', ['--once' => true])->assertSuccessful();
         Http::assertSent(fn ($request) => ($request->data()['name'] ?? null) === 'chat.changed'
             && json_decode($request->data()['data'] ?? '{}', true)['kind'] === 'watch_control');
+    }
+
+    public function test_watch_only_reverb_keeps_watch_events_and_disables_chat_subscriptions(): void
+    {
+        $room = $this->room();
+        $watchRoom = $this->privateWatchFixture();
+        config(['chat.reverb_watch_only' => true, 'chat.firebase.enabled' => true, 'chat.firebase.client_access_enabled' => true]);
+
+        $auth = $this->identity(['socket_id' => '42.99']);
+        $this->postJson("/api/v4/chat/rooms/$room/auth", $auth)->assertForbidden();
+        $this->postJson("/api/v4/chat/rooms/$watchRoom/auth", $auth)->assertForbidden();
+        $this->postJson('/api/v4/chat/unread/auth', $auth + ['channel' => \App\Support\Chat\ChatReadService::userChannel('alice')])
+            ->assertForbidden();
+        $this->getJson('/api/v4/chat/unread?'.http_build_query($this->identity()))->assertOk()
+            ->assertJsonPath('data.channels', [])->assertJsonPath('data.websocket_url', '')->assertJsonPath('data.firebase_realtime', true);
+        $this->postJson('/api/v4/chat/rooms/join', $this->identity(['type' => 'global']))->assertOk()
+            ->assertJsonPath('data.channel', '')->assertJsonPath('data.websocket_url', '')
+            ->assertJsonPath('data.firebase_realtime', true)->assertJsonPath('data.sync_cursor', 0);
+        $this->send($room)->assertCreated();
+        $this->travel(3)->seconds();
+        $session = $this->sendPrivateWatch($watchRoom)->assertCreated()->json('data.watch_invite.session_id');
+        $this->postJson("/api/v4/chat/rooms/$watchRoom/auth", $auth)->assertOk();
+        $this->postJson("/api/v4/chat/rooms/$watchRoom/watch-sessions/$session/position",
+            $this->identity(['position_ms' => 12000, 'paused' => true, 'control_sequence' => 12]))->assertOk();
+
+        Http::fake(['*' => Http::response('{}', 200)]);
+        $this->artisan('chat:deliver', ['--once' => true, '--lane' => 'realtime'])->assertSuccessful();
+        $kinds = [];
+        foreach (Http::recorded() as [$request]) {
+            $body = $request->data();
+            $event = json_decode($body['data'], true);
+            $kinds[] = $event['kind'];
+            $this->assertSame('chat.changed', $body['name']);
+            $this->assertContains($event['kind'], ['watch_control', 'watch_status']);
+            $this->assertSame($session, $event['watch']['session_id']);
+            $this->assertNull($event['message_id']);
+            $this->assertArrayNotHasKey('badge', $event);
+        }
+        $this->assertContains('watch_status', $kinds);
+        $this->assertContains('watch_control', $kinds);
+
+        DB::table('n_active_streams')->where('stream_token', 'play-a')->update(['status' => 'stopped']);
+        Http::fake(['*' => Http::response('{}', 200)]);
+        $this->artisan('chat:deliver', ['--once' => true, '--lane' => 'realtime'])->assertSuccessful();
+        Http::assertSent(function ($request) use ($session) {
+            $event = json_decode($request->data()['data'], true);
+            return $event['kind'] === 'watch_status' && $event['watch']['active'] === false
+                && $event['watch']['latest_session_id'] === $session;
+        });
     }
 
     public function test_watch_heartbeat_keeps_session_alive_without_writing_playback_controls(): void

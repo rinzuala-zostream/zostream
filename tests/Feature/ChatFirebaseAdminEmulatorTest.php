@@ -71,6 +71,22 @@ final class ChatFirebaseAdminEmulatorTest extends TestCase
         Schema::connection('sqlite')->create('chat_pins', function (Blueprint $table): void {
             $table->unsignedBigInteger('room_id'); $table->unsignedBigInteger('message_id');
         });
+        Schema::connection('sqlite')->create('user', function (Blueprint $table): void {
+            $table->string('uid')->primary(); $table->string('username')->nullable(); $table->string('name');
+        });
+        Schema::connection('sqlite')->create('admin_users', function (Blueprint $table): void {
+            $table->string('admin_uid');
+        });
+        Schema::connection('sqlite')->create('chat_outbox', function (Blueprint $table): void {
+            $table->id(); $table->unsignedBigInteger('room_id'); $table->string('kind');
+            $table->unsignedBigInteger('message_id')->nullable(); $table->string('recipient_user_id')->nullable();
+            $table->unsignedBigInteger('firebase_cursor'); $table->timestamp('firebase_delivered_at')->nullable();
+            $table->unsignedInteger('firebase_attempts')->default(0); $table->timestamp('firebase_available_at')->nullable();
+            $table->string('firebase_claim_token')->nullable(); $table->timestamp('firebase_claimed_until')->nullable();
+            $table->timestamp('delivered_at')->nullable(); $table->timestamp('available_at')->nullable();
+            $table->timestamp('claimed_until')->nullable(); $table->text('analytics')->nullable();
+            $table->timestamp('analytics_delivered_at')->nullable(); $table->timestamp('analytics_available_at')->nullable();
+        });
         Schema::connection('sqlite')->create('chat_firebase_message_recipients', function (Blueprint $table): void {
             $table->string('firebase_uid'); $table->unsignedBigInteger('room_id'); $table->unsignedBigInteger('message_id');
             $table->timestamp('published_at'); $table->unique(['firebase_uid', 'room_id', 'message_id']);
@@ -119,14 +135,18 @@ final class ChatFirebaseAdminEmulatorTest extends TestCase
 
     public function test_sql_accepted_message_and_cursor_are_published_atomically_by_kreait_admin_sdk(): void
     {
-        $outbox = (object) ['id' => 5001, 'room_id' => 17, 'kind' => 'feed_created', 'message_id' => 501,
-            'firebase_cursor' => 1, 'recipient_user_id' => null];
-        app(ChatFirebaseLiveDelivery::class)->deliver($outbox);
+        DB::table('chat_outbox')->insert(['id' => 5001, 'room_id' => 17, 'kind' => 'feed_created', 'message_id' => 501,
+            'firebase_cursor' => 1, 'recipient_user_id' => null]);
+        $this->artisan('chat:deliver', ['--once' => true, '--lane' => 'firebase'])->assertSuccessful();
+        $this->assertNotNull(DB::table('chat_outbox')->where('id', 5001)->value('firebase_delivered_at'));
         foreach (['viewer-a', 'viewer-b'] as $userId) {
             $uid = ChatFirebase::uid($userId);
             $message = $this->readPath("chat_v1/user_messages/$uid/17/00000000000000000501");
             $event = $this->readPath("chat_v1/user_sync_events/$uid/17/00000000000000000001");
             $this->assertSame('accepted by SQL', $message['body']);
+            $this->assertSame('sender', $message['sender_id']);
+            $this->assertSame('#Sender', $message['sender_name']);
+            $this->assertNotEmpty($message['created_at_iso']);
             $this->assertSame(501, (int) $message['id']);
             $this->assertSame('created', $event['kind']);
             $this->assertSame(1, (int) $event['cursor']);
@@ -153,6 +173,9 @@ final class ChatFirebaseAdminEmulatorTest extends TestCase
     public function test_custom_token_projection_renewal_and_session_revocation_use_admin_sdk(): void
     {
         $session = SessionTokenModel::query()->where('user_id', 'viewer-a')->firstOrFail();
+        $this->emulatorHttp->delete('/chat_v1/room_authz/17/'.ChatFirebase::uid('viewer-a').'.json', [
+            'query' => ['ns' => $this->emulatorNamespace], 'headers' => ['Authorization' => 'Bearer owner'],
+        ]);
         $firebase = app(ChatFirebase::class);
         $issued = $firebase->issueToken($session);
         $this->assertSame(ChatFirebase::uid('viewer-a'), $issued['firebase_uid']);
@@ -168,11 +191,43 @@ final class ChatFirebaseAdminEmulatorTest extends TestCase
         $this->assertTrue($grant['can_write']);
         $renewed = $firebase->renewSession($session);
         $this->assertGreaterThan(now()->getTimestamp(), $renewed);
+        $sessionPath = 'chat_v1/auth_sessions/'.ChatFirebase::uid('viewer-a').'/'.$session->id;
+        $firebase->blockUserFeed('viewer-a');
+        $firebase->renewSession($session);
+        $this->assertFalse($this->readPath("$sessionPath/client_access"));
+        $this->assertTrue($this->readPath("$sessionPath/account_events_access"));
         $firebase->revokeSession('viewer-a', $session->id);
-        $revoked = $this->readPath('chat_v1/auth_sessions/'.ChatFirebase::uid('viewer-a').'/'.$session->id);
+        $revoked = $this->readPath($sessionPath);
         $this->assertFalse($revoked['active']);
         $this->assertFalse($revoked['client_access']);
         $this->assertFalse($revoked['account_events_access']);
+    }
+
+    public function test_reaction_invalidates_old_message_without_mirroring_it_and_read_state_is_recipient_only(): void
+    {
+        DB::table('chat_room_reads')->insert(['user_id' => 'viewer-a', 'room_id' => 17, 'last_read_message_id' => 501]);
+        DB::table('chat_outbox')->insert([
+            ['id' => 5001, 'room_id' => 17, 'kind' => 'reactions', 'message_id' => 501,
+                'firebase_cursor' => 1, 'recipient_user_id' => null],
+            ['id' => 5002, 'room_id' => 17, 'kind' => 'read', 'message_id' => 501,
+                'firebase_cursor' => 2, 'recipient_user_id' => 'viewer-a'],
+            ['id' => 5003, 'room_id' => 0, 'kind' => 'identity', 'message_id' => null,
+                'firebase_cursor' => 1, 'recipient_user_id' => 'viewer-a'],
+        ]);
+        $this->artisan('chat:deliver', ['--once' => true, '--lane' => 'firebase'])->assertSuccessful();
+
+        $uid = ChatFirebase::uid('viewer-a');
+        $this->assertNull($this->readPath("chat_v1/user_messages/$uid/17/00000000000000000501"));
+        $reaction = $this->readPath("chat_v1/user_sync_events/$uid/17/00000000000000000001");
+        $this->assertSame('reactions', $reaction['kind']);
+        $this->assertNull($this->readPath("chat_v1/user_account_events/$uid/00000000000000005001"));
+        $read = $this->readPath("chat_v1/user_sync_events/$uid/17/00000000000000000002");
+        $this->assertSame('501', $read['read_state']['read_through']);
+        $otherUid = ChatFirebase::uid('viewer-b');
+        $this->assertNull($this->readPath("chat_v1/user_sync_events/$otherUid/17/00000000000000000002"));
+        $identity = $this->readPath("chat_v1/user_account_events/$uid/00000000000000005003");
+        $this->assertSame('unread_invalidated', $identity['kind']);
+        $this->assertNull($this->readPath("chat_v1/user_account_events/$otherUid/00000000000000005003"));
     }
 
     public function test_typing_is_short_lived_recipient_scoped_filtered_and_removed_on_stop(): void

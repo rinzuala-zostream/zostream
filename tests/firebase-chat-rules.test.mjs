@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { assertFails, assertSucceeds, initializeTestEnvironment } from '@firebase/rules-unit-testing';
-import { get, limitToFirst, limitToLast, orderByKey, query, ref, set, startAt } from 'firebase/database';
+import { get, limitToFirst, limitToLast, orderByChild, orderByKey, query, ref, set, startAt } from 'firebase/database';
 
 const rulesDoc = JSON.parse(await readFile(new URL('../Library/firebase/database.rules.json', import.meta.url), 'utf8'));
 const rules = rulesDoc.rules;
@@ -90,7 +90,7 @@ test('Firebase Realtime Database emulator authorization behavior', async (t) => 
         auth_sessions: { [uid]: { [sid]: { active: true, client_access: true, account_events_access: true, expires_at: now + 60_000 }, 'other-session': { active: true, client_access: true, account_events_access: true, expires_at: now + 60_000 } } },
         room_authz: { 17: { [uid]: { [sid]: { can_read: true, can_write: true, read_until: now + 60_000, write_until: now + 60_000 } } } },
         user_messages: { [uid]: { 17: {
-            '-OfixtureMessage0001': { message_type: 'text', sender_uid: uid, sender_name: 'Fixture User', body: 'seed', spoiler: false, client_op_id: 'seed-op', created_at: now, revision: 1, deleted: false }
+            '-OfixtureMessage0001': { message_type: 'text', sender_uid: uid, sender_name: 'Fixture User', body: 'seed', spoiler: false, client_op_id: 'seed-op', created_at: now, revision: 1, deleted: false, cursor: 1 }
         } } },
         user_typing: { [uid]: { 17: {
             zs_typer: { typist_uid: 'zs_typer', name: 'Typing User', is_admin: false, expires_at: now + 5_000 }
@@ -130,6 +130,10 @@ test('Firebase Realtime Database emulator authorization behavior', async (t) => 
         });
         const history = await assertSucceeds(get(query(messages, orderByKey(), limitToLast(30))));
         assert.equal(history.child('-OfixtureMessage0001').child('body').val(), 'seed', 'test context reads the seeded namespace');
+        const liveMessages = await assertSucceeds(get(query(messages, orderByChild('cursor'), startAt(2), limitToLast(30))));
+        assert.equal(liveMessages.exists(), false, 'opening a room does not download messages at or below its cursor');
+        const liveEvents = await assertSucceeds(get(query(ref(db, `chat_v1/user_sync_events/${uid}/17`), orderByChild('cursor'), startAt(2), limitToLast(100))));
+        assert.deepEqual(Object.keys(liveEvents.val() ?? {}), ['00000000000000000002']);
         const typing = await assertSucceeds(get(query(ref(db, `chat_v1/user_typing/${uid}/17`), orderByKey(), limitToLast(20))));
         assert.equal(typing.child('zs_typer').child('name').val(), 'Typing User');
         const incrementalEvents = await assertSucceeds(get(query(ref(db, `chat_v1/user_sync_events/${uid}/17`), orderByKey(), startAt('00000000000000000002'), limitToFirst(100))));

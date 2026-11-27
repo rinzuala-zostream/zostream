@@ -77,7 +77,7 @@ final class ChatFirebase
             $session->access_expires_at->getTimestamp());
         $reference->set(array_merge($previous, [
             'expires_at' => $expiresAt * 1000,
-            'client_access' => (bool) config('chat.firebase.client_access_enabled'),
+            'client_access' => config('chat.firebase.client_access_enabled') && ($previous['client_access'] ?? false) === true,
             'account_events_access' => (bool) config('chat.firebase.client_access_enabled'),
             'revision' => (int) ($previous['revision'] ?? 0) + 1,
         ]));
@@ -260,7 +260,7 @@ final class ChatFirebase
             $path = "user_typing/$viewerUid/$roomId/$typistUid";
             $updates[$path] = $typing === null ? null : [
                 'typist_uid' => $typistUid,
-                'name' => mb_substr((string) ($typing['name'] ?? 'Viewer'), 0, 100),
+                'name' => ($typing['is_admin'] ?? false) ? 'Zo Stream' : mb_substr((string) ($typing['name'] ?? 'Viewer'), 0, 100),
                 'is_admin' => (bool) ($typing['is_admin'] ?? false),
                 'expires_at' => min((int) ($typing['expires_at'] ?? now()->addSeconds(6)->getTimestamp()) * 1000,
                     now()->addSeconds(30)->getTimestampMs()),
