@@ -18,6 +18,7 @@ use App\Http\Controllers\Api\V4\AnalyticsReportController;
 use App\Http\Controllers\Api\V4\AuthController;
 use App\Http\Controllers\Api\V4\BillingController;
 use App\Http\Controllers\Api\V4\CatalogController;
+use App\Http\Controllers\Api\V4\ChatMessageController;
 use App\Http\Controllers\Api\V4\CustomerStatsController;
 use App\Http\Controllers\Api\V4\ChannelSubscriptionController;
 use App\Http\Controllers\Api\V4\HomeRecommendationController;
@@ -172,6 +173,11 @@ Route::prefix('v4')
             ->middleware('throttle:20,1');
 
         Route::middleware('auth.token')->group(function () {
+            Route::prefix('chat')->middleware('throttle:30,1')->group(function () {
+                Route::post('/rooms/{roomId}/messages', [ChatMessageController::class, 'store'])
+                    ->where('roomId', '[A-Za-z0-9_-]+');
+            });
+
             Route::prefix('creator')->middleware('throttle:60,1')->group(function () {
                 Route::get('/channels/{channelId}/uploads', [\App\Http\Controllers\Api\V4\ChannelUploadController::class, 'index']);
                 Route::post('/channels/{channelId}/uploads', [\App\Http\Controllers\Api\V4\ChannelUploadController::class, 'start']);

@@ -234,6 +234,19 @@ public final class ZoChatClient {
         return try JSONDecoder().decode(T.self, from: JSONSerialization.data(withJSONObject: payload))
     }
 
+    /// Sends through the authenticated ZoStream API. Message writes are never
+    /// made directly from an iOS Firebase client.
+    public func sendMessage(roomID: String, payload: [String: Any]) async throws -> ChatMessage {
+        guard !roomID.isEmpty, roomID.range(of: #"^[A-Za-z0-9_-]+$"#, options: .regularExpression) != nil else {
+            throw ChatFailure(message: "This chat room is unavailable.")
+        }
+        guard let body = payload["body"] as? String, !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              payload["request_id"] as? String != nil else {
+            throw ChatFailure(message: "Enter a message before sending.")
+        }
+        return try await request("rooms/\(roomID)/messages", body: payload, as: ChatMessage.self)
+    }
+
     private var roomVisible: Bool?
     private var visibilitySequence: Int64 = 0
     private let visibilityID = UUID().uuidString
