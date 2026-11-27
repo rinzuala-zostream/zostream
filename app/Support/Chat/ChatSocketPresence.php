@@ -31,9 +31,7 @@ final class ChatSocketPresence
             // retain their sequence ordering in ChatVisibility.
             if (! $cache->add('chat:socket-rate:'.hash('sha256', $claim['socket_id'].':'.$data['visibility_id'].':'.(int) $data['visible']), true, 1)) { return; }
             $request = new Request(array_merge($data, ['auth_user_id' => $claim['user_id'], 'auth_device_id' => $claim['device_id']]));
-            if (app(ChatVisibility::class)->update($request, $claim['room_id'], $data['visible'], true)) {
-                $channels->renew($claim, $data['visible']);
-            }
+            app(ChatVisibility::class)->update($request, $claim['room_id'], $data['visible'], true);
             $event->connection->send(json_encode(['event' => 'chat:presence_ack', 'channel' => $controlChannel, 'data' => ['visibility_id' => $data['visibility_id'],
                 'visibility_sequence' => $data['visibility_sequence']]], JSON_THROW_ON_ERROR));
         } catch (\Throwable) {

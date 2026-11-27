@@ -241,10 +241,10 @@ final class ChatFirebase
                     || ($grant['can_read'] ?? false) !== true || (int) ($grant['read_until'] ?? 0) <= now()->getTimestampMs()) { continue; }
                 $viewers[] = ['user_id' => (string) $session->user_id, 'device_id' => (string) $session->device_id,
                     'session_id' => (string) $session->id, 'session_hash' => hash('sha256', $session->access_token),
-                    'playback_hash' => (string) ($grant['playback_hash'] ?? ''), 'feed_channel' => 'firebase-user-feed'];
+                    'playback_hash' => (string) ($grant['playback_hash'] ?? '')];
             }
         }
-        $eligible = iterator_to_array(app(ChatLiveDelivery::class)->eligibleViewers($room, $viewers, $sessionRows), false);
+        $eligible = iterator_to_array(app(ChatRecipientAccess::class)->eligibleViewers($room, $viewers, $sessionRows), false);
         if ($eligible === []) { return; }
 
         $blockedViewers = [];

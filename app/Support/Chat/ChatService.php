@@ -307,12 +307,13 @@ final class ChatService
                 ? ['firebase_delivered_at' => now()] : [];
             $row = ['room_id' => $room, 'kind' => $kind, 'message_id' => $message,
                 'analytics' => $analytics,
+                'delivered_at' => in_array($kind, ['watch_control', 'watch_status', 'ended'], true) ? null : now(),
                 'created_at' => now(), 'updated_at' => now()]
                 + ($firebaseCursor !== null ? ['firebase_cursor' => $firebaseCursor] : [])
                 + ($recipient !== null ? ['recipient_user_id' => $recipient] : []) + $firebaseState;
             $db->table('chat_outbox')->insert($row);
             if ($message !== null && $recipient === null && in_array($kind, ['created', 'deleted'], true)) {
-                $feedRow = ['room_id' => $room, 'kind' => 'feed_'.$kind, 'message_id' => $message,
+                $feedRow = ['room_id' => $room, 'kind' => 'feed_'.$kind, 'message_id' => $message, 'delivered_at' => now(),
                     'created_at' => now(), 'updated_at' => now()]
                     + ($firebaseCursor !== null ? ['firebase_cursor' => $this->nextFirebaseCursor($db, $room)] : [])
                     + ($senderIsAdmin === null ? [] : ['sender_is_admin' => $senderIsAdmin]) + $firebaseState;

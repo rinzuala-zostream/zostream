@@ -488,7 +488,7 @@ class ZoChatClient(
     }
 
     private fun connect() {
-        if (usesFirebaseRealtime) return
+        if (usesFirebaseRealtime || (firebaseSource != null && !watchSocket)) return
         if (closed) return
         val info = room ?: return
         val url = info.optString("websocket_url")

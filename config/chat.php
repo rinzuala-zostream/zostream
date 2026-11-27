@@ -10,9 +10,6 @@ return [
     'ios_app_ids' => array_filter(explode(',', env('CHAT_IOS_APP_IDS', '5N48USNJ2K.com.buannel.pvt.ltd.zostream.Zo-Stream'))),
     'android_fingerprints' => array_filter(explode(',', env('CHAT_ANDROID_SHA256_FINGERPRINTS', ''))),
     'enabled' => env('CHAT_ENABLED', false),
-    // Older native apps already poll unread summaries while disconnected. This
-    // switch sheds badge authorization/renewal traffic without disabling rooms.
-    'unread_realtime_enabled' => env('CHAT_UNREAD_REALTIME_ENABLED', true),
     'cache_store' => env('CHAT_CACHE_STORE', 'redis'),
     'retention_days' => 30,
     'page_size' => 20,
@@ -22,7 +19,6 @@ return [
     'watch_member_limit' => 5,
     'socket_protocol_enabled' => env('CHAT_SOCKET_PROTOCOL_ENABLED', true),
     'websocket_url' => env('CHAT_WEBSOCKET_URL', ''),
-    'reverb_watch_only' => env('CHAT_REVERB_WATCH_ONLY', false),
     'firebase' => [
         // Deliberately disabled until supported clients and the authorization
         // projections have passed the phased rollout checks.

@@ -29,24 +29,9 @@ final class ChatController extends Controller
         ]);
     }
 
-    public function unreadAuth(Request $r)
+    public function unreadAuth()
     {
-        abort_unless(config('chat.enabled'), 503, 'Chat is currently unavailable.');
-        $v = $r->validate(['socket_id' => ['required', 'regex:/^[0-9]+\.[0-9]+$/'], 'channel' => 'required|string|max:120']);
-        app(\App\Support\Chat\ChatReadService::class)->authorizeChannel($r, $v['channel']);
-        return V4Response::success(\App\Support\Chat\ChatChannels::authorization($v['socket_id'], $v['channel']));
-    }
-
-    public function unreadAuthBatch(Request $r)
-    {
-        $v = $r->validate(['socket_id' => ['required', 'regex:/^[0-9]+\.[0-9]+$/'],
-            'channels' => 'required|array|min:1|max:64', 'channels.*' => 'required|string|max:120|distinct']);
-        $result = [];
-        foreach ($v['channels'] as $channel) {
-            app(\App\Support\Chat\ChatReadService::class)->authorizeChannel($r, $channel);
-            $result[$channel] = \App\Support\Chat\ChatChannels::authorization($v['socket_id'], $channel);
-        }
-        return V4Response::success(['authorizations' => $result]);
+        abort(403, 'Realtime unread updates are available through Firebase.');
     }
 
     public function markRead(Request $r, int $room, \App\Support\Chat\ChatReadService $reads)
@@ -70,9 +55,8 @@ final class ChatController extends Controller
         $this->chat->room($r, $room->id);
         app(\App\Support\Chat\ChatAuthorizationProjector::class)->projectJoinedRoom($r, $room);
 
-        $reverb = ! ChatChannels::watchOnly();
         return V4Response::success(['room_id' => (string) $room->id, 'room_type' => $room->type,
-            'channel' => $reverb ? 'private-chat.'.$room->id : '', 'websocket_url' => $reverb ? config('chat.websocket_url') : '',
+            'channel' => '', 'websocket_url' => '',
             'online_count' => $this->chat->presence($r, $room->id),
             'user_id' => (string) $r->input('auth_user_id'),
             'is_admin' => app(\App\Support\AdminAccess::class)->isAdmin((string) $r->input('auth_user_id')),
@@ -530,7 +514,7 @@ final class ChatController extends Controller
             ? \App\Support\Chat\ChatContent::find($inviteRoom->content_type, $inviteRoom->content_id) : null;
         $seasonId = $inviteRoom->content_type === 'episode' ? ($content->season_id ?? null) : null;
         $watch = app(\App\Support\Chat\PrivateWatchService::class)->liveSession($room);
-        $reverb = ! ChatChannels::watchOnly() || (ChatChannels::supportsWatchSocket($r) && ($inviteRoom->content_type !== null || $watch !== null));
+        $reverb = ChatChannels::supportsWatchSocket($r) && ($inviteRoom->content_type !== null || $watch !== null);
         return V4Response::success(['watch_session' => $watch ? app(\App\Support\Chat\PrivateWatchService::class)->metadata($watch) : null, 'room_id' => (string) $room, 'room_type' => 'invite', 'channel' => $reverb ? ChatChannels::roomChannel($room) : '',
             'websocket_url' => $reverb ? config('chat.websocket_url') : '', 'online_count' => $this->chat->presence($r, $room),
             'user_id' => (string) $r->input('auth_user_id'), 'room_name' => $inviteRoom->room_name, 'content_type' => $inviteRoom->content_type,
@@ -625,7 +609,7 @@ final class ChatController extends Controller
 
     public function auth(Request $r, int $room)
     {
-        abort_if(ChatChannels::watchOnly() && ! ChatChannels::supportsWatchSocket($r), 403, 'Update the app to use the Watch Together socket.');
+        abort_if(! ChatChannels::supportsWatchSocket($r), 403, 'Update the app to use the Watch Together socket.');
         ChatChannels::assertWatchRoom($this->chat->room($r, $room));
         $v = $r->validate(['socket_id' => ['required', 'regex:/^[0-9]+\.[0-9]+$/']]);
         $auth = ChatChannels::authorization($v['socket_id'], ChatChannels::roomChannel($room));

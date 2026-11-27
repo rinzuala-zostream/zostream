@@ -510,93 +510,28 @@ class ChatApiTest extends TestCase
         $request = new \Illuminate\Http\Request(['auth_user_id' => $user, 'auth_device_id' => 'device-a',
             'socket_id' => $socket, 'protocol' => 2, 'messages' => true]);
         $request->attributes->set('auth_session_token_id', $session);
+        $request->headers->set('X-Zo-Watch-Socket', '1');
         return app(\App\Http\Controllers\Api\V4\ChatController::class)->auth($request, (int) $room)->getData(true)['data'];
     }
 
-    public function test_socket_feed_is_private_and_rechecks_revocation_bans_blocks_and_membership(): void
-    {
-        $room = $this->createPrivateRoom();
-        ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
-        $session = $this->socketSession('bob');
-        $auth = $this->socketAuth($room, 'bob', $session);
-        $this->assertArrayHasKey('control_token', $auth);
-        $this->assertStringStartsWith('private-chat-feed.', $auth['feed_channel']);
-        $this->send($room)->assertCreated();
-        $row = ChatDatabase::connection()->table('chat_outbox')->where('kind', 'feed_created')->first();
-        $deliver = fn () => app(\App\Support\Chat\ChatLiveDelivery::class)->deliver($row, fn () => null);
-        Http::fake(); $deliver();
-        Http::assertSent(function ($request) use ($auth) {
-            $body = json_decode($request->body(), true);
-            return $body['name'] === 'chat.message' && $body['channels'] === [$auth['feed_channel']]
-                && json_decode($body['data'], true)['message']['body'] === 'Hello'
-                && json_decode($body['data'], true)['overlay_live'] === true;
-        });
-        ChatDatabase::connection()->table('chat_messages')->where('id', $row->message_id)->update(['created_at' => now()->subSeconds(20)]);
-        Http::fake(); $deliver();
-        Http::assertSent(fn ($request) => json_decode(json_decode($request->body(), true)['data'], true)['overlay_live'] === false);
-        foreach (['revoked', 'banned', 'blocked', 'removed', 'closed'] as $state) {
-            Http::fake();
-            if ($state === 'revoked') DB::table('session_tokens')->where('id', $session)->update(['access_token' => 'rotated']);
-            if ($state === 'banned') ChatDatabase::connection()->table('chat_bans')->insert(['room_id' => $room, 'user_id' => 'bob', 'kind' => 'ban']);
-            if ($state === 'blocked') ChatDatabase::connection()->table('chat_blocks')->insert(['user_id' => 'bob', 'blocked_user_id' => 'alice']);
-            if ($state === 'removed') ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $room)->update(['status' => 'declined']);
-            if ($state === 'closed') ChatDatabase::connection()->table('chat_rooms')->where('id', $room)->update(['closed' => true]);
-            $deliver(); Http::assertNothingSent();
-            DB::table('session_tokens')->where('id', $session)->update(['access_token' => 'stored-bob']);
-            ChatDatabase::connection()->table('chat_bans')->delete(); ChatDatabase::connection()->table('chat_blocks')->delete();
-            ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
-        }
-    }
-
-    public function test_admin_message_is_branded_in_the_send_response_and_first_live_frame(): void
+    public function test_admin_message_is_branded_and_the_firebase_outbox_keeps_the_sender_role(): void
     {
         $room = $this->room();
         config(['services.admin_qr.allowed_uids' => ['alice'], 'services.admin_whatsapp.allowed_numbers' => []]);
-        $sender = $this->socketAuth($room, 'alice', $this->socketSession('alice'), '1.2');
-        $receiver = $this->socketAuth($room, 'bob', $this->socketSession('bob'), '1.3');
-        $this->postJson("/api/v4/chat/rooms/$room/typing", $this->identity(['active' => true]))->assertOk();
         $id = $this->send($room)->assertCreated()
             ->assertJsonPath('data.is_admin', true)->assertJsonPath('data.display_name', 'Zo Stream')->json('data.id');
 
-        // The worker can have a different cached whitelist from the HTTP process.
-        config(['services.admin_qr.allowed_uids' => []]);
-        Http::fake();
-        $this->artisan('chat:deliver', ['--once' => true, '--lane' => 'realtime'])->assertSuccessful();
-        Http::assertSent(function ($request) use ($sender, $receiver, $id) {
-            $frame = json_decode($request->body(), true);
-            if ($frame['name'] !== 'chat.message') { return false; }
-            $message = json_decode($frame['data'], true)['message'];
-            return in_array($sender['feed_channel'], $frame['channels'], true)
-                && in_array($receiver['feed_channel'], $frame['channels'], true)
-                && $message['id'] === $id && $message['is_admin'] === true && $message['display_name'] === 'Zo Stream';
-        });
-        Http::assertSent(function ($request) use ($receiver) {
-            $frame = json_decode($request->body(), true);
-            if ($frame['name'] !== 'chat.typing' || $frame['channels'] !== [$receiver['feed_channel']]) { return false; }
-            $typist = json_decode($frame['data'], true)['users'][0] ?? [];
-            return ($typist['user_id'] ?? null) === 'alice' && $typist['is_admin'] === true && $typist['name'] === 'Zo Stream';
-        });
-    }
-
-    public function test_new_feed_never_overlays_messages_that_existed_before_authorization(): void
-    {
-        $room = $this->room();
-        $this->send($room)->assertCreated();
-        $session = $this->socketSession('bob');
-        $this->socketAuth($room, 'bob', $session);
-        $row = ChatDatabase::connection()->table('chat_outbox')->where('kind', 'feed_created')->first();
-        Http::fake();
-        app(\App\Support\Chat\ChatLiveDelivery::class)->deliver($row, fn () => null);
-        Http::assertSent(fn ($request) => json_decode(json_decode($request->body(), true)['data'], true)['overlay_live'] === false);
+        $outbox = ChatDatabase::connection()->table('chat_outbox')->where('kind', 'feed_created')->where('message_id', $id)->first();
+        $this->assertTrue((bool) $outbox->sender_is_admin);
     }
 
     public function test_socket_presence_is_bound_to_authenticated_socket_and_performs_no_sql(): void
     {
-        $room = $this->createPrivateRoom();
-        ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
+        $room = $this->privateWatchFixture();
+        $this->sendPrivateWatch($room)->assertCreated();
         $auth = $this->socketAuth($room, 'bob', $this->socketSession('bob'));
         $application = new \Laravel\Reverb\Application('chat', 'key', 'secret', 60, 30, [], 2048);
-        $this->assertMatchesRegularExpression('/^private-chat-control\.'.preg_quote((string) $room, '/').'\.[a-f0-9]{32}\.lease\.\d+$/', $auth['control_channel']);
+        $this->assertMatchesRegularExpression('/^private-watch-control\.'.preg_quote((string) $room, '/').'\.[a-f0-9]{32}\.lease\.\d+$/', $auth['control_channel']);
         $connection = new class($application) extends \Laravel\Reverb\Contracts\Connection {
             public array $sent = [];
             public string $socket = '1.2';
@@ -632,33 +567,23 @@ class ChatApiTest extends TestCase
 
     }
 
-    public function test_five_thousand_live_readers_use_batched_sql_and_bounded_publish_requests(): void
+    public function test_five_thousand_projected_viewers_are_filtered_without_per_viewer_sql(): void
     {
-        $room = $this->room();
-        $this->socketSession('reader-0');
-        $live = app(\App\Support\Chat\ChatLiveChannels::class);
-        for ($i = 0; $i < 5000; $i++) {
-            $session = $i === 0 ? 1 : $this->socketSession('reader-'.$i);
-            $request = new \Illuminate\Http\Request(['messages' => true]);
-            $request->attributes->set('auth_session_token_id', $session);
-            $live->issue($request, (int) $room, '1.'.$i, \App\Support\Chat\ChatChannels::authorization('1.'.$i, 'private-chat.'.$room));
+        $room = ChatDatabase::connection()->table('chat_rooms')->find($this->room());
+        $viewers = $sessions = [];
+        for ($index = 1; $index <= 5000; $index++) {
+            $user = 'viewer-'.$index;
+            $sessions[$index] = (object) ['id' => $index, 'user_id' => $user, 'device_id' => 'device', 'access_token' => 'test-token'];
+            $viewers[] = ['session_id' => $index, 'user_id' => $user, 'device_id' => 'device', 'session_hash' => hash('sha256', 'test-token')];
         }
-        $this->send($room)->assertCreated();
-        $row = ChatDatabase::connection()->table('chat_outbox')->where('kind', 'feed_created')->first();
-        Http::fake();
-        DB::connection()->enableQueryLog(); DB::connection()->flushQueryLog();
-        app(\App\Support\Chat\ChatLiveDelivery::class)->deliver($row, fn () => null);
-        $queries = count(DB::connection()->getQueryLog());
-        DB::connection()->disableQueryLog();
-        $this->assertLessThanOrEqual(20, $queries, 'Live delivery must batch recipient authorization SQL.');
-        Http::assertSentCount(10);
-        $channels = [];
-        foreach (Http::recorded() as [$request]) {
-            $payload = json_decode($request->body(), true);
-            $this->assertLessThan(131072, strlen($request->body()));
-            array_push($channels, ...$payload['channels']);
-        }
-        $this->assertCount(5000, array_unique($channels));
+        ChatDatabase::connection()->table('chat_bans')->insert(['room_id' => $room->id, 'user_id' => 'viewer-1', 'kind' => 'ban']);
+        unset($sessions[2]);
+        $db = ChatDatabase::connection();
+        $db->enableQueryLog();
+        $eligible = iterator_to_array(app(\App\Support\Chat\ChatRecipientAccess::class)->eligibleViewers($room, $viewers, collect($sessions)), false);
+        $this->assertCount(4998, $eligible);
+        $this->assertCount(1, $db->getQueryLog());
+        $db->disableQueryLog();
     }
 
     public function test_worker_lanes_and_claims_keep_push_failure_off_the_realtime_lane(): void
@@ -670,7 +595,7 @@ class ChatApiTest extends TestCase
         $fcm = \Mockery::mock(\App\Http\Controllers\FCMNotificationController::class);
         $fcm->shouldNotReceive('sendToToken');
         $this->app->instance(\App\Http\Controllers\FCMNotificationController::class, $fcm);
-        ChatDatabase::connection()->table('chat_outbox')->where('kind', 'created')->update(['claim_token' => (string) Str::uuid(), 'claimed_until' => now()->addMinute()]);
+        ChatDatabase::connection()->table('chat_outbox')->where('kind', 'created')->update(['delivered_at' => null, 'claim_token' => (string) Str::uuid(), 'claimed_until' => now()->addMinute()]);
         Http::fake();
         $this->artisan('chat:deliver', ['--once' => true, '--lane' => 'realtime'])->assertSuccessful();
         $this->assertNull(ChatDatabase::connection()->table('chat_outbox')->where('kind', 'created')->value('delivered_at'));
@@ -702,46 +627,12 @@ class ChatApiTest extends TestCase
         $this->assertSame(3, ChatDatabase::connection()->table('chat_outbox')->where('kind', 'reported')->whereNotNull('delivered_at')->count());
     }
 
-    public function test_badge_authorization_batch_rejects_another_accounts_channel(): void
-    {
-        $channel = \App\Support\Chat\ChatReadService::userChannel('alice');
-        $this->postJson('/api/v4/chat/unread/auth-batch', $this->identity(['socket_id' => '1.2', 'channels' => [$channel]]))
-            ->assertOk()->assertJsonPath('data.authorizations.'.$channel.'.expires_in', 300 - now()->timestamp % 300);
-        $this->postJson('/api/v4/chat/unread/auth-batch', $this->identity(['socket_id' => '1.2',
-            'channels' => [\App\Support\Chat\ChatReadService::userChannel('bob')]]))->assertForbidden();
-    }
-
-    public function test_global_badge_authorization_does_not_query_or_refresh_playback_storage(): void
-    {
-        $this->liveCreatorStream('movie', 'film-a');
-        $global = \App\Support\Chat\ChatReadService::contextChannel('global');
-        $primary = DB::connection('chat_testing');
-        foreach ([false, true] as $withRoom) {
-            if ($withRoom) { $this->room(); }
-            $primary->flushQueryLog();
-            $primary->enableQueryLog();
-            try {
-                $this->withHeaders(['X-Playback-Token' => 'play-a'])->postJson('/api/v4/chat/unread/auth-batch',
-                    $this->identity(['socket_id' => '1.2', 'channels' => [
-                        \App\Support\Chat\ChatReadService::userChannel('alice'), $global,
-                    ]]))->assertOk()->assertJsonPath('data.authorizations.'.$global.'.channel', ChatChannels::leased($global));
-                $this->assertSame([], $primary->getQueryLog(), 'Global badge authorization must not access the playback/account database.');
-            } finally {
-                $primary->disableQueryLog();
-            }
-        }
-    }
-
-    public function test_public_badges_recheck_room_closure_even_when_room_metadata_is_cached(): void
+    public function test_unread_rechecks_room_closure_even_when_room_metadata_is_cached(): void
     {
         $room = $this->room();
-        $global = \App\Support\Chat\ChatReadService::contextChannel('global');
-        $payload = $this->identity(['socket_id' => '1.2', 'channels' => [$global]]);
-        $this->postJson('/api/v4/chat/unread/auth-batch', $payload)->assertOk();
+        $this->unread()->assertOk()->assertJsonCount(1, 'data.rooms');
         ChatDatabase::connection()->table('chat_rooms')->where('id', $room)->update(['closed' => true]);
-        $this->postJson('/api/v4/chat/unread/auth-batch', $payload)->assertForbidden();
-        $this->unread()->assertOk()->assertJsonCount(0, 'data.rooms')
-            ->assertJsonMissingPath('data.channels.1');
+        $this->unread()->assertOk()->assertJsonCount(0, 'data.rooms');
     }
 
     public function test_unread_latest_ids_stay_room_scoped_and_include_deleted_messages_and_empty_rooms(): void
@@ -875,42 +766,36 @@ class ChatApiTest extends TestCase
             ->assertJsonPath('data.data.0.title', 'Friends');
     }
 
-    public function test_socket_leases_stop_metadata_for_old_subscriptions_and_deny_renewal_after_ban(): void
+    public function test_watch_socket_lease_expires_and_denies_renewal_after_ban(): void
     {
-        $this->travelTo(now()->startOfDay());
-        $room = $this->room();
-        $auth = $this->postJson("/api/v4/chat/rooms/$room/auth", $this->identity(['socket_id' => '1.2']))->assertOk();
-        $old = $auth->json('data.channel');
-        $this->assertSame(300, $auth->json('data.expires_in'));
-        $this->assertNotSame('private-chat.'.$room, $old);
-        $this->travel(301)->seconds();
-        $this->assertContains($old, ChatChannels::publishing(['private-chat.'.$room]));
-        $new = $this->postJson("/api/v4/chat/rooms/$room/auth", $this->identity(['socket_id' => '1.2']))->assertOk()->json('data.channel');
+        $room = $this->privateWatchFixture();
+        $this->sendPrivateWatch($room)->assertCreated();
+        $payload = $this->identity(['socket_id' => '1.2']);
+        $this->withHeader('X-Zo-Watch-Socket', '1');
+        $old = $this->postJson("/api/v4/chat/rooms/$room/auth", $payload)->assertOk()->json('data.channel');
+
+        $this->travel(361)->seconds();
+        DB::table('n_active_streams')->update(['last_ping' => now()]);
+        $new = $this->postJson("/api/v4/chat/rooms/$room/auth", $payload)->assertOk()->json('data.channel');
         $this->assertNotSame($old, $new);
-        $this->travel(60)->seconds();
-        $this->assertNotContains($old, ChatChannels::publishing(['private-chat.'.$room]));
+        $this->assertNotContains($old, ChatChannels::publishing(["private-watch.$room"]));
+
         $this->postJson("/api/v4/chat/rooms/$room/moderate", $this->identity([
             'action' => 'ban', 'target' => 'alice', 'reason' => 'restricted',
         ]))->assertOk();
-        $this->postJson("/api/v4/chat/rooms/$room/auth", $this->identity(['socket_id' => '1.2']))->assertForbidden();
-        $this->postJson('/api/v4/chat/unread/auth', $this->identity(['socket_id' => '1.2', 'channel' => $old]))->assertForbidden();
+        $this->postJson("/api/v4/chat/rooms/$room/auth", $payload)->assertForbidden();
     }
 
-    public function test_disabled_chat_holds_broadcasts_for_retry_without_publishing(): void
+    public function test_disabled_chat_keeps_the_firebase_outbox_pending_without_using_reverb(): void
     {
+        config(['chat.firebase.enabled' => true]);
         $room = $this->room();
         $this->send($room)->assertCreated();
         config(['chat.enabled' => false]);
         Http::fake();
         $this->artisan('chat:deliver', ['--once' => true])->assertSuccessful();
         Http::assertNothingSent();
-        $this->assertNull(ChatDatabase::connection()->table('chat_outbox')->value('delivered_at'));
-        $this->assertSame(1, ChatDatabase::connection()->table('chat_outbox')->value('attempts'));
-        config(['chat.enabled' => true]);
-        $this->travel(10)->seconds();
-        $this->artisan('chat:deliver', ['--once' => true])->assertSuccessful();
-        Http::assertSentCount(1);
-        $this->assertNotNull(ChatDatabase::connection()->table('chat_outbox')->value('delivered_at'));
+        $this->assertNull(ChatDatabase::connection()->table('chat_outbox')->where('kind', 'feed_created')->value('firebase_delivered_at'));
     }
 
     public function test_reactions_are_idempotent_removable_and_personalized_without_leaking_blocks(): void
@@ -983,60 +868,29 @@ class ChatApiTest extends TestCase
         $this->assertSame(0, ChatDatabase::connection()->table('chat_messages')->count());
     }
 
-    public function test_typing_signal_is_published_over_websocket_without_a_message_or_push(): void
+    public function test_typing_does_not_enqueue_sql_outbox_events(): void
     {
         $room = $this->room();
         $this->postJson("/api/v4/chat/rooms/$room/typing", $this->identity(['active' => true]))->assertOk();
-        Http::fake();
-        $this->artisan('chat:deliver', ['--once' => true, '--lane' => 'realtime'])->assertSuccessful();
-        Http::assertSent(function ($request) use ($room) {
-            $body = json_decode($request->body(), true);
-            $event = json_decode($body['data'] ?? '{}', true);
-            return ($body['name'] ?? '') === 'chat.changed' && ($event['kind'] ?? '') === 'typing'
-                && in_array(ChatChannels::leased('private-chat.'.$room), $body['channels'] ?? [], true);
-        });
         $this->assertSame(0, ChatDatabase::connection()->table('chat_messages')->count());
-        $this->assertSame(0, ChatDatabase::connection()->table('chat_outbox')->whereIn('kind', ['message_push', 'interaction_push'])->count());
+        $this->assertSame(0, ChatDatabase::connection()->table('chat_outbox')->count());
     }
 
-    public function test_repeated_typing_refreshes_state_but_throttles_outbox_events(): void
+    public function test_repeated_typing_renews_expiry_without_republishing_immediately(): void
     {
         $room = $this->room();
         $url = "/api/v4/chat/rooms/$room/typing";
+        $active = fn () => app(\App\Support\Chat\ChatInteractions::class)->activeTypists((int) $room)[0];
+        $this->freezeTime();
         $this->postJson($url, $this->identity(['active' => true]))->assertOk();
+        $initial = $active();
         $this->travel(1)->seconds();
         $this->postJson($url, $this->identity(['active' => true]))->assertOk();
-        $this->assertSame(1, ChatDatabase::connection()->table('chat_outbox')->where('room_id', $room)->where('kind', 'typing')->count());
-        $this->assertCount(1, app(\App\Support\Chat\ChatInteractions::class)->activeTypists((int) $room));
-
+        $this->assertSame($initial['broadcast_at'], $active()['broadcast_at']);
+        $this->assertGreaterThan($initial['expires_at'], $active()['expires_at']);
         $this->travel(3)->seconds();
         $this->postJson($url, $this->identity(['active' => true]))->assertOk();
-        $this->assertSame(2, ChatDatabase::connection()->table('chat_outbox')->where('room_id', $room)->where('kind', 'typing')->count());
-    }
-
-    public function test_typing_snapshots_only_reach_allowed_private_feeds_and_clear_on_stop(): void
-    {
-        $room = $this->room();
-        $bob = $this->socketAuth($room, 'bob', $this->socketSession('bob'), '1.2');
-        $carol = $this->socketAuth($room, 'carol', $this->socketSession('carol'), '1.3');
-        ChatDatabase::connection()->table('chat_blocks')->insert(['user_id' => 'alice', 'blocked_user_id' => 'carol']);
-        $this->postJson("/api/v4/chat/rooms/$room/typing", $this->identity(['active' => true]))->assertOk();
-        Http::fake();
-        $this->artisan('chat:deliver', ['--once' => true, '--lane' => 'realtime'])->assertSuccessful();
-        $snapshot = fn ($request) => json_decode(json_decode($request->body(), true)['data'], true);
-        $sentTo = fn ($request, $channel) => in_array($channel, json_decode($request->body(), true)['channels'], true);
-        Http::assertSent(fn ($request) => $sentTo($request, $bob['feed_channel'])
-            && ($snapshot($request)['users'][0]['user_id'] ?? null) === 'alice'
-            && $snapshot($request)['users'][0]['expires_in'] > 0);
-        Http::assertSent(fn ($request) => $sentTo($request, $carol['feed_channel']) && ($snapshot($request)['users'] ?? null) === []);
-        Http::assertNotSent(fn ($request) => $sentTo($request, $carol['feed_channel']) && ! empty($snapshot($request)['users']));
-        Http::assertSent(fn ($request) => ($snapshot($request)['kind'] ?? null) === 'typing'
-            && ($snapshot($request)['typing_feed'] ?? false) && ! array_key_exists('users', $snapshot($request)));
-
-        $this->postJson("/api/v4/chat/rooms/$room/typing", $this->identity(['active' => false]))->assertOk();
-        Http::fake();
-        $this->artisan('chat:deliver', ['--once' => true, '--lane' => 'realtime'])->assertSuccessful();
-        Http::assertSent(fn ($request) => $sentTo($request, $bob['feed_channel']) && ($snapshot($request)['users'] ?? null) === []);
+        $this->assertGreaterThan($initial['broadcast_at'], $active()['broadcast_at']);
     }
 
     public function test_delayed_typing_start_cannot_override_a_newer_idle_stop(): void
@@ -1590,12 +1444,9 @@ class ChatApiTest extends TestCase
         $this->postJson("/api/v4/chat/rooms/$source/room-invites/status", ['auth_user_id' => 'bob', 'room_ids' => [$room]])
             ->assertOk()->assertJsonPath('data.rooms.0.active', false);
         $this->postJson("/api/v4/chat/rooms/$source/messages/$card/invitation", ['auth_user_id' => 'bob'])->assertStatus(410);
-        Http::fake(['*' => Http::response('{}', 200)]);
-        $this->artisan('chat:deliver', ['--once' => true])->assertSuccessful();
-        Http::assertSent(function ($request) use ($room) {
-            $event = json_decode($request->data()['data'] ?? '{}', true);
-            return ($event['kind'] ?? null) === 'room_invite_status' && ($event['room_invite']['room_id'] ?? null) === $room && $event['room_invite']['active'] === false;
-        });
+        $event = ChatDatabase::connection()->table('chat_outbox')->where('kind', 'room_invite_status')->first();
+        $this->assertSame($card, (string) $event->message_id);
+        $this->assertSame($source, (string) $event->room_id);
     }
 
     public function test_room_share_and_claim_enforce_ownership_visibility_and_source_context(): void
@@ -1826,7 +1677,7 @@ class ChatApiTest extends TestCase
         return $this->withHeaders($headers)->getJson('/api/v4/chat/unread?'.http_build_query(array_merge($this->identity(), $identity)));
     }
 
-    public function test_badge_snapshot_and_private_socket_follow_admin_status_without_a_room_join(): void
+    public function test_badge_snapshot_and_account_outbox_follow_admin_status_without_a_room_join(): void
     {
         config(['services.admin_qr.allowed_uids' => [], 'services.admin_whatsapp.allowed_numbers' => []]);
         $this->unread()->assertOk()->assertJsonPath('data.is_admin', false)->assertJsonCount(0, 'data.rooms');
@@ -1836,93 +1687,36 @@ class ChatApiTest extends TestCase
         $this->unread()->assertOk()->assertJsonPath('data.is_admin', true);
         $this->unread(['auth_user_id' => 'bob'])->assertOk()->assertJsonPath('data.is_admin', false);
 
-        $channel = ChatChannels::leased(\App\Support\Chat\ChatReadService::userChannel('alice'));
-        foreach ([true, false] as $isAdmin) {
-            if (! $isAdmin) {
-                $this->assertSame(200, $support->deleteAdminDevice($device)->getStatusCode());
-                $this->unread()->assertOk()->assertJsonPath('data.is_admin', false);
-            }
-            Http::fake(['*' => Http::response('{}', 200)]);
-            $this->artisan('chat:deliver', ['--once' => true])->assertSuccessful();
-            Http::assertSent(function ($request) use ($channel, $isAdmin) {
-                $body = json_decode($request->body(), true);
-                $badge = json_decode($body['data'], true)['badge'];
-                return $body['name'] === 'chat.badge' && in_array($channel, $body['channels'], true)
-                    && $badge['kind'] === 'identity' && $badge['is_admin'] === $isAdmin;
-            });
-        }
+        $this->assertSame(200, $support->deleteAdminDevice($device)->getStatusCode());
+        $this->unread()->assertOk()->assertJsonPath('data.is_admin', false);
+        $this->assertSame(2, ChatDatabase::connection()->table('chat_outbox')->where('kind', 'identity')->where('recipient_user_id', 'alice')->count());
     }
 
-    public function test_badge_channel_auth_is_scoped_to_the_account_and_authorized_rooms(): void
+    public function test_unread_polling_preserves_counts_without_advertising_reverb(): void
     {
-        $room = $this->createPrivateRoom();
-        $channel = \App\Support\Chat\ChatReadService::userChannel('alice');
-        $this->unread()->assertOk()->assertJsonPath('data.channels.0', $channel)
-            ->assertJsonPath('data.channels.1', 'private-chat.'.$room)->assertJsonStructure(['data' => ['event_cursor', 'blocked_user_ids']]);
-        $url = '/api/v4/chat/unread/auth';
-        $this->postJson($url, $this->identity(['socket_id' => '1.2', 'channel' => $channel]))->assertOk()
-            ->assertJsonPath('data.auth', 'test-key:'.hash_hmac('sha256', '1.2:'.ChatChannels::leased($channel), 'test-secret'));
-        $this->postJson($url, ['auth_user_id' => 'bob', 'socket_id' => '1.2', 'channel' => $channel])->assertForbidden();
-        $this->postJson($url, ['auth_user_id' => 'bob', 'socket_id' => '1.2', 'channel' => 'private-chat.'.$room])->assertForbidden();
-        ChatDatabase::connection()->table('chat_room_invites')->where('room_id', $room)->update(['status' => 'accepted']);
-        $this->postJson($url, ['auth_user_id' => 'bob', 'socket_id' => '1.2', 'channel' => 'private-chat.'.$room])->assertOk();
-        $this->postJson($url, $this->identity(['socket_id' => '1.2', 'channel' => 'private-chat-user-anyone']))->assertForbidden();
-    }
-
-    public function test_unread_polling_mode_preserves_counts_and_live_room_chat_for_existing_apps(): void
-    {
-        $this->freezeTime();
-        config(['chat.websocket_url' => 'wss://chat.example.test/app/test-key']);
         $room = $this->room();
-        $this->message($room, 'bob', 'Live chat stays available');
-        $live = $this->unread()->assertOk()->json('data');
-        $this->assertNotEmpty($live['channels']);
-
-        config(['chat.unread_realtime_enabled' => false]);
-        $polling = $this->unread()->assertOk()->json('data');
-        $this->assertSame(array_replace($live, ['channels' => [], 'websocket_url' => '']), $polling);
-        $this->postJson("/api/v4/chat/rooms/$room/auth", $this->identity(['socket_id' => '1.2']))
-            ->assertOk()->assertJsonPath('data.channel', ChatChannels::leased('private-chat.'.$room));
-        $this->getJson("/api/v4/chat/rooms/$room/messages?".http_build_query($this->identity()))
-            ->assertOk()->assertJsonPath('data.messages.0.body', 'Live chat stays available');
-        $this->send($room)->assertCreated();
-        $this->unread()->assertJsonPath('data.total_unread', 1);
-
-        config(['chat.unread_realtime_enabled' => true]);
-        $this->unread()->assertOk()->assertJsonPath('data.channels', $live['channels'])
-            ->assertJsonPath('data.websocket_url', $live['websocket_url']);
-    }
-
-    public function test_unread_polling_mode_does_not_disable_channel_authorization_or_the_chat_kill_switch(): void
-    {
-        config(['chat.unread_realtime_enabled' => false]);
-        $channel = \App\Support\Chat\ChatReadService::userChannel('alice');
-        // Old in-flight auth calls still succeed; foreign channels remain denied.
+        $this->message($room, 'bob');
+        $this->unread()->assertOk()->assertJsonPath('data.total_unread', 1)
+            ->assertJsonPath('data.websocket_url', '')->assertJsonPath('data.channels', []);
+        $this->postJson('/api/v4/chat/rooms/join', $this->identity(['type' => 'global']))
+            ->assertOk()->assertJsonPath('data.websocket_url', '');
         $this->postJson('/api/v4/chat/unread/auth-batch', $this->identity([
-            'socket_id' => '1.2', 'channels' => [$channel],
-        ]))->assertOk();
-        $this->postJson('/api/v4/chat/unread/auth-batch', [
-            'auth_user_id' => 'bob', 'socket_id' => '1.2', 'channels' => [$channel],
-        ])->assertForbidden();
+            'socket_id' => '1.2', 'channels' => ["private-chat.$room"],
+        ]))->assertForbidden();
         config(['chat.enabled' => false]);
         $this->unread()->assertStatus(503);
     }
 
-    public function test_badges_can_discover_a_new_public_room_without_subscribing_to_other_content(): void
+    public function test_unread_snapshot_discovers_a_new_public_room(): void
     {
-        $global = \App\Support\Chat\ChatReadService::contextChannel('global');
-        $this->unread()->assertOk()->assertJsonPath('data.channels.1', $global)->assertJsonCount(0, 'data.rooms');
-        $this->postJson('/api/v4/chat/unread/auth', $this->identity(['socket_id' => '1.2', 'channel' => $global]))->assertOk();
-        $movie = \App\Support\Chat\ChatReadService::contextChannel('movie', 'not-playing');
-        $this->postJson('/api/v4/chat/unread/auth', $this->identity(['socket_id' => '1.2', 'channel' => $movie]))->assertForbidden();
+        $this->unread()->assertOk()->assertJsonCount(0, 'data.rooms');
         $room = $this->room();
-        $this->send($room)->assertCreated();
-        Http::fake(['*' => Http::response('{}', 200)]);
-        $this->artisan('chat:deliver', ['--once' => true])->assertSuccessful();
-        Http::assertSent(fn ($request) => in_array(ChatChannels::leased($global), $request->data()['channels'] ?? [], true));
+        $this->message($room, 'bob');
+        $this->unread()->assertOk()->assertJsonPath('data.rooms.0.room_id', $room)
+            ->assertJsonPath('data.rooms.0.unread_count', 1);
     }
 
-    public function test_badge_read_receipts_push_authoritative_counts_only_to_the_readers_private_channel(): void
+    public function test_badge_read_receipts_return_authoritative_counts_and_queue_only_for_the_reader(): void
     {
         $room = $this->room();
         $first = $this->message($room, 'bob');
@@ -1932,29 +1726,21 @@ class ChatApiTest extends TestCase
             ->assertJsonPath('data.badge.last_message_id', (string) $second);
         $this->postJson("/api/v4/chat/rooms/$room/read", $this->identity(['message_id' => $first]))->assertOk();
         $this->assertSame(1, ChatDatabase::connection()->table('chat_outbox')->where('kind', 'read')->count());
-        Http::fake(['*' => Http::response('{}', 200)]);
-        $this->artisan('chat:deliver', ['--once' => true])->assertSuccessful();
-        Http::assertSent(function ($request) use ($first, $second) {
-            $event = json_decode($request->data()['data'] ?? '{}', true);
-            return ($request->data()['name'] ?? null) === 'chat.badge'
-                && $request->data()['channels'] === ChatChannels::publishing([\App\Support\Chat\ChatReadService::userChannel('alice')])
-                && $event['badge']['read_through'] === (string) $first && $event['badge']['unread_count'] === 1
-                && $event['badge']['first_unread_id'] === (string) $second && isset($event['badge']['snapshot_cursor']);
-        });
+        $this->assertSame('alice', ChatDatabase::connection()->table('chat_outbox')->where('kind', 'read')->value('recipient_user_id'));
     }
 
-    public function test_message_badge_frames_carry_no_message_body_or_credentials(): void
+    public function test_accepted_messages_wait_for_firebase_without_any_reverb_broadcast(): void
     {
+        config(['chat.firebase.enabled' => true, 'chat.firebase.client_access_enabled' => false]);
         $room = $this->room();
-        $message = $this->send($room, 'secret message body')->assertCreated()->json('data.id');
-        Http::fake(['*' => Http::response('{}', 200)]);
-        $this->artisan('chat:deliver', ['--once' => true])->assertSuccessful();
-        Http::assertSent(function ($request) use ($message) {
-            $event = json_decode($request->data()['data'] ?? '{}', true);
-            return ($event['badge']['kind'] ?? null) === 'created' && $event['badge']['message_id'] === $message
-                && $event['badge']['sender_id'] === 'alice' && $event['badge']['eligible'] === true
-                && !str_contains($request->data()['data'], 'secret message body');
-        });
+        $message = $this->send($room)->assertCreated()->json('data.id');
+        Http::fake();
+        $this->artisan('chat:deliver', ['--once' => true, '--lane' => 'realtime'])->assertSuccessful();
+        Http::assertNothingSent();
+
+        $feed = ChatDatabase::connection()->table('chat_outbox')->where('kind', 'feed_created')->where('message_id', $message)->first();
+        $this->assertNotNull($feed->firebase_cursor);
+        $this->assertNull($feed->firebase_delivered_at);
     }
 
     public function test_unread_counts_exclude_own_deleted_blocked_and_expired_messages(): void
@@ -2178,25 +1964,6 @@ class ChatApiTest extends TestCase
             ->assertJsonPath('data.messages.0.body', 'Arrives while chat is open');
     }
 
-    public function test_delivery_invalidates_recent_cache_before_receivers_can_fetch_history(): void
-    {
-        $room = $this->room();
-        $message = $this->send($room, 'First message in open room')->assertCreated()->json('data.id');
-        Cache::store(config('chat.cache_store'))->put('chat:recent:'.$room, [], 10);
-        $seenDuringPublish = null;
-        Http::fake(function () use ($room, &$seenDuringPublish) {
-            // A receiving socket can trigger history before the publish HTTP call returns.
-            $seenDuringPublish = app(\App\Support\Chat\ChatService::class)->recent((int) $room);
-
-            return Http::response('{}', 200);
-        });
-        $this->artisan('chat:deliver', ['--once' => true])->assertSuccessful();
-        $this->assertIsArray($seenDuringPublish);
-        $this->assertCount(1, $seenDuringPublish);
-        $this->assertSame($message, $seenDuringPublish[0]['id']);
-        $this->assertNotNull(ChatDatabase::connection()->table('chat_outbox')->value('delivered_at'));
-    }
-
     public function test_movie_room_requires_current_owned_playback_on_every_read_and_send(): void
     {
         DB::table('n_devices')->insert(['id' => 1, 'user_id' => 'alice', 'device_token' => 'device-a']);
@@ -2225,13 +1992,6 @@ class ChatApiTest extends TestCase
         $this->getJson("/api/v4/chat/rooms/$room/messages?".http_build_query($this->identity()))->assertForbidden();
     }
 
-    public function test_private_socket_auth_is_room_scoped(): void
-    {
-        $room = $this->room();
-        $this->postJson("/api/v4/chat/rooms/$room/auth", $this->identity(['socket_id' => '123.456']))->assertOk()
-            ->assertJsonPath('data.auth', 'test-key:'.hash_hmac('sha256', "123.456:".ChatChannels::leased("private-chat.$room"), 'test-secret'));
-    }
-
     public function test_delete_tombstones_history_and_report_retries_do_not_duplicate(): void
     {
         $room = $this->room();
@@ -2248,17 +2008,17 @@ class ChatApiTest extends TestCase
 
     }
 
-    public function test_outbox_retries_failed_delivery_without_losing_saved_message(): void
+    public function test_watch_delivery_retries_failed_reverb_requests(): void
     {
-        $room = $this->room();
-        $this->send($room, 'secret text')->assertCreated();
+        $room = $this->privateWatchFixture();
+        $this->sendPrivateWatch($room)->assertCreated();
         Http::fakeSequence()->push('', 500)->push('{}', 200);
-        $this->artisan('chat:deliver --once')->assertSuccessful();
-        $this->assertNull(ChatDatabase::connection()->table('chat_outbox')->value('delivered_at'));
+        $this->artisan('chat:deliver', ['--once' => true, '--lane' => 'realtime'])->assertSuccessful();
+        $query = ChatDatabase::connection()->table('chat_outbox')->where('kind', 'watch_status');
+        $this->assertNull($query->value('delivered_at'));
         $this->travel(5)->seconds();
-        $this->artisan('chat:deliver --once')->assertSuccessful();
-        $this->assertNotNull(ChatDatabase::connection()->table('chat_outbox')->value('delivered_at'));
-        Http::assertSent(fn ($request) => str_contains($request->body(), 'chat.changed') && ! str_contains($request->body(), 'secret text'));
+        $this->artisan('chat:deliver', ['--once' => true, '--lane' => 'realtime'])->assertSuccessful();
+        $this->assertNotNull($query->value('delivered_at'));
     }
 
     public function test_chat_outbox_preserves_desktop_platforms(): void
@@ -2626,33 +2386,6 @@ class ChatApiTest extends TestCase
         ]));
     }
 
-    public function test_watch_feed_delivers_card_and_current_session_state_together(): void
-    {
-        $room = $this->privateWatchFixture();
-        $auth = $this->socketAuth($room, 'bob', $this->socketSession('bob'));
-        $sent = $this->sendPrivateWatch($room)->assertCreated();
-        $session = $sent->json('data.watch_invite.session_id');
-        $row = ChatDatabase::connection()->table('chat_outbox')->where('kind', 'feed_created')->first();
-
-        foreach ([true, false] as $active) {
-            // A retry after the host leaves must carry ended state, even though
-            // the original message was created while the session was active.
-            if (! $active) { DB::table('n_active_streams')->update(['status' => 'stopped']); }
-            Http::fake();
-            app(\App\Support\Chat\ChatLiveDelivery::class)->deliver($row, fn () => null);
-            Http::assertSent(function ($request) use ($auth, $row, $room, $session, $active) {
-                $body = json_decode($request->body(), true);
-                $data = json_decode($body['data'], true);
-                return $body['name'] === 'chat.message' && $body['channels'] === [$auth['feed_channel']]
-                    && $data['message']['watch_invite']['session_id'] === $session
-                    && $data['watch']['room_id'] === $room
-                    && $data['watch']['event_id'] === (string) $row->id
-                    && $data['watch']['active'] === $active
-                    && $data['watch']['session_id'] === ($active ? $session : null);
-            });
-        }
-    }
-
     public function test_cached_watch_history_and_send_retry_reflect_stopped_host_before_worker_runs(): void
     {
         $room = $this->privateWatchFixture();
@@ -2895,12 +2628,12 @@ class ChatApiTest extends TestCase
     {
         $room = $this->room();
         $watchRoom = $this->privateWatchFixture();
-        config(['chat.reverb_watch_only' => true, 'chat.firebase.enabled' => true, 'chat.firebase.client_access_enabled' => true]);
+        config(['chat.firebase.enabled' => true, 'chat.firebase.client_access_enabled' => true]);
 
         $auth = $this->identity(['socket_id' => '42.99']);
         $this->postJson("/api/v4/chat/rooms/$room/auth", $auth)->assertForbidden();
         $this->postJson("/api/v4/chat/rooms/$watchRoom/auth", $auth)->assertForbidden();
-        $this->postJson('/api/v4/chat/unread/auth', $auth + ['channel' => \App\Support\Chat\ChatReadService::userChannel('alice')])
+        $this->postJson('/api/v4/chat/unread/auth', $auth + ['channel' => 'private-chat-user-'.hash('sha256', 'alice')])
             ->assertForbidden();
         $this->getJson('/api/v4/chat/unread?'.http_build_query($this->identity()))->assertOk()
             ->assertJsonPath('data.channels', [])->assertJsonPath('data.websocket_url', '')->assertJsonPath('data.firebase_realtime', true);
@@ -3060,7 +2793,7 @@ class ChatApiTest extends TestCase
         $session = $this->sendPrivateWatch($room)->assertCreated()->json('data.watch_invite.session_id');
         DB::table('n_active_streams')->update(['status' => 'stopped']);
         app(\App\Support\Chat\PrivateWatchService::class)->streamChanged(\Illuminate\Http\Request::create('/', 'POST'), 1);
-        $this->assertSame(1, ChatDatabase::connection()->table('chat_outbox')->where('kind', 'watch_status')->count());
+        $this->assertSame(2, ChatDatabase::connection()->table('chat_outbox')->where('kind', 'watch_status')->count());
         Http::fake(['*' => Http::response('{}', 200)]);
         $this->artisan('chat:deliver', ['--once' => true])->assertSuccessful();
         Http::assertSent(function ($request) {

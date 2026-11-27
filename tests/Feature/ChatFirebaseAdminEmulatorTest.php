@@ -162,9 +162,12 @@ final class ChatFirebaseAdminEmulatorTest extends TestCase
         app(ChatFirebaseLiveDelivery::class)->deliver((object) ['id' => 5002, 'room_id' => 17, 'kind' => 'feed_created', 'message_id' => 501,
             'firebase_cursor' => 1, 'recipient_user_id' => null]);
         $this->assertNull($this->readPath('chat_v1/user_messages/'.ChatFirebase::uid('viewer-a').'/17/00000000000000000501'));
+        DB::table('chat_blocks')->where('user_id', 'viewer-a')->delete();
+        DB::table('chat_bans')->insert(['room_id' => 17, 'user_id' => 'viewer-a', 'kind' => 'ban']);
         DB::table('chat_messages')->where('id', 501)->update(['body' => '', 'revision' => 2, 'deleted_at' => now()]);
         app(ChatFirebaseLiveDelivery::class)->deliver((object) ['id' => 5003, 'room_id' => 17, 'kind' => 'feed_deleted', 'message_id' => 501,
             'firebase_cursor' => 2, 'recipient_user_id' => null]);
+        $this->assertNull($this->readPath('chat_v1/user_sync_events/'.ChatFirebase::uid('viewer-a').'/17/00000000000000000002'));
         $tombstone = $this->readPath('chat_v1/user_messages/'.ChatFirebase::uid('viewer-b').'/17/00000000000000000501');
         $this->assertTrue($tombstone['deleted']);
         $this->assertSame(2, (int) $tombstone['revision']);

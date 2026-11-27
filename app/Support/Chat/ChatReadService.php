@@ -3,61 +3,11 @@
 namespace App\Support\Chat;
 
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
 final class ChatReadService
 {
     public function __construct(private readonly ChatService $chat) {}
-
-    public static function userChannel(string $uid): string
-    {
-        return 'private-chat-user-'.hash('sha256', $uid);
-    }
-
-    public static function contextChannel(string $type, ?string $contentId = null): string
-    {
-        return 'private-chat-context-'.hash('sha256', $type.':'.($contentId ?? ''));
-    }
-
-    public function authorizeChannel(Request $r, string $channel): void
-    {
-        $uid = (string) $r->input('auth_user_id');
-        abort_if(ChatChannels::watchOnly(), 403, 'Realtime unread updates are available through Firebase.');
-        if ($channel === self::userChannel($uid)) { return; }
-        if (preg_match('/^private-chat\.([1-9][0-9]*)$/', $channel, $match)) { $this->chat->room($r, (int) $match[1]); return; }
-
-        // A global badge is independent of playback. Most viewers subscribe to
-        // it even when they never open chat; do not query/write MySQL for it.
-        if ($channel === self::contextChannel('global')) {
-            $this->authorizeContext($r, 'global');
-            return;
-        }
-        abort_unless(preg_match('/^private-chat-context-[a-f0-9]{64}$/', $channel), 403);
-        $this->chat->refreshPlayback($r);
-        if ((string) $r->header('X-Playback-Token') === '') { abort(403); }
-        $stream = DB::table('n_active_streams as s')->join('n_devices as d', 'd.id', '=', 's.device_id')
-            ->where('d.user_id', $uid)->where('d.device_token', $r->input('auth_device_id'))
-            ->where('s.stream_token', (string) $r->header('X-Playback-Token'))->where('s.status', 'active')->first(['s.content_type', 's.content_key']);
-        if ($stream && in_array($stream->content_type, ['movie', 'episode'], true)
-            && $channel === self::contextChannel($stream->content_type, $stream->content_key)) {
-            $this->authorizeContext($r, $stream->content_type, $stream->content_key);
-            return;
-        }
-        abort(403);
-    }
-
-    private function authorizeContext(Request $request, string $type, ?string $id = null): void
-    {
-        $room = ChatDatabase::connection()->table('chat_rooms')->where('room_key', $type === 'global' ? 'global' : $type.':'.$id)->first();
-        if ($room) { $this->chat->assertRoomAccess($request, $room); }
-        else { abort_if($this->rootBanned((string) $request->input('auth_user_id')), 403); }
-    }
-
-    private function rootBanned(string $uid): bool
-    {
-        return $this->chat->isRootBanned($uid);
-    }
 
     public function summary(Request $request, string $type, ?string $contentId): array
     {
@@ -128,31 +78,12 @@ final class ChatReadService
                 'first_unread_id' => isset($state->first_unread_id) ? (string) $state->first_unread_id : null];
         }, $rooms);
 
-        $channels = [self::userChannel($uid)];
-        foreach ($rooms as $room) {
-            if ($room->type === 'invite') { $channels[] = 'private-chat.'.$room->id; }
-        }
-        // Stable public-context channels discover the first message even before
-        // anyone has created the corresponding numeric chat room.
-        $contexts = [['global', null]];
-        if ($type !== 'global' && $contentId !== null && $this->chat->playbackAllowed($request, $type, $contentId)) { $contexts[] = [$type, $contentId]; }
-        if (! $this->rootBanned($uid)) {
-            foreach ($contexts as [$context, $id]) {
-                $existing = $candidates->firstWhere('room_key', $context === 'global' ? 'global' : $context.':'.$id)?->id;
-                if (! $existing || in_array($existing, $ids)) { $channels[] = self::contextChannel($context, $id); }
-            }
-        }
-        // Existing clients keep the unread baseline and use their recovery
-        // polling when no badge socket is advertised. Room/message sockets use
-        // their own responses and remain live. Never return auth failures here:
-        // older clients can turn those into a reconnect/reauthorization loop.
-        $realtime = config('chat.unread_realtime_enabled', true) && ! ChatChannels::watchOnly();
         return ['rooms' => $result, 'total_unread' => array_sum(array_column($result, 'unread_count')),
-            'auth_batch' => true,
+            'auth_batch' => false,
             'event_cursor' => $cursor, 'user_id' => $uid, 'blocked_user_ids' => $blocked,
             'server_time_ms' => now()->getTimestampMs(),
-            'channels' => $realtime ? $channels : [],
-            'websocket_url' => $realtime ? config('chat.websocket_url') : '',
+            'channels' => [],
+            'websocket_url' => '',
             'firebase_realtime' => ChatChannels::firebaseAccountEventsAvailable()];
     }
 

@@ -10,11 +10,6 @@ final class ChatChannels
     public const LEASE_SECONDS = 300;
     public const GRACE_SECONDS = 60;
 
-    public static function watchOnly(): bool
-    {
-        return config('chat.reverb_watch_only') && self::firebaseAvailable();
-    }
-
     public static function firebaseAvailable(): bool
     {
         return config('chat.firebase.enabled') && config('chat.firebase.client_access_enabled');
@@ -32,13 +27,11 @@ final class ChatChannels
 
     public static function roomChannel(int $room): string
     {
-        return (self::watchOnly() ? 'private-watch.' : 'private-chat.').$room;
+        return 'private-watch.'.$room;
     }
 
     public static function assertWatchRoom(object $room): void
     {
-        if (! self::watchOnly()) { return; }
-
         abort_unless($room->type === 'invite' && (
             ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $room->id)->whereNotNull('content_type')->exists()
             || app(PrivateWatchService::class)->liveSession((int) $room->id) !== null

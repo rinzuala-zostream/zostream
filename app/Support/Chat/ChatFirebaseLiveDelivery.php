@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Log;
 /** Publishes only SQL-accepted state into recipient-scoped RTDB paths. */
 final class ChatFirebaseLiveDelivery
 {
-    public function __construct(private readonly ChatFirebase $firebase, private readonly ChatLiveDelivery $live) {}
+    public function __construct(private readonly ChatFirebase $firebase, private readonly ChatRecipientAccess $access) {}
 
     public function deliver(object $outbox): void
     {
@@ -71,11 +71,10 @@ final class ChatFirebaseLiveDelivery
                     'session_id' => (string) $session->id,
                     'session_hash' => hash('sha256', $session->access_token),
                     'playback_hash' => (string) ($grant['playback_hash'] ?? ''),
-                    'feed_channel' => 'firebase-user-feed',
                 ];
             }
         }
-        $eligible = iterator_to_array($this->live->eligibleViewers($room, $viewers, $sessionRows), false);
+        $eligible = iterator_to_array($this->access->eligibleViewers($room, $viewers, $sessionRows), false);
         if ($eligible === []) { return; }
 
         $blocked = [];

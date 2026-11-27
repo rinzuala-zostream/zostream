@@ -5,7 +5,6 @@ namespace App\Console\Commands;
 use App\Support\Analytics\AnalyticsCollectionSetting;
 use App\Support\Chat\ChatChannels;
 use App\Support\Chat\ChatDatabase;
-use App\Support\Chat\ChatService;
 use App\Support\Chat\PrivateWatchService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -51,28 +50,13 @@ final class DeliverChat extends Command
                 $rows = ChatDatabase::connection()->table('chat_outbox')->where('claim_token', $claim)->orderBy('id')->get();
             }
             foreach ($rows as $row) {
-                $renew = function () use ($row, $claim): void {
-                    if (! ChatDatabase::connection()->table('chat_outbox')->where('id', $row->id)->where('claim_token', $claim)
-                        // MySQL reports zero changed rows when this runs in the
-                        // same second as the initial claim and the timestamp is
-                        // unchanged. Advance past second precision so ownership
-                        // verification cannot fail spuriously on fast delivery.
-                        ->update(['claimed_until' => now()->addMinutes(2)->addSeconds(5)])) { throw new \RuntimeException('Chat delivery claim lost'); }
-                };
                 try {
                     if ($row->kind === 'message_push') {
                         app(\App\Support\Chat\ChatMessageNotifications::class)->deliver($row);
                     } elseif ($row->kind === 'interaction_push') {
                         app(\App\Support\Chat\ChatInteractionNotifications::class)->deliver($row);
-                    } elseif (ChatChannels::watchOnly()) {
+                    } else {
                         $this->publishWatch($row);
-                    } elseif (in_array($row->kind, ['feed_created', 'feed_deleted'], true)) {
-                        app(\App\Support\Chat\ChatLiveDelivery::class)->deliver($row, $renew);
-                    } elseif ($row->kind === 'typing') {
-                        $typingFeed = app(\App\Support\Chat\ChatLiveDelivery::class)->deliverTyping($row, $renew);
-                        $this->publish($row, $typingFeed);
-                    } elseif ($row->kind !== 'reported') {
-                        $this->publish($row);
                     }
                     ChatDatabase::connection()->table('chat_outbox')->where('id', $row->id)->where('claim_token', $claim)
                         ->update(['delivered_at' => now(), 'claim_token' => null, 'claimed_until' => null]);
@@ -91,7 +75,7 @@ final class DeliverChat extends Command
                     } elseif ($e instanceof \Illuminate\Database\QueryException) {
                         $reason .= ' SQLSTATE '.($e->errorInfo[0] ?? $e->getCode());
                     } elseif ($e instanceof \RuntimeException && in_array($e->getMessage(), [
-                        'Chat delivery claim lost', 'Chat is disabled', 'Missing Reverb settings',
+                        'Chat is disabled', 'Missing Reverb settings',
                     ], true)) {
                         $reason .= ' '.$e->getMessage();
                     }
@@ -182,50 +166,6 @@ final class DeliverChat extends Command
         $this->postReverb('chat.changed', [ChatChannels::roomChannel((int) $row->room_id)], [
             'kind' => $row->kind, 'message_id' => null, 'watch' => $watch + ['event_id' => (string) $row->id],
         ]);
-    }
-
-    private function publish(object $row, bool $typingFeed = false): void
-    {
-        if (! config('chat.enabled')) {
-            throw new \RuntimeException('Chat is disabled');
-        }
-        $recipient = $row->recipient_user_id ?? null;
-        $event = ['kind' => $row->kind, 'message_id' => $row->message_id ? (string) $row->message_id : null];
-        if ($typingFeed) { $event['typing_feed'] = true; }
-        if ($recipient !== null) {
-            $badge = match ($row->kind) {
-                'read' => app(\App\Support\Chat\ChatReadService::class)->readState($recipient, (int) $row->room_id),
-                'identity' => ['kind' => 'identity', 'is_admin' => app(\App\Support\AdminAccess::class)->isAdmin($recipient)],
-                default => ['kind' => 'sync', 'room_id' => (string) $row->room_id],
-            };
-            $event['badge'] = $badge + ['event_id' => (string) $row->id];
-            $channel = \App\Support\Chat\ChatReadService::userChannel($recipient);
-        } else {
-            $channel = 'private-chat.'.$row->room_id;
-            $watch = $row->kind === 'typing' ? null : app(PrivateWatchService::class)->snapshot((int) $row->room_id);
-            if ($watch !== null) { $event['watch'] = $watch + ['event_id' => (string) $row->id]; }
-            if (in_array($row->kind, ['created', 'deleted', 'ended'], true)) {
-                $message = $row->message_id ? ChatDatabase::connection()->table('chat_messages')->find($row->message_id) : null;
-                $event['badge'] = ['kind' => $message && str_starts_with($message->user_id, 'deleted:') ? 'sync' : $row->kind, 'room_id' => (string) $row->room_id,
-                    'event_id' => (string) $row->id, 'message_id' => $row->message_id ? (string) $row->message_id : null,
-                    'sender_id' => $message?->user_id, 'retained' => $message && \Illuminate\Support\Carbon::parse($message->created_at)->gte(now()->subDays(config('chat.retention_days'))), 'eligible' => $message && ! $message->deleted_at
-                        && \Illuminate\Support\Carbon::parse($message->created_at)->gte(now()->subDays(config('chat.retention_days')))];
-            }
-        }
-        if ($row->kind === 'room_invite_status' && $row->message_id) {
-            $target = ChatDatabase::connection()->table('chat_messages')->where('id', $row->message_id)->value('invite_room_id');
-            if ($target) { $event['room_invite'] = app(\App\Support\Chat\RoomInvitationService::class)->metadata((int) $target); }
-        }
-        $channels = [$channel];
-        if ($recipient === null && isset($event['badge'])) {
-            $room = ChatDatabase::connection()->table('chat_rooms')->find($row->room_id);
-            if ($room && in_array($room->type, ['global', 'movie', 'episode'], true)) {
-                $channels[] = \App\Support\Chat\ChatReadService::contextChannel($room->type, $room->content_id);
-            }
-        }
-        // Receivers can fetch history as soon as Reverb accepts the event.
-        if ($row->kind !== 'typing') { app(ChatService::class)->invalidate($row->room_id); }
-        $this->postReverb($recipient !== null ? 'chat.badge' : 'chat.changed', $channels, $event);
     }
 
     private function postReverb(string $name, array $channels, array $event): void

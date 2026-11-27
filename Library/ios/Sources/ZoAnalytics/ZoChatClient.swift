@@ -615,7 +615,7 @@ public final class ZoChatClient {
     }
 
     private func connect() {
-        guard !usesFirebaseRealtime else { return }
+        guard !usesFirebaseRealtime, firebaseSource == nil || watchSocket else { return }
         guard !closed, let room, let url = URL(string: room.websocket_url), url.scheme == "wss" else { onConnection?(false); return }
         generation += 1; let current = generation
         hasSubscribedRoom = false
