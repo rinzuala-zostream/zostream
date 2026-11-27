@@ -493,7 +493,11 @@ final class ChatController extends Controller
             ChatDatabase::connection()->table('chat_room_invites')->where('id', $invite)->where('status', 'pending')->update([
                 'status' => $v['accept'] ? 'accepted' : 'declined', 'responded_at' => now(), 'updated_at' => now(),
             ]);
-            if ($v['accept']) { $this->chat->outbox($r, (int) $row->room_id, 'badge_sync', null, null, $uid); }
+            $this->chat->outbox($r, (int) $row->room_id, 'badge_sync', null, null, $uid);
+            $host = ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $row->room_id)->value('host_user_id');
+            if ($host && (string) $host !== $uid) {
+                $this->chat->outbox($r, (int) $row->room_id, 'badge_sync', null, null, (string) $host);
+            }
             $seasonId = $row->content_type === 'episode' && isset($content->season_id) ? (string) $content->season_id : null;
             $seasonNumber = $seasonId ? DB::table('seasons')->where('id', $seasonId)->value('season_number') : null;
             return V4Response::success(['accepted' => (bool) $v['accept'], 'room_id' => (string) $row->room_id, 'room_name' => $row->room_name,

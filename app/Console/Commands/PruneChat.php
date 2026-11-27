@@ -46,6 +46,7 @@ final class PruneChat extends Command
     private function pruneFirebaseFeeds(): void
     {
         $db = ChatDatabase::connection();
+        $this->pruneFirebaseAccountEvents($db);
         if (! ChatDatabase::schema()->hasTable('chat_firebase_message_recipients')
             || ! ChatDatabase::schema()->hasTable('chat_firebase_event_recipients')) { return; }
         $cutoff = now()->subDays(7);
@@ -102,6 +103,46 @@ final class PruneChat extends Command
                 $this->deleteFirebaseRecipientRows('chat_firebase_event_recipients', $excess, 'cursor');
             } while (true);
         }
+    }
+
+    private function pruneFirebaseAccountEvents(\Illuminate\Database\Connection $db): void
+    {
+        if (! ChatDatabase::schema()->hasTable('chat_firebase_badge_recipients')) { return; }
+        $table = 'chat_firebase_badge_recipients';
+        $cutoff = now()->subDays(7);
+        do {
+            $rows = $db->table($table)->where('published_at', '<', $cutoff)->orderBy('published_at')->limit(500)->get();
+            if ($rows->isEmpty()) { break; }
+            try { app(\App\Support\Chat\ChatFirebase::class)->deleteAccountEvents($rows->all()); }
+            catch (\Throwable $error) {
+                Log::warning('Expired Firebase account chat event cleanup deferred', ['exception' => $error::class]);
+                return;
+            }
+            $this->deleteFirebaseBadgeRecipientRows($rows);
+        } while (true);
+
+        foreach ($db->table($table)->select('firebase_uid')->groupBy('firebase_uid')->get() as $group) {
+            do {
+                $excess = $db->table($table)->where('firebase_uid', $group->firebase_uid)
+                    ->orderByDesc('outbox_id')->offset(500)->limit(500)->get();
+                if ($excess->isEmpty()) { break; }
+                try { app(\App\Support\Chat\ChatFirebase::class)->deleteAccountEvents($excess->all()); }
+                catch (\Throwable $error) {
+                    Log::warning('Firebase account chat event cap cleanup deferred', ['exception' => $error::class]);
+                    return;
+                }
+                $this->deleteFirebaseBadgeRecipientRows($excess);
+            } while (true);
+        }
+    }
+
+    private function deleteFirebaseBadgeRecipientRows(\Illuminate\Support\Collection $rows): void
+    {
+        ChatDatabase::connection()->table('chat_firebase_badge_recipients')->where(function ($query) use ($rows): void {
+            foreach ($rows as $row) {
+                $query->orWhere(fn ($tuple) => $tuple->where('firebase_uid', $row->firebase_uid)->where('outbox_id', $row->outbox_id));
+            }
+        })->delete();
     }
 
     private function deleteFirebaseMessageRows(\Illuminate\Support\Collection $rows): void

@@ -14,13 +14,20 @@
     },
     "auth_sessions/{firebaseUid}/{sessionId}": {
       "owner": "trusted backend only",
-      "fields": ["active", "client_access", "expires_at", "zo_session_id", "revision"],
+      "fields": ["active", "client_access", "account_events_access", "expires_at", "zo_session_id", "revision"],
       "purpose": "rules-checkable session revocation and bounded authorization lease"
     },
     "user_rooms/{firebaseUid}/{roomId}": {
       "owner": "trusted backend only",
       "fields": ["room_id", "room_type", "content_id", "expires_at"],
       "purpose": "room discovery index; contains only rooms currently visible to this user"
+    },
+    "user_account_events/{firebaseUid}/{outboxId}": {
+      "owner": "trusted backend only; account-scoped invalidation stream",
+      "fields": ["revision", "kind", "server_at"],
+      "event_kinds": ["unread_invalidated", "room_state_invalidated"],
+      "retention": "at most 500 per account and 7 days",
+      "purpose": "invalidates canonical SQL unread or room discovery snapshots without exposing private room IDs or duplicating unread state"
     },
     "messages/{roomId}/{messageId}": {
       "owner": "trusted backend only; clients submit through the authenticated Laravel chat API",

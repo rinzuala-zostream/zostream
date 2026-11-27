@@ -15,6 +15,7 @@ final class ChatFirebaseAdminEmulatorTest extends TestCase
     private ?string $credentialsPath = null;
     private ?\GuzzleHttp\Client $emulatorHttp = null;
     private string $emulatorNamespace = 'demo-zostream-chat-default-rtdb';
+    private string $emulatorHost = '127.0.0.1:9000';
 
     protected function setUp(): void
     {
@@ -25,6 +26,7 @@ final class ChatFirebaseAdminEmulatorTest extends TestCase
         if (! in_array($parts['host'] ?? '', ['127.0.0.1', 'localhost', '::1'], true)) {
             $this->fail('Refusing to run Firebase Admin tests against a non-loopback database host.');
         }
+        $this->emulatorHost = $host;
 
         config(['database.default' => 'sqlite', 'database.connections.sqlite.database' => ':memory:',
             'chat.connection' => 'sqlite', 'chat.firebase.enabled' => true,
@@ -81,6 +83,10 @@ final class ChatFirebaseAdminEmulatorTest extends TestCase
             $table->string('viewer_uid'); $table->unsignedBigInteger('room_id'); $table->string('typist_uid');
             $table->timestamp('expires_at'); $table->timestamps(); $table->primary(['viewer_uid', 'room_id', 'typist_uid']);
         });
+        Schema::connection('sqlite')->create('chat_firebase_badge_recipients', function (Blueprint $table): void {
+            $table->string('firebase_uid'); $table->unsignedBigInteger('outbox_id'); $table->timestamp('published_at');
+            $table->primary(['firebase_uid', 'outbox_id']);
+        });
         Schema::connection('sqlite')->create('session_tokens', function (Blueprint $table): void {
             $table->id(); $table->string('user_id'); $table->string('access_token'); $table->string('device_id');
             $table->timestamp('access_expires_at'); $table->string('refresh_token')->nullable(); $table->timestamp('refresh_expires_at')->nullable();
@@ -113,7 +119,7 @@ final class ChatFirebaseAdminEmulatorTest extends TestCase
 
     public function test_sql_accepted_message_and_cursor_are_published_atomically_by_kreait_admin_sdk(): void
     {
-        $outbox = (object) ['room_id' => 17, 'kind' => 'feed_created', 'message_id' => 501,
+        $outbox = (object) ['id' => 5001, 'room_id' => 17, 'kind' => 'feed_created', 'message_id' => 501,
             'firebase_cursor' => 1, 'recipient_user_id' => null];
         app(ChatFirebaseLiveDelivery::class)->deliver($outbox);
         foreach (['viewer-a', 'viewer-b'] as $userId) {
@@ -131,11 +137,11 @@ final class ChatFirebaseAdminEmulatorTest extends TestCase
     public function test_blocked_recipient_is_filtered_and_tombstone_revision_is_current(): void
     {
         DB::table('chat_blocks')->insert(['user_id' => 'viewer-a', 'blocked_user_id' => 'sender']);
-        app(ChatFirebaseLiveDelivery::class)->deliver((object) ['room_id' => 17, 'kind' => 'feed_created', 'message_id' => 501,
+        app(ChatFirebaseLiveDelivery::class)->deliver((object) ['id' => 5002, 'room_id' => 17, 'kind' => 'feed_created', 'message_id' => 501,
             'firebase_cursor' => 1, 'recipient_user_id' => null]);
         $this->assertNull($this->readPath('chat_v1/user_messages/'.ChatFirebase::uid('viewer-a').'/17/00000000000000000501'));
         DB::table('chat_messages')->where('id', 501)->update(['body' => '', 'revision' => 2, 'deleted_at' => now()]);
-        app(ChatFirebaseLiveDelivery::class)->deliver((object) ['room_id' => 17, 'kind' => 'feed_deleted', 'message_id' => 501,
+        app(ChatFirebaseLiveDelivery::class)->deliver((object) ['id' => 5003, 'room_id' => 17, 'kind' => 'feed_deleted', 'message_id' => 501,
             'firebase_cursor' => 2, 'recipient_user_id' => null]);
         $tombstone = $this->readPath('chat_v1/user_messages/'.ChatFirebase::uid('viewer-b').'/17/00000000000000000501');
         $this->assertTrue($tombstone['deleted']);
@@ -150,6 +156,7 @@ final class ChatFirebaseAdminEmulatorTest extends TestCase
         $firebase = app(ChatFirebase::class);
         $issued = $firebase->issueToken($session);
         $this->assertSame(ChatFirebase::uid('viewer-a'), $issued['firebase_uid']);
+        $this->assertTrue($this->readPath('chat_v1/auth_sessions/'.ChatFirebase::uid('viewer-a').'/'.$session->id.'/account_events_access'));
         $firebase->projectRoomAuthorization('viewer-a', $session->id,
             (object) ['id' => 17, 'type' => 'global', 'content_id' => null], true, now()->addMinutes(2)->getTimestamp());
         $grant = $this->readPath('chat_v1/room_authz/17/'.ChatFirebase::uid('viewer-a').'/'.$session->id);
@@ -161,6 +168,7 @@ final class ChatFirebaseAdminEmulatorTest extends TestCase
         $revoked = $this->readPath('chat_v1/auth_sessions/'.ChatFirebase::uid('viewer-a').'/'.$session->id);
         $this->assertFalse($revoked['active']);
         $this->assertFalse($revoked['client_access']);
+        $this->assertFalse($revoked['account_events_access']);
     }
 
     public function test_typing_is_short_lived_recipient_scoped_filtered_and_removed_on_stop(): void
@@ -178,6 +186,66 @@ final class ChatFirebaseAdminEmulatorTest extends TestCase
         $firebase->publishTyping(17, 'sender', null);
         $this->assertSame(0, DB::table('chat_firebase_typing_records')->count());
         $this->assertNull($this->readPath($pathB));
+    }
+
+    public function test_account_badge_invalidation_reaches_users_without_room_leases_and_is_idempotent(): void
+    {
+        $this->emulatorHttp->delete('/chat_v1/room_authz/17.json', ['query' => ['ns' => $this->emulatorNamespace],
+            'headers' => ['Authorization' => 'Bearer owner']]);
+        $outbox = (object) ['id' => 7001, 'room_id' => 17, 'kind' => 'feed_created', 'message_id' => 501,
+            'firebase_cursor' => 9001, 'recipient_user_id' => null];
+        app(ChatFirebaseLiveDelivery::class)->deliver($outbox);
+        app(ChatFirebaseLiveDelivery::class)->deliver($outbox);
+
+        foreach (['viewer-a', 'viewer-b'] as $userId) {
+            $event = $this->readPath('chat_v1/user_account_events/'.ChatFirebase::uid($userId).'/00000000000000007001');
+            $this->assertSame('unread_invalidated', $event['kind']);
+            $this->assertSame('7001', $event['revision']);
+            $this->assertArrayNotHasKey('room_id', $event);
+        }
+        $this->assertSame(2, DB::table('chat_firebase_badge_recipients')->count());
+
+        DB::table('chat_rooms')->insert(['id' => 18, 'type' => 'invite', 'content_id' => null, 'closed' => false, 'room_key' => 'invite:18']);
+        app(ChatFirebaseLiveDelivery::class)->deliver((object) ['id' => 7002, 'room_id' => 18,
+            'kind' => 'badge_sync', 'message_id' => null, 'firebase_cursor' => 9002, 'recipient_user_id' => 'viewer-a']);
+        $privateInvalidation = $this->readPath('chat_v1/user_account_events/'.ChatFirebase::uid('viewer-a').'/00000000000000007002');
+        $this->assertSame('room_state_invalidated', $privateInvalidation['kind']);
+        $this->assertArrayNotHasKey('room_id', $privateInvalidation);
+        $this->assertSame(3, DB::table('chat_firebase_badge_recipients')->count());
+    }
+
+    public function test_temporary_firebase_unavailability_preserves_sql_acceptance_and_same_outbox_retry_succeeds(): void
+    {
+        $outbox = (object) ['id' => 8001, 'room_id' => 17, 'kind' => 'feed_created', 'message_id' => 501,
+            'firebase_cursor' => 8001, 'recipient_user_id' => null];
+        $previousEnv = $_ENV['FIREBASE_DATABASE_EMULATOR_HOST'] ?? null;
+        $previousServer = $_SERVER['FIREBASE_DATABASE_EMULATOR_HOST'] ?? null;
+        $_ENV['FIREBASE_DATABASE_EMULATOR_HOST'] = '127.0.0.1:9199';
+        $_SERVER['FIREBASE_DATABASE_EMULATOR_HOST'] = '127.0.0.1:9199';
+        putenv('FIREBASE_DATABASE_EMULATOR_HOST=127.0.0.1:9199');
+        $failure = null;
+        try {
+            try {
+                app(ChatFirebase::class)->publishAccountEvents([
+                    'user_account_events/'.ChatFirebase::uid('viewer-a').'/00000000000000008001' => [
+                        'revision' => '8001', 'kind' => 'unread_invalidated', 'server_at' => now()->getTimestampMs()],
+                ]);
+            } catch (\Throwable $error) {
+                $failure = $error;
+            }
+        } finally {
+            if ($previousEnv === null) { unset($_ENV['FIREBASE_DATABASE_EMULATOR_HOST']); }
+            else { $_ENV['FIREBASE_DATABASE_EMULATOR_HOST'] = $previousEnv; }
+            if ($previousServer === null) { unset($_SERVER['FIREBASE_DATABASE_EMULATOR_HOST']); }
+            else { $_SERVER['FIREBASE_DATABASE_EMULATOR_HOST'] = $previousServer; }
+            putenv('FIREBASE_DATABASE_EMULATOR_HOST='.$this->emulatorHost);
+        }
+
+        $this->assertInstanceOf(\Throwable::class, $failure, 'The publication should fail while the emulator endpoint is unavailable.');
+        $this->assertSame('accepted by SQL', DB::table('chat_messages')->where('id', 501)->value('body'));
+        app(ChatFirebaseLiveDelivery::class)->deliver($outbox);
+        $this->assertNotNull($this->readPath('chat_v1/user_account_events/'.ChatFirebase::uid('viewer-a').'/00000000000000008001'));
+        $this->assertSame(2, DB::table('chat_firebase_badge_recipients')->count());
     }
 
     private function readPath(string $path): mixed

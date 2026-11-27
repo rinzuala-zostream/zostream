@@ -47,6 +47,7 @@ final class ChatFirebase
         $reference->set([
             'active' => true,
             'client_access' => $clientAccess,
+            'account_events_access' => (bool) config('chat.firebase.client_access_enabled'),
             'expires_at' => $expiresAt * 1000,
             'zo_session_id' => $sessionId,
             'revision' => $revision,
@@ -76,7 +77,8 @@ final class ChatFirebase
             $session->access_expires_at->getTimestamp());
         $reference->set(array_merge($previous, [
             'expires_at' => $expiresAt * 1000,
-            'client_access' => (bool) ($previous['client_access'] ?? false) && (bool) config('chat.firebase.client_access_enabled'),
+            'client_access' => (bool) config('chat.firebase.client_access_enabled'),
+            'account_events_access' => (bool) config('chat.firebase.client_access_enabled'),
             'revision' => (int) ($previous['revision'] ?? 0) + 1,
         ]));
 
@@ -100,6 +102,7 @@ final class ChatFirebase
             "auth_sessions/$firebaseUid/$sessionId" => array_merge(is_array($previous) ? $previous : [], [
                 'active' => false,
                 'client_access' => false,
+                'account_events_access' => false,
                 'expires_at' => now()->getTimestamp() * 1000,
                 'zo_session_id' => (string) $sessionId,
                 'revision' => (int) (is_array($previous) ? ($previous['revision'] ?? 0) : 0) + 1,
@@ -186,6 +189,26 @@ final class ChatFirebase
     {
         if (! config('chat.firebase.enabled') || $updates === []) { return; }
         $this->database()->getReference('chat_v1')->update($updates);
+    }
+
+    /** Publish stable outbox-keyed account invalidations; duplicate delivery is an idempotent set. */
+    public function publishAccountEvents(array $updates): void
+    {
+        if (! config('chat.firebase.enabled') || $updates === []) { return; }
+        $this->database()->getReference('chat_v1')->update($updates);
+    }
+
+    public function deleteAccountEvents(array $rows): void
+    {
+        if ($rows === []) { return; }
+        $updates = [];
+        foreach ($rows as $row) {
+            $key = str_pad((string) $row->outbox_id, 20, '0', STR_PAD_LEFT);
+            $updates["user_account_events/$row->firebase_uid/$key"] = null;
+        }
+        foreach (array_chunk($updates, 200, true) as $batch) {
+            $this->database()->getReference('chat_v1')->update($batch);
+        }
     }
 
     /** Publish a short-lived, block-filtered typing record to authorized viewers only. */

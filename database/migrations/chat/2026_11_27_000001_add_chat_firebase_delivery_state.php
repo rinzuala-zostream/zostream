@@ -57,6 +57,14 @@ return new class extends Migration
             $table->index(['typist_uid', 'room_id', 'viewer_uid'], 'chat_firebase_typist_cleanup_idx');
         });
 
+        ChatDatabase::schema()->create('chat_firebase_badge_recipients', function (Blueprint $table): void {
+            $table->string('firebase_uid', 68);
+            $table->unsignedBigInteger('outbox_id');
+            $table->timestamp('published_at');
+            $table->primary(['firebase_uid', 'outbox_id'], 'chat_firebase_badge_recipient_pk');
+            $table->index(['published_at', 'firebase_uid', 'outbox_id'], 'chat_firebase_badge_prune_idx');
+        });
+
         // Existing SQL/Reverb history is deliberately not backfilled to RTDB.
         ChatDatabase::connection()->table('chat_outbox')->whereNull('firebase_delivered_at')->update(['firebase_delivered_at' => now()]);
     }
@@ -67,6 +75,7 @@ return new class extends Migration
         ChatDatabase::schema()->dropIfExists('chat_firebase_message_recipients');
         ChatDatabase::schema()->dropIfExists('chat_firebase_event_recipients');
         ChatDatabase::schema()->dropIfExists('chat_firebase_typing_records');
+        ChatDatabase::schema()->dropIfExists('chat_firebase_badge_recipients');
         ChatDatabase::schema()->table('chat_outbox', function (Blueprint $table): void {
             $table->dropIndex('chat_outbox_firebase_pending_idx');
             $table->dropColumn(['firebase_cursor', 'firebase_delivered_at', 'firebase_attempts', 'firebase_available_at', 'firebase_claim_token', 'firebase_claimed_until']);

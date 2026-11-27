@@ -86,6 +86,12 @@
           ".write": false
         }
       },
+      "user_account_events": {
+        "$uid": {
+          ".read": "auth != null && auth.uid === $uid && ((query.limitToLast != null && query.limitToLast <= 500) || (query.startAt != null && query.limitToFirst != null && query.limitToFirst <= 100)) && root.child('chat_v1/auth_sessions').child(auth.uid).child(auth.token.chat_sid).child('active').val() === true && root.child('chat_v1/auth_sessions').child(auth.uid).child(auth.token.chat_sid).child('account_events_access').val() === true && root.child('chat_v1/auth_sessions').child(auth.uid).child(auth.token.chat_sid).child('expires_at').val() > now",
+          ".write": false
+        }
+      },
       "user_messages": {
         "$uid": {
           "$room": {

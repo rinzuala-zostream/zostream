@@ -16,22 +16,31 @@ final class ChatFirebaseLiveDelivery
         $startedAt = microtime(true);
         if (! config('chat.firebase.enabled')) { return; }
         $roomId = (int) $outbox->room_id;
+        $db = ChatDatabase::connection();
+        $room = $roomId > 0 ? $db->table('chat_rooms')->find($roomId) : null;
         if ($outbox->kind === 'ended') {
+            app(ChatFirebaseAccountEvents::class)->publish($outbox, $room);
             $this->firebase->revokeRoomAuthorization($roomId);
             return;
         }
-        if (! in_array($outbox->kind, ['feed_created', 'feed_deleted', 'sync', 'reactions', 'read', 'room_invite_status'], true)) {
+        if (! in_array($outbox->kind, ['feed_created', 'feed_deleted', 'sync', 'reactions', 'read', 'room_invite_status', 'badge_sync'], true)) {
             return;
         }
-
-        $db = ChatDatabase::connection();
-        $room = $db->table('chat_rooms')->find($roomId);
-        if (! $room || $room->closed) { return; }
+        if ($outbox->kind === 'badge_sync') {
+            app(ChatFirebaseAccountEvents::class)->publish($outbox, $room);
+            return;
+        }
+        if (! $room) { return; }
         $message = in_array($outbox->kind, ['feed_created', 'feed_deleted', 'reactions', 'sync'], true) && $outbox->message_id
             ? $db->table('chat_messages')->where('room_id', $roomId)->where('id', $outbox->message_id)->first()
             : null;
         if (in_array($outbox->kind, ['feed_created', 'feed_deleted', 'reactions'], true) && ! $message) { return; }
         if ($message && Carbon::parse($message->created_at)->lt(now()->subDays(config('chat.retention_days')))) { return; }
+        // Account invalidations reach authenticated sessions that have no active
+        // room lease. They contain no room ID or private metadata; clients refresh
+        // the canonical SQL unread/discovery snapshots and enforce current policy.
+        app(ChatFirebaseAccountEvents::class)->publish($outbox, $room, $message);
+        if ($room->closed) { return; }
 
         $authorization = $this->firebase->roomAuthorizations($roomId);
         $nowMs = now()->getTimestampMs();

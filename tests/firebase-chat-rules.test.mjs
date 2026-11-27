@@ -43,6 +43,9 @@ test('only projected sessions and room permissions grant chat access', () => {
         assert.match(serialized, /client_access/);
         assert.match(serialized, /room_authz/);
     }
+    assert.match(chat.user_account_events.$uid['.read'], /account_events_access/);
+    assert.match(chat.user_account_events.$uid['.read'], /query\.limitToLast <= 500/);
+    assert.doesNotMatch(chat.user_account_events.$uid['.read'], /room_authz/);
 });
 
 test('only trusted Laravel processing can publish validated messages', () => {
@@ -84,7 +87,7 @@ test('Firebase Realtime Database emulator authorization behavior', async (t) => 
     const sid = 'fixture-session';
     const now = Date.now();
     const fixture = {
-        auth_sessions: { [uid]: { [sid]: { active: true, client_access: true, expires_at: now + 60_000 }, 'other-session': { active: true, client_access: true, expires_at: now + 60_000 } } },
+        auth_sessions: { [uid]: { [sid]: { active: true, client_access: true, account_events_access: true, expires_at: now + 60_000 }, 'other-session': { active: true, client_access: true, account_events_access: true, expires_at: now + 60_000 } } },
         room_authz: { 17: { [uid]: { [sid]: { can_read: true, can_write: true, read_until: now + 60_000, write_until: now + 60_000 } } } },
         user_messages: { [uid]: { 17: {
             '-OfixtureMessage0001': { message_type: 'text', sender_uid: uid, sender_name: 'Fixture User', body: 'seed', spoiler: false, client_op_id: 'seed-op', created_at: now, revision: 1, deleted: false }
@@ -95,7 +98,11 @@ test('Firebase Realtime Database emulator authorization behavior', async (t) => 
         user_sync_events: { [uid]: { 17: {
             '00000000000000000001': { cursor: 1, kind: 'created' },
             '00000000000000000002': { cursor: 2, kind: 'created' }
-        } } }
+        } } },
+        user_account_events: { [uid]: {
+            '00000000000000000001': { revision: '1', kind: 'unread_invalidated', server_at: now },
+            '00000000000000000002': { revision: '2', kind: 'room_state_invalidated', server_at: now }
+        } }
     };
     try {
         await environment.withSecurityRulesDisabled(async (context) => {
@@ -129,6 +136,11 @@ test('Firebase Realtime Database emulator authorization behavior', async (t) => 
         assert.ok(Object.keys(incrementalEvents.val() ?? {}).length >= 1, 'saved cursors can resume at the next event without rereading the tail');
         assert.equal(incrementalEvents.child('00000000000000000002').child('cursor').val(), 2);
         await assertFails(get(query(ref(db, `chat_v1/user_sync_events/${uid}/17`), orderByKey(), startAt('00000000000000000002'), limitToFirst(101))));
+        const accountEvents = ref(db, `chat_v1/user_account_events/${uid}`);
+        const badgeHistory = await assertSucceeds(get(query(accountEvents, orderByKey(), limitToLast(500))));
+        assert.equal(badgeHistory.child('00000000000000000001').child('kind').val(), 'unread_invalidated');
+        const badgeResume = await assertSucceeds(get(query(accountEvents, orderByKey(), startAt('00000000000000000002'), limitToFirst(100))));
+        assert.equal(badgeResume.child('00000000000000000002').exists(), true);
         await assertFails(get(ref(db, `chat_v1/user_typing/${uid}/17`)));
         await assertFails(set(ref(db, `chat_v1/user_typing/${uid}/17/zs_forged`), {
             typist_uid: 'zs_forged', name: 'Forged', is_admin: false, expires_at: Date.now() + 5_000,

@@ -105,15 +105,21 @@ global and 60-second short-room recommendation). `CHAT_FIREBASE_ENABLED=false` a
 reads and every client write are denied. Trusted fanout writes recent messages
 only to each eligible recipient's own branch after SQL membership, session,
 playback, ban and block checks. A block disables that user's Firebase read gate
-and clears the per-user feed/event branches. SQL remains the complete history,
-submission, moderation, notification and interaction authority. Do not publish
-the changed rules or enable either gate in production until the full emulator
-and backend regression matrix passes and production Firebase paths are
-reconciled. Backend readiness is currently **NOT READY**: typing, live unread
-badges, full room metadata/discovery projections and Admin SDK delivery/retry
-integration coverage are incomplete. Emulator rules tests do not substitute
-for an end-to-end Laravel Admin SDK/staging test. Do not start Android/iOS
-integration until a separate readiness review clears these blockers.
+and clears the per-user feed/event branches. Account-wide changes publish
+revision-keyed invalidations at
+`chat_v1/user_account_events/{firebaseUid}/{outboxId20}`; they contain no private
+room identifiers. Clients refresh canonical SQL unread and room-discovery APIs
+after these events. Typing uses the temporary per-viewer
+`user_typing/{firebaseUid}/{roomId}/{typistUid}` path. SQL remains the complete
+history, submission, moderation, notification and interaction authority. Do not
+publish the changed rules or enable either gate in production until the full
+backend regression and performance matrix passes and production Firebase paths
+are reconciled. Backend readiness is currently **NOT READY**: broad delivery
+failure/concurrency tests, complete room mutation invalidation coverage, and
+actual backend workload benchmarks remain incomplete. Admin SDK and Rules
+emulator tests are valuable local checks but do not establish production load
+or client convergence. Do not start Android/iOS integration until a separate
+readiness review clears these blockers.
 Before enabling token issuance, configure and durably back up the dedicated
 `CHAT_FIREBASE_UID_KEY`; changing it requires an explicit Firebase identity
 migration.
