@@ -43,9 +43,9 @@ class ChatMessageController extends Controller
                 return V4Response::error('content_unavailable', 'This chat room is unavailable for the selected title.', 404);
             }
 
-            $user = DB::table('user')->where('num', $userId)->first(['uid', 'name']);
-            $firebaseUid = trim((string) ($user->uid ?? ''));
-            if ($firebaseUid === '' || preg_match('/^[A-Za-z0-9_-]+$/', $firebaseUid) !== 1) {
+            $user = DB::table('user')->where('uid', $userId)->first(['uid', 'name']);
+            $memberUid = trim((string) ($user->uid ?? ''));
+            if (! $user || $memberUid === '' || preg_match('/^[A-Za-z0-9_-]+$/', $memberUid) !== 1) {
                 return V4Response::error('chat_identity_unavailable', 'Your chat identity is unavailable.', 403);
             }
 
@@ -70,7 +70,7 @@ class ChatMessageController extends Controller
                 return V4Response::error('room_unavailable', 'This chat room is unavailable.', 403);
             }
 
-            $memberRef = $database->getReference("chat_v1/rooms/{$roomId}/members/{$firebaseUid}");
+            $memberRef = $database->getReference("chat_v1/rooms/{$roomId}/members/{$memberUid}");
             $membership = $memberRef->getValue();
             if (! is_array($membership) || ($membership['active'] ?? false) !== true) {
                 $memberRef->set([
@@ -95,56 +95,9 @@ class ChatMessageController extends Controller
                 'content_title' => $contentTitle,
                 'is_admin' => false,
                 'is_host' => false,
-                'firebase_realtime' => true,
+                'firebase_realtime' => false,
                 'sync_cursor' => (int) ($lastMessage ?: 0),
             ]);
-        } catch (Throwable $error) {
-            report($error);
-            return V4Response::error('chat_unavailable', 'Chat is temporarily unavailable. Please try again.', 503);
-        }
-    }
-
-    public function firebaseToken(Request $request): JsonResponse
-    {
-        $userId = trim((string) $request->input('auth_user_id'));
-        if ($userId === '') {
-            return V4Response::error('unauthenticated', 'Your sign-in session is no longer valid.', 401);
-        }
-        try {
-            $uid = trim((string) DB::table('user')->where('num', $userId)->value('uid'));
-            if ($uid === '' || preg_match('/^[A-Za-z0-9_-]+$/', $uid) !== 1) {
-                return V4Response::error('chat_identity_unavailable', 'Your chat identity is unavailable.', 403);
-            }
-            $auth = (new Factory)->withServiceAccount((string) config('firebase.credentials'))->createAuth();
-            $token = $auth->createCustomToken($uid);
-            return V4Response::success(['firebase_uid' => $uid, 'custom_token' => $token->toString()]);
-        } catch (Throwable $error) {
-            report($error);
-            return V4Response::error('firebase_auth_unavailable', 'Firebase chat authentication is unavailable.', 503);
-        }
-    }
-
-    public function firebaseLease(Request $request): JsonResponse
-    {
-        $userId = trim((string) $request->input('auth_user_id'));
-        $roomId = trim((string) $request->input('active_room_id', ''));
-        try {
-            $uid = trim((string) DB::table('user')->where('num', $userId)->value('uid'));
-            if ($uid === '' || preg_match('/^[A-Za-z0-9_-]+$/', $uid) !== 1) {
-                return V4Response::error('chat_identity_unavailable', 'Your chat identity is unavailable.', 403);
-            }
-            if ($roomId !== '') {
-                if (preg_match('/^[A-Za-z0-9_-]+$/', $roomId) !== 1) {
-                    return V4Response::error('room_access_denied', 'This chat room is unavailable.', 403);
-                }
-                $database = $this->database();
-                $state = $database->getReference("chat_v1/rooms/{$roomId}/state")->getValue();
-                $member = $database->getReference("chat_v1/rooms/{$roomId}/members/{$uid}")->getValue();
-                if (! is_array($state) || ($state['active'] ?? false) !== true || ! is_array($member) || ($member['active'] ?? false) !== true) {
-                    return V4Response::error('room_access_denied', 'You no longer have access to this chat room.', 403);
-                }
-            }
-            return V4Response::success(['room_projection_refreshed' => true, 'refresh_after_seconds' => 60]);
         } catch (Throwable $error) {
             report($error);
             return V4Response::error('chat_unavailable', 'Chat is temporarily unavailable. Please try again.', 503);
@@ -156,7 +109,7 @@ class ChatMessageController extends Controller
         $userId = trim((string) $request->input('auth_user_id'));
         $cursor = max(0, (int) $request->query('cursor', 0));
         try {
-            $uid = trim((string) DB::table('user')->where('num', $userId)->value('uid'));
+            $uid = trim((string) DB::table('user')->where('uid', $userId)->value('uid'));
             $database = $this->database();
             $member = $database->getReference("chat_v1/rooms/{$roomId}/members/{$uid}")->getValue();
             if (! is_array($member) || ($member['active'] ?? false) !== true) {
@@ -199,7 +152,7 @@ class ChatMessageController extends Controller
     {
         $userId = trim((string) $request->input('auth_user_id'));
         try {
-            $uid = trim((string) DB::table('user')->where('num', $userId)->value('uid'));
+            $uid = trim((string) DB::table('user')->where('uid', $userId)->value('uid'));
             $database = $this->database();
             $member = $database->getReference("chat_v1/rooms/{$roomId}/members/{$uid}")->getValue();
             if (! is_array($member) || ($member['active'] ?? false) !== true) {
@@ -226,6 +179,52 @@ class ChatMessageController extends Controller
                 'first_unread_id' => null,
                 'initial_after' => null,
             ]);
+        } catch (Throwable $error) {
+            report($error);
+            return V4Response::error('chat_unavailable', 'Chat is temporarily unavailable. Please try again.', 503);
+        }
+    }
+
+    public function heartbeat(Request $request, string $roomId): JsonResponse
+    {
+        $payload = $request->validate([
+            'visible' => ['sometimes', 'boolean'],
+            'visibility_id' => ['nullable', 'string', 'max:80'],
+            'visibility_sequence' => ['nullable', 'integer', 'min:0'],
+        ]);
+        $userId = trim((string) $request->input('auth_user_id'));
+        try {
+            $user = DB::table('user')->where('uid', $userId)->first(['uid', 'name']);
+            if (! $user) {
+                return V4Response::error('chat_identity_unavailable', 'Your chat identity is unavailable.', 403);
+            }
+            $database = $this->database();
+            $state = $database->getReference("chat_v1/rooms/{$roomId}/state")->getValue();
+            $member = $database->getReference("chat_v1/rooms/{$roomId}/members/{$userId}")->getValue();
+            if (! is_array($state) || ($state['active'] ?? false) !== true || ! is_array($member) || ($member['active'] ?? false) !== true) {
+                return V4Response::error('room_access_denied', 'You no longer have access to this chat room.', 403);
+            }
+
+            $presencePath = "chat_v1/room_presence/{$roomId}/{$userId}";
+            if (($payload['visible'] ?? true) === false) {
+                $database->getReference($presencePath)->remove();
+            } else {
+                $database->getReference($presencePath)->set([
+                    'user_id' => $userId,
+                    'name' => trim((string) ($user->name ?? '')) ?: 'Viewer',
+                    'is_admin' => false,
+                    'seen_at' => now()->timestamp,
+                    'expires_at' => now()->addSeconds(90)->valueOf(),
+                    'visibility_id' => $payload['visibility_id'] ?? null,
+                    'visibility_sequence' => $payload['visibility_sequence'] ?? null,
+                ]);
+            }
+            $presence = $database->getReference("chat_v1/room_presence/{$roomId}")->getValue() ?? [];
+            $nowMs = now()->valueOf();
+            $online = collect(is_array($presence) ? $presence : [])->filter(
+                fn ($item) => is_array($item) && (int) ($item['expires_at'] ?? 0) > $nowMs
+            )->count();
+            return V4Response::success(['online_count' => $online]);
         } catch (Throwable $error) {
             report($error);
             return V4Response::error('chat_unavailable', 'Chat is temporarily unavailable. Please try again.', 503);
@@ -265,9 +264,9 @@ class ChatMessageController extends Controller
                 return V4Response::error('room_unavailable', 'This chat room is unavailable.', 404);
             }
 
-            $userRecord = DB::table('user')->where('num', $userId)->first(['uid', 'name']);
-            $firebaseUid = trim((string) ($userRecord->uid ?? ''));
-            if ($firebaseUid === '' || preg_match('/^[A-Za-z0-9_-]+$/', $firebaseUid) !== 1) {
+            $userRecord = DB::table('user')->where('uid', $userId)->first(['uid', 'name']);
+            $memberUid = trim((string) ($userRecord->uid ?? ''));
+            if ($memberUid === '' || preg_match('/^[A-Za-z0-9_-]+$/', $memberUid) !== 1) {
                 return V4Response::error('chat_identity_unavailable', 'Your chat identity is unavailable.', 403);
             }
 
@@ -275,7 +274,7 @@ class ChatMessageController extends Controller
             // room permissions are deliberately ignored.
             $members = $database->getReference("chat_v1/rooms/{$roomId}/members")->getValue();
             $members = is_array($members) ? $members : [];
-            $membership = $members[$firebaseUid] ?? null;
+            $membership = $members[$memberUid] ?? null;
             if (! is_array($membership) || ($membership['active'] ?? false) !== true) {
                 return V4Response::error('room_access_denied', 'You are not a member of this chat room.', 403);
             }

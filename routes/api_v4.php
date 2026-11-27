@@ -179,10 +179,10 @@ Route::prefix('v4')
                     ->where('roomId', '[A-Za-z0-9_-]+');
                 Route::get('/rooms/{roomId}/messages', [ChatMessageController::class, 'history'])
                     ->where('roomId', '[A-Za-z0-9_-]+');
+                Route::post('/rooms/{roomId}/heartbeat', [ChatMessageController::class, 'heartbeat'])
+                    ->where('roomId', '[A-Za-z0-9_-]+');
                 Route::get('/rooms/{roomId}/sync', [ChatMessageController::class, 'sync'])
                     ->where('roomId', '[A-Za-z0-9_-]+');
-                Route::post('/firebase/token', [ChatMessageController::class, 'firebaseToken']);
-                Route::post('/firebase/lease', [ChatMessageController::class, 'firebaseLease']);
             });
 
             Route::prefix('creator')->middleware('throttle:60,1')->group(function () {

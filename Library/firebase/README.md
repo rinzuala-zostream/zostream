@@ -53,7 +53,6 @@ service-account holders and Firebase Console access remain governed by IAM.
 
 `database.rules.json` is the complete ruleset for the Firebase paths used by the
 current API, admin, Android, iOS and TV sources. It denies root reads and writes,
-allows authenticated chat clients to read only their own chat projections,
 allows reads of public app configuration, and allows QR listeners only at
 `/qr_sessions/<token>` (not the session collection). It retains the `order_id`
 index used by the backend payment lookup. No frontend changes are required for
