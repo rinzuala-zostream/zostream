@@ -4,7 +4,7 @@ import StatusPanel from './StatusPanel.vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { api } from '../lib/api';
-import { formatChatTime } from '../lib/chatTime';
+import { formatMessageTime } from '../lib/messageTime';
 import { useWhatsAppMedia } from '../lib/whatsappMedia';
 import AdminIcon from './AdminIcon.vue';
 
@@ -131,7 +131,7 @@ onBeforeUnmount(() => {
                         <button v-for="item in conversations" :key="item.phone" type="button" :class="{ active: selectedPhone === item.phone, unread: item.unread_count > 0 }" @click="selectConversation(item.phone)">
                             <i>{{ (item.name || item.phone).slice(0, 2).toUpperCase() }}</i>
                             <span><b>{{ item.name || `+${item.phone}` }}</b><small>{{ item.last_message }}</small></span>
-                            <span class="whatsapp-conversation-meta"><time>{{ formatChatTime(item.last_message_at) }}</time><em v-if="item.unread_count" class="whatsapp-unread-badge">{{ item.unread_count > 99 ? '99+' : item.unread_count }}</em></span>
+                            <span class="whatsapp-conversation-meta"><time>{{ formatMessageTime(item.last_message_at) }}</time><em v-if="item.unread_count" class="whatsapp-unread-badge">{{ item.unread_count > 99 ? '99+' : item.unread_count }}</em></span>
                         </button>
                         <p v-if="!conversations.length">No WhatsApp conversations yet.</p>
                     </aside>
@@ -144,7 +144,7 @@ onBeforeUnmount(() => {
                                 <span v-else-if="media.loading[item.id]" class="whatsapp-media-state">Loading {{ item.type }}…</span>
                                 <span v-else-if="media.failed[item.id]" class="whatsapp-media-state is-error">{{ media.failed[item.id] }}</span>
                                 <span v-if="media.caption(item)">{{ media.caption(item) }}</span>
-                                <small>{{ formatChatTime(item.message_at) }} · {{ item.status }}</small>
+                                <small>{{ formatMessageTime(item.message_at) }} · {{ item.status }}</small>
                             </div>
                         </div>
                         <div v-else class="whatsapp-widget-empty"><AdminIcon name="message" /><b>Select a conversation</b><span>Choose a customer to view and reply.</span></div>

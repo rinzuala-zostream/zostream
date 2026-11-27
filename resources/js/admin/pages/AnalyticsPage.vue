@@ -3,7 +3,6 @@ import UserLookup from '../components/UserLookup.vue';
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import PageHeader from '../components/PageHeader.vue';
 import StatusPanel from '../components/StatusPanel.vue';
-import ChatAnalyticsPanel from '../components/ChatAnalyticsPanel.vue';
 import { api, queryString } from '../lib/api';
 import { analyticsPlatforms, platformLabel } from '../lib/platforms';
 
@@ -12,14 +11,12 @@ const dateValue = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1)
 const prior = new Date(today);
 prior.setDate(prior.getDate() - 6);
 const filters = ref({ from: dateValue(prior), to: dateValue(today), timezone: 'Asia/Kolkata', platform: '', app_version: '', content_type: '', user_id: '' });
-const chatFilters = ref({ ...filters.value });
 const tabs = [
     { id: 'overview', label: 'Overview' }, { id: 'content', label: 'Content' },
     { id: 'insights', label: 'SDK insights' }, { id: 'sessions', label: 'Playback sessions' }, { id: 'events', label: 'Product events' },
-    { id: 'errors', label: 'Playback errors' }, { id: 'chat', label: 'Chat' },
+    { id: 'errors', label: 'Playback errors' },
 ];
 const productEventNames = [
-    'chat_opened', 'chat_closed', 'chat_message_sent', 'chat_message_reported', 'chat_connection_failed', 'chat_message_failed',
     'app_opened', 'app_foregrounded', 'app_backgrounded', 'app_session_ended',
     'screen_viewed', 'content_impression', 'content_opened',
     'search_performed', 'search_result_selected', 'search_empty',
@@ -165,7 +162,6 @@ async function loadDetails() {
 }
 
 async function loadAll() {
-    if (activeTab.value === 'chat') { error.value = ''; chatFilters.value = { ...filters.value }; return; }
     loading.value = true;
     error.value = '';
     page.value = 1;
@@ -178,7 +174,6 @@ async function loadAll() {
 
 async function selectTab(tab) {
     activeTab.value = tab;
-    if (tab === 'chat') { error.value = ''; loading.value = false; chatFilters.value = { ...filters.value }; return; }
     page.value = 1;
     if (tab === 'overview') return;
     loading.value = true;
@@ -280,8 +275,7 @@ onUnmounted(() => {
             <button v-for="tab in tabs" :key="tab.id" type="button" :class="{ active: activeTab === tab.id }" @click="selectTab(tab.id)">{{ tab.label }}</button>
         </nav>
 
-        <ChatAnalyticsPanel v-if="activeTab === 'chat'" :filters="chatFilters" />
-        <div v-if="loading && activeTab !== 'chat'" class="admin-loading">Loading analytics…</div>
+        <div v-if="loading" class="admin-loading">Loading analytics…</div>
         <template v-else-if="!error && activeTab === 'overview'">
             <section class="admin-panel analytics-panel presence-panel" :class="{ 'is-unavailable': presence.available === false }">
                 <header><div><span class="analytics-eyebrow">LIVE PRESENCE</span><h2><i class="presence-dot" /> {{ presence.available === false ? 'Presence unavailable' : `${number(presence.online_users)} users online now` }}</h2><p>Foreground devices seen within {{ number(presence.presence_ttl_seconds || 150) }} seconds. Refreshes every 30 seconds.</p></div><strong>{{ number(presence.online_devices) }} devices</strong></header>

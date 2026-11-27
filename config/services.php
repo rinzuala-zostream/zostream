@@ -42,6 +42,11 @@ return [
         ))),
     ],
 
+    'app_links' => [
+        'ios_app_ids' => array_filter(explode(',', env('IOS_APP_IDS', '5N48USNJ2K.com.buannel.pvt.ltd.zostream.Zo-Stream'))),
+        'android_fingerprints' => array_filter(explode(',', env('ANDROID_SHA256_FINGERPRINTS', ''))),
+    ],
+
     'isp_bandwidth_invoice' => [
         // Same approved five-parameter document template as the WiFi invoice.
         'template' => env('WHATSAPP_BANDWIDTH_INVOICE_TEMPLATE', 'zostream_wifi_invoice_v3'),

@@ -19,10 +19,6 @@ class AnalyticsIngestionController extends Controller
     private const PLATFORMS = ['ios', 'tvos', 'android', 'tv', 'tizen', 'webos', 'web', 'windows', 'macos'];
 
     private const EVENT_NAMES = [
-        'chat_opened',
-        'chat_closed',
-        'chat_connection_failed',
-        'chat_message_failed',
         'app_opened',
         'app_foregrounded',
         'app_backgrounded',

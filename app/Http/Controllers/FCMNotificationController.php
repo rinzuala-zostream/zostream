@@ -140,9 +140,9 @@ class FCMNotificationController extends Controller
         }
 
         // Keep the legacy key while supplying explicit movie fields to newer apps.
-        // Chat and support routing keys are commands, never movie IDs.
+        // Support routing keys are commands, never movie IDs.
         $routingKey = $messageData['key'] ?? '';
-        $reserved = ['chat_invite', 'chat_message', 'chat_activity', 'customer_support'];
+        $reserved = ['customer_support'];
         if (! in_array($routingKey, $reserved, true) && preg_match('/^[A-Za-z0-9][A-Za-z0-9._-]{0,190}$/D', $routingKey)) {
             $messageData['movie_id'] = $routingKey;
         } elseif ($routingKey === '' && ! empty($messageData['movie_id'])) {
@@ -172,11 +172,7 @@ class FCMNotificationController extends Controller
             ->withAndroidConfig([
                 'priority' => 'high',
                 'notification' => [
-                    'channel_id' => match ($messageData['key'] ?? null) {
-                        'chat_invite' => 'chat_invitations',
-                        'chat_message', 'chat_activity' => 'private_chat_messages',
-                        default => 'zostream_notifications',
-                    },
+                    'channel_id' => 'zostream_notifications',
                     'notification_priority' => 'PRIORITY_HIGH',
                     'sound' => 'default',
                     'color' => '#f45342',

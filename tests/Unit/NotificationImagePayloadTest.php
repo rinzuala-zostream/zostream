@@ -27,20 +27,6 @@ class NotificationImagePayloadTest extends TestCase
         $this->assertSame('movie-123', $message['data']['movie_id']);
     }
 
-    public function test_direct_invitation_keeps_recipient_and_data_with_an_image(): void
-    {
-        $message = $this->message('recipient-token', null, 'https://cdn.example.com/thumb.jpg', null, [
-            'type' => 'chat_invite', 'invite_token' => 'invite-123', 'count' => 2,
-        ]);
-
-        $this->assertSame('recipient-token', $message['token']);
-        $this->assertArrayNotHasKey('topic', $message);
-        $this->assertSame('chat_invite', $message['data']['type']);
-        $this->assertSame('invite-123', $message['data']['invite_token']);
-        $this->assertSame('2', $message['data']['count']);
-        $this->assertSame(1, $message['apns']['payload']['aps']['mutable-content']);
-    }
-
     public function test_missing_image_uses_plain_notification_without_running_the_extension(): void
     {
         foreach ([null, ''] as $image) {
@@ -53,25 +39,11 @@ class NotificationImagePayloadTest extends TestCase
         }
     }
 
-    public function test_chat_notifications_use_the_channels_registered_by_android(): void
-    {
-        foreach ([
-            'chat_invite' => 'chat_invitations',
-            'chat_message' => 'private_chat_messages',
-            'chat_activity' => 'private_chat_messages',
-        ] as $key => $channel) {
-            $message = $this->message('recipient-token', null, null, $key);
-            $this->assertSame($channel, $message['android']['notification']['channel_id']);
-        }
-    }
-
     public function test_explicit_movie_payload_keeps_legacy_routing_without_using_episode_id(): void
     {
         $message = $this->message('device', null, null, null, ['movie_id' => 'series-1', 'content_id' => 'episode-2', 'content_type' => 'episode']);
         $this->assertSame('series-1', $message['data']['key']);
         $this->assertSame('series-1', $message['data']['movie_id']);
-        $chat = $this->message('device', null, null, 'chat_message', ['room_id' => '10']);
-        $this->assertArrayNotHasKey('movie_id', $chat['data']);
     }
 
     private function message(?string $token, ?string $topic, ?string $image, ?string $key, array $data = []): array

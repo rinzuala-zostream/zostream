@@ -112,7 +112,7 @@ its category changes away from desktop. The OS field in the Vue editor is read-o
 Tools → Operations can clear all desktop devices or only one desktop OS for a
 user, stopping only the matching active streams.
 
-Analytics and chat metrics filters include `macos` and `windows`. Warnings can
+Analytics filters include `macos` and `windows`. Warnings can
 target either OS, and payment statistics include the desktop category. Desktop
 release nodes have the same public read-only Firebase rules as existing release
 nodes; deploy `Library/firebase/database.rules.json` to publish those reads.

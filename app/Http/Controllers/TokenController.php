@@ -8,7 +8,6 @@ use App\Models\New\ActiveStream;
 use App\Models\New\Devices;
 use App\Http\Middleware\IdleSessionMiddleware;
 use App\Support\AdminAccess;
-use App\Support\Chat\ChatFirebase;
 use DB;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
@@ -77,10 +76,7 @@ class TokenController extends Controller
 
         // Refresh token expired
         if ($record->refresh_expires_at->isPast()) {
-            $revokedSession = [(string) $record->user_id, (string) $record->getKey()];
             $record->delete();
-            try { app(ChatFirebase::class)->revokeSession($revokedSession[0], $revokedSession[1]); }
-            catch (\Throwable $e) { report($e); }
 
             return response()->json([
                 'status' => 'error',
@@ -90,10 +86,7 @@ class TokenController extends Controller
 
         if ($this->adminAccess->isAdmin((string) $record->user_id)) {
             if ($this->idleSession->isExpired($record)) {
-                $revokedSession = [(string) $record->user_id, (string) $record->getKey()];
                 $record->delete();
-                try { app(ChatFirebase::class)->revokeSession($revokedSession[0], $revokedSession[1]); }
-                catch (\Throwable $e) { report($e); }
 
                 return response()->json([
                     'status' => 'error',
@@ -170,8 +163,7 @@ class TokenController extends Controller
             ], 422);
         }
 
-        $revokedSession = null;
-        DB::transaction(function () use ($request, &$revokedSession) {
+        DB::transaction(function () use ($request) {
             $recordId = SessionTokenModel::findByAccessToken($request->access_token)?->getKey();
             $record = $recordId
                 ? SessionTokenModel::whereKey($recordId)->lockForUpdate()->first()
@@ -187,18 +179,9 @@ class TokenController extends Controller
             }
 
             if ($record) {
-                $revokedSession = [(string) $record->user_id, (string) $record->getKey()];
                 $record->delete();
             }
         });
-
-        if ($revokedSession !== null) {
-            try {
-                app(ChatFirebase::class)->revokeSession($revokedSession[0], $revokedSession[1]);
-            } catch (\Throwable $e) {
-                report($e);
-            }
-        }
 
         return response()->json(['status' => 'success', 'message' => 'Logged out successfully']);
     }

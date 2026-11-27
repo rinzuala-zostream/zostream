@@ -89,57 +89,6 @@ writes are denied. Backend service-account operations must still succeed.
 only need the analytics fragment. A parent `.read: true` or `.write: true`
 overrides restrictions below it; the fragment cannot secure an open root.
 
-## Firebase Chat v1 foundation
-
-`chat-schema-v1.json` defines the new, empty `chat_v1` namespace and stable
-record contract. The combined rules include that namespace while retaining the
-existing QR, config, payment, and release paths above. `firebase.json` points
-the local Firebase Emulator at this combined rules file.
-
-The Laravel Custom Token endpoint, SQL-backed room authorization projector,
-trusted SQL-outbox delivery, bounded cursor-recovery endpoint and emulator
-suite are present. `POST /api/v4/chat/firebase/lease` renews the rules-visible
-session and active room grant without minting another Custom Token (180-second
-global and 60-second short-room recommendation). `CHAT_FIREBASE_ENABLED=false` and
-`CHAT_FIREBASE_CLIENT_ACCESS_ENABLED=false` by default. Room-wide message
-reads and every client write are denied. Trusted fanout writes recent messages
-only to each eligible recipient's own branch after SQL membership, session,
-playback, ban and block checks. A block disables that user's Firebase read gate
-and clears the per-user feed/event branches. Account-wide changes publish
-revision-keyed invalidations at
-`chat_v1/user_account_events/{firebaseUid}/{outboxId20}`; they contain no private
-room identifiers. Clients refresh canonical SQL unread and room-discovery APIs
-after these events. Typing uses the temporary per-viewer
-`user_typing/{firebaseUid}/{roomId}/{typistUid}` path. SQL remains the complete
-history, submission, moderation, notification and interaction authority. Do not
-publish the changed rules or enable either gate in production until the full
-backend regression and performance matrix passes and production Firebase paths
-are reconciled. Backend readiness is currently **NOT READY**: broad delivery
-failure/concurrency tests, complete room mutation invalidation coverage, and
-actual backend workload benchmarks remain incomplete. Admin SDK and Rules
-emulator tests are valuable local checks but do not establish production load
-or client convergence. Do not start Android/iOS integration until a separate
-readiness review clears these blockers.
-Before enabling token issuance, configure and durably back up the dedicated
-`CHAT_FIREBASE_UID_KEY`; changing it requires an explicit Firebase identity
-migration.
-
-Run the static contract checks with:
-
-```sh
-node --test tests/firebase-chat-rules.test.mjs
-```
-
-With Firebase CLI installed, run the behavior checks against the local emulator
-with:
-
-```sh
-firebase emulators:exec --project demo-zostream-chat --only database \
-  'node --test tests/firebase-chat-rules.test.mjs'
-```
-See [Firebase rule cascading](https://firebase.google.com/docs/database/security/core-syntax)
-and [Admin SDK rule bypass](https://firebase.googleblog.com/2021/01/code-review-security-rules.html).
-
 ## Mobile behavior
 
 Attach one Realtime Database value listener when the app runtime starts. Begin

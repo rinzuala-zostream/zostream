@@ -189,56 +189,8 @@ Route::prefix('v4')
                 Route::delete('/channels/{channelId}/contents/{contentId}', [\App\Http\Controllers\Api\V4\CreatorChannelController::class, 'withdrawContent']);
             });
 
-            Route::post('/account/push-token', [\App\Http\Controllers\Api\V4\ChatController::class, 'registerPushToken'])->middleware('throttle:30,1');
             Route::get('/account/engagement-preferences', [\App\Http\Controllers\Api\V4\EngagementPreferenceController::class, 'show']);
             Route::put('/account/engagement-preferences', [\App\Http\Controllers\Api\V4\EngagementPreferenceController::class, 'update'])->middleware('throttle:30,1');
-            Route::prefix('chat')->group(function () {
-                Route::post('/firebase/token', [\App\Http\Controllers\Api\V4\ChatFirebaseController::class, 'token'])->middleware(['api.client', 'throttle:30,1']);
-                Route::post('/firebase/lease', [\App\Http\Controllers\Api\V4\ChatFirebaseController::class, 'renew'])->middleware(['api.client', 'throttle:10,1']);
-                Route::get('/invitation-links/{token}', [\App\Http\Controllers\Api\V4\ChatInvitationLinkController::class, 'show'])->where('token', '[A-Za-z0-9]{64}')->middleware(\App\Http\Middleware\ChatThrottle::class.':30');
-                Route::post('/invitation-links/{token}/respond', [\App\Http\Controllers\Api\V4\ChatInvitationLinkController::class, 'respond'])->where('token', '[A-Za-z0-9]{64}')->middleware(\App\Http\Middleware\ChatThrottle::class.':20');
-                Route::post('/unread/auth', [\App\Http\Controllers\Api\V4\ChatController::class, 'unreadAuth'])->middleware(\App\Http\Middleware\ChatThrottle::class.':240');
-                Route::post('/unread/auth-batch', [\App\Http\Controllers\Api\V4\ChatController::class, 'unreadAuth'])->middleware(\App\Http\Middleware\ChatThrottle::class.':240');
-                Route::get('/unread', [\App\Http\Controllers\Api\V4\ChatController::class, 'unread'])->middleware(\App\Http\Middleware\ChatThrottle::class.':240');
-                Route::post('/rooms/{room}/read', [\App\Http\Controllers\Api\V4\ChatController::class, 'markRead'])->whereNumber('room')->middleware(\App\Http\Middleware\ChatThrottle::class.':240');
-                Route::get('/rooms/{room}/pins', [\App\Http\Controllers\Api\V4\ChatController::class, 'pins'])->whereNumber('room')->middleware(\App\Http\Middleware\ChatThrottle::class.':120');
-                Route::post('/rooms/{room}/messages/{message}/pin', [\App\Http\Controllers\Api\V4\ChatController::class, 'pin'])->whereNumber(['room', 'message'])->middleware(\App\Http\Middleware\ChatThrottle::class.':30');
-                Route::post('/rooms/{room}/messages/{message}/unpin', [\App\Http\Controllers\Api\V4\ChatController::class, 'unpin'])->whereNumber(['room', 'message'])->middleware(\App\Http\Middleware\ChatThrottle::class.':30');
-                Route::get('/blocks', [\App\Http\Controllers\Api\V4\ChatController::class, 'blocks'])->whereNumber(['room', 'message', 'report'])->middleware(\App\Http\Middleware\ChatThrottle::class.':60');
-                Route::post('/rooms/{room}/heartbeat', [\App\Http\Controllers\Api\V4\ChatController::class, 'heartbeat'])->whereNumber(['room', 'message', 'report'])->middleware(\App\Http\Middleware\ChatThrottle::class.':60');
-                Route::post('/rooms/{room}/leave', [\App\Http\Controllers\Api\V4\ChatController::class, 'leave'])->whereNumber(['room', 'message', 'report'])->middleware(\App\Http\Middleware\ChatThrottle::class.':60');
-                Route::get('/reports', [\App\Http\Controllers\Api\V4\ChatController::class, 'reports'])->whereNumber(['room', 'message', 'report'])->middleware(['admin.token',\App\Http\Middleware\ChatThrottle::class.':60']);
-                Route::post('/reports/{report}/resolve', [\App\Http\Controllers\Api\V4\ChatController::class, 'resolveReport'])->whereNumber(['room', 'message', 'report'])->middleware(['admin.token',\App\Http\Middleware\ChatThrottle::class.':60']);
-                Route::post('/rooms/join', [\App\Http\Controllers\Api\V4\ChatController::class, 'join'])->whereNumber(['room', 'message', 'report'])->middleware(\App\Http\Middleware\ChatThrottle::class.':60');
-                Route::post('/invitees/lookup', [\App\Http\Controllers\Api\V4\ChatController::class, 'lookupInvitee'])->middleware(\App\Http\Middleware\ChatThrottle::class.':20');
-                Route::get('/rooms/{room}/movie-suggestions', [\App\Http\Controllers\Api\V4\ChatController::class, 'movieSuggestions'])->whereNumber('room')->middleware(\App\Http\Middleware\ChatThrottle::class.':90');
-                Route::post('/invitees/search', [\App\Http\Controllers\Api\V4\ChatController::class, 'searchInvitees'])->middleware(\App\Http\Middleware\ChatThrottle::class.':120');
-                Route::get('/invite-rooms', [\App\Http\Controllers\Api\V4\ChatController::class, 'inviteRooms'])->middleware(\App\Http\Middleware\ChatThrottle::class.':60');
-                Route::post('/invite-rooms', [\App\Http\Controllers\Api\V4\ChatController::class, 'createInviteRoom'])->middleware(\App\Http\Middleware\ChatThrottle::class.':10');
-                Route::get('/invites', [\App\Http\Controllers\Api\V4\ChatController::class, 'invites'])->middleware(\App\Http\Middleware\ChatThrottle::class.':30');
-                Route::post('/invites/{invite}/respond', [\App\Http\Controllers\Api\V4\ChatController::class, 'respondInvite'])->whereNumber('invite')->middleware(\App\Http\Middleware\ChatThrottle::class.':20');
-                Route::post('/invite-rooms/{room}/join', [\App\Http\Controllers\Api\V4\ChatController::class, 'joinInviteRoom'])->whereNumber('room')->middleware(\App\Http\Middleware\ChatThrottle::class.':30');
-                Route::post('/invite-rooms/{room}/invitees', [\App\Http\Controllers\Api\V4\ChatController::class, 'inviteToRoom'])->whereNumber('room')->middleware(\App\Http\Middleware\ChatThrottle::class.':10');
-                Route::post('/invite-rooms/{room}/end', [\App\Http\Controllers\Api\V4\ChatController::class, 'endInviteRoom'])->whereNumber('room')->middleware(\App\Http\Middleware\ChatThrottle::class.':20');
-                Route::post('/rooms/{room}/watch-heartbeat', [\App\Http\Controllers\Api\V4\ChatController::class, 'privateWatchHeartbeat'])->whereNumber('room')->middleware(\App\Http\Middleware\ChatThrottle::class.':60');
-                Route::get('/rooms/{room}/watch-status', [\App\Http\Controllers\Api\V4\ChatController::class, 'privateWatchStatus'])->whereNumber('room')->middleware(\App\Http\Middleware\ChatThrottle::class.':60');
-                Route::post('/rooms/{room}/watch-sessions/{session}/join', [\App\Http\Controllers\Api\V4\ChatController::class, 'joinPrivateWatch'])->whereNumber(['room', 'session'])->middleware(\App\Http\Middleware\ChatThrottle::class.':30');
-                Route::post('/rooms/{room}/watch-sessions/{session}/position', [\App\Http\Controllers\Api\V4\ChatController::class, 'privateWatchPosition'])->whereNumber(['room', 'session'])->middleware(\App\Http\Middleware\ChatThrottle::class.':120');
-                Route::post('/invite-rooms/{room}/position', [\App\Http\Controllers\Api\V4\ChatController::class, 'updateInvitePosition'])->whereNumber('room')->middleware(\App\Http\Middleware\ChatThrottle::class.':120');
-                Route::post('/blocks', [\App\Http\Controllers\Api\V4\ChatController::class, 'block'])->whereNumber(['room', 'message', 'report'])->middleware(\App\Http\Middleware\ChatThrottle::class.':30');
-                Route::post('/rooms/{room}/auth', [\App\Http\Controllers\Api\V4\ChatController::class, 'auth'])->whereNumber(['room', 'message', 'report'])->middleware(\App\Http\Middleware\ChatThrottle::class.':60');
-                Route::get('/rooms/{room}/sync', [\App\Http\Controllers\Api\V4\ChatController::class, 'sync'])->whereNumber('room')->middleware(\App\Http\Middleware\ChatThrottle::class.':30');
-                Route::get('/rooms/{room}/messages/{message}', [\App\Http\Controllers\Api\V4\ChatInteractionController::class, 'show'])->whereNumber(['room', 'message'])->middleware(\App\Http\Middleware\ChatThrottle::class.':240');
-                Route::post('/rooms/{room}/messages/{message}/reactions', [\App\Http\Controllers\Api\V4\ChatInteractionController::class, 'reaction'])->whereNumber(['room', 'message'])->middleware(\App\Http\Middleware\ChatThrottle::class.':120');
-                Route::post('/rooms/{room}/typing', [\App\Http\Controllers\Api\V4\ChatInteractionController::class, 'typing'])->whereNumber('room')->middleware(\App\Http\Middleware\ChatThrottle::class.':40');
-                Route::get('/rooms/{room}/typing', [\App\Http\Controllers\Api\V4\ChatInteractionController::class, 'typists'])->whereNumber('room')->middleware(\App\Http\Middleware\ChatThrottle::class.':120');
-                Route::get('/rooms/{room}/messages', [\App\Http\Controllers\Api\V4\ChatController::class, 'messages'])->whereNumber(['room', 'message', 'report'])->middleware(\App\Http\Middleware\ChatThrottle::class.':300');
-                Route::post('/rooms/{room}/messages', [\App\Http\Controllers\Api\V4\ChatController::class, 'send'])->whereNumber(['room', 'message', 'report'])->middleware(\App\Http\Middleware\ChatThrottle::class.':30');
-                Route::post('/rooms/{room}/messages/{message}/invitation', [\App\Http\Controllers\Api\V4\ChatController::class, 'claimRoomInvitation'])->whereNumber(['room', 'message'])->middleware(\App\Http\Middleware\ChatThrottle::class.':20');
-                Route::post('/rooms/{room}/room-invites/status', [\App\Http\Controllers\Api\V4\ChatController::class, 'roomInvitationStatuses'])->whereNumber('room')->middleware(\App\Http\Middleware\ChatThrottle::class.':60');
-                Route::post('/rooms/{room}/messages/{message}/report', [\App\Http\Controllers\Api\V4\ChatController::class, 'report'])->whereNumber(['room', 'message', 'report'])->middleware(\App\Http\Middleware\ChatThrottle::class.':10');
-                Route::post('/rooms/{room}/moderate', [\App\Http\Controllers\Api\V4\ChatController::class, 'moderate'])->whereNumber(['room', 'message', 'report'])->middleware(['admin.token',\App\Http\Middleware\ChatThrottle::class.':60']);
-            });
 
             Route::post('/auth/logout', [AuthController::class, 'logout']);
 
@@ -407,15 +359,6 @@ Route::prefix('v4')
                     Route::get('/catalog/ppv', [\App\Http\Controllers\Api\V4\AdminPpvController::class, 'index']);
                     Route::get('/catalog/ppv/purchases', [\App\Http\Controllers\Api\V4\AdminPpvController::class, 'purchases']);
                     Route::get('/catalog/ppv/{type}/{id}', [\App\Http\Controllers\Api\V4\AdminPpvController::class, 'show']);
-
-                    Route::prefix('chat')->middleware('throttle:analytics-reports')->group(function () {
-                        Route::get('/rooms', [\App\Http\Controllers\Api\V4\AdminChatController::class, 'rooms']);
-                        Route::get('/rooms/{room}/messages', [\App\Http\Controllers\Api\V4\AdminChatController::class, 'messages'])->whereNumber('room');
-                        Route::get('/reports', [\App\Http\Controllers\Api\V4\AdminChatController::class, 'reports']);
-                        Route::get('/restrictions', [\App\Http\Controllers\Api\V4\AdminChatController::class, 'restrictions']);
-                        Route::get('/audit', [\App\Http\Controllers\Api\V4\AdminChatController::class, 'audit']);
-                        Route::get('/metrics', [\App\Http\Controllers\Api\V4\AdminChatController::class, 'metrics']);
-                    });
 
                     Route::get('/analytics/config', [AdminAnalyticsController::class, 'showConfig']);
                     Route::put('/analytics/config', [AdminAnalyticsController::class, 'updateConfig'])->middleware('admin.config-whitelist');

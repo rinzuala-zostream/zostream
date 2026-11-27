@@ -129,28 +129,10 @@ Route::get('/test-r2', function () {
 // Serve these on app.zostream.in without redirects. Keep existing content links.
 Route::get('/.well-known/apple-app-site-association', fn () => response()->json([
     'applinks' => ['apps' => [], 'details' => array_map(fn ($id) => ['appID' => trim($id),
-        'paths' => ['/watch/*', '/listen/*', '/invite/*']], array_values(config('chat.ios_app_ids')))],
+        'paths' => ['/watch/*', '/listen/*']], array_values(config('services.app_links.ios_app_ids')))],
 ]));
-Route::get('/.well-known/assetlinks.json', fn () => response()->json(config('chat.android_fingerprints') ? [[
+Route::get('/.well-known/assetlinks.json', fn () => response()->json(config('services.app_links.android_fingerprints') ? [[
     'relation' => ['delegate_permission/common.handle_all_urls'],
     'target' => ['namespace' => 'android_app', 'package_name' => 'com.buannel.studio.pvt.ltd.zostream',
-        'sha256_cert_fingerprints' => array_values(config('chat.android_fingerprints'))],
+        'sha256_cert_fingerprints' => array_values(config('services.app_links.android_fingerprints'))],
 ]] : []));
-Route::get('/invite/{token}', fn (string $token) => response()->view('chat-invitation', ['token' => $token])
-    ->header('Cache-Control', 'no-store')->header('Referrer-Policy', 'no-referrer')
-    ->header('X-Robots-Tag', 'noindex, nofollow'))->where('token', '[A-Za-z0-9]{1,128}');
-
-// Accept literal, encoded and double-encoded template placeholders in old links.
-// This redirect performs no invitation lookup and does not grant room access.
-Route::get('/invite/{legacyInvitation}', function (string $legacyInvitation) {
-    $token = $legacyInvitation;
-    for ($i = 0; $i < 2; $i++) {
-        $token = rawurldecode($token);
-    }
-    abort_unless(str_starts_with($token, '{{1}}'), 404);
-    $token = substr($token, 5);
-    abort_unless(preg_match('/^[A-Za-z0-9]{64}$/D', $token), 404);
-
-    return redirect('/invite/'.$token)->header('Cache-Control', 'no-store')
-        ->header('Referrer-Policy', 'no-referrer')->header('X-Robots-Tag', 'noindex, nofollow');
-})->where('legacyInvitation', '[^/]+');

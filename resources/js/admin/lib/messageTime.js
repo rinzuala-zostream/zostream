@@ -1,16 +1,6 @@
-const timeFormatter = new Intl.DateTimeFormat('en-IN', {
-    hour: 'numeric',
-    minute: '2-digit',
-});
-const dayFormatter = new Intl.DateTimeFormat('en-IN', {
-    day: 'numeric',
-    month: 'short',
-});
-const dateFormatter = new Intl.DateTimeFormat('en-IN', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-});
+const timeFormatter = new Intl.DateTimeFormat('en-IN', { hour: 'numeric', minute: '2-digit' });
+const dayFormatter = new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short' });
+const dateFormatter = new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 
 function sameDay(left, right) {
     return left.getFullYear() === right.getFullYear()
@@ -18,7 +8,7 @@ function sameDay(left, right) {
         && left.getDate() === right.getDate();
 }
 
-export function formatChatTime(value) {
+export function formatMessageTime(value) {
     if (!value) return '';
     const messageDate = new Date(value);
     if (Number.isNaN(messageDate.getTime())) return '';

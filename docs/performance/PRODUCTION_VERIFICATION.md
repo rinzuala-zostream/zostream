@@ -4,8 +4,7 @@ This checklist is for a later approved staging/canary release. Nothing in this d
 
 ## Before rollout
 
-- Record release ID, PHP/Laravel versions, effective cache store/connection, Firebase settings source, Reverb process manager and database driver for the chat connection.
-- Capture a fixed interval of Nginx route/method/status/request time/upstream time/body bytes, PHP-FPM busy workers and sampled traces, host CPU/memory, Reverb restarts/connections, and DB query stats.
+- Capture a fixed interval of Nginx route/method/status/request time/upstream time/body bytes, PHP-FPM busy workers and sampled traces, host CPU/memory, and DB query stats.
 - For PostgreSQL, capture stats reset time, table/index sizes, current indexes and `pg_stat_statements` deltas. For the actual database engine, collect plans for WhatsApp summary SQL. Do not apply speculative indexes.
 - Compare WhatsApp summary response values/order against the prior implementation on a production-shaped copy, including null timestamps/names, tied timestamps, media previews, inbound unread and large contact history.
 - Confirm the effective cache driver supports shared atomic locks between all application instances and that lock expiry exceeds worst-case Firebase timeout (10s lock vs 4s HTTP timeout in this change).
@@ -17,7 +16,7 @@ Monitor at least one normal peak and one quieter period. Compare like-for-like r
 
 - Analytics: Firebase reads per cache expiry, cache hit/miss, lock wait/timeouts, endpoint p50/p95/errors, observed stale/fail-closed behavior.
 - WhatsApp inbox: endpoint p50/p95/p99, SQL execution/buffers/temp work, conversations returned, PHP memory and response bytes. Diff response JSON fields/order against old behavior.
-- Service health: host CPU, PHP-FPM saturation, DB connection utilization, Reverb listener/restart state, reconnect attempts and REST fallback volume.
+- Service health: host CPU, PHP-FPM saturation and DB connection utilization.
 - Do not interpret lower request volume or different data distribution as a code improvement; normalize by calls and returned records.
 
 ## Rollback

@@ -1,6 +1,6 @@
 # Performance optimization implementation report
 
-**Status:** Recommendation engine, Firebase configuration/ingestion, WhatsApp inbox, and home/movie listing optimizations are implemented. Production cache topology, indexes and query plans remain to be verified. Phase 2 chat implementation has not started. No migration was executed, production configuration changed, service restarted or deployment performed.
+**Status:** Recommendation engine, Firebase configuration/ingestion, WhatsApp inbox, and home/movie listing optimizations are implemented. Production cache topology, indexes and query plans remain to be verified. No migration was executed, production configuration changed, service restarted or deployment performed.
 
 ## Baseline and safety
 
@@ -87,4 +87,4 @@ List queries now eager-load only `trailerRecords.id`, `movie_id` and `url`, the 
 
 ## Phase 2
 
-No chat code was changed. Current implementation already has cursor-based message pages, idempotency keys, Redis presence and short-lived authorization caches. Proposed query/index changes remain gated on production plans. Client requirements are documented separately in `CLIENT_OPTIMIZATION_PLAN.md`.
+No additional optimization work was included in Phase 2.

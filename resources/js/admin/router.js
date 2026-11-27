@@ -26,7 +26,6 @@ const ChannelsPage = () => import('./pages/ChannelsPage.vue');
 const ChannelDetailPage = () => import('./pages/ChannelDetailPage.vue');
 
 const AnalyticsPage = () => import('./pages/AnalyticsPage.vue');
-const ChatPage = () => import('./pages/ChatPage.vue');
 
 const aliases = [
     ['/movies/add', '/manage/movies/new'], ['/movies/update', '/manage/movies'], ['/movies/update/:id', '/manage/movies/:id'],
@@ -51,7 +50,6 @@ const router = createRouter({
             path: '/', component: AdminShell, children: [
                 { path: 'dashboard', component: DashboardPage },
                 { path: 'analytics', component: AnalyticsPage },
-                { path: 'chat', component: ChatPage },
                 { path: 'home/sections', component: HomeSectionsPage },
                 { path: 'trailers', component: TrailersPage },
                 { path: 'channels', component: ChannelsPage },

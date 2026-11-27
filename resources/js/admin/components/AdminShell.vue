@@ -22,7 +22,6 @@ const groups = [
     { label: 'Engagement', items: ['polls', 'legal'].map(item).concat([
         { label: 'Notifications', to: '/tools/notifications', icon: 'bell' },
         { label: 'Smart notifications', to: '/notifications/smart', icon: 'bell' },
-        { label: 'Chat moderation', to: '/chat', icon: 'message' },
         { label: 'WhatsApp Inbox', to: '/whatsapp', icon: 'message' },
         { label: 'App releases', to: '/tools/app-releases', icon: 'settings' },
         { label: 'Official clients', to: '/tools/official-clients', icon: 'monitor' },

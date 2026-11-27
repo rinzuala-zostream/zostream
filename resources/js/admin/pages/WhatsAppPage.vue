@@ -3,7 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import PageHeader from '../components/PageHeader.vue';
 import StatusPanel from '../components/StatusPanel.vue';
 import { api } from '../lib/api';
-import { formatChatTime } from '../lib/chatTime';
+import { formatMessageTime } from '../lib/messageTime';
 import { useWhatsAppMedia } from '../lib/whatsappMedia';
 
 const loading = ref(true); const busy = ref(false); const error = ref(''); const notice = ref('');
@@ -117,7 +117,7 @@ onBeforeUnmount(() => window.clearInterval(refreshTimer));
                 <aside class="whatsapp-conversations">
                     <header><div><p>MESSAGES</p><h2>Conversations</h2></div><button class="admin-secondary" @click="loadConversations()">Refresh</button></header>
                     <button v-for="item in conversations" :key="item.phone" :class="{ active: selectedPhone === item.phone, unread: item.unread_count > 0 }" @click="selectConversation(item.phone)">
-                        <i>{{ (item.name || item.phone).slice(0, 2).toUpperCase() }}</i><span><b>{{ item.name || item.phone }}</b><small>{{ item.last_message }}</small></span><span class="whatsapp-conversation-meta"><time>{{ formatChatTime(item.last_message_at) }}</time><em v-if="item.unread_count" class="whatsapp-unread-badge">{{ item.unread_count > 99 ? '99+' : item.unread_count }}</em></span>
+                        <i>{{ (item.name || item.phone).slice(0, 2).toUpperCase() }}</i><span><b>{{ item.name || item.phone }}</b><small>{{ item.last_message }}</small></span><span class="whatsapp-conversation-meta"><time>{{ formatMessageTime(item.last_message_at) }}</time><em v-if="item.unread_count" class="whatsapp-unread-badge">{{ item.unread_count > 99 ? '99+' : item.unread_count }}</em></span>
                     </button>
                     <p v-if="!conversations.length" class="admin-empty">Webhook messages will appear here.</p>
                 </aside>
@@ -130,7 +130,7 @@ onBeforeUnmount(() => window.clearInterval(refreshTimer));
                             <span v-else-if="media.loading[item.id]" class="whatsapp-media-state">Loading {{ item.type }}…</span>
                             <span v-else-if="media.failed[item.id]" class="whatsapp-media-state is-error">{{ media.failed[item.id] }}</span>
                             <span v-if="media.caption(item)">{{ media.caption(item) }}</span>
-                            <small>{{ formatChatTime(item.message_at) }} · {{ item.status }}</small>
+                            <small>{{ formatMessageTime(item.message_at) }} · {{ item.status }}</small>
                         </div>
                     </div>
                     <div v-else class="admin-empty-state"><h2>No conversation selected</h2><p>Incoming customer messages will be listed on the left.</p></div>

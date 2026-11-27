@@ -1,7 +1,7 @@
 # Smart engagement notifications
 
 Smart engagement is an optional backend feature. Existing movie/episode, manual,
-chat, birthday and expiry notifications retain their triggers and delivery paths.
+birthday and expiry notifications retain their triggers and delivery paths.
 Their successful sends only record a short cache marker; they never wait for a
 smart-notification queue, limit or quiet-hours check. A smart push waits when an
 existing notification was sent recently, including a subscription WhatsApp reminder.
