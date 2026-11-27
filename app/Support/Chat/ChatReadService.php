@@ -23,12 +23,7 @@ final class ChatReadService
     public function authorizeChannel(Request $r, string $channel): void
     {
         $uid = (string) $r->input('auth_user_id');
-        if (ChatChannels::watchOnly()) {
-            abort_unless(preg_match('/^private-chat\.([1-9][0-9]*)$/', $channel, $match), 403,
-                'Reverb is only available for Watch Together.');
-            ChatChannels::assertWatchRoom($this->chat->room($r, (int) $match[1]));
-            return;
-        }
+        abort_if(ChatChannels::watchOnly(), 403, 'Realtime unread updates are available through Firebase.');
         if ($channel === self::userChannel($uid)) { return; }
         if (preg_match('/^private-chat\.([1-9][0-9]*)$/', $channel, $match)) { $this->chat->room($r, (int) $match[1]); return; }
 

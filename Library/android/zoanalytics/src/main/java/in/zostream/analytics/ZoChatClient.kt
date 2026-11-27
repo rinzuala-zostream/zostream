@@ -73,6 +73,7 @@ class ZoChatClient(
     var isConnected = false
         private set
     var firebaseSource: ChatFirebaseSource? = null
+    @Volatile var watchSocket = false
     var usesFirebaseRealtime = false
         private set
     private var firebaseStream: ChatFirebaseStream? = null
@@ -176,6 +177,7 @@ class ZoChatClient(
             .header("X-Analytics-SDK-Version", ZoAnalyticsConfiguration.SDK_VERSION)
             .header("X-Client-Platform", "android").header("X-Client-Version", version)
         requestPlaybackToken?.takeIf { it.isNotBlank() }?.let { request.header("X-Playback-Token", it) }
+        if (watchSocket) request.header("X-Zo-Watch-Socket", "1")
         if (body != null) request.post(body.toString().toRequestBody("application/json".toMediaType()))
         val call = http.newCall(request.build()); pendingCall = call
         return call.execute().use { response ->

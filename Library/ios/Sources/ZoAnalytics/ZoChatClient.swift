@@ -130,6 +130,7 @@ public final class ZoChatClient {
     private var hasSubscribedRoom = false
     public private(set) var isConnected = false
     public var firebaseSource: ChatFirebaseSource?
+    public var watchSocket = false
     public private(set) var usesFirebaseRealtime = false
     private var firebaseStream: ChatFirebaseStream?
     private var firebaseCursor: UInt64 = 0
@@ -198,6 +199,7 @@ public final class ZoChatClient {
         request.setValue(ZoAnalyticsConfiguration.sdkVersion, forHTTPHeaderField: "X-Analytics-SDK-Version")
         request.setValue("ios", forHTTPHeaderField: "X-Client-Platform")
         request.setValue(version, forHTTPHeaderField: "X-Client-Version")
+        if watchSocket { request.setValue("1", forHTTPHeaderField: "X-Zo-Watch-Socket") }
         request.setValue(playbackToken(), forHTTPHeaderField: "X-Playback-Token")
         if let body {
             request.httpMethod = "POST"

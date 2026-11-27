@@ -530,8 +530,8 @@ final class ChatController extends Controller
             ? \App\Support\Chat\ChatContent::find($inviteRoom->content_type, $inviteRoom->content_id) : null;
         $seasonId = $inviteRoom->content_type === 'episode' ? ($content->season_id ?? null) : null;
         $watch = app(\App\Support\Chat\PrivateWatchService::class)->liveSession($room);
-        $reverb = ! ChatChannels::watchOnly() || $inviteRoom->content_type !== null || $watch !== null;
-        return V4Response::success(['watch_session' => $watch ? app(\App\Support\Chat\PrivateWatchService::class)->metadata($watch) : null, 'room_id' => (string) $room, 'room_type' => 'invite', 'channel' => $reverb ? 'private-chat.'.$room : '',
+        $reverb = ! ChatChannels::watchOnly() || (ChatChannels::supportsWatchSocket($r) && ($inviteRoom->content_type !== null || $watch !== null));
+        return V4Response::success(['watch_session' => $watch ? app(\App\Support\Chat\PrivateWatchService::class)->metadata($watch) : null, 'room_id' => (string) $room, 'room_type' => 'invite', 'channel' => $reverb ? ChatChannels::roomChannel($room) : '',
             'websocket_url' => $reverb ? config('chat.websocket_url') : '', 'online_count' => $this->chat->presence($r, $room),
             'user_id' => (string) $r->input('auth_user_id'), 'room_name' => $inviteRoom->room_name, 'content_type' => $inviteRoom->content_type,
             'content_id' => $inviteRoom->content_id, 'watch_position_ms' => (int) $inviteRoom->watch_position_ms,
@@ -625,9 +625,10 @@ final class ChatController extends Controller
 
     public function auth(Request $r, int $room)
     {
+        abort_if(ChatChannels::watchOnly() && ! ChatChannels::supportsWatchSocket($r), 403, 'Update the app to use the Watch Together socket.');
         ChatChannels::assertWatchRoom($this->chat->room($r, $room));
         $v = $r->validate(['socket_id' => ['required', 'regex:/^[0-9]+\.[0-9]+$/']]);
-        $auth = \App\Support\Chat\ChatChannels::authorization($v['socket_id'], 'private-chat.'.$room);
+        $auth = ChatChannels::authorization($v['socket_id'], ChatChannels::roomChannel($room));
         if ($r->input('protocol') === 2) {
             $r->validate(['messages' => 'sometimes|boolean']);
             $auth = app(\App\Support\Chat\ChatLiveChannels::class)->issue($r, $room, $v['socket_id'], $auth);

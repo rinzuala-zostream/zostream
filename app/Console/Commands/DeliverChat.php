@@ -179,7 +179,7 @@ final class DeliverChat extends Command
         $watch = app(PrivateWatchService::class)->snapshot((int) $row->room_id);
         if ($watch === null || (array_key_exists('latest_session_id', $watch) && $watch['latest_session_id'] === null)) { return; }
 
-        $this->postReverb('chat.changed', ['private-chat.'.$row->room_id], [
+        $this->postReverb('chat.changed', [ChatChannels::roomChannel((int) $row->room_id)], [
             'kind' => $row->kind, 'message_id' => null, 'watch' => $watch + ['event_id' => (string) $row->id],
         ]);
     }

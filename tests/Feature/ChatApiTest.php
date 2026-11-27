@@ -2910,7 +2910,18 @@ class ChatApiTest extends TestCase
         $this->send($room)->assertCreated();
         $this->travel(3)->seconds();
         $session = $this->sendPrivateWatch($watchRoom)->assertCreated()->json('data.watch_invite.session_id');
-        $this->postJson("/api/v4/chat/rooms/$watchRoom/auth", $auth)->assertOk();
+        $this->postJson("/api/v4/chat/invite-rooms/$watchRoom/join", $this->identity())->assertOk()
+            ->assertJsonPath('data.websocket_url', '')->assertJsonPath('data.channel', '');
+        $this->postJson("/api/v4/chat/rooms/$watchRoom/auth", $auth)->assertForbidden();
+
+        $this->withHeader('X-Zo-Watch-Socket', '1')->postJson("/api/v4/chat/invite-rooms/$watchRoom/join", $this->identity())
+            ->assertOk()->assertJsonPath('data.channel', "private-watch.$watchRoom")
+            ->assertJsonPath('data.websocket_url', config('chat.websocket_url'));
+        $authorizedChannel = $this->postJson("/api/v4/chat/rooms/$watchRoom/auth", $auth)->assertOk()->json('data.channel');
+        $this->assertStringStartsWith("private-watch.$watchRoom.lease.", $authorizedChannel);
+        $this->postJson("/api/v4/chat/rooms/$room/auth", $auth)->assertForbidden();
+        $this->postJson('/api/v4/chat/unread/auth-batch', $auth + ['channels' => ["private-chat.$watchRoom", "private-watch.$watchRoom"]])
+            ->assertForbidden();
         $this->postJson("/api/v4/chat/rooms/$watchRoom/watch-sessions/$session/position",
             $this->identity(['position_ms' => 12000, 'paused' => true, 'control_sequence' => 12]))->assertOk();
 
@@ -2922,6 +2933,10 @@ class ChatApiTest extends TestCase
             $event = json_decode($body['data'], true);
             $kinds[] = $event['kind'];
             $this->assertSame('chat.changed', $body['name']);
+            $this->assertNotEmpty($body['channels']);
+            foreach ($body['channels'] as $channel) {
+                $this->assertStringStartsWith("private-watch.$watchRoom.lease.", $channel);
+            }
             $this->assertContains($event['kind'], ['watch_control', 'watch_status']);
             $this->assertSame($session, $event['watch']['session_id']);
             $this->assertNull($event['message_id']);

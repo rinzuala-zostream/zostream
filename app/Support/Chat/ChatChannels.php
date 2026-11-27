@@ -2,8 +2,11 @@
 
 namespace App\Support\Chat;
 
+use Illuminate\Http\Request;
+
 final class ChatChannels
 {
+    private const WATCH_SOCKET_HEADER = 'X-Zo-Watch-Socket';
     public const LEASE_SECONDS = 300;
     public const GRACE_SECONDS = 60;
 
@@ -15,6 +18,16 @@ final class ChatChannels
     public static function firebaseAvailable(): bool
     {
         return config('chat.firebase.enabled') && config('chat.firebase.client_access_enabled');
+    }
+
+    public static function supportsWatchSocket(Request $request): bool
+    {
+        return $request->header(self::WATCH_SOCKET_HEADER) === '1';
+    }
+
+    public static function roomChannel(int $room): string
+    {
+        return (self::watchOnly() ? 'private-watch.' : 'private-chat.').$room;
     }
 
     public static function assertWatchRoom(object $room): void
