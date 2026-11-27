@@ -29,9 +29,11 @@ final class PrivateWatchService
             'content_type' => $watch['content_type'], 'content_id' => $watch['content_id'],
             'position_ms' => $watch['position_ms'] ?? 0, 'sampled_at_ms' => now()->getTimestampMs(), 'active' => true, 'created_at' => now(), 'updated_at' => now(),
         ]);
-        ChatDatabase::connection()->table('chat_messages')->where('id', $message)->update(['body' => 'Watch '.$content->title.' together', 'spoiler' => false,
+        $messageUpdate = ['body' => 'Watch '.$content->title.' together', 'spoiler' => false,
             'watch_invite' => json_encode(['session_id' => (string) $session, 'content_type' => $watch['content_type'],
-                'content_id' => $watch['content_id'], 'content_title' => $content->title])]);
+                'content_id' => $watch['content_id'], 'content_title' => $content->title])];
+        if (ChatDatabase::schema()->hasColumn('chat_messages', 'revision')) { $messageUpdate['revision'] = DB::raw('revision + 1'); }
+        ChatDatabase::connection()->table('chat_messages')->where('id', $message)->update($messageUpdate);
     }
 
     private function content(string $type, string $id): object

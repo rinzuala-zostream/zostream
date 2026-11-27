@@ -340,8 +340,7 @@ class CustomerSupportController extends Controller
                 ->distinct()->pluck('room_id')->map(fn ($id) => (int) $id)->all();
             foreach ($roomIds as $roomId) {
                 app(\App\Support\Chat\ChatService::class)->invalidate($roomId);
-                $connection->table('chat_outbox')->insert(['room_id' => $roomId, 'kind' => 'sync', 'message_id' => null,
-                    'analytics' => null, 'created_at' => now(), 'updated_at' => now()]);
+                app(\App\Support\Chat\ChatService::class)->outbox(\Illuminate\Http\Request::create('/'), $roomId, 'sync', null, null);
             }
         } catch (\Throwable $e) {
             Log::warning('Chat identity refresh could not be queued', ['user_id' => $userId, 'exception' => $e::class]);

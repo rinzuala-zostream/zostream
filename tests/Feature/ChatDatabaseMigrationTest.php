@@ -30,13 +30,16 @@ final class ChatDatabaseMigrationTest extends TestCase
             $this->assertTrue(ChatDatabase::schema()->hasColumn('chat_outbox', 'claimed_until'));
             $this->assertTrue(ChatDatabase::schema()->hasColumn('chat_outbox', 'notification_data'));
             $this->assertTrue(ChatDatabase::schema()->hasColumn('chat_outbox', 'notification_key'));
+            $this->assertTrue(ChatDatabase::schema()->hasColumn('chat_outbox', 'firebase_cursor'));
+            $this->assertTrue(ChatDatabase::schema()->hasColumn('chat_messages', 'revision'));
+            $this->assertTrue(ChatDatabase::schema()->hasTable('chat_firebase_room_cursors'));
             $this->assertTrue(ChatDatabase::schema()->hasTable('migrations'));
             $this->assertFalse(ChatDatabase::schema()->hasTable('jobs'));
             $this->assertSame([], Schema::getTableListing());
             $this->assertSame('primary_migration_test', DB::getDefaultConnection());
-            $this->assertSame(18, ChatDatabase::connection()->table('migrations')->count());
+            $this->assertSame(19, ChatDatabase::connection()->table('migrations')->count());
             $this->assertSame(0, Artisan::call('chat:migrate', ['--force' => true]));
-            $this->assertSame(18, ChatDatabase::connection()->table('migrations')->count());
+            $this->assertSame(19, ChatDatabase::connection()->table('migrations')->count());
         } finally {
             DB::purge('primary_migration_test');
             DB::purge('chat_migration_test');

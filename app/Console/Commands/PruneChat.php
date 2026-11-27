@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Support\Chat\ChatDatabase;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Log;
 
 final class PruneChat extends Command
 {
@@ -13,6 +14,12 @@ final class PruneChat extends Command
 
     public function handle(): int
     {
+        try {
+            app(\App\Support\Chat\ChatFirebase::class)->pruneExpiredTypingRecords();
+        } catch (\Throwable $error) {
+            Log::warning('Expired Firebase chat typing cleanup deferred', ['exception' => $error::class]);
+        }
+        $this->pruneFirebaseFeeds();
         do {
             // Pending reports are retained for at most 90 days for review.
             $ids = ChatDatabase::connection()->table('chat_messages')->where('created_at', '<', now()->subDays(config('chat.retention_days')))
@@ -34,5 +41,82 @@ final class PruneChat extends Command
         ChatDatabase::connection()->table('chat_bans')->whereNotNull('expires_at')->where('expires_at', '<', now())->delete();
 
         return self::SUCCESS;
+    }
+
+    private function pruneFirebaseFeeds(): void
+    {
+        $db = ChatDatabase::connection();
+        if (! ChatDatabase::schema()->hasTable('chat_firebase_message_recipients')
+            || ! ChatDatabase::schema()->hasTable('chat_firebase_event_recipients')) { return; }
+        $cutoff = now()->subDays(7);
+        do {
+            $rows = $db->table('chat_firebase_message_recipients')->where('published_at', '<', $cutoff)
+                ->orderBy('published_at')->limit(500)->get();
+            if ($rows->isEmpty()) { break; }
+            try {
+                $this->deleteFirebaseMessageRows($rows);
+            } catch (\Throwable $error) {
+                Log::warning('Expired Firebase chat feed cleanup deferred', ['exception' => $error::class]);
+                return;
+            }
+        } while (true);
+
+        do {
+            $rows = $db->table('chat_firebase_event_recipients')->where('published_at', '<', $cutoff)
+                ->orderBy('published_at')->limit(500)->get();
+            if ($rows->isEmpty()) { break; }
+            try {
+                app(\App\Support\Chat\ChatFirebase::class)->deleteUserFeedEvents($rows->all());
+            } catch (\Throwable $error) {
+                Log::warning('Expired Firebase chat event cleanup deferred', ['exception' => $error::class]);
+                return;
+            }
+            $this->deleteFirebaseRecipientRows('chat_firebase_event_recipients', $rows, 'cursor');
+        } while (true);
+
+        // The client protocol can read at most 100 messages and 500 events per
+        // user/room. Remove older cached copies daily; SQL remains the bounded
+        // reconciliation source for messages and expired event cursors.
+        foreach ($db->table('chat_firebase_message_recipients')->select('firebase_uid', 'room_id')->groupBy('firebase_uid', 'room_id')->get() as $group) {
+            do {
+                $excess = $db->table('chat_firebase_message_recipients')->where('firebase_uid', $group->firebase_uid)->where('room_id', $group->room_id)
+                    ->orderByDesc('message_id')->offset(100)->limit(500)->get();
+                if ($excess->isEmpty()) { break; }
+                try { $this->deleteFirebaseMessageRows($excess); }
+                catch (\Throwable $error) {
+                    Log::warning('Firebase chat feed cap cleanup deferred', ['exception' => $error::class]);
+                    return;
+                }
+            } while (true);
+        }
+        foreach ($db->table('chat_firebase_event_recipients')->select('firebase_uid', 'room_id')->groupBy('firebase_uid', 'room_id')->get() as $group) {
+            do {
+                $excess = $db->table('chat_firebase_event_recipients')->where('firebase_uid', $group->firebase_uid)->where('room_id', $group->room_id)
+                    ->orderByDesc('cursor')->offset(500)->limit(500)->get();
+                if ($excess->isEmpty()) { break; }
+                try { app(\App\Support\Chat\ChatFirebase::class)->deleteUserFeedEvents($excess->all()); }
+                catch (\Throwable $error) {
+                    Log::warning('Firebase chat event cap cleanup deferred', ['exception' => $error::class]);
+                    return;
+                }
+                $this->deleteFirebaseRecipientRows('chat_firebase_event_recipients', $excess, 'cursor');
+            } while (true);
+        }
+    }
+
+    private function deleteFirebaseMessageRows(\Illuminate\Support\Collection $rows): void
+    {
+        app(\App\Support\Chat\ChatFirebase::class)->deleteUserFeedMessages($rows->all());
+        $this->deleteFirebaseRecipientRows('chat_firebase_message_recipients', $rows, 'message_id');
+    }
+
+    private function deleteFirebaseRecipientRows(string $table, \Illuminate\Support\Collection $rows, string $key): void
+    {
+        ChatDatabase::connection()->table($table)->where(function ($query) use ($rows, $key): void {
+            foreach ($rows as $row) {
+                $query->orWhere(fn ($tuple) => $tuple->where('firebase_uid', $row->firebase_uid)
+                    ->where('room_id', $row->room_id)->where($key, $row->{$key}));
+            }
+        })->delete();
     }
 }

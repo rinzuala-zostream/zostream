@@ -67,6 +67,7 @@ final class ChatController extends Controller
             'content_id' => $v['type'] === 'global' ? null : $v['content_id'], 'created_at' => now(), 'updated_at' => now()]);
         $room = ChatDatabase::connection()->table('chat_rooms')->where('room_key', $key)->first();
         $this->chat->room($r, $room->id);
+        app(\App\Support\Chat\ChatAuthorizationProjector::class)->projectRoom($r, $room);
 
         return V4Response::success(['room_id' => (string) $room->id, 'room_type' => $room->type,
             'channel' => 'private-chat.'.$room->id, 'websocket_url' => config('chat.websocket_url'),
@@ -120,7 +121,7 @@ final class ChatController extends Controller
         abort_unless($exists, 404, 'Message not found.');
         ChatDatabase::connection()->table('chat_pins')->insertOrIgnore(['room_id' => $room, 'message_id' => $message,
             'pinned_by' => $uid, 'created_at' => now()]);
-        $this->chat->outbox($r, $room, 'sync', null, null);
+        $this->chat->outbox($r, $room, 'sync', $message, null);
         return V4Response::success(['pinned' => true]);
     }
 
@@ -130,7 +131,7 @@ final class ChatController extends Controller
         abort_unless(app(\App\Support\AdminAccess::class)->isAdmin($uid), 403, 'Only chat admins can unpin messages.');
         $this->chat->room($r, $room);
         ChatDatabase::connection()->table('chat_pins')->where('room_id', $room)->where('message_id', $message)->delete();
-        $this->chat->outbox($r, $room, 'sync', null, null);
+        $this->chat->outbox($r, $room, 'sync', $message, null);
         return V4Response::success(['pinned' => false]);
     }
 
@@ -509,6 +510,7 @@ final class ChatController extends Controller
     {
         $roomInfo = $this->chat->room($r, $room);
         abort_unless($roomInfo->type === 'invite', 404);
+        app(\App\Support\Chat\ChatAuthorizationProjector::class)->projectRoom($r, $roomInfo);
         $inviteRoom = ChatDatabase::connection()->table('chat_invite_rooms')->where('room_id', $room)->first();
         $content = $inviteRoom->content_type && $inviteRoom->content_id
             ? \App\Support\Chat\ChatContent::find($inviteRoom->content_type, $inviteRoom->content_id) : null;
@@ -624,10 +626,11 @@ final class ChatController extends Controller
         $v = $r->validate([
             'initial' => 'sometimes|boolean',
             'latest' => ['sometimes', 'boolean', Rule::prohibitedIf(! $r->boolean('initial'))],
+            'limit' => 'sometimes|integer|between:1,100',
             'before' => ['nullable', 'integer', 'min:1', Rule::prohibitedIf($r->filled('after') || $r->boolean('initial'))],
             'after' => ['nullable', 'integer', 'min:0', Rule::prohibitedIf($r->boolean('initial'))],
         ]);
-        $limit = config('chat.page_size');
+        $limit = $v['limit'] ?? config('chat.page_size');
         $blocked = $this->chat->blocked((string) $r->input('auth_user_id'));
         $after = $v['after'] ?? null;
         $before = $v['before'] ?? null;
@@ -638,12 +641,16 @@ final class ChatController extends Controller
             $uid = (string) $r->input('auth_user_id');
             $readThrough = ChatDatabase::connection()->table('chat_room_reads')
                 ->where('user_id', $uid)->where('room_id', $room)->value('last_read_message_id') ?? 0;
+            $syncCursor = ChatDatabase::schema()->hasTable('chat_firebase_room_cursors')
+                ? (int) (ChatDatabase::connection()->table('chat_firebase_room_cursors')->where('room_id', $room)->value('cursor') ?? 0)
+                : 0;
             $firstUnread = ChatDatabase::connection()->table('chat_messages')->where('room_id', $room)
                 ->where('id', '>', $readThrough)->where('user_id', '!=', $uid)->whereNotIn('user_id', $blocked)
                 ->whereNull('deleted_at')->where('created_at', '>=', now()->subDays(config('chat.retention_days')))->min('id');
             $after = $firstUnread === null || ($v['latest'] ?? false) ? null : max(0, (int) $firstUnread - 1);
             $initial = ['first_unread_id' => $firstUnread === null ? null : (string) $firstUnread,
-                'initial_after' => $after === null ? null : (string) $after];
+                'initial_after' => $after === null ? null : (string) $after,
+                'sync_cursor' => $syncCursor];
         }
         // Live delta reads must see committed rows even if an in-flight cache
         // loader repopulated the recent snapshot around a message commit.
@@ -668,6 +675,13 @@ final class ChatController extends Controller
 
         $rows = app(\App\Support\Chat\PrivateWatchService::class)->hydrate($rows);
         return V4Response::success(['messages' => app(\App\Support\Chat\ChatInteractions::class)->decorate(app(\App\Support\Chat\RoomInvitationService::class)->hydrate($rows), (string) $r->input('auth_user_id')), 'has_more' => $hasMore] + $initial);
+    }
+
+    public function sync(Request $r, int $room, \App\Support\Chat\ChatSyncService $sync)
+    {
+        $v = $r->validate(['cursor' => 'required|integer|min:0', 'known' => 'sometimes|array|max:100',
+            'known.*.id' => 'required|integer|min:1', 'known.*.revision' => 'required|integer|min:1']);
+        return V4Response::success($sync->sync($r, $room, (int) $v['cursor'], $v['known'] ?? []));
     }
 
     public function movieSuggestions(Request $r, int $room, \App\Support\Chat\ChatMovieSuggestions $suggestions)
@@ -799,6 +813,7 @@ final class ChatController extends Controller
 
     public function leave(Request $r, int $room)
     {
+        app(\App\Support\Chat\ChatAuthorizationProjector::class)->revokeRoom($r, $room);
         $this->chat->presence($r, $room, true);
 
         return V4Response::success(['left' => true]);
@@ -850,6 +865,9 @@ final class ChatController extends Controller
             $q->delete();
         }
         $this->chat->invalidateBlocks($uid);
+        if ($v['blocked']) {
+            app(\App\Support\Chat\ChatFirebase::class)->blockUserFeed($uid);
+        }
         $this->chat->outbox($r, 0, 'badge_sync', null, null, $uid);
 
         return V4Response::success(['blocked' => $v['blocked']]);
@@ -874,7 +892,9 @@ final class ChatController extends Controller
                     if ($message->deleted_at !== null) {
                         return;
                     }
-                    ChatDatabase::connection()->table('chat_messages')->where('id', $message->id)->update(['body' => '', 'deleted_at' => now()]);
+                    $updates = ['body' => '', 'deleted_at' => now()];
+                    if (ChatDatabase::schema()->hasColumn('chat_messages', 'revision')) { $updates['revision'] = DB::raw('revision + 1'); }
+                    ChatDatabase::connection()->table('chat_messages')->where('id', $message->id)->update($updates);
                     $this->chat->outbox($r, $room, 'deleted', (int) $v['target'], null);
                     break;
                 case 'mute': case 'ban':
@@ -889,6 +909,15 @@ final class ChatController extends Controller
         });
         $this->chat->invalidate($room, true);
         $this->chat->invalidateBan($v['target'], $room);
+        if ($v['action'] === 'ban') {
+            if ($room === 0) {
+                app(\App\Support\Chat\ChatFirebase::class)->blockUserFeed($v['target']);
+            } else {
+                app(\App\Support\Chat\ChatFirebase::class)->revokeRoomAuthorization($room, $v['target']);
+            }
+        } elseif ($v['action'] === 'close') {
+            app(\App\Support\Chat\ChatFirebase::class)->revokeRoomAuthorization($room);
+        }
         if (in_array($v['action'], ['ban', 'unban'], true)) { $this->chat->outbox($r, $room, 'badge_sync', null, null, $v['target']); }
         if ($v['action'] === 'close') {
             $this->chat->outbox($r, $room, 'ended', null, null);

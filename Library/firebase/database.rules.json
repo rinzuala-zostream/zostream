@@ -72,6 +72,123 @@
           ".validate": "(newData.isString() && newData.val().length > 0) || (newData.isNumber() && newData.val() > 0)"
         }
       }
+    },
+    "chat_v1": {
+      "rooms": {
+        "$room": {
+          ".read": "auth != null && root.child('chat_v1/auth_sessions').child(auth.uid).child(auth.token.chat_sid).child('active').val() === true && root.child('chat_v1/auth_sessions').child(auth.uid).child(auth.token.chat_sid).child('client_access').val() === true && root.child('chat_v1/auth_sessions').child(auth.uid).child(auth.token.chat_sid).child('expires_at').val() > now && root.child('chat_v1/room_authz').child($room).child(auth.uid).child(auth.token.chat_sid).child('can_read').val() === true && root.child('chat_v1/room_authz').child($room).child(auth.uid).child(auth.token.chat_sid).child('read_until').val() > now",
+          ".write": false
+        }
+      },
+      "user_rooms": {
+        "$uid": {
+          ".read": "auth != null && auth.uid === $uid && query.limitToLast != null && query.limitToLast <= 200 && root.child('chat_v1/auth_sessions').child(auth.uid).child(auth.token.chat_sid).child('active').val() === true && root.child('chat_v1/auth_sessions').child(auth.uid).child(auth.token.chat_sid).child('client_access').val() === true && root.child('chat_v1/auth_sessions').child(auth.uid).child(auth.token.chat_sid).child('expires_at').val() > now",
+          ".write": false
+        }
+      },
+      "user_messages": {
+        "$uid": {
+          "$room": {
+            ".indexOn": ["created_at"],
+            ".read": "auth != null && auth.uid === $uid && query.limitToLast != null && query.limitToLast <= 100 && root.child('chat_v1/auth_sessions').child(auth.uid).child(auth.token.chat_sid).child('active').val() === true && root.child('chat_v1/auth_sessions').child(auth.uid).child(auth.token.chat_sid).child('client_access').val() === true && root.child('chat_v1/auth_sessions').child(auth.uid).child(auth.token.chat_sid).child('expires_at').val() > now && root.child('chat_v1/room_authz').child($room).child(auth.uid).child(auth.token.chat_sid).child('can_read').val() === true && root.child('chat_v1/room_authz').child($room).child(auth.uid).child(auth.token.chat_sid).child('read_until').val() > now",
+            ".write": false
+          }
+        }
+      },
+      "user_sync_events": {
+        "$uid": {
+          "$room": {
+            ".indexOn": ["cursor"],
+            ".read": "auth != null && auth.uid === $uid && ((query.limitToLast != null && query.limitToLast <= 500) || (query.startAt != null && query.limitToFirst != null && query.limitToFirst <= 100)) && root.child('chat_v1/auth_sessions').child(auth.uid).child(auth.token.chat_sid).child('active').val() === true && root.child('chat_v1/auth_sessions').child(auth.uid).child(auth.token.chat_sid).child('client_access').val() === true && root.child('chat_v1/auth_sessions').child(auth.uid).child(auth.token.chat_sid).child('expires_at').val() > now && root.child('chat_v1/room_authz').child($room).child(auth.uid).child(auth.token.chat_sid).child('can_read').val() === true && root.child('chat_v1/room_authz').child($room).child(auth.uid).child(auth.token.chat_sid).child('read_until').val() > now",
+            ".write": false
+          }
+        }
+      },
+      "user_typing": {
+        "$uid": {
+          "$room": {
+            ".indexOn": ["expires_at"],
+            ".read": "auth != null && auth.uid === $uid && query.limitToLast != null && query.limitToLast <= 20 && root.child('chat_v1/auth_sessions').child(auth.uid).child(auth.token.chat_sid).child('active').val() === true && root.child('chat_v1/auth_sessions').child(auth.uid).child(auth.token.chat_sid).child('client_access').val() === true && root.child('chat_v1/auth_sessions').child(auth.uid).child(auth.token.chat_sid).child('expires_at').val() > now && root.child('chat_v1/room_authz').child($room).child(auth.uid).child(auth.token.chat_sid).child('can_read').val() === true && root.child('chat_v1/room_authz').child($room).child(auth.uid).child(auth.token.chat_sid).child('read_until').val() > now",
+            ".write": false,
+            "$typist": {
+              ".write": false,
+              ".validate": "newData.hasChildren(['typist_uid', 'name', 'is_admin', 'expires_at']) && newData.child('typist_uid').isString() && newData.child('typist_uid').val() === $typist && newData.child('name').isString() && newData.child('name').val().length <= 100 && newData.child('is_admin').isBoolean() && newData.child('expires_at').isNumber() && newData.child('expires_at').val() > now && newData.child('expires_at').val() <= now + 30000"
+            }
+          }
+        }
+      },
+      "room_authz": {
+        ".write": false
+      },
+      "auth_sessions": {
+        ".write": false
+      },
+      "messages": {
+        "$room": {
+          ".indexOn": ["created_at"],
+          ".read": false,
+          "$message": {
+            ".read": false,
+            ".write": false,
+            ".validate": "newData.hasChildren(['message_type', 'sender_uid', 'body', 'spoiler', 'client_op_id', 'created_at', 'revision', 'deleted']) && newData.child('message_type').val() === 'text' && newData.child('sender_uid').val() === auth.uid && newData.child('body').isString() && newData.child('body').val().length > 0 && newData.child('body').val().length <= 1000 && newData.child('spoiler').isBoolean() && newData.child('client_op_id').isString() && newData.child('client_op_id').val().length <= 128 && newData.child('created_at').isNumber() && newData.child('created_at').val() <= now && newData.child('created_at').val() >= now - 60000 && newData.child('revision').val() === 1 && newData.child('deleted').val() === false && !newData.child('sender_name').exists() && !newData.child('edited_at').exists() && !newData.child('deleted_at').exists() && !newData.child('suggestion').exists() && !newData.child('invitation').exists() && (!newData.child('reply_to').exists() || (newData.child('reply_to').isString() && newData.child('reply_to').val().length <= 128 && root.child('chat_v1/messages').child($room).child(newData.child('reply_to').val()).exists() && root.child('chat_v1/messages').child($room).child(newData.child('reply_to').val()).child('deleted').val() === false))",
+            "message_type": { ".validate": "newData.isString()" },
+            "sender_uid": { ".validate": "newData.isString()" },
+            "sender_name": { ".validate": "newData.isString() && newData.val().length <= 100" },
+            "body": { ".validate": "newData.isString()" },
+            "spoiler": { ".validate": "newData.isBoolean()" },
+            "reply_to": { ".validate": "newData.isString() && newData.val().length <= 128" },
+            "client_op_id": { ".validate": "newData.isString() && newData.val().length <= 128" },
+            "created_at": { ".validate": "newData.isNumber()" },
+            "revision": { ".validate": "newData.isNumber()" },
+            "edited_at": { ".validate": "newData.isNumber()" },
+            "deleted": { ".validate": "newData.isBoolean()" },
+            "deleted_at": { ".validate": "newData.isNumber()" },
+            "suggestion": { ".validate": "newData.hasChildren()" },
+            "invitation": { ".validate": "newData.hasChildren()" },
+            "$other": { ".validate": false }
+          }
+        }
+      },
+      "reactions": {
+        "$room": {
+          "$message": {
+            ".read": false,
+            "$uid": {
+              ".read": false,
+              ".write": false,
+              ".validate": "!newData.exists() || (newData.hasChildren(['emoji', 'updated_at']) && (newData.child('emoji').val() === '😂' || newData.child('emoji').val() === '❤️' || newData.child('emoji').val() === '🔥' || newData.child('emoji').val() === '😢' || newData.child('emoji').val() === '👏' || newData.child('emoji').val() === '😮') && newData.child('updated_at').isNumber() && newData.child('updated_at').val() <= now && newData.child('updated_at').val() >= now - 60000)",
+              "emoji": { ".validate": "newData.isString()" },
+              "updated_at": { ".validate": "newData.isNumber()" },
+              "$other": { ".validate": false }
+            }
+          }
+        }
+      },
+      "read_receipts": {
+        "$room": {
+          "$uid": {
+            ".read": "auth != null && auth.uid === $uid && root.child('chat_v1/auth_sessions').child(auth.uid).child(auth.token.chat_sid).child('active').val() === true && root.child('chat_v1/auth_sessions').child(auth.uid).child(auth.token.chat_sid).child('client_access').val() === true && root.child('chat_v1/auth_sessions').child(auth.uid).child(auth.token.chat_sid).child('expires_at').val() > now && root.child('chat_v1/room_authz').child($room).child(auth.uid).child(auth.token.chat_sid).child('can_read').val() === true && root.child('chat_v1/room_authz').child($room).child(auth.uid).child(auth.token.chat_sid).child('read_until').val() > now",
+            ".write": false,
+            ".validate": "newData.hasChildren(['message_id', 'updated_at']) && newData.child('message_id').isString() && newData.child('message_id').val().length <= 128 && newData.child('updated_at').isNumber() && newData.child('updated_at').val() <= now && newData.child('updated_at').val() >= now - 60000"
+          }
+        }
+      },
+      "sync_events": {
+        "$room": {
+          ".indexOn": ["cursor"],
+          ".read": false,
+          ".write": false
+        }
+      },
+      "typing": {
+        "$room": {
+          ".read": false,
+          "$uid": {
+            ".write": false,
+            ".validate": "newData.hasChildren(['active', 'expires_at']) && newData.child('active').isBoolean() && newData.child('expires_at').isNumber() && newData.child('expires_at').val() > now"
+          }
+        }
+      }
     }
   }
 }

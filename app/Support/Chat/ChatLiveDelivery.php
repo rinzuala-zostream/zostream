@@ -113,13 +113,15 @@ final class ChatLiveDelivery
         return true;
     }
 
-    private function eligibleViewers(object $room, array $viewers): iterable
+    public function eligibleViewers(object $room, array $viewers, ?\Illuminate\Support\Collection $sessionRows = null): iterable
     {
         // One batch query per 500 sessions, instead of one authenticated HTTP
         // request per recipient. Token rotation, revocation and expiry are current.
-        $sessions = collect();
-        foreach (array_chunk(array_unique(array_column($viewers, 'session_id')), 500) as $ids) {
-            $sessions = $sessions->merge(DB::table('session_tokens')->whereIn('id', $ids)->where('access_expires_at', '>', now())->get());
+        $sessions = $sessionRows ?? collect();
+        if ($sessionRows === null) {
+            foreach (array_chunk(array_unique(array_column($viewers, 'session_id')), 500) as $ids) {
+                $sessions = $sessions->merge(DB::table('session_tokens')->whereIn('id', $ids)->where('access_expires_at', '>', now())->get());
+            }
         }
         $sessions = $sessions->keyBy('id');
         $banned = ChatDatabase::connection()->table('chat_bans')->whereIn('room_id', [0, $room->id])->where('kind', 'ban')

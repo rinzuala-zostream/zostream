@@ -18,7 +18,7 @@ final class DeliverChat extends Command
     public function handle(): int
     {
         $lane = (string) $this->option('lane');
-        if (! in_array($lane, ['all', 'realtime', 'push', 'analytics'], true)) { return self::INVALID; }
+        if (! in_array($lane, ['all', 'realtime', 'push', 'analytics', 'firebase'], true)) { return self::INVALID; }
         $lastWatchExpiry = 0;
         do {
             // Unclean player exits have no stop request. Expire their rooms after
@@ -34,7 +34,7 @@ final class DeliverChat extends Command
                 ->where(fn ($q) => $q->whereNull('available_at')->orWhere('available_at', '<=', now()));
             if ($lane === 'push') { $pending->whereIn('kind', ['message_push', 'interaction_push']); }
             if ($lane === 'realtime') { $pending->whereNotIn('kind', ['message_push', 'interaction_push']); }
-            $candidateIds = $lane === 'analytics' ? collect() : $pending->orderBy('id')->limit(100)->pluck('id');
+            $candidateIds = in_array($lane, ['analytics', 'firebase'], true) ? collect() : $pending->orderBy('id')->limit(100)->pluck('id');
             $rows = collect();
             if ($candidateIds->isNotEmpty()) {
                 // Claim a bounded batch in one conditional update. A competing
@@ -108,12 +108,63 @@ final class DeliverChat extends Command
                     $this->warn('Chat analytics pending: '.$row->id);
                 }
             }
+            if (in_array($lane, ['all', 'firebase'], true)) {
+                $this->deliverFirebaseOutbox();
+            }
             if (! $this->option('once')) {
                 usleep(500000);
             }
         } while (! $this->option('once'));
 
         return self::SUCCESS;
+    }
+
+    private function deliverFirebaseOutbox(): void
+    {
+        if (! config('chat.firebase.enabled')) { return; }
+        $kinds = ['feed_created', 'feed_deleted', 'sync', 'reactions', 'read', 'room_invite_status', 'ended'];
+        $db = ChatDatabase::connection();
+        $candidates = $db->table('chat_outbox')->whereNull('firebase_delivered_at')->whereNotNull('firebase_cursor')
+            ->whereIn('kind', $kinds)
+            ->where(fn ($q) => $q->whereNull('firebase_claimed_until')->orWhere('firebase_claimed_until', '<=', now()))
+            ->where(fn ($q) => $q->whereNull('firebase_available_at')->orWhere('firebase_available_at', '<=', now()))
+            ->orderBy('room_id')->orderBy('firebase_cursor')->limit(50)->pluck('id');
+        foreach ($candidates as $id) {
+            $claim = (string) \Illuminate\Support\Str::uuid();
+            $claimed = $db->table('chat_outbox')->where('id', $id)->whereNull('firebase_delivered_at')
+                ->where(fn ($q) => $q->whereNull('firebase_claimed_until')->orWhere('firebase_claimed_until', '<=', now()))
+                ->where(fn ($q) => $q->whereNull('firebase_available_at')->orWhere('firebase_available_at', '<=', now()))
+                ->update(['firebase_claim_token' => $claim, 'firebase_claimed_until' => now()->addMinutes(2)]);
+            if (! $claimed) { continue; }
+            $row = $db->table('chat_outbox')->where('id', $id)->where('firebase_claim_token', $claim)->first();
+            if (! $row) { continue; }
+
+            // Do not publish a later cursor while an earlier room event is
+            // waiting on retry, even when it is temporarily backoff-delayed.
+            $earlierPending = $db->table('chat_outbox')->where('room_id', $row->room_id)
+                ->where('firebase_cursor', '<', $row->firebase_cursor)->whereNull('firebase_delivered_at')
+                ->whereIn('kind', $kinds)->exists();
+            if ($earlierPending) {
+                $db->table('chat_outbox')->where('id', $id)->where('firebase_claim_token', $claim)
+                    ->update(['firebase_claim_token' => null, 'firebase_claimed_until' => null]);
+                continue;
+            }
+
+            try {
+                app(\App\Support\Chat\ChatFirebaseLiveDelivery::class)->deliver($row);
+                $db->table('chat_outbox')->where('id', $id)->where('firebase_claim_token', $claim)
+                    ->update(['firebase_delivered_at' => now(), 'firebase_claim_token' => null, 'firebase_claimed_until' => null]);
+            } catch (\Throwable $error) {
+                $db->table('chat_outbox')->where('id', $id)->where('firebase_claim_token', $claim)->update([
+                    'firebase_claim_token' => null, 'firebase_claimed_until' => null,
+                    'firebase_attempts' => min(1000, $row->firebase_attempts + 1),
+                    'firebase_available_at' => now()->addSeconds(min(60, 2 ** min(6, $row->firebase_attempts + 1)) + random_int(0, 2)),
+                ]);
+                $this->warn('Firebase chat delivery pending: '.$row->id.' ('.class_basename($error).')');
+                // Per-room order is important; retry before this room advances.
+                break;
+            }
+        }
     }
 
     private function publish(object $row, bool $typingFeed = false): void

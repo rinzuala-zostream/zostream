@@ -4,9 +4,11 @@
     "scripts": {
         "build": "vite build",
         "dev": "vite",
-        "test:channels": "node --test tests/frontend/channel-admin.test.mjs"
+        "test:channels": "node --test tests/frontend/channel-admin.test.mjs",
+        "test:firebase-chat-rules": "node --test tests/firebase-chat-rules.test.mjs"
     },
     "devDependencies": {
+        "@firebase/rules-unit-testing": "^5.0.2",
         "@tailwindcss/vite": "^4.0.0",
         "@vitejs/plugin-vue": "^5.2.4",
         "axios": "^1.8.2",

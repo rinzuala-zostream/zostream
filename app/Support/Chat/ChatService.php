@@ -196,8 +196,9 @@ final class ChatService
     /** Columns needed by the public chat message serializer. */
     public function messageColumns(): array
     {
-        return ['id', 'room_id', 'reply_to_id', 'movie_suggestion', 'moment', 'user_id', 'request_id',
-            'display_name', 'invite_room_id', 'watch_invite', 'body', 'spoiler', 'deleted_at', 'created_at'];
+        return array_merge(['id', 'room_id', 'reply_to_id', 'movie_suggestion', 'moment', 'user_id', 'request_id',
+            'display_name', 'invite_room_id', 'watch_invite', 'body', 'spoiler'],
+            ChatDatabase::schema()->hasColumn('chat_messages', 'revision') ? ['revision'] : [], ['deleted_at', 'created_at']);
     }
 
     public function message(object $m, bool $loadInviteMetadata = true): array
@@ -211,6 +212,7 @@ final class ChatService
                 ? ($loadInviteMetadata ? app(RoomInvitationService::class)->metadata((int) $m->invite_room_id) : ['room_id' => (string) $m->invite_room_id]) : null,
             'watch_invite' => $m->deleted_at ? null : json_decode($m->watch_invite ?? 'null', true),
             'body' => $m->deleted_at ? null : $m->body, 'spoiler' => (bool) $m->spoiler,
+            'revision' => (int) ($m->revision ?? 1),
             'deleted' => $m->deleted_at !== null,
             'created_at' => \Illuminate\Support\Carbon::parse($m->created_at, config('app.timezone'))->toIso8601String()];
     }
@@ -228,13 +230,13 @@ final class ChatService
         $anonymous = 'deleted:'.\Illuminate\Support\Str::uuid();
         ChatDatabase::connection()->table('chat_messages')->where('user_id', $uid)->orderBy('id')->chunkById(500, function ($rows) use ($anonymous) {
             foreach ($rows as $message) {
-                ChatDatabase::connection()->table('chat_outbox')->insert(['room_id' => $message->room_id, 'kind' => 'deleted', 'message_id' => $message->id,
-                    'created_at' => now(), 'updated_at' => now()]);
+                $this->outbox(Request::create('/'), (int) $message->room_id, 'deleted', (int) $message->id, null);
             }
-            ChatDatabase::connection()->table('chat_messages')->whereIn('id', $rows->pluck('id'))->update([
-                'body' => '', 'display_name' => 'Deleted viewer', 'user_id' => $anonymous, 'deleted_at' => now()]
+            $updates = ['body' => '', 'display_name' => 'Deleted viewer', 'user_id' => $anonymous, 'deleted_at' => now()]
+                + (ChatDatabase::schema()->hasColumn('chat_messages', 'revision') ? ['revision' => DB::raw('revision + 1')] : [])
                 + (ChatDatabase::schema()->hasColumn('chat_messages', 'watch_invite') ? ['watch_invite' => null] : [])
-                + (ChatDatabase::schema()->hasColumn('chat_messages', 'movie_suggestion') ? ['movie_suggestion' => null] : []));
+                + (ChatDatabase::schema()->hasColumn('chat_messages', 'movie_suggestion') ? ['movie_suggestion' => null] : []);
+            ChatDatabase::connection()->table('chat_messages')->whereIn('id', $rows->pluck('id'))->update($updates);
             foreach ($rows->pluck('room_id')->unique() as $room) {
                 ChatDatabase::connection()->afterCommit(fn () => $this->invalidate($room));
             }
@@ -254,7 +256,7 @@ final class ChatService
             ChatDatabase::connection()->table('chat_rooms')->whereIn('id', $hosted)->update(['closed' => true, 'updated_at' => now()]);
             foreach ($hosted as $room) {
                 app(RoomInvitationService::class)->publishEnded(Request::create('/'), (int) $room);
-                ChatDatabase::connection()->table('chat_outbox')->insert(['room_id' => $room, 'kind' => 'ended', 'created_at' => now(), 'updated_at' => now()]);
+                $this->outbox(Request::create('/'), (int) $room, 'ended', null, null);
                 ChatDatabase::connection()->afterCommit(fn () => $this->invalidate($room, true));
             }
             ChatDatabase::connection()->table('chat_room_invites')->where('invitee_user_id', $uid)->orWhere('inviter_user_id', $uid)->delete();
@@ -296,13 +298,34 @@ final class ChatService
                 'app_session_id' => $r->input('app_session_id'), 'playback_session_id' => $r->input('playback_session_id'), 'room_id' => (string) $room,
                 'platform' => in_array($r->header('X-Client-Platform'), ['android', 'ios', 'macos', 'windows'], true) ? $r->header('X-Client-Platform') : 'unknown', 'app_version' => mb_substr($r->header('X-Client-Version', 'unknown'), 0, 64)]);
         }
-        ChatDatabase::connection()->table('chat_outbox')->insert(['room_id' => $room, 'kind' => $kind, 'message_id' => $message,
-            'analytics' => $analytics, 'created_at' => now(), 'updated_at' => now()]
-            + ($recipient !== null ? ['recipient_user_id' => $recipient] : []));
-        if ($message !== null && $recipient === null && in_array($kind, ['created', 'deleted'], true)) {
-            ChatDatabase::connection()->table('chat_outbox')->insert(['room_id' => $room, 'kind' => 'feed_'.$kind, 'message_id' => $message,
+        $db = ChatDatabase::connection();
+        $db->transaction(function () use ($db, $r, $room, $kind, $message, $analytics, $recipient, $senderIsAdmin): void {
+            $firebaseCursor = ChatDatabase::schema()->hasTable('chat_firebase_room_cursors')
+                && ChatDatabase::schema()->hasColumn('chat_outbox', 'firebase_cursor')
+                    ? $this->nextFirebaseCursor($db, $room) : null;
+            $row = ['room_id' => $room, 'kind' => $kind, 'message_id' => $message,
+                'analytics' => $analytics,
                 'created_at' => now(), 'updated_at' => now()]
-                + ($senderIsAdmin === null ? [] : ['sender_is_admin' => $senderIsAdmin]));
-        }
+                + ($firebaseCursor !== null ? ['firebase_cursor' => $firebaseCursor] : [])
+                + ($recipient !== null ? ['recipient_user_id' => $recipient] : []);
+            $db->table('chat_outbox')->insert($row);
+            if ($message !== null && $recipient === null && in_array($kind, ['created', 'deleted'], true)) {
+                $feedRow = ['room_id' => $room, 'kind' => 'feed_'.$kind, 'message_id' => $message,
+                    'created_at' => now(), 'updated_at' => now()]
+                    + ($firebaseCursor !== null ? ['firebase_cursor' => $this->nextFirebaseCursor($db, $room)] : [])
+                    + ($senderIsAdmin === null ? [] : ['sender_is_admin' => $senderIsAdmin]);
+                $db->table('chat_outbox')->insert($feedRow);
+            }
+        });
+    }
+
+    private function nextFirebaseCursor(\Illuminate\Database\Connection $db, int $room): int
+    {
+        $db->table('chat_firebase_room_cursors')->insertOrIgnore(['room_id' => $room, 'cursor' => 0, 'updated_at' => now()]);
+        $state = $db->table('chat_firebase_room_cursors')->where('room_id', $room)->lockForUpdate()->first();
+        $cursor = (int) $state->cursor + 1;
+        $db->table('chat_firebase_room_cursors')->where('room_id', $room)->update(['cursor' => $cursor, 'updated_at' => now()]);
+
+        return $cursor;
     }
 }

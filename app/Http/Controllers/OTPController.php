@@ -745,6 +745,11 @@ class OTPController extends Controller
             app(\App\Support\Chat\ChatService::class)->eraseUser($userId);
             $user->delete();
         });
+        try {
+            app(\App\Support\Chat\ChatFirebase::class)->blockUserFeed($userId);
+        } catch (\Throwable $error) {
+            report($error);
+        }
     }
 
     private function syncUserDeviceInfo(UserModel $user, ?string $deviceId, ?string $deviceName, ?string $fcmToken): void

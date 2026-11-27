@@ -1,0 +1,11 @@
+{
+  "database": {
+    "rules": "Library/firebase/database.rules.json"
+  },
+  "emulators": {
+    "singleProjectMode": false,
+    "database": {
+      "port": 9000
+    }
+  }
+}

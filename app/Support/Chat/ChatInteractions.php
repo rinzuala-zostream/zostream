@@ -105,7 +105,14 @@ final class ChatInteractions
 
                 return $changed;
             });
-            if ($changed) { $chat->outbox($r, $room, 'typing', null, null); }
+            if ($changed) {
+                // Keep the legacy Reverb outbox active, and publish an
+                // independently authorized short-lived RTDB snapshot for the
+                // future Reverb-free ordinary chat listener.
+                $chat->outbox($r, $room, 'typing', null, null);
+                $typist = collect($this->activeTypists($room))->firstWhere('user_id', $uid);
+                app(ChatFirebase::class)->publishTyping($room, $uid, $typist ?: null);
+            }
         }
         $blocked = ChatDatabase::connection()->table('chat_blocks')
             ->where('user_id', $uid)->orWhere('blocked_user_id', $uid)->get()

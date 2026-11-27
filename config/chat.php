@@ -22,4 +22,15 @@ return [
     'watch_member_limit' => 5,
     'socket_protocol_enabled' => env('CHAT_SOCKET_PROTOCOL_ENABLED', true),
     'websocket_url' => env('CHAT_WEBSOCKET_URL', ''),
+    'firebase' => [
+        // Deliberately disabled until supported clients and the authorization
+        // projections have passed the phased rollout checks.
+        'enabled' => env('CHAT_FIREBASE_ENABLED', false),
+        // Separate final gate; backend projection alone never grants client reads.
+        'client_access_enabled' => env('CHAT_FIREBASE_CLIENT_ACCESS_ENABLED', false),
+        // Dedicated stable key. Do not rotate without an identity migration.
+        'uid_key' => env('CHAT_FIREBASE_UID_KEY', ''),
+        'session_lease_seconds' => 300,
+        'authorization_lease_seconds' => 240,
+    ],
 ];
