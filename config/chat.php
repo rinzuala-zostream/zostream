@@ -29,6 +29,7 @@ return [
         'enabled' => env('CHAT_FIREBASE_ENABLED', false),
         // Separate final gate; backend projection alone never grants client reads.
         'client_access_enabled' => env('CHAT_FIREBASE_CLIENT_ACCESS_ENABLED', false),
+        'account_events_enabled' => env('CHAT_FIREBASE_ACCOUNT_EVENTS_ENABLED', true),
         // Dedicated stable key. Do not rotate without an identity migration.
         'uid_key' => env('CHAT_FIREBASE_UID_KEY', ''),
         'session_lease_seconds' => 300,

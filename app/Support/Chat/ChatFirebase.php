@@ -47,7 +47,7 @@ final class ChatFirebase
         $reference->set([
             'active' => true,
             'client_access' => $clientAccess,
-            'account_events_access' => (bool) config('chat.firebase.client_access_enabled'),
+            'account_events_access' => ChatChannels::firebaseAccountEventsAvailable(),
             'expires_at' => $expiresAt * 1000,
             'zo_session_id' => $sessionId,
             'revision' => $revision,
@@ -78,7 +78,7 @@ final class ChatFirebase
         $reference->set(array_merge($previous, [
             'expires_at' => $expiresAt * 1000,
             'client_access' => config('chat.firebase.client_access_enabled') && ($previous['client_access'] ?? false) === true,
-            'account_events_access' => (bool) config('chat.firebase.client_access_enabled'),
+            'account_events_access' => ChatChannels::firebaseAccountEventsAvailable(),
             'revision' => (int) ($previous['revision'] ?? 0) + 1,
         ]));
 

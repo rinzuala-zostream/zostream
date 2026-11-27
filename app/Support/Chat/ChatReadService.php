@@ -153,7 +153,7 @@ final class ChatReadService
             'server_time_ms' => now()->getTimestampMs(),
             'channels' => $realtime ? $channels : [],
             'websocket_url' => $realtime ? config('chat.websocket_url') : '',
-            'firebase_realtime' => ChatChannels::firebaseAvailable()];
+            'firebase_realtime' => ChatChannels::firebaseAccountEventsAvailable()];
     }
 
     public function readState(string $uid, int $room): array

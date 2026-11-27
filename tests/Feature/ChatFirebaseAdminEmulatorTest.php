@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\SessionTokenModel;
 use App\Support\Chat\ChatFirebase;
 use App\Support\Chat\ChatFirebaseLiveDelivery;
+use App\Support\Chat\ChatFirebaseListeners;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -29,7 +30,7 @@ final class ChatFirebaseAdminEmulatorTest extends TestCase
         $this->emulatorHost = $host;
 
         config(['database.default' => 'sqlite', 'database.connections.sqlite.database' => ':memory:',
-            'chat.connection' => 'sqlite', 'chat.firebase.enabled' => true,
+            'chat.connection' => 'sqlite', 'chat.cache_store' => 'array', 'chat.enabled' => true, 'chat.firebase.enabled' => true,
             'chat.firebase.client_access_enabled' => true, 'chat.firebase.emulator_admin_access' => true,
             'chat.firebase.uid_key' => 'emulator-only-chat-key',
             'firebase.database_url' => 'https://demo-zostream-chat-default-rtdb.firebaseio.com']);
@@ -120,6 +121,7 @@ final class ChatFirebaseAdminEmulatorTest extends TestCase
         }
         $grants = [];
         foreach (DB::table('session_tokens')->get() as $session) {
+            app(ChatFirebaseListeners::class)->renew((string) $session->user_id, now()->addMinutes(2)->timestamp);
             $uid = ChatFirebase::uid($session->user_id);
             $grants[$uid][$session->id] = ['can_read' => true, 'can_write' => true,
                 'read_until' => now()->addMinutes(2)->getTimestampMs(), 'write_until' => now()->addMinutes(2)->getTimestampMs(), 'playback_hash' => ''];
@@ -251,6 +253,10 @@ final class ChatFirebaseAdminEmulatorTest extends TestCase
     {
         $this->emulatorHttp->delete('/chat_v1/room_authz/17.json', ['query' => ['ns' => $this->emulatorNamespace],
             'headers' => ['Authorization' => 'Bearer owner']]);
+        SessionTokenModel::query()->create(['user_id' => 'offline-viewer', 'access_token' => SessionTokenModel::digest('offline-token'),
+            'refresh_token' => SessionTokenModel::digest('offline-refresh'), 'access_expires_at' => now()->addHour(),
+            'refresh_expires_at' => now()->addDays(30), 'device_name' => 'synthetic', 'device_id' => 'offline-device']);
+        app(ChatFirebaseListeners::class)->renew('offline-viewer', now()->subSecond()->timestamp);
         $outbox = (object) ['id' => 7001, 'room_id' => 17, 'kind' => 'feed_created', 'message_id' => 501,
             'firebase_cursor' => 9001, 'recipient_user_id' => null];
         app(ChatFirebaseLiveDelivery::class)->deliver($outbox);
@@ -263,6 +269,7 @@ final class ChatFirebaseAdminEmulatorTest extends TestCase
             $this->assertArrayNotHasKey('room_id', $event);
         }
         $this->assertSame(2, DB::table('chat_firebase_badge_recipients')->count());
+        $this->assertNull($this->readPath('chat_v1/user_account_events/'.ChatFirebase::uid('offline-viewer')));
 
         DB::table('chat_rooms')->insert(['id' => 18, 'type' => 'invite', 'content_id' => null, 'closed' => false, 'room_key' => 'invite:18']);
         app(ChatFirebaseLiveDelivery::class)->deliver((object) ['id' => 7002, 'room_id' => 18,

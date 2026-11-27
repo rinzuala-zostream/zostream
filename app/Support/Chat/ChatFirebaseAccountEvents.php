@@ -11,9 +11,9 @@ final class ChatFirebaseAccountEvents
     public function publish(object $outbox, ?object $room = null, ?object $message = null): void
     {
         $startedAt = microtime(true);
-        if (! config('chat.firebase.enabled') || ! ChatDatabase::schema()->hasTable('chat_firebase_badge_recipients')) { return; }
+        if (! ChatChannels::firebaseAccountEventsAvailable() || ! ChatDatabase::schema()->hasTable('chat_firebase_badge_recipients')) { return; }
         $uid = trim((string) ($outbox->recipient_user_id ?? ''));
-        $userIds = $uid !== '' ? [$uid] : $this->audience($room, $outbox, $message);
+        $userIds = $uid !== '' ? [$uid] : $this->audience($room, $message);
         if ($userIds === []) { return; }
 
         if ($message && in_array($outbox->kind, ['feed_created', 'feed_deleted'], true)) {
@@ -25,7 +25,7 @@ final class ChatFirebaseAccountEvents
         if ($userIds === []) { return; }
 
         $id = str_pad((string) $outbox->id, 20, '0', STR_PAD_LEFT);
-        $unreadEvent = in_array($outbox->kind, ['feed_created', 'feed_deleted', 'read', 'identity'], true)
+        $unreadEvent = in_array($outbox->kind, ['feed_created', 'read', 'identity'], true)
             || ($outbox->kind === 'badge_sync' && (int) $outbox->room_id === 0);
         $event = ['revision' => (string) $outbox->id,
             'kind' => $unreadEvent ? 'unread_invalidated' : 'room_state_invalidated',
@@ -54,12 +54,20 @@ final class ChatFirebaseAccountEvents
     }
 
     /** @return list<string> */
-    private function audience(?object $room, object $outbox, ?object $message): array
+    private function audience(?object $room, ?object $message): array
     {
-        $db = ChatDatabase::connection();
         if (! $room) { return []; }
+        try {
+            $listeners = app(ChatFirebaseListeners::class)->active();
+        } catch (\Throwable $error) {
+            // Room feeds should continue if the account listener index is unavailable.
+            report($error);
+            return [];
+        }
+        if ($listeners === []) { return []; }
+
         $userIds = match ($room->type) {
-            'global' => DB::table('session_tokens')->where('access_expires_at', '>', now())->distinct()->pluck('user_id')->all(),
+            'global' => $listeners,
             'invite' => $this->inviteMembers((int) $room->id, $message !== null),
             'movie', 'episode' => DB::table('n_active_streams as s')->join('n_devices as d', 'd.id', '=', 's.device_id')
                 ->join('session_tokens as st', 'st.user_id', '=', 'd.user_id')
@@ -69,8 +77,9 @@ final class ChatFirebaseAccountEvents
             default => [],
         };
 
+        if ($room->type !== 'global') { $userIds = array_intersect($userIds, $listeners); }
         if ($userIds === []) { return []; }
-        $banned = $db->table('chat_bans')->whereIn('room_id', [0, (int) $room->id])->where('kind', 'ban')
+        $banned = ChatDatabase::connection()->table('chat_bans')->whereIn('room_id', [0, (int) $room->id])->where('kind', 'ban')
             ->where(fn ($q) => $q->whereNull('expires_at')->orWhere('expires_at', '>', now()))->pluck('user_id')->flip();
         return array_values(array_filter(array_map('strval', $userIds), fn (string $id) => ! $banned->has($id)
             && (! $message || (string) $message->user_id !== $id)));

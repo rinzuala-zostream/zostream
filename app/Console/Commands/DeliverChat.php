@@ -125,7 +125,7 @@ final class DeliverChat extends Command
 
     private function deliverFirebaseOutbox(): void
     {
-        if (! config('chat.firebase.enabled')) { return; }
+        if (! config('chat.enabled') || ! config('chat.firebase.enabled')) { return; }
         $kinds = ['feed_created', 'feed_deleted', 'sync', 'reactions', 'read', 'room_invite_status', 'badge_sync', 'ended', 'identity'];
         $db = ChatDatabase::connection();
         $candidates = $db->table('chat_outbox')->whereNull('firebase_delivered_at')->whereNotNull('firebase_cursor')

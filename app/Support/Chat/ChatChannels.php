@@ -20,6 +20,11 @@ final class ChatChannels
         return config('chat.firebase.enabled') && config('chat.firebase.client_access_enabled');
     }
 
+    public static function firebaseAccountEventsAvailable(): bool
+    {
+        return self::firebaseAvailable() && config('chat.firebase.account_events_enabled', true);
+    }
+
     public static function supportsWatchSocket(Request $request): bool
     {
         return $request->header(self::WATCH_SOCKET_HEADER) === '1';

@@ -2904,6 +2904,9 @@ class ChatApiTest extends TestCase
             ->assertForbidden();
         $this->getJson('/api/v4/chat/unread?'.http_build_query($this->identity()))->assertOk()
             ->assertJsonPath('data.channels', [])->assertJsonPath('data.websocket_url', '')->assertJsonPath('data.firebase_realtime', true);
+        config(['chat.firebase.account_events_enabled' => false]);
+        $this->getJson('/api/v4/chat/unread?'.http_build_query($this->identity()))->assertOk()
+            ->assertJsonPath('data.channels', [])->assertJsonPath('data.firebase_realtime', false);
         $this->postJson('/api/v4/chat/rooms/join', $this->identity(['type' => 'global']))->assertOk()
             ->assertJsonPath('data.channel', '')->assertJsonPath('data.websocket_url', '')
             ->assertJsonPath('data.firebase_realtime', true)->assertJsonPath('data.sync_cursor', 0);

@@ -5,7 +5,9 @@ namespace App\Http\Controllers\Api\V4;
 use App\Http\Controllers\Controller;
 use App\Models\SessionTokenModel;
 use App\Support\Api\V4Response;
+use App\Support\Chat\ChatChannels;
 use App\Support\Chat\ChatFirebase;
+use App\Support\Chat\ChatFirebaseListeners;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
@@ -15,11 +17,20 @@ final class ChatFirebaseController extends Controller
     {
         abort_unless(in_array(data_get($request->attributes->get('client_context'), 'platform'), ['android', 'ios'], true),
             403, 'Firebase chat is not available on this client platform.');
+        abort_unless(config('chat.enabled'), 503, 'Chat is currently unavailable.');
         $validated = $request->validate(['active_room_id' => 'sometimes|integer|min:1']);
         $session = $this->session($request);
 
         try {
             $expiresAt = $firebase->renewSession($session);
+            if (! isset($validated['active_room_id']) && ChatChannels::firebaseAccountEventsAvailable()) {
+                try {
+                    app(ChatFirebaseListeners::class)->renew((string) $session->user_id, $expiresAt);
+                } catch (\Throwable $error) {
+                    // Account feed indexing is best effort; room delivery uses its own authorization.
+                    report($error);
+                }
+            }
             $roomRefreshed = false;
             $refreshAfter = 180;
             if (isset($validated['active_room_id'])) {
@@ -50,6 +61,7 @@ final class ChatFirebaseController extends Controller
     {
         abort_unless(in_array(data_get($request->attributes->get('client_context'), 'platform'), ['android', 'ios', 'windows', 'macos'], true),
             403, 'Firebase chat is not available on this client platform.');
+        abort_unless(config('chat.enabled'), 503, 'Chat is currently unavailable.');
         $validated = $request->validate(['active_room_id' => 'sometimes|integer|min:1']);
 
         $session = $this->session($request);
