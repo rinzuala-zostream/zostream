@@ -27,8 +27,9 @@ final class ChatFirebaseController extends Controller
                 if ($room) {
                     $refreshAfter = in_array($room->type, ['movie', 'episode', 'invite'], true) ? 60 : 180;
                     try {
-                        app(\App\Support\Chat\ChatAuthorizationProjector::class)->projectRoom($request, $room);
+                        $roomExpiresAt = app(\App\Support\Chat\ChatAuthorizationProjector::class)->projectRoom($request, $room);
                         $roomRefreshed = true;
+                        if ($roomExpiresAt !== null) { $refreshAfter = max(1, $roomExpiresAt - now()->getTimestamp() - 15); }
                     } catch (\Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $error) {
                         if ($error->getStatusCode() !== 403) { throw $error; }
                     }
@@ -59,10 +60,12 @@ final class ChatFirebaseController extends Controller
             if (isset($validated['active_room_id'])) {
                 $room = \App\Support\Chat\ChatDatabase::connection()->table('chat_rooms')->find((int) $validated['active_room_id']);
                 if ($room) {
-                    if (in_array($room->type, ['movie', 'episode', 'invite'], true)) { $data['refresh_after_seconds'] = min(60, $data['refresh_after_seconds']); }
                     try {
-                        app(\App\Support\Chat\ChatAuthorizationProjector::class)->projectRoom($request, $room);
+                        $roomExpiresAt = app(\App\Support\Chat\ChatAuthorizationProjector::class)->projectRoom($request, $room);
                         $data['room_projection_refreshed'] = true;
+                        if ($roomExpiresAt !== null) {
+                            $data['refresh_after_seconds'] = min($data['refresh_after_seconds'], max(1, $roomExpiresAt - now()->getTimestamp() - 15));
+                        }
                     } catch (HttpExceptionInterface $e) {
                         if ($e->getStatusCode() !== 403) { throw $e; }
                     }

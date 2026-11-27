@@ -1213,6 +1213,7 @@ class ChatApiTest extends TestCase
         (require database_path('migrations/chat/2026_11_25_000001_add_chat_movie_suggestions.php'))->up();
         (require database_path('migrations/chat/2026_11_25_000002_create_chat_pins.php'))->up();
         (require database_path('migrations/chat/2026_11_25_000003_add_sender_admin_to_chat_outbox.php'))->up();
+        (require database_path('migrations/chat/2026_11_27_000001_add_chat_firebase_delivery_state.php'))->up();
         Schema::create('admin_users', function (Blueprint $t) {
             $t->id();
             $t->string('admin_uid');
@@ -1295,6 +1296,42 @@ class ChatApiTest extends TestCase
         }
         $this->assertSame(0, ChatDatabase::connection()->table('chat_messages')->count());
         $this->assertSame(0, ChatDatabase::connection()->table('chat_outbox')->count());
+    }
+
+    public function test_expired_cursor_recovery_keeps_one_watermark_across_large_inventory_batches(): void
+    {
+        $room = $this->room();
+        $ids = [];
+        foreach (range(1, 105) as $_) { $ids[] = $this->message($room); }
+        $db = ChatDatabase::connection();
+        $db->table('chat_firebase_room_cursors')->insert(['room_id' => $room, 'cursor' => 10, 'updated_at' => now()]);
+        $db->table('chat_firebase_room_cursors')->where('room_id', $room)->update(['cursor' => 10]);
+        $db->table('chat_outbox')->insert(['room_id' => $room, 'kind' => 'feed_created', 'message_id' => $ids[0],
+            'firebase_cursor' => 10, 'created_at' => now(), 'updated_at' => now()]);
+
+        $first = $this->getJson('/api/v4/chat/rooms/'.$room.'/sync?'.http_build_query($this->identity([
+            'cursor' => 0, 'known' => array_map(fn ($id) => ['id' => $id, 'revision' => 1], array_slice($ids, 0, 100)),
+        ])))->assertOk()->json('data');
+        $this->assertTrue($first['cursor_expired'], json_encode($first));
+        $watermark = $first['recovery_watermark'];
+        $this->assertSame(10, $watermark);
+
+        // Simulate an event committing while the client checks inventory batch two.
+        $db->table('chat_firebase_room_cursors')->where('room_id', $room)->update(['cursor' => 11]);
+        $db->table('chat_outbox')->insert(['room_id' => $room, 'kind' => 'feed_created', 'message_id' => $ids[1],
+            'firebase_cursor' => 11, 'created_at' => now(), 'updated_at' => now()]);
+        $second = $this->getJson('/api/v4/chat/rooms/'.$room.'/sync?'.http_build_query($this->identity([
+            'cursor' => 0, 'recovery_watermark' => $watermark,
+            'known' => array_map(fn ($id) => ['id' => $id, 'revision' => 1], array_slice($ids, 100)),
+        ])))->assertOk()->json('data');
+
+        $this->assertTrue($second['cursor_expired']);
+        $this->assertSame($watermark, $second['next_cursor']);
+        $delta = $this->getJson('/api/v4/chat/rooms/'.$room.'/sync?'.http_build_query($this->identity([
+            'cursor' => $watermark,
+        ])))->assertOk()->json('data');
+        $this->assertFalse($delta['cursor_expired']);
+        $this->assertSame(11, $delta['events'][0]['cursor']);
     }
 
     public function test_disabled_chat_does_not_access_chat_storage_during_playback_cleanup(): void

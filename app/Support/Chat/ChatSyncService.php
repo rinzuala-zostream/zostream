@@ -9,7 +9,7 @@ final class ChatSyncService
 {
     public function __construct(private readonly ChatService $chat) {}
 
-    public function sync(Request $request, int $roomId, int $cursor, array $known = []): array
+    public function sync(Request $request, int $roomId, int $cursor, array $known = [], ?int $recoveryWatermark = null): array
     {
         $this->chat->room($request, $roomId);
         $db = ChatDatabase::connection();
@@ -17,11 +17,15 @@ final class ChatSyncService
         $blocked = $this->chat->blocked($uid);
         $state = $db->table('chat_firebase_room_cursors')->where('room_id', $roomId)->value('cursor');
         $current = (int) ($state ?? 0);
+        abort_if($recoveryWatermark !== null && $recoveryWatermark > $current, 422, 'The recovery watermark is ahead of the committed room cursor.');
         $oldest = $db->table('chat_outbox')->where('room_id', $roomId)->whereNotNull('firebase_cursor')->min('firebase_cursor');
         $expired = $cursor > $current || ($cursor < $current && ($oldest === null || $cursor < (int) $oldest - 1));
 
         if ($expired) {
-            return $this->reconcile($request, $roomId, $known, $current, $blocked);
+            // Keep the first recovery watermark fixed across inventory batches. New
+            // outbox commits remain available after it and are fetched by normal sync.
+            $watermark = $recoveryWatermark ?? $current;
+            return $this->reconcile($request, $roomId, $known, $watermark, $blocked);
         }
 
         $rows = $db->table('chat_outbox')->where('room_id', $roomId)->where('firebase_cursor', '>', $cursor)
@@ -89,7 +93,7 @@ final class ChatSyncService
             }
             $knownRevision = (int) ($knownById->get($id)['revision'] ?? 0);
             if ((int) ($message->revision ?? 1) !== $knownRevision) {
-            $visibleKnown[] = $this->decorateMessage($message, $uid);
+                $visibleKnown[] = $this->decorateMessage($message, $uid);
             }
         }
         $recent = $db->table('chat_messages')->where('room_id', $roomId)->whereNotIn('user_id', $blocked)
@@ -97,7 +101,8 @@ final class ChatSyncService
             ->get($this->chat->messageColumns())->reverse()->map(fn ($message) => $this->chat->message($message))->all();
         $recent = $this->decorateMany($recent, $uid);
 
-        return ['cursor_expired' => true, 'events' => [], 'next_cursor' => $current, 'has_more' => false,
+        return ['cursor_expired' => true, 'events' => [], 'next_cursor' => $current,
+            'recovery_watermark' => $current, 'has_more' => false,
             'reconciled_messages' => $visibleKnown,
             'hidden_message_ids' => $hiddenIds, 'recent_messages' => $recent,
             'read_state' => app(ChatReadService::class)->readState($uid, $roomId),

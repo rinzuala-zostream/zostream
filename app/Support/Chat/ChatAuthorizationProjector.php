@@ -15,9 +15,9 @@ final class ChatAuthorizationProjector
 {
     public function __construct(private readonly ChatFirebase $firebase, private readonly ChatService $chat) {}
 
-    public function projectRoom(Request $request, object $room): void
+    public function projectRoom(Request $request, object $room): ?int
     {
-        if (! config('chat.firebase.enabled')) { return; }
+        if (! config('chat.firebase.enabled')) { return null; }
 
         $userId = (string) $request->input('auth_user_id');
         $sessionId = (string) $request->attributes->get('auth_session_token_id');
@@ -40,6 +40,8 @@ final class ChatAuthorizationProjector
         $playbackToken = (string) $request->header('X-Playback-Token', '');
         $this->firebase->projectRoomAuthorization($userId, $sessionId, $room, $canWrite, $expiresAt,
             $playbackToken === '' ? null : hash('sha256', $playbackToken));
+
+        return $expiresAt;
     }
 
     public static function leaseExpiry(Carbon $now, Carbon $sessionExpiry, string $roomType, int $configuredSeconds): int

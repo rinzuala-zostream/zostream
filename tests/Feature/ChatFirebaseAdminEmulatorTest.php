@@ -157,6 +157,10 @@ final class ChatFirebaseAdminEmulatorTest extends TestCase
         $issued = $firebase->issueToken($session);
         $this->assertSame(ChatFirebase::uid('viewer-a'), $issued['firebase_uid']);
         $this->assertTrue($this->readPath('chat_v1/auth_sessions/'.ChatFirebase::uid('viewer-a').'/'.$session->id.'/account_events_access'));
+        $this->assertNull($this->readPath('chat_v1/room_authz/17/'.ChatFirebase::uid('viewer-a').'/'.$session->id),
+            'Home/list account listeners must work before any room grant exists.');
+        $this->assertGreaterThan(now()->getTimestamp(), $firebase->renewSession($session),
+            'Account-only lease renewal must not require an active room or a new custom token.');
         $firebase->projectRoomAuthorization('viewer-a', $session->id,
             (object) ['id' => 17, 'type' => 'global', 'content_id' => null], true, now()->addMinutes(2)->getTimestamp());
         $grant = $this->readPath('chat_v1/room_authz/17/'.ChatFirebase::uid('viewer-a').'/'.$session->id);

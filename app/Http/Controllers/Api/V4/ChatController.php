@@ -684,8 +684,10 @@ final class ChatController extends Controller
     public function sync(Request $r, int $room, \App\Support\Chat\ChatSyncService $sync)
     {
         $v = $r->validate(['cursor' => 'required|integer|min:0', 'known' => 'sometimes|array|max:100',
+            'recovery_watermark' => 'sometimes|integer|min:0',
             'known.*.id' => 'required|integer|min:1', 'known.*.revision' => 'required|integer|min:1']);
-        return V4Response::success($sync->sync($r, $room, (int) $v['cursor'], $v['known'] ?? []));
+        return V4Response::success($sync->sync($r, $room, (int) $v['cursor'], $v['known'] ?? [],
+            isset($v['recovery_watermark']) ? (int) $v['recovery_watermark'] : null));
     }
 
     public function movieSuggestions(Request $r, int $room, \App\Support\Chat\ChatMovieSuggestions $suggestions)
