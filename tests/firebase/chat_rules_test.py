@@ -31,7 +31,7 @@ def request(method, path, value=None, token='owner'):
         return error.code, error.read().decode()
 
 
-def jwt(uid, session='s', name=None):
+def jwt(uid, session='s', name=None, admin=False):
     def encode(value):
         return base64.urlsafe_b64encode(json.dumps(value).encode()).rstrip(b'=').decode()
     now = int(time.time())
@@ -39,7 +39,7 @@ def jwt(uid, session='s', name=None):
         'sub': uid, 'user_id': uid, 'aud': NS, 'iss': 'https://securetoken.google.com/' + NS,
         'iat': now, 'exp': now + 3600, 'auth_time': now,
         'firebase': {'sign_in_provider': 'custom'}, 'chat_session': session,
-        'chat_name': name or uid.title(),
+        'chat_name': name or uid.title(), 'chat_admin': admin,
     }) + '.'
 
 
@@ -68,7 +68,7 @@ check('GET', 'chat_v1/user_messages/alice/global', 401, token=jwt('alice', 'revo
 check('PUT', 'chat_v1/rooms/global/messages/2', 401, {'body': 'bypass'}, alice)
 check('PUT', 'chat_v1/rooms/global/members/eve', 401, {'active': True}, alice)
 check('PUT', 'chat_v1/access/alice/s', 401, {'expires_at': now + 9999999}, alice)
-typing = {'user_id': 'alice', 'name': 'Alice', 'sequence': 1, 'expires_at': int(time.time() * 1000) + 6000}
+typing = {'user_id': 'alice', 'name': 'Alice', 'is_admin': False, 'sequence': 1, 'expires_at': int(time.time() * 1000) + 6000}
 check('PUT', 'chat_v1/room_typing/global/alice_session', 200, typing, alice)
 check('GET', 'chat_v1/room_typing/global', 200, token=bob)
 check('GET', 'chat_v1/room_typing/global', 401, token=eve)
@@ -77,6 +77,8 @@ check('PUT', 'chat_v1/room_typing/global/alice_session', 401, {**typing, 'name':
 check('PUT', 'chat_v1/room_typing/global/alice_session', 401, {**typing, 'sequence': 0}, alice)
 check('PUT', 'chat_v1/room_typing/global/alice_session', 401, {**typing, 'expires_at': now + 999999}, alice)
 check('PUT', 'chat_v1/room_typing/global/alice_session', 401, {**typing, 'is_admin': True}, alice)
+admin_typing = {**typing, 'is_admin': True}
+check('PUT', 'chat_v1/room_typing/global/alice_admin_session', 200, admin_typing, jwt('alice', admin=True))
 check('DELETE', 'chat_v1/room_typing/global/alice_session', 401, token=bob)
 check('DELETE', 'chat_v1/room_typing/global/alice_session', 200, token=alice)
 request('PUT', 'chat_v1/rooms/global/members/alice/active', False)

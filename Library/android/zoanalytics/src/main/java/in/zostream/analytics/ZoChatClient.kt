@@ -208,7 +208,13 @@ class ZoChatClient(
             val successUndeclared = successValue == null || successValue == JSONObject.NULL
             val payloadKeys = listOf(
                 "room_id", "user_id", "messages", "pins", "pinned", "invites", "rooms", "ended", "accepted", "position_ms",
-                "online_count", "auth", "left", "users", "reported", "resolved", "updated", "movies"
+                "online_count", "auth", "left", "users", "reported", "resolved", "updated", "movies",
+                // The RTDB endpoints may be returned directly by deployed API
+                // versions rather than wrapped in { success, data }.  These are
+                // authenticated payloads too; rejecting them prevents Android
+                // from accepting its custom token and attaching the listener.
+                "firebase_uid", "custom_token", "room_projection_refreshed", "refresh_after_seconds",
+                "next_cursor", "events", "cursor_expired", "event_cursor"
             )
             val hasDirectPayload = payloadKeys.any { key -> json.has(key) && json.opt(key) != JSONObject.NULL }
             val successfulEnvelope = declaredSuccess || (successUndeclared && (data != null || hasDirectPayload))

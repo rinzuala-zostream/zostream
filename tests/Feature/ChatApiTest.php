@@ -253,7 +253,9 @@ class ChatApiTest extends TestCase
         $this->asUser('alice')->postJson("/api/v2/chat/rooms/global/messages/$id/pin")->assertOk()->assertJsonPath('data.pinned', true);
         $this->getJson('/api/v2/chat/rooms/global/pins')->assertJsonCount(1, 'data.pins');
         $this->postJson("/api/v2/chat/rooms/global/messages/$id/report", ['reason' => 'Spam'])->assertOk();
-        $token = $this->postJson('/api/v2/chat/firebase/token')->assertOk()->json('data.custom_token');
+        $tokenResponse = $this->postJson('/api/v2/chat/firebase/token')->assertOk()
+            ->assertJsonPath('data.is_admin', true);
+        $token = $tokenResponse->json('data.custom_token');
         $this->assertSame('alice', json_decode($token, true)['uid']);
         $this->postJson('/api/v2/chat/firebase/lease', ['active_room_id' => 'unknown'])->assertOk()->assertJsonPath('data.room_projection_refreshed', false);
         $this->postJson('/api/v2/chat/firebase/lease', ['active_room_id' => 'global'])->assertOk();

@@ -139,6 +139,9 @@
             "name": {
               ".validate": "newData.isString() && newData.val() === auth.token.chat_name"
             },
+            "is_admin": {
+              ".validate": "newData.isBoolean() && newData.val() === (auth.token.chat_admin === true)"
+            },
             "expires_at": {
               ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= now + 10000"
             },

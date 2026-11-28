@@ -4,6 +4,7 @@ public struct ChatFirebaseToken: Decodable, Sendable {
     public let firebase_uid: String
     public let custom_token: String
     public let display_name: String?
+    public let is_admin: Bool?
 }
 
 @MainActor

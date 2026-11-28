@@ -143,7 +143,8 @@ class ChatController extends Controller
         $this->chat->store->update(["access/$uid/$key" => ['expires_at' => min(now()->addSeconds(90)->valueOf(), $session->access_expires_at->valueOf())]]);
         $result = ['room_projection_refreshed' => $granted, 'refresh_after_seconds' => 30];
         if ($token) {
-            $result += ['firebase_uid' => $uid, 'display_name' => $actor['name'], 'custom_token' => $this->chat->store->customToken($uid, ['chat_session' => $key, 'chat_name' => $actor['name']])];
+            $result += ['firebase_uid' => $uid, 'display_name' => $actor['name'], 'is_admin' => $actor['is_admin'],
+                'custom_token' => $this->chat->store->customToken($uid, ['chat_session' => $key, 'chat_name' => $actor['name'], 'chat_admin' => $actor['is_admin']])];
         }
 
         return $result;
