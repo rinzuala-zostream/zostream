@@ -48,10 +48,18 @@ class ChatService
     public function user(string $uid): array
     {
         abort_unless(preg_match('/^[A-Za-z0-9_-]{1,128}$/D', $uid), 403, 'Your chat identity is unavailable.');
-        $user = DB::table('user')->where('uid', $uid)->first(['uid', 'name']);
+        $user = DB::table('user')->where('uid', $uid)->first(['uid', 'username', 'name']);
         abort_unless($user, 403, 'Your chat identity is unavailable.');
 
-        return ['uid' => $uid, 'name' => trim($user->name ?? '') ?: 'Viewer', 'is_admin' => app(AdminAccess::class)->isAdmin($uid)];
+        $username = trim((string) ($user->username ?? ''));
+        $name = trim((string) ($user->name ?? ''));
+        $displayName = $username !== '' ? $username : (
+            preg_match('/^[\p{L}\s]+$/u', $name) === 1 && preg_match('/\p{L}/u', $name) === 1
+                ? $name
+                : 'Viewer'
+        );
+
+        return ['uid' => $uid, 'name' => $displayName, 'is_admin' => app(AdminAccess::class)->isAdmin($uid)];
     }
 
     public function blocked(string $viewer, string $sender): bool
