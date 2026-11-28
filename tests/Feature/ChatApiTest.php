@@ -152,6 +152,30 @@ class ChatApiTest extends TestCase
         $this->getJson('/api/v4/chat/rooms/global/messages')->assertGone();
     }
 
+    public function test_committed_send_survives_queue_failure_and_retry_is_idempotent(): void
+    {
+        $room = $this->privateRoom();
+        \Illuminate\Support\Facades\Bus::shouldReceive('dispatch')->once()
+            ->andThrow(new \RuntimeException('Queue temporarily unavailable'));
+        $request = (string) Str::uuid();
+        $id = $this->send('alice', $room, ['request_id' => $request])->assertCreated()->json('data.id');
+        $this->send('alice', $room, ['request_id' => $request])->assertCreated()->assertJsonPath('data.id', $id);
+        $this->assertCount(1, $this->store->get("rooms/$room/messages"));
+        $items = $this->store->get('push_outbox');
+        $this->assertCount(1, $items);
+        $this->assertSame('pending', array_values($items)[0]['status']);
+    }
+
+    public function test_push_is_queued_instead_of_executed_after_response(): void
+    {
+        config(['queue.default' => 'sync']);
+        $room = $this->privateRoom();
+        $this->send('alice', $room)->assertCreated();
+        \Illuminate\Support\Facades\Bus::assertDispatched(DeliverChatPush::class,
+            fn ($job) => $job->connection === 'database');
+        \Illuminate\Support\Facades\Bus::assertNotDispatchedAfterResponse(DeliverChatPush::class);
+    }
+
     public function test_global_reply_reaction_push_and_spoiler_preview(): void
     {
         $this->join('alice');

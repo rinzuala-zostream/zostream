@@ -143,6 +143,15 @@ public final class ZoChatClient {
     public var onBadgeEvent: (([String: Any]) -> Void)?
     public var onUnreadRoomChange: ((_ kind: String, _ roomID: String, _ messageID: String?) -> Void)?
     public var onMessage: ((ChatMessage) -> Void)?
+    private struct PendingSend {
+        let roomID: String
+        let requestID: String
+        let userID: String
+        let owner: String
+        let continuation: CheckedContinuation<ChatMessage, Error>
+        let task: Task<Void, Never>
+    }
+    private var pendingSends: [UUID: PendingSend] = [:]
     public var onTyping: (([ChatTypist]) -> Void)?
     public var onOverlayMessage: ((ChatMessage) -> Void)?
     private var controlToken: String?
@@ -254,10 +263,53 @@ public final class ZoChatClient {
             throw ChatFailure(message: "This chat room is unavailable.")
         }
         guard let body = payload["body"] as? String, !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              payload["request_id"] as? String != nil else {
+              let requestID = payload["request_id"] as? String else {
             throw ChatFailure(message: "Enter a message before sending.")
         }
-        return try await request("rooms/\(roomID)/messages", body: payload, as: ChatMessage.self)
+        // Watch Together keeps its existing command response flow.
+        guard payload["watch"] == nil, body != "/watch", usesFirebaseRealtime,
+              room?.room_id == roomID, let userID = room?.user_id, let identity = credentials()?.ownerKey else {
+            return try await request("rooms/\(roomID)/messages", body: payload, as: ChatMessage.self)
+        }
+        let operation = UUID()
+        return try await withTaskCancellationHandler(operation: {
+            try Task.checkCancellation()
+            return try await withCheckedThrowingContinuation { continuation in
+                let task = Task { [weak self] in
+                    guard let self else { return }
+                    do {
+                        let message: ChatMessage = try await self.request("rooms/\(roomID)/messages", body: payload, as: ChatMessage.self)
+                        self.finishSend(operation, result: .success(message))
+                    } catch { self.finishSend(operation, result: .failure(error)) }
+                }
+                pendingSends[operation] = PendingSend(roomID: roomID, requestID: requestID.lowercased(),
+                    userID: userID, owner: identity, continuation: continuation, task: task)
+            }
+        }, onCancel: { [weak self] in
+            Task { @MainActor in self?.finishSend(operation, result: .failure(CancellationError())) }
+        })
+    }
+
+    private func finishSend(_ operation: UUID, result: Result<ChatMessage, Error>) {
+        guard let pending = pendingSends.removeValue(forKey: operation) else { return }
+        pending.task.cancel()
+        guard !closed, credentials()?.ownerKey == pending.owner else {
+            pending.continuation.resume(throwing: CancellationError())
+            return
+        }
+        pending.continuation.resume(with: result)
+    }
+
+    private func receiveFirebaseMessage(_ message: ChatMessage, overlay: Bool) {
+        // Only a canonical receipt for this account, room and exact operation
+        // confirms delivery. Similar text or another sender never confirms it.
+        for (operation, pending) in Array(pendingSends) where
+            pending.roomID == message.room_id && pending.userID == message.user_id &&
+            pending.requestID == message.request_id.lowercased() && !message.deleted {
+            finishSend(operation, result: .success(message))
+        }
+        onMessage?(message)
+        if overlay && !message.deleted { onOverlayMessage?(message) }
     }
 
     private var roomVisible: Bool?
@@ -361,6 +413,9 @@ public final class ZoChatClient {
             throw ChatFailure(message: "Account changed. Reopen chat.")
         }
         owner = identity
+        for operation in Array(pendingSends.keys) {
+            finishSend(operation, result: .failure(CancellationError()))
+        }
         finishVisibility()
         stopFirebase()
         usesFirebaseRealtime = false
@@ -463,8 +518,7 @@ public final class ZoChatClient {
             else if kind == "room_state_invalidated" { self?.onBadgeEvent?(["kind": "sync"]) }
             else { self?.onChanged?(kind, id) }
         }, message: { [weak self] message, overlay in
-            self?.onMessage?(message)
-            if overlay && !message.deleted { self?.onOverlayMessage?(message) }
+            self?.receiveFirebaseMessage(message, overlay: overlay)
         }, typing: { [weak self] users in self?.onTyping?(users) })
         firebaseStream = stream
         stream.start()
@@ -806,6 +860,9 @@ public final class ZoChatClient {
 
     public func close() {
         guard !closed else { return }
+        for operation in Array(pendingSends.keys) {
+            finishSend(operation, result: .failure(CancellationError()))
+        }
         finishVisibility()
         stopFirebase()
         isConnected = false

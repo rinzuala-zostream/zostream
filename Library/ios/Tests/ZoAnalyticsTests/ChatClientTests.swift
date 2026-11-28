@@ -3,10 +3,13 @@ import XCTest
 @testable import ZoAnalytics
 
 private final class ChatURLProtocol: URLProtocol {
+    static var intercept: ((ChatURLProtocol) -> Bool)?
     static var handle: ((URLRequest) throws -> (Int, String))?
+    var delayedFailure: DispatchWorkItem?
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
+        if Self.intercept?(self) == true { return }
         do {
             let (status, body) = try Self.handle!(request)
             client?.urlProtocol(self, didReceive: HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: ["Content-Type":"application/json"])!, cacheStoragePolicy: .notAllowed)
@@ -14,7 +17,7 @@ private final class ChatURLProtocol: URLProtocol {
             client?.urlProtocolDidFinishLoading(self)
         } catch { client?.urlProtocol(self, didFailWithError: error) }
     }
-    override func stopLoading() {}
+    override func stopLoading() { delayedFailure?.cancel() }
 }
 
 @MainActor
@@ -38,6 +41,104 @@ private final class FirebaseFixture: ChatFirebaseSource {
 }
 
 final class ChatClientTests: XCTestCase {
+    @MainActor
+    func testCanonicalFirebaseReceiptCompletesSendWhileHTTPIsStalled() async throws {
+        let fixture = FirebaseFixture()
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [ChatURLProtocol.self]
+        let posted = expectation(description: "HTTP send started")
+        let initialSync = expectation(description: "Initial RTDB recovery complete")
+        ChatURLProtocol.intercept = { proto in
+            if proto.request.url?.path.hasSuffix("/messages") == true, proto.request.httpMethod == "POST" {
+                posted.fulfill()
+                let failure = DispatchWorkItem { proto.client?.urlProtocol(proto, didFailWithError: URLError(.timedOut)) }
+                proto.delayedFailure = failure
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: failure)
+                return true // Server accepted the write but its HTTP response is stalled.
+            }
+            return false
+        }
+        ChatURLProtocol.handle = { request in
+            let path = request.url!.path
+            let payload: String
+            if path.hasSuffix("/join") {
+                payload = #"{"room_id":"17","room_type":"global","channel":"","websocket_url":"","user_id":"uid","firebase_realtime":true,"sync_cursor":4}"#
+            } else if path.hasSuffix("/lease") {
+                payload = #"{"room_projection_refreshed":true,"refresh_after_seconds":60}"#
+            } else {
+                payload = #"{"events":[],"next_cursor":4,"has_more":false,"cursor_expired":false}"#
+                initialSync.fulfill()
+            }
+            return (200, "{\"success\":true,\"data\":" + payload + "}")
+        }
+        defer { ChatURLProtocol.handle = nil; ChatURLProtocol.intercept = nil }
+        let client = ZoChatClient(baseURL: URL(string: "https://example.test")!, version: "test",
+            credentials: { AnalyticsCredentials(accessToken: "token", deviceToken: "device", ownerKey: "owner") }, session: URLSession(configuration: config))
+        client.firebaseSource = fixture
+        _ = try await client.join(type: "global", contentId: nil)
+        defer { client.close() }
+        await fulfillment(of: [initialSync], timeout: 3)
+        for _ in 0..<20 { await Task.yield() }
+        var finished = false
+        let send = Task {
+            let result = try await client.sendMessage(roomID: "17", payload: ["body": "Hello", "request_id": "op-123"])
+            finished = true
+            return result
+        }
+        await fulfillment(of: [posted], timeout: 3)
+        for _ in 0..<100 where fixture.observers["chat_v1/user_sync_events/uid/17"] == nil { await Task.yield() }
+        XCTAssertNotNil(fixture.observers["chat_v1/user_sync_events/uid/17"])
+        var records: [String: Any] = [:]
+        let ignoredReceipts = expectation(description: "Other operations remain unconfirmed")
+        ignoredReceipts.expectedFulfillmentCount = 2
+        client.onMessage = { message in if message.id != "503" { ignoredReceipts.fulfill() } }
+        func receipt(_ id: String, sender: String, operation: String, cursor: Int) {
+            records[id] = [
+                "id": id, "room_id": "17", "sender_id": sender, "sender_name": sender, "client_op_id": operation,
+                "body": "Hello", "spoiler": false, "deleted": false, "created_at_iso": "2026-11-27T00:00:00Z", "cursor": cursor
+            ]
+            fixture.observers["chat_v1/user_messages/uid/17"]?(records)
+            fixture.observers["chat_v1/user_sync_events/uid/17"]?([String(format: "%020d", cursor): [
+                "cursor": cursor, "kind": "created", "message_id": id, "overlay_live": true
+            ]])
+        }
+        receipt("501", sender: "bob", operation: "op-123", cursor: 5)
+        receipt("502", sender: "uid", operation: "different-op", cursor: 6)
+        await fulfillment(of: [ignoredReceipts], timeout: 2)
+        XCTAssertFalse(finished, "Another sender or operation cannot confirm this send")
+        receipt("503", sender: "uid", operation: "op-123", cursor: 7)
+        let message = try await send.value
+        XCTAssertTrue(finished)
+        XCTAssertEqual(message.id, "503")
+
+        let secondPost = expectation(description: "Next send started")
+        ChatURLProtocol.intercept = { proto in
+            guard proto.request.url?.path.hasSuffix("/messages") == true else { return false }
+            secondPost.fulfill()
+            return true
+        }
+        let interrupted = Task { try await client.sendMessage(roomID: "17", payload: ["body": "Second", "request_id": "op-456"]) }
+        await fulfillment(of: [secondPost], timeout: 3)
+        client.close()
+        do { _ = try await interrupted.value; XCTFail("Closing chat must cancel pending sends") }
+        catch { XCTAssertTrue(error is CancellationError) }
+    }
+
+    @MainActor
+    func testUnconfirmedSendStillReportsTimeout() async throws {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [ChatURLProtocol.self]
+        ChatURLProtocol.handle = { _ in throw URLError(.timedOut) }
+        defer { ChatURLProtocol.handle = nil }
+        let client = ZoChatClient(baseURL: URL(string: "https://example.test")!, version: "test",
+            credentials: { AnalyticsCredentials(accessToken: "token", deviceToken: "device", ownerKey: "owner") }, session: URLSession(configuration: config))
+        defer { client.close() }
+        do {
+            _ = try await client.sendMessage(roomID: "17", payload: ["body": "Hello", "request_id": "op-123"])
+            XCTFail("Unconfirmed sends must not report success")
+        } catch { XCTAssertEqual((error as? URLError)?.code, .timedOut) }
+    }
+
     @MainActor
     func testFirebaseTypingWritesBypassHTTPAndStopSurvivesClose() async throws {
         let fixture = FirebaseFixture()
@@ -64,6 +165,32 @@ final class ChatClientTests: XCTestCase {
         client.stopTyping(roomID: "17", sessionID: "session", sequence: 2)
         XCTAssertEqual(fixture.typingWrites.map { $0.0 }, ["17", "17"])
         XCTAssertEqual(fixture.typingWrites.map { $0.1 }, [true, false])
+    }
+
+    @MainActor
+    func testReceiptArrivingBeforeInitialRecoveryIsStillDelivered() async {
+        let fixture = FirebaseFixture()
+        let delivered = expectation(description: "Receipt received during startup")
+        let stream = ChatFirebaseStream(source: fixture, owner: "owner", roomID: "17", cursor: 4,
+            active: { true }, token: { throw CancellationError() },
+            lease: { _ in ChatFirebaseLease(room_projection_refreshed: true, refresh_after_seconds: 60) },
+            sync: { _, _ in ChatFirebaseSync(cursor_expired: false, next_cursor: 4, has_more: false, events: []) },
+            connection: { _ in }, changed: { _, _ in }, message: { item, _ in
+                XCTAssertEqual(item.id, "501")
+                delivered.fulfill()
+            }, typing: { _ in })
+        stream.start()
+        defer { stream.close() }
+        for _ in 0..<100 where fixture.observers["chat_v1/user_messages/uid/17"] == nil { await Task.yield() }
+        XCTAssertNotNil(fixture.observers["chat_v1/user_messages/uid/17"])
+        fixture.observers["chat_v1/user_messages/uid/17"]?(["501": [
+            "id": "501", "room_id": "17", "sender_id": "uid", "sender_name": "Me", "client_op_id": "op",
+            "body": "Hello", "spoiler": false, "deleted": false, "created_at_iso": "2026-11-27T00:00:00Z", "cursor": 5
+        ]])
+        fixture.observers["chat_v1/user_sync_events/uid/17"]?(["00000000000000000005": [
+            "cursor": 5, "kind": "created", "message_id": "501", "overlay_live": true
+        ]])
+        await fulfillment(of: [delivered], timeout: 3)
     }
 
     @MainActor

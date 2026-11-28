@@ -16,7 +16,13 @@ class DeliverChatPush implements ShouldQueue
 
     public int $tries = 1;
 
-    public function __construct(public string $deliveryId) {}
+    public function __construct(public string $deliveryId)
+    {
+        // Chat delivery must never run FCM inline in an API worker.
+        if (config('queue.connections.'.config('queue.default').'.driver') === 'sync') {
+            $this->onConnection('database');
+        }
+    }
 
     public function handle(ChatService $chat, FCMNotificationController $push): void
     {

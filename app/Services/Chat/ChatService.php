@@ -16,7 +16,15 @@ class ChatService
         $this->store->update($updates);
         foreach (array_keys($updates) as $path) {
             if (str_starts_with($path, 'push_outbox/')) {
-                \App\Jobs\DeliverChatPush::dispatch(substr($path, strlen('push_outbox/')))->afterResponse();
+                try {
+                    // Queue the job; afterResponse executes it synchronously at
+                    // termination and can keep API workers occupied by FCM I/O.
+                    \App\Jobs\DeliverChatPush::dispatch(substr($path, strlen('push_outbox/')));
+                } catch (\Throwable $e) {
+                    // The write already committed. Maintenance retries the durable
+                    // pending outbox when the queue becomes available again.
+                    report($e);
+                }
             }
         }
     }
@@ -247,9 +255,10 @@ class ChatService
                 $this->push($u, (string) $recipient, $uid, $room, $cursor, $reply && $recipient === $reply['user_id'] ? 'reply' : 'message',
                     $actor['name'].($r['spoiler'] ? ': Spoiler message' : ': '.mb_substr($body, 0, 160)), ['message_id' => $id]);
             }
+            $response = $this->publicMessage($r, $uid);
             $this->publish($u);
 
-            return $this->publicMessage($r, $uid);
+            return $response;
         });
     }
 

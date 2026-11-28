@@ -256,7 +256,9 @@ final class ChatFirebaseStream {
             needsRecovery = response.has_more || recoveryStartedAt != disconnectRevision
             retrySeconds = 1
             drainTask = nil
-            if response.has_more || pending { scheduleDrain() }
+            // Live events can arrive before the initial recovery request starts.
+            // Drain anything newer than its response cursor as well.
+            if response.has_more || pending || !roomEvents.isEmpty { scheduleDrain() }
         } catch {
             guard valid(run) else { return }
             drainTask = nil
