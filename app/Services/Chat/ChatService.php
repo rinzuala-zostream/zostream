@@ -211,13 +211,28 @@ class ChatService
 
     public function send(array $actor, string $room, array $p): array
     {
-        $work = function () use ($actor, $room, $p) {
+        $startedAt = microtime(true);
+        $workStartedAt = null;
+        $stageStartedAt = null;
+        $stageDurations = [];
+        $markStage = function (string $stage) use (&$stageStartedAt, &$stageDurations): void {
+            $now = microtime(true);
+            $stageDurations[$stage] = (int) round(($now - ($stageStartedAt ?? $now)) * 1000);
+            $stageStartedAt = $now;
+        };
+        $work = function () use ($actor, $room, $p, &$workStartedAt, &$stageStartedAt, $markStage) {
+            $workStartedAt = $stageStartedAt = microtime(true);
             $uid = $actor['uid'];
             $s = $this->room($room, $uid, true);
+            $markStage('room_authorization_ms');
             $request = strtolower($p['request_id']);
             if ($id = $this->store->get("room_requests/$room/$uid/$request")) {
-                return $this->publicMessage($this->message($room, $id), $uid);
+                $message = $this->publicMessage($this->message($room, $id), $uid);
+                $markStage('idempotent_retry_ms');
+
+                return $message;
             }
+            $markStage('dedupe_lookup_ms');
             $body = trim($p['body']);
             if ($body === '') {
                 throw ValidationException::withMessages(['body' => 'Enter a message.']);
@@ -240,7 +255,9 @@ class ChatService
             if (isset($p['moment'])) {
                 abort_unless(($s['content_id'] ?? null) === $p['moment']['content_id'] && ($s['content_type'] ?? null) === $p['moment']['content_type'], 422, 'This movie moment belongs to another title.');
             }
+            $markStage('validation_and_extra_reads_ms');
             $cursor = $this->store->nextCursor();
+            $markStage('cursor_transaction_ms');
             $id = (string) $cursor;
             $r = ['id' => $id, 'room_id' => $room, 'sender_id' => $uid, 'sender_name' => $actor['name'],
                 'sender_is_admin' => $actor['is_admin'], 'client_op_id' => $request, 'body' => $body,
@@ -262,8 +279,10 @@ class ChatService
                 $this->push($u, (string) $recipient, $uid, $room, $cursor, $reply && $recipient === $reply['user_id'] ? 'reply' : 'message',
                     $actor['name'].($r['spoiler'] ? ': Spoiler message' : ': '.mb_substr($body, 0, 160)), ['message_id' => $id]);
             }
+            $markStage('projection_build_ms');
             $response = $this->publicMessage($r, $uid);
             $this->publish($u);
+            $markStage('firebase_update_and_queue_ms');
 
             return $response;
         };
@@ -273,9 +292,22 @@ class ChatService
         // process different sends in parallel.
         $persistentRoom = $room === 'global' || preg_match('/^(movie|episode)-[0-9]+$/D', $room) === 1;
 
-        return $persistentRoom
+        $response = $persistentRoom
             ? $this->lockedSend($room, $actor['uid'], $p['request_id'], $work)
             : $this->locked($room, $work);
+
+        $totalMs = (int) round((microtime(true) - $startedAt) * 1000);
+        if ($totalMs >= 1000) {
+            $workMs = $workStartedAt === null ? 0 : (int) round((microtime(true) - $workStartedAt) * 1000);
+            \Illuminate\Support\Facades\Log::warning('Slow chat message send', [
+                'room_id' => $room,
+                'total_ms' => $totalMs,
+                'lock_wait_ms' => max(0, $totalMs - $workMs),
+                'stages' => $stageDurations,
+            ]);
+        }
+
+        return $response;
     }
 
     public function history(string $room, string $uid, ?int $before, ?int $after, bool $initial = false, int $limit = 30): array
