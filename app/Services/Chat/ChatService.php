@@ -184,9 +184,9 @@ class ChatService
         $updates['user_account_events/'.$uid.'/'.FirebaseChatStore::key($cursor)] = ['kind' => $kind, 'cursor' => $cursor];
     }
 
-    private function event(array &$updates, string $room, array $record, int $cursor, string $kind): void
+    private function event(array &$updates, string $room, array $record, int $cursor, string $kind, ?array $members = null): void
     {
-        foreach ($this->members($room) as $uid => $member) {
+        foreach ($members ?? $this->members($room) as $uid => $member) {
             $uid = (string) $uid;
             $updates["user_messages/$uid/$room/".$record['id']] = $record;
             $updates['user_sync_events/'.$uid.'/'.$room.'/'.FirebaseChatStore::key($cursor)] = [
@@ -195,17 +195,16 @@ class ChatService
         }
     }
 
-    private function push(array &$updates, string $recipient, string $sender, string $room, int $cursor, string $kind, string $body, array $extra = []): void
+    private function push(array &$updates, string $recipient, string $sender, string $room, int $cursor, string $kind, string $body, array $roomState, array $extra = []): void
     {
         if ($recipient === $sender) {
             return;
         }
         $id = hash('sha256', "$cursor:$recipient");
-        $s = $this->room($room);
         $updates["push_outbox/$id"] = ['status' => 'pending', 'recipient' => $recipient, 'sender' => $sender,
             'room_id' => $room, 'created_at' => now()->timestamp, 'body' => $body, 'kind' => $kind,
-            'data' => array_merge(['key' => $kind === 'invite' ? 'chat_invite' : ($s['room_type'] === 'invite' ? 'chat_message' : 'chat_activity'),
-                'room_id' => $room, 'room_type' => $s['room_type'], 'watch_content_id' => $s['content_id'] ?? '',
+            'data' => array_merge(['key' => $kind === 'invite' ? 'chat_invite' : ($roomState['room_type'] === 'invite' ? 'chat_message' : 'chat_activity'),
+                'room_id' => $room, 'room_type' => $roomState['room_type'], 'watch_content_id' => $roomState['content_id'] ?? '',
                 'notification_id' => $id], $extra)];
     }
 
@@ -270,14 +269,15 @@ class ChatService
                 $u["rooms/$room/state/expires_at"] = now()->addHour()->valueOf();
                 $u["private_expiries/$room"] = now()->addHour()->valueOf();
             }
-            $this->event($u, $room, $r, $cursor, 'created');
-            $recipients = $s['room_type'] === 'invite' ? array_keys($this->members($room)) : [];
+            $members = $this->members($room);
+            $this->event($u, $room, $r, $cursor, 'created', $members);
+            $recipients = $s['room_type'] === 'invite' ? array_keys($members) : [];
             if ($reply) {
                 $recipients[] = $reply['user_id'];
             }
             foreach (array_unique($recipients) as $recipient) {
                 $this->push($u, (string) $recipient, $uid, $room, $cursor, $reply && $recipient === $reply['user_id'] ? 'reply' : 'message',
-                    $actor['name'].($r['spoiler'] ? ': Spoiler message' : ': '.mb_substr($body, 0, 160)), ['message_id' => $id]);
+                    $actor['name'].($r['spoiler'] ? ': Spoiler message' : ': '.mb_substr($body, 0, 160)), $s, ['message_id' => $id]);
             }
             $markStage('projection_build_ms');
             $response = $this->publicMessage($r, $uid);
@@ -444,7 +444,7 @@ class ChatService
     {
         return $this->locked($room, function () use ($actor, $room, $id, $emoji, $active) {
             $uid = $actor['uid'];
-            $this->room($room, $uid, true);
+            $roomState = $this->room($room, $uid, true);
             $r = $this->message($room, $id);
             abort_if($r['deleted'], 422);
             $key = rtrim(strtr(base64_encode($emoji), '+/', '-_'), '=');
@@ -460,7 +460,7 @@ class ChatService
             $u = ["rooms/$room/messages/$id" => $r, "rooms/$room/state/sync_cursor" => $cursor];
             $this->event($u, $room, $r, $cursor, 'reactions');
             if ($active) {
-                $this->push($u, $r['sender_id'], $uid, $room, $cursor, 'reaction', $actor['name']." reacted $emoji to your message.", ['message_id' => $id]);
+                $this->push($u, $r['sender_id'], $uid, $room, $cursor, 'reaction', $actor['name']." reacted $emoji to your message.", $roomState, ['message_id' => $id]);
             }
             $this->publish($u);
 
@@ -563,7 +563,7 @@ class ChatService
                 $u["user_invites/$other/$id"] = true;
                 $u["room_invitees/$room/$other"] = $id;
                 $this->accountEvent($u, $other, (int) $id, 'room_state_invalidated');
-                $this->push($u, $other, $uid, $room, (int) $id, 'invite', $actor['name'].' invited you to '.$s['room_name'], ['invitation_token' => $token, 'invite_id' => $id]);
+                $this->push($u, $other, $uid, $room, (int) $id, 'invite', $actor['name'].' invited you to '.$s['room_name'], $s, ['invitation_token' => $token, 'invite_id' => $id]);
                 $count++;
             }
             if ($u) {
