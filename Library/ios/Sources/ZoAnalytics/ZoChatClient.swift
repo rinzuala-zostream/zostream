@@ -74,9 +74,11 @@ public struct ChatPage: Decodable, Sendable {
     public let has_more: Bool
     public let first_unread_id: String?
     public let initial_after: String?
-    public init(messages: [ChatMessage], has_more: Bool, first_unread_id: String? = nil, initial_after: String? = nil) {
+    public let last_message_id: String?
+    public init(messages: [ChatMessage], has_more: Bool, first_unread_id: String? = nil, initial_after: String? = nil, last_message_id: String? = nil) {
         self.messages = messages; self.has_more = has_more
         self.first_unread_id = first_unread_id; self.initial_after = initial_after
+        self.last_message_id = last_message_id
     }
 }
 public struct ChatRoom: Decodable, Sendable {
@@ -92,6 +94,10 @@ public struct ChatRoom: Decodable, Sendable {
     public let watch_session: ChatWatchInvite?
     public var firebase_realtime: Bool?
     public var sync_cursor: UInt64?
+    public var history_pagination: Bool? = nil
+    public var first_unread_id: String? = nil
+    public var last_message_id: String? = nil
+    public var last_read_message_id: String? = nil
 }
 public struct ChatFailure: LocalizedError {
     public let message: String
@@ -191,6 +197,12 @@ public final class ZoChatClient {
     public func request<T: Decodable>(_ path: String, body: [String: Any]? = nil, as type: T.Type, retryUnauthorized: Bool = true) async throws -> T {
         guard baseURL.scheme == "https" else { throw ChatFailure(message: "Chat API must use HTTPS") }
         guard !closed, let c = credentials(), owner == nil || owner == c.ownerKey else { throw ChatFailure(message: "Please sign in again and reopen chat.") }
+        if usesFirebaseRealtime, path.hasSuffix("/typing"), let body,
+           let active = body["active"] as? Bool, let sessionID = body["typing_session_id"] as? String,
+           let sequence = body["typing_sequence"] as? Int64, let id = room?.room_id,
+           path == "rooms/\(id)/typing", firebaseSource?.writeTyping(roomID: id, sessionID: sessionID, sequence: sequence, active: active) == true {
+            return try JSONDecoder().decode(T.self, from: Data(#"{"users":[]}"#.utf8))
+        }
         guard let url = URL(string: baseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/api/v4/chat/" + path) else { throw ChatFailure(message: "Invalid chat URL") }
         var request = URLRequest(url: url)
         request.setValue("Bearer " + c.accessToken.replacingOccurrences(of: "Bearer ", with: ""), forHTTPHeaderField: "Authorization")
@@ -198,6 +210,7 @@ public final class ZoChatClient {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue(ZoAnalyticsConfiguration.sdkVersion, forHTTPHeaderField: "X-Analytics-SDK-Version")
         request.setValue("ios", forHTTPHeaderField: "X-Client-Platform")
+        request.setValue("rtdb-2", forHTTPHeaderField: "X-Chat-Protocol")
         request.setValue(version, forHTTPHeaderField: "X-Client-Version")
         if watchSocket { request.setValue("1", forHTTPHeaderField: "X-Zo-Watch-Socket") }
         request.setValue(playbackToken(), forHTTPHeaderField: "X-Playback-Token")
@@ -313,6 +326,8 @@ public final class ZoChatClient {
 
     /// A final idle/close signal must survive cancellation of the room transport.
     public func stopTyping(roomID: String, sessionID: String, sequence: Int64) {
+        if let c = credentials(), owner == nil || owner == c.ownerKey, usesFirebaseRealtime,
+           firebaseSource?.writeTyping(roomID: roomID, sessionID: sessionID, sequence: sequence, active: false) == true { return }
         guard let c = credentials(), owner == nil || owner == c.ownerKey,
               let url = URL(string: baseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/api/v4/chat/rooms/\(roomID)/typing") else { return }
         var request = URLRequest(url: url, timeoutInterval: 5)

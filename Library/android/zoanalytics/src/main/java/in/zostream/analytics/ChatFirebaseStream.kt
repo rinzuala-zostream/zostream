@@ -10,6 +10,7 @@ import java.io.Closeable
 interface ChatFirebaseSource {
     fun authenticate(owner: String, loadToken: ((JSONObject?) -> Unit) -> Unit, ready: (String?) -> Unit)
     fun invalidate(owner: String, uid: String)
+    fun writeTyping(roomId: String, sessionId: String, sequence: Long, active: Boolean): Boolean = false
     fun observe(path: String, limit: Int?, afterCursor: Long?, onValue: (JSONObject) -> Unit, onError: () -> Unit): Closeable
 }
 
@@ -107,7 +108,7 @@ internal class ChatFirebaseStream(
                     if (updates.any { snapshot.optJSONObject(it)?.optString("kind") == "room_state_invalidated" }) {
                         roomStateChanged = true
                     }
-                    if (updates.isNotEmpty()) scheduleDrain()
+                    if (previous == null || updates.isNotEmpty()) scheduleDrain()
                     return@observe
                 }
                 var newest = cursor
@@ -155,17 +156,18 @@ internal class ChatFirebaseStream(
                 snapshot.optJSONObject(key)?.let { it.optString("id") to it }
             }.toMap()
         }, denied)
-        if (scope != null) observations += source.observe("chat_v1/user_typing/$user/$scope", 20, null, { snapshot ->
+        if (scope != null) observations += source.observe("chat_v1/room_typing/$scope", 20, null, { snapshot ->
             if (valid(run)) {
-                val users = JSONArray()
+                val users = linkedMapOf<String, JSONObject>()
                 val now = System.currentTimeMillis()
                 snapshot.keys().forEach { key ->
                     val item = snapshot.optJSONObject(key) ?: return@forEach
+                    val sender = item.optString("user_id")
                     val remaining = item.optLong("expires_at") - now
-                    if (remaining > 0) users.put(JSONObject().put("user_id", key).put("name", item.optString("name", "Viewer"))
-                        .put("is_admin", item.optBoolean("is_admin")).put("expires_in", (remaining + 999) / 1_000))
+                    if (remaining > 0 && sender.isNotBlank() && sender != user) users[sender] = JSONObject().put("user_id", sender).put("name", item.optString("name", "Viewer"))
+                        .put("is_admin", item.optBoolean("is_admin")).put("expires_in", (remaining + 999) / 1_000)
                 }
-                typing(users)
+                typing(JSONArray(users.values.toList()))
             }
         }, denied)
     }
@@ -250,6 +252,7 @@ internal class ChatFirebaseStream(
             .put("created_at", record.getString("created_at_iso")).put("revision", record.optLong("revision", 1))
             .put("movie_suggestion", record.optJSONObject("suggestion")).put("room_invite", record.optJSONObject("invitation"))
             .put("watch_invite", record.optJSONObject("watch_invite")).put("moment", record.optJSONObject("moment"))
+            .put("reply_to_id", record.opt("reply_to_id")).put("reply", record.optJSONObject("reply"))
     }
 
     private fun dispatch(event: JSONObject, payload: JSONObject?) {

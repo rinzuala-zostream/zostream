@@ -3,14 +3,20 @@ import Foundation
 public struct ChatFirebaseToken: Decodable, Sendable {
     public let firebase_uid: String
     public let custom_token: String
+    public let display_name: String?
 }
 
 @MainActor
 public protocol ChatFirebaseSource: AnyObject {
     func authenticate(owner: String, loadToken: @escaping @MainActor @Sendable () async throws -> ChatFirebaseToken) async throws -> String
     func invalidate(owner: String, uid: String)
+    func writeTyping(roomID: String, sessionID: String, sequence: Int64, active: Bool) -> Bool
     func observe(path: String, limit: UInt?, afterCursor: UInt64?, onValue: @escaping @MainActor @Sendable ([String: Any]) -> Void,
                  onError: @escaping @MainActor @Sendable () -> Void) -> @MainActor @Sendable () -> Void
+}
+
+public extension ChatFirebaseSource {
+    func writeTyping(roomID: String, sessionID: String, sequence: Int64, active: Bool) -> Bool { false }
 }
 
 struct ChatFirebaseLease: Decodable {
@@ -122,11 +128,12 @@ final class ChatFirebaseStream {
             if self.roomID == nil {
                 let keys = Set(snapshot.keys)
                 let updates = self.accountKeys.map { keys.subtracting($0) } ?? keys.filter { (UInt64($0) ?? 0) > self.cursor }
+                let initial = self.accountKeys == nil
                 self.accountKeys = keys
                 if updates.contains(where: { (snapshot[$0] as? [String: Any])?["kind"] as? String == "room_state_invalidated" }) {
                     self.roomStateChanged = true
                 }
-                if !updates.isEmpty { self.scheduleDrain() }
+                if initial || !updates.isEmpty { self.scheduleDrain() }
                 return
             }
             var newest = self.cursor
@@ -172,17 +179,17 @@ final class ChatFirebaseStream {
                 }
                 self.messages = records
             }, onError: failed))
-            observations.append(source.observe(path: "chat_v1/user_typing/\(uid)/\(roomID)", limit: 20, afterCursor: nil, onValue: { [weak self] snapshot in
+            observations.append(source.observe(path: "chat_v1/room_typing/\(roomID)", limit: 20, afterCursor: nil, onValue: { [weak self] snapshot in
                 guard let self, self.valid(run) else { return }
                 let now = Date().timeIntervalSince1970 * 1_000
-                let users: [ChatTypist] = snapshot.compactMap { uid, value in
+                let entries: [ChatTypist] = snapshot.compactMap { _, value in
                     guard let item = value as? [String: Any], let expiry = item["expires_at"] as? NSNumber,
-                          expiry.doubleValue > now else { return nil }
-                    return ChatTypist(user_id: uid, name: item["name"] as? String ?? "Viewer",
+                          let sender = item["user_id"] as? String, sender != uid, expiry.doubleValue > now else { return nil }
+                    return ChatTypist(user_id: sender, name: item["name"] as? String ?? "Viewer",
                                      is_admin: item["is_admin"] as? Bool,
                                      expires_in: Int(ceil((expiry.doubleValue - now) / 1_000)))
                 }
-                self.typing(users)
+                self.typing(Dictionary(entries.map { ($0.user_id, $0) }, uniquingKeysWith: { a, b in (a.expires_in ?? 0) > (b.expires_in ?? 0) ? a : b }).values.sorted { $0.user_id < $1.user_id })
             }, onError: failed))
         }
     }

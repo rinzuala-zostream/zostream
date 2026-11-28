@@ -74,6 +74,83 @@
           ".validate": "(newData.isString() && newData.val().length > 0) || (newData.isNumber() && newData.val() > 0)"
         }
       }
+    },
+    "chat_v1": {
+      "user_messages": {
+        "$uid": {
+          "$room": {
+            ".read": "auth != null && auth.token.chat_session != null && root.child('chat_v1/access').child(auth.uid).child(auth.token.chat_session).child('expires_at').val() > now && auth.uid === $uid && root.child('chat_v1/rooms').child($room).child('state/active').val() === true && root.child('chat_v1/rooms').child($room).child('members').child(auth.uid).child('active').val() === true && (!root.child('chat_v1/rooms').child($room).child('state/expires_at').exists() || root.child('chat_v1/rooms').child($room).child('state/expires_at').val() > now || root.child('chat_v1/rooms').child($room).child('state/watch_active').val() === true)",
+            ".indexOn": [
+              "cursor",
+              "sender_id"
+            ]
+          }
+        }
+      },
+      "user_sync_events": {
+        "$uid": {
+          "$room": {
+            ".read": "auth != null && auth.token.chat_session != null && root.child('chat_v1/access').child(auth.uid).child(auth.token.chat_session).child('expires_at').val() > now && auth.uid === $uid && root.child('chat_v1/rooms').child($room).child('state/active').val() === true && root.child('chat_v1/rooms').child($room).child('members').child(auth.uid).child('active').val() === true && (!root.child('chat_v1/rooms').child($room).child('state/expires_at').exists() || root.child('chat_v1/rooms').child($room).child('state/expires_at').val() > now || root.child('chat_v1/rooms').child($room).child('state/watch_active').val() === true)",
+            ".indexOn": [
+              "cursor"
+            ]
+          }
+        }
+      },
+      "user_account_events": {
+        "$uid": {
+          ".read": "auth != null && auth.token.chat_session != null && root.child('chat_v1/access').child(auth.uid).child(auth.token.chat_session).child('expires_at').val() > now && auth.uid === $uid",
+          ".indexOn": [
+            "cursor"
+          ]
+        }
+      },
+      "push_outbox": {
+        ".indexOn": [
+          "status"
+        ]
+      },
+      "private_expiries": {
+        ".indexOn": [
+          ".value"
+        ]
+      },
+      "rooms": {
+        "$room": {
+          "messages": {
+            ".indexOn": [
+              "cursor"
+            ]
+          }
+        }
+      },
+      "room_typing": {
+        "$room": {
+          ".read": "auth != null && auth.token.chat_session != null && root.child('chat_v1/access').child(auth.uid).child(auth.token.chat_session).child('expires_at').val() > now && root.child('chat_v1/rooms').child($room).child('state/active').val() === true && root.child('chat_v1/rooms').child($room).child('members').child(auth.uid).child('active').val() === true && (!root.child('chat_v1/rooms').child($room).child('state/expires_at').exists() || root.child('chat_v1/rooms').child($room).child('state/expires_at').val() > now || root.child('chat_v1/rooms').child($room).child('state/watch_active').val() === true)",
+          ".indexOn": [
+            "expires_at"
+          ],
+          "$session": {
+            ".write": "auth != null && ((!newData.exists() && data.child('user_id').val() === auth.uid) || (auth != null && auth.token.chat_session != null && root.child('chat_v1/access').child(auth.uid).child(auth.token.chat_session).child('expires_at').val() > now && root.child('chat_v1/rooms').child($room).child('state/active').val() === true && root.child('chat_v1/rooms').child($room).child('members').child(auth.uid).child('active').val() === true && (!root.child('chat_v1/rooms').child($room).child('state/expires_at').exists() || root.child('chat_v1/rooms').child($room).child('state/expires_at').val() > now || root.child('chat_v1/rooms').child($room).child('state/watch_active').val() === true) && root.child('chat_v1/rooms').child($room).child('state/can_send').val() === true && root.child('chat_v1/rooms').child($room).child('members').child(auth.uid).child('can_send').val() === true && newData.child('user_id').val() === auth.uid && (!data.exists() || data.child('user_id').val() === auth.uid)))",
+            ".validate": "newData.hasChildren(['user_id','name','expires_at','sequence']) && (!data.exists() || newData.child('sequence').val() >= data.child('sequence').val())",
+            "user_id": {
+              ".validate": "newData.isString() && newData.val() === auth.uid"
+            },
+            "name": {
+              ".validate": "newData.isString() && newData.val() === auth.token.chat_name"
+            },
+            "expires_at": {
+              ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= now + 10000"
+            },
+            "sequence": {
+              ".validate": "newData.isNumber() && newData.val() >= 0"
+            },
+            "$other": {
+              ".validate": false
+            }
+          }
+        }
+      }
     }
   }
 }

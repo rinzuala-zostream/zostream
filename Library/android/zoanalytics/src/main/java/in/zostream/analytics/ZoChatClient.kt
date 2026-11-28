@@ -133,6 +133,12 @@ class ZoChatClient(
 
     fun request(path: String, body: JSONObject? = null, callback: (JSONObject?, String?) -> Unit) {
         if (closed) return
+        if (usesFirebaseRealtime && path == "rooms/${room?.optString("room_id")}/typing" && body != null &&
+            credentials()?.let { owner == null || owner == it.ownerKey } == true &&
+            firebaseSource?.writeTyping(room!!.getString("room_id"), body.optString("typing_session_id"), body.optLong("typing_sequence"), body.optBoolean("active")) == true) {
+            callback(JSONObject().put("users", org.json.JSONArray()), null)
+            return
+        }
         val requestOwner = credentials()?.ownerKey
         val requestPlaybackToken = playbackToken()
         val requestRoomRevision = roomRevision
@@ -154,6 +160,7 @@ class ZoChatClient(
     /** Final stop is independent of the room request queue so close cannot cancel it. */
     fun stopTyping(roomId: String, sessionId: String, sequence: Long) {
         val c = credentials()?.takeIf { owner == null || owner == it.ownerKey } ?: return
+        if (usesFirebaseRealtime && firebaseSource?.writeTyping(roomId, sessionId, sequence, false) == true) return
         val body = JSONObject().put("active", false).put("typing_session_id", sessionId).put("typing_sequence", sequence)
         val request = Request.Builder().url(baseUrl.trimEnd('/') + "/api/v4/chat/rooms/$roomId/typing")
             .header("Authorization", "Bearer " + c.accessToken.removePrefix("Bearer "))
@@ -177,6 +184,7 @@ class ZoChatClient(
             .header("X-Analytics-SDK-Version", ZoAnalyticsConfiguration.SDK_VERSION)
             .header("X-Client-Platform", "android").header("X-Client-Version", version)
         requestPlaybackToken?.takeIf { it.isNotBlank() }?.let { request.header("X-Playback-Token", it) }
+        request.header("X-Chat-Protocol", "rtdb-2")
         if (watchSocket) request.header("X-Zo-Watch-Socket", "1")
         if (body != null) request.post(body.toString().toRequestBody("application/json".toMediaType()))
         val call = http.newCall(request.build()); pendingCall = call

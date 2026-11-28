@@ -53,4 +53,13 @@ class NotificationImagePayloadTest extends TestCase
 
         return json_decode(json_encode($message, JSON_THROW_ON_ERROR), true, flags: JSON_THROW_ON_ERROR);
     }
+
+    public function test_chat_routing_uses_chat_channels_without_inventing_a_movie_id(): void
+    {
+        foreach (['chat_message' => 'private_chat_messages', 'chat_activity' => 'private_chat_messages', 'chat_invite' => 'chat_invitations'] as $key => $channel) {
+            $message = $this->message('device', null, null, $key, ['room_id' => '123']);
+            $this->assertSame($channel, $message['android']['notification']['channel_id']);
+            $this->assertArrayNotHasKey('movie_id', $message['data']);
+        }
+    }
 }

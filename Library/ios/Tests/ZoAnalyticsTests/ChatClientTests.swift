@@ -20,6 +20,11 @@ private final class ChatURLProtocol: URLProtocol {
 @MainActor
 private final class FirebaseFixture: ChatFirebaseSource {
     var observers: [String: @MainActor @Sendable ([String: Any]) -> Void] = [:]
+    var typingWrites: [(String, Bool)] = []
+    func writeTyping(roomID: String, sessionID: String, sequence: Int64, active: Bool) -> Bool {
+        typingWrites.append((roomID, active))
+        return true
+    }
 
     func authenticate(owner: String, loadToken: @escaping @MainActor @Sendable () async throws -> ChatFirebaseToken) async throws -> String { "uid" }
     func invalidate(owner: String, uid: String) {}
@@ -33,6 +38,34 @@ private final class FirebaseFixture: ChatFirebaseSource {
 }
 
 final class ChatClientTests: XCTestCase {
+    @MainActor
+    func testFirebaseTypingWritesBypassHTTPAndStopSurvivesClose() async throws {
+        let fixture = FirebaseFixture()
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [ChatURLProtocol.self]
+        ChatURLProtocol.handle = { request in
+            let path = request.url!.path
+            XCTAssertFalse(path.hasSuffix("/typing"))
+            let payload: String
+            if path.hasSuffix("/join") {
+                payload = #"{"room_id":"17","room_type":"global","channel":"","websocket_url":"","user_id":"uid","firebase_realtime":true,"sync_cursor":4}"#
+            } else if path.hasSuffix("/lease") {
+                payload = #"{"room_projection_refreshed":true,"refresh_after_seconds":60}"#
+            } else { payload = #"{"events":[],"next_cursor":4,"has_more":false,"cursor_expired":false}"# }
+            return (200, "{\"success\":true,\"data\":" + payload + "}")
+        }
+        defer { ChatURLProtocol.handle = nil }
+        let client = ZoChatClient(baseURL: URL(string: "https://example.test")!, version: "test",
+            credentials: { AnalyticsCredentials(accessToken: "token", deviceToken: "device", ownerKey: "owner") }, session: URLSession(configuration: config))
+        client.firebaseSource = fixture
+        _ = try await client.join(type: "global", contentId: nil)
+        let _: ChatTypingSnapshot = try await client.request("rooms/17/typing", body: ["active": true, "typing_session_id": "session", "typing_sequence": Int64(1)], as: ChatTypingSnapshot.self)
+        client.close()
+        client.stopTyping(roomID: "17", sessionID: "session", sequence: 2)
+        XCTAssertEqual(fixture.typingWrites.map { $0.0 }, ["17", "17"])
+        XCTAssertEqual(fixture.typingWrites.map { $0.1 }, [true, false])
+    }
+
     @MainActor
     func testFirebaseDeliversLiveMessageWithoutAnotherSQLRequestAndDetaches() async {
         let fixture = FirebaseFixture()

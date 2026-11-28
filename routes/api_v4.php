@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\V4\AccountController;
 use App\Http\Controllers\Api\V4\AdminAdBillingController;
 use App\Http\Controllers\Api\V4\AdminAdSubmissionController;
 use App\Http\Controllers\Api\V4\AdminAnalyticsController;
+use App\Http\Controllers\Api\V4\AdminChannelController;
 use App\Http\Controllers\Api\V4\AdminHomeSectionController;
 use App\Http\Controllers\Api\V4\AdminOtpDiagnosticController;
 use App\Http\Controllers\Api\V4\AdminRealtimeConfigController;
@@ -18,9 +19,10 @@ use App\Http\Controllers\Api\V4\AnalyticsReportController;
 use App\Http\Controllers\Api\V4\AuthController;
 use App\Http\Controllers\Api\V4\BillingController;
 use App\Http\Controllers\Api\V4\CatalogController;
-use App\Http\Controllers\Api\V4\ChatMessageController;
-use App\Http\Controllers\Api\V4\CustomerStatsController;
+use App\Http\Controllers\Api\V4\ChannelCatalogController;
 use App\Http\Controllers\Api\V4\ChannelSubscriptionController;
+use App\Http\Controllers\Api\V4\ChatController;
+use App\Http\Controllers\Api\V4\CustomerStatsController;
 use App\Http\Controllers\Api\V4\HomeRecommendationController;
 use App\Http\Controllers\Api\V4\LegalPageController;
 use App\Http\Controllers\Api\V4\LibraryController;
@@ -31,8 +33,6 @@ use App\Http\Controllers\Api\V4\QrSessionController as V4QrSessionController;
 use App\Http\Controllers\Api\V4\SupportController;
 use App\Http\Controllers\Api\V4\WebSessionController;
 use App\Http\Controllers\Api\V4\WhatsAppWebhookController;
-use App\Http\Controllers\Api\V4\AdminChannelController;
-use App\Http\Controllers\Api\V4\ChannelCatalogController;
 use App\Http\Controllers\FCMNotificationController;
 use App\Http\Controllers\HlsFolderController;
 use App\Http\Controllers\New\AdminWhatsAppController;
@@ -173,16 +173,45 @@ Route::prefix('v4')
             ->middleware('throttle:20,1');
 
         Route::middleware('auth.token')->group(function () {
-            Route::prefix('chat')->middleware('throttle:30,1')->group(function () {
-                Route::post('/rooms/join', [ChatMessageController::class, 'join']);
-                Route::post('/rooms/{roomId}/messages', [ChatMessageController::class, 'store'])
-                    ->where('roomId', '[A-Za-z0-9_-]+');
-                Route::get('/rooms/{roomId}/messages', [ChatMessageController::class, 'history'])
-                    ->where('roomId', '[A-Za-z0-9_-]+');
-                Route::post('/rooms/{roomId}/heartbeat', [ChatMessageController::class, 'heartbeat'])
-                    ->where('roomId', '[A-Za-z0-9_-]+');
-                Route::get('/rooms/{roomId}/sync', [ChatMessageController::class, 'sync'])
-                    ->where('roomId', '[A-Za-z0-9_-]+');
+            Route::prefix('chat')->middleware('throttle:240,1')->group(function () {
+                foreach ([
+                    ['POST', 'rooms/join', 'join'],
+                    ['POST', 'rooms/{roomId}/messages', 'send'],
+                    ['GET', 'rooms/{roomId}/messages', 'history'],
+                    ['GET', 'rooms/{roomId}/messages/{messageId}', 'message'],
+                    ['POST', 'rooms/{roomId}/heartbeat', 'heartbeat'],
+                    ['GET', 'rooms/{roomId}/sync', 'sync'],
+                    ['POST', 'firebase/token', 'token'],
+                    ['POST', 'firebase/lease', 'lease'],
+                    ['GET', 'unread', 'unread'],
+                    ['POST', 'rooms/{roomId}/read', 'read'],
+                    ['GET|POST', 'rooms/{roomId}/typing', 'typing'],
+                    ['POST', 'rooms/{roomId}/messages/{messageId}/reactions', 'react'],
+                    ['GET', 'rooms/{roomId}/pins', 'pins'],
+                    ['POST', 'rooms/{roomId}/messages/{messageId}/pin', 'pin'],
+                    ['POST', 'rooms/{roomId}/messages/{messageId}/unpin', 'unpin'],
+                    ['POST', 'rooms/{roomId}/messages/{messageId}/report', 'report'],
+                    ['GET|POST', 'blocks', 'blocks'],
+                    ['GET', 'rooms/{roomId}/movie-suggestions', 'movies'],
+                    ['GET|POST', 'invite-rooms', 'rooms'],
+                    ['POST', 'invite-rooms/{roomId}/join', 'private-join'],
+                    ['POST', 'invite-rooms/{roomId}/invitees', 'invitees'],
+                    ['POST', 'invite-rooms/{roomId}/end', 'end'],
+                    ['POST', 'invitees/lookup', 'lookup'],
+                    ['GET', 'invites', 'invites'],
+                    ['POST', 'invites/{inviteId}/respond', 'respond'],
+                    ['GET', 'invitation-links/{token}', 'invitation-link'],
+                    ['POST', 'invitation-links/{token}/respond', 'link-respond'],
+                    ['POST', 'rooms/{roomId}/messages/{messageId}/invitation', 'claim'],
+                    ['POST', 'rooms/{roomId}/room-invites/status', 'invite-status'],
+                ] as [$methods, $path, $action]) {
+                    $route = Route::match(explode('|', $methods), $path, [ChatController::class, 'handle'])
+                        ->defaults('chatAction', $action)
+                        ->where(['roomId' => '[A-Za-z0-9_-]{1,80}', 'messageId' => '[0-9]{1,19}', 'inviteId' => '[0-9]{1,19}', 'token' => '[A-Za-z0-9]{64}']);
+                    if (in_array($action, ['send', 'rooms', 'invitees', 'lookup', 'react', 'report'])) {
+                        $route->middleware('throttle:30,1');
+                    }
+                }
             });
 
             Route::prefix('creator')->middleware('throttle:60,1')->group(function () {
@@ -224,8 +253,8 @@ Route::prefix('v4')
                     ->middleware('throttle:120,1');
                 Route::post('/mobile-profile', [\App\Http\Controllers\Api\V4\MobileProfileController::class, 'store'])
                     ->middleware('throttle:20,1');
-            Route::post('/web-session', [WebSessionController::class, 'create'])
-                ->middleware('throttle:10,1');
+                Route::post('/web-session', [WebSessionController::class, 'create'])
+                    ->middleware('throttle:10,1');
                 Route::get('/stats', [CustomerStatsController::class, 'show'])
                     ->middleware('throttle:60,1');
                 foreach (['overview', 'watching', 'account', 'payments'] as $section) {

@@ -21,6 +21,37 @@ import java.util.concurrent.atomic.AtomicReference
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28])
 class ChatRoomSwitchTest {
+    @Test fun firebaseTypingUsesDirectWritesAndStopsAfterClosingTransport() {
+        val writes = mutableListOf<Pair<String, Boolean>>()
+        val source = object : ChatFirebaseSource {
+            override fun authenticate(owner: String, loadToken: ((JSONObject?) -> Unit) -> Unit, ready: (String?) -> Unit) = ready("uid")
+            override fun invalidate(owner: String, uid: String) = Unit
+            override fun observe(path: String, limit: Int?, afterCursor: Long?, onValue: (JSONObject) -> Unit, onError: () -> Unit) = Closeable {}
+            override fun writeTyping(roomId: String, sessionId: String, sequence: Long, active: Boolean): Boolean {
+                writes += roomId to active
+                return true
+            }
+        }
+        val http = OkHttpClient.Builder().addInterceptor { chain ->
+            val request = chain.request()
+            assertFalse(request.url.encodedPath.endsWith("/typing"))
+            val payload = if (request.url.encodedPath.endsWith("/join"))
+                JSONObject().put("room_id", "17").put("firebase_realtime", true)
+            else JSONObject().put("room_projection_refreshed", true).put("refresh_after_seconds", 60)
+            Response.Builder().request(request).protocol(Protocol.HTTP_1_1).code(200).message("OK")
+                .body(JSONObject().put("success", true).put("data", payload).toString().toResponseBody("application/json".toMediaType())).build()
+        }.build()
+        val client = ZoChatClient("https://example.test", { AnalyticsCredentials("token", "device", "owner") }, "test", onChanged = { _, _ -> }, onConnection = {}, http = http)
+        client.firebaseSource = source
+        var joined = false
+        client.join("global", null) { _, error -> assertNull(error); joined = true }
+        await { joined }
+        client.request("rooms/17/typing", JSONObject().put("active", true).put("typing_session_id", "session").put("typing_sequence", 1)) { _, error -> assertNull(error) }
+        client.close()
+        client.stopTyping("17", "session", 2)
+        assertEquals(listOf("17" to true, "17" to false), writes)
+    }
+
     @Test fun firebaseDeliversLiveMessagesWithoutAnotherSqlRequestAndDetaches() {
         val observers = mutableMapOf<String, (JSONObject) -> Unit>()
         val source = object : ChatFirebaseSource {
