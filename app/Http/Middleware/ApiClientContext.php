@@ -37,10 +37,13 @@ class ApiClientContext
             'version' => trim((string) $request->header('X-Client-Version', 'unknown')),
             'device_type' => trim((string) $request->header('X-Device-Type', 'unknown')),
         ]);
+        preg_match('#^api/v([0-9]+)(?:/|$)#', $request->path(), $versionMatch);
+        $apiVersion = $versionMatch[1] ?? '4';
+        $request->attributes->set('api_version', $apiVersion);
 
         $response = $next($request);
         $response->headers->set('X-Request-ID', $requestId);
-        $response->headers->set('X-API-Version', '4');
+        $response->headers->set('X-API-Version', $apiVersion);
 
         return $response;
     }

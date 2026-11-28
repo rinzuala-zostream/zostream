@@ -1,6 +1,6 @@
 # Mobile chat contract
 
-Android and iOS keep the existing chat UI. ZoStream bearer authentication remains the user login. Message writes, membership, invitations, reactions, reads, pins, reports and blocks go through `/api/v4/chat`; only ephemeral typing is client-writable in RTDB. Watch Together playback/control is outside this change.
+Android and iOS keep the existing chat UI. ZoStream bearer authentication remains the user login. Message writes, membership, invitations, reactions, reads, pins, reports and blocks go through `/api/v2/chat`; only ephemeral typing is client-writable in RTDB. Watch Together playback/control is outside this change.
 
 ## Realtime access
 

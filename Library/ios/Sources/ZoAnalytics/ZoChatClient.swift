@@ -212,7 +212,7 @@ public final class ZoChatClient {
            path == "rooms/\(id)/typing", firebaseSource?.writeTyping(roomID: id, sessionID: sessionID, sequence: sequence, active: active) == true {
             return try JSONDecoder().decode(T.self, from: Data(#"{"users":[]}"#.utf8))
         }
-        guard let url = URL(string: baseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/api/v4/chat/" + path) else { throw ChatFailure(message: "Invalid chat URL") }
+        guard let url = URL(string: baseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/api/v2/chat/" + path) else { throw ChatFailure(message: "Invalid chat URL") }
         var request = URLRequest(url: url)
         request.setValue("Bearer " + c.accessToken.replacingOccurrences(of: "Bearer ", with: ""), forHTTPHeaderField: "Authorization")
         request.setValue(c.deviceToken, forHTTPHeaderField: "Device-Token")
@@ -362,7 +362,7 @@ public final class ZoChatClient {
     }
     private func reportVisibilityHTTP(_ id: String, body: [String: Any]) {
         guard let c = credentials(), owner == nil || owner == c.ownerKey,
-              let url = URL(string: baseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/api/v4/chat/rooms/\(id)/heartbeat") else { return }
+              let url = URL(string: baseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/api/v2/chat/rooms/\(id)/heartbeat") else { return }
         var request = URLRequest(url: url, timeoutInterval: 5)
         request.httpMethod = "POST"
         request.setValue("Bearer " + c.accessToken.replacingOccurrences(of: "Bearer ", with: ""), forHTTPHeaderField: "Authorization")
@@ -381,7 +381,7 @@ public final class ZoChatClient {
         if let c = credentials(), owner == nil || owner == c.ownerKey, usesFirebaseRealtime,
            firebaseSource?.writeTyping(roomID: roomID, sessionID: sessionID, sequence: sequence, active: false) == true { return }
         guard let c = credentials(), owner == nil || owner == c.ownerKey,
-              let url = URL(string: baseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/api/v4/chat/rooms/\(roomID)/typing") else { return }
+              let url = URL(string: baseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/api/v2/chat/rooms/\(roomID)/typing") else { return }
         var request = URLRequest(url: url, timeoutInterval: 5)
         request.httpMethod = "POST"
         request.setValue("Bearer " + c.accessToken.replacingOccurrences(of: "Bearer ", with: ""), forHTTPHeaderField: "Authorization")

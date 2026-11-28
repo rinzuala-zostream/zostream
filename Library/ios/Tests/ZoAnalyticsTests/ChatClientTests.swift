@@ -257,7 +257,7 @@ final class ChatClientTests: XCTestCase {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [ChatURLProtocol.self]
         ChatURLProtocol.handle = { request in
-            XCTAssertEqual(request.url?.path, "/api/v4/chat/rooms/1/messages")
+            XCTAssertEqual(request.url?.path, "/api/v2/chat/rooms/1/messages")
             XCTAssertEqual(request.url?.query, "initial=1")
             return (200, #"{"success":true,"data":{"messages":[],"has_more":false,"first_unread_id":"9","initial_after":"8"}}"#)
         }
@@ -348,7 +348,7 @@ final class ChatClientTests: XCTestCase {
             requests += 1
             XCTAssertEqual(request.value(forHTTPHeaderField: "Device-Token"), "device-a")
             XCTAssertEqual(request.value(forHTTPHeaderField: "X-Playback-Token"), "play-a")
-            XCTAssertEqual(request.url?.path, "/api/v4/chat/rooms/1/messages")
+            XCTAssertEqual(request.url?.path, "/api/v2/chat/rooms/1/messages")
             if requests == 1 { return (401, "{\"success\":false,\"data\":null,\"message\":\"Expired\"}") }
             XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer new-token")
             return (200, "{\"success\":true,\"data\":{\"ok\":true}}")
@@ -369,7 +369,7 @@ final class ChatClientTests: XCTestCase {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [ChatURLProtocol.self]
         ChatURLProtocol.handle = { request in
-            XCTAssertEqual(request.url?.path, "/api/v4/chat/rooms/1/typing")
+            XCTAssertEqual(request.url?.path, "/api/v2/chat/rooms/1/typing")
             XCTAssertEqual(request.httpMethod, "POST")
             XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer token")
             var body = request.httpBody ?? Data()

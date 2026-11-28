@@ -62,7 +62,7 @@ class V4ResponseEnvelope
         $client = (array) $request->attributes->get('client_context', []);
         $meta = [
             'request_id' => $requestId,
-            'api_version' => '4',
+            'api_version' => (string) $request->attributes->get('api_version', '4'),
             'client' => $client,
         ];
 

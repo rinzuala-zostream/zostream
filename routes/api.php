@@ -63,6 +63,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 require __DIR__.'/api_v4.php';
+require __DIR__.'/api_v2.php';
 
 Route::get('/network-check/{id}/probe', [\App\Http\Controllers\NetworkDiagnosticController::class, 'probe'])
     ->whereUuid('id')->middleware(['signed:relative', 'throttle:90,1'])->name('network-check.probe');

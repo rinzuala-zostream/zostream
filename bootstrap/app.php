@@ -36,6 +36,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'nexframe.access' => EnsureNexframeAccess::class,
             'api.client' => ApiClientContext::class,
             'api.v4' => V4ResponseEnvelope::class,
+            'api.v2' => V4ResponseEnvelope::class,
             'isp.active' => EnsureActiveIspUser::class,
             'isp.admin' => EnsureIspAdmin::class,
         ]);

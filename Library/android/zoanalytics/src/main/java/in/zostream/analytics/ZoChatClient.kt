@@ -162,7 +162,7 @@ class ZoChatClient(
         val c = credentials()?.takeIf { owner == null || owner == it.ownerKey } ?: return
         if (usesFirebaseRealtime && firebaseSource?.writeTyping(roomId, sessionId, sequence, false) == true) return
         val body = JSONObject().put("active", false).put("typing_session_id", sessionId).put("typing_sequence", sequence)
-        val request = Request.Builder().url(baseUrl.trimEnd('/') + "/api/v4/chat/rooms/$roomId/typing")
+        val request = Request.Builder().url(baseUrl.trimEnd('/') + "/api/v2/chat/rooms/$roomId/typing")
             .header("Authorization", "Bearer " + c.accessToken.removePrefix("Bearer "))
             .header("Device-Token", c.deviceToken).header("Accept", "application/json")
             .header("X-Client-Platform", "android").header("X-Client-Version", version)
@@ -178,7 +178,7 @@ class ZoChatClient(
         val c = credentials() ?: error("Please sign in again")
         check(c.ownerKey == requestOwner) { "Account changed. Reopen chat." }
         check(owner == null || owner == c.ownerKey) { "Account changed. Reopen chat." }
-        val request = Request.Builder().url(baseUrl.trimEnd('/') + "/api/v4/chat/" + path)
+        val request = Request.Builder().url(baseUrl.trimEnd('/') + "/api/v2/chat/" + path)
             .header("Authorization", "Bearer " + c.accessToken.removePrefix("Bearer "))
             .header("Device-Token", c.deviceToken).header("Accept", "application/json")
             .header("X-Analytics-SDK-Version", ZoAnalyticsConfiguration.SDK_VERSION)
@@ -273,7 +273,7 @@ class ZoChatClient(
     private fun reportVisibilityHTTP(id: String, body: JSONObject) {
         val c = credentials() ?: return
         if (owner != null && owner != c.ownerKey) return
-        val request = Request.Builder().url(baseUrl.trimEnd('/') + "/api/v4/chat/rooms/$id/heartbeat")
+        val request = Request.Builder().url(baseUrl.trimEnd('/') + "/api/v2/chat/rooms/$id/heartbeat")
             .header("Authorization", "Bearer " + c.accessToken.removePrefix("Bearer "))
             .header("Device-Token", c.deviceToken).header("Accept", "application/json")
             .header("X-Client-Platform", "android").header("X-Client-Version", version)
