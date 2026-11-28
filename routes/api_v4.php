@@ -173,7 +173,7 @@ Route::prefix('v4')
             ->middleware('throttle:20,1');
 
         Route::middleware('auth.token')->group(function () {
-            Route::prefix('chat')->middleware('throttle:240,1')->group(function () {
+            Route::prefix('chat')->middleware('throttle:chat-api')->group(function () {
                 foreach ([
                     ['POST', 'rooms/join', 'join'],
                     ['POST', 'rooms/{roomId}/messages', 'send'],
@@ -209,7 +209,7 @@ Route::prefix('v4')
                         ->defaults('chatAction', $action)
                         ->where(['roomId' => '[A-Za-z0-9_-]{1,80}', 'messageId' => '[0-9]{1,19}', 'inviteId' => '[0-9]{1,19}', 'token' => '[A-Za-z0-9]{64}']);
                     if (in_array($action, ['send', 'rooms', 'invitees', 'lookup', 'react', 'report'])) {
-                        $route->middleware('throttle:30,1');
+                        $route->middleware($action === 'send' ? 'throttle:chat-send' : 'throttle:chat-api');
                     }
                 }
             });

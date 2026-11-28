@@ -98,6 +98,17 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(60)
                 ->by('analytics-reports:'.hash('sha256', $userId));
         });
+
+        // Authenticated chat users often share carrier NAT or a Cloudflare
+        // address. Keep their chat budgets independent of the public IP.
+        RateLimiter::for('chat-api', function (Request $request) {
+            return Limit::perMinute(240)
+                ->by('chat-api:'.hash('sha256', $this->chatLimiterIdentity($request)));
+        });
+        RateLimiter::for('chat-send', function (Request $request) {
+            return Limit::perMinute(30)
+                ->by('chat-send:'.hash('sha256', $this->chatLimiterIdentity($request)));
+        });
     }
 
     private function otpRecipientLimit(Request $request, string $scope, int $maxAttempts): Limit
@@ -139,5 +150,13 @@ class AppServiceProvider extends ServiceProvider
 
         return Limit::perMinute(max(1, $maxAttempts))
             ->by('playback-'.$scope.':'.hash('sha256', $identifier));
+    }
+
+    private function chatLimiterIdentity(Request $request): string
+    {
+        $userId = trim((string) $request->input('auth_user_id', ''));
+        $sessionId = trim((string) $request->attributes->get('auth_session_token_id', ''));
+
+        return $userId !== '' ? 'user:'.$userId : ($sessionId !== '' ? 'session:'.$sessionId : 'ip:'.$request->ip());
     }
 }
