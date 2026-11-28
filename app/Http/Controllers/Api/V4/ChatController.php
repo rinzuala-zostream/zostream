@@ -72,8 +72,6 @@ class ChatController extends Controller
             case 'message':
                 $this->chat->room($room, $uid);
                 $m = $this->chat->message($room, $id);
-                abort_if($this->chat->blocked($uid, $m['sender_id']), 404);
-
                 return $this->chat->publicMessage($m, $uid);
             case 'token':
             case 'lease':
@@ -94,13 +92,6 @@ class ChatController extends Controller
                 $this->chat->store->update(["reports/$room/$id/$uid" => ['reason' => trim($p['reason']), 'created_at' => now()->utc()->toIso8601String()]]);
 
                 return ['reported' => true];
-            case 'blocks':
-                if ($r->isMethod('get')) {
-                    return $this->chat->blocks($uid);
-                }
-                $p = $r->validate(['user_id' => ['required', 'string', 'regex:/^[A-Za-z0-9_-]{1,128}$/D'], 'blocked' => 'required|boolean']);
-
-                return $this->chat->block($uid, $p['user_id'], $p['blocked']);
             case 'rooms':
                 if ($r->isMethod('get')) {
                     return $this->chat->privateRooms($uid, $r->validate(['recipient_user_id' => ['nullable', 'string', 'regex:/^[A-Za-z0-9_-]{1,128}$/D']])['recipient_user_id'] ?? null);
@@ -177,7 +168,7 @@ class ChatController extends Controller
         })->limit(2)->get(['uid', 'name']);
         abort_unless($users->count() === 1, 404, 'This Zo Stream account is unavailable.');
         $user = $users->first();
-        abort_if($user->uid === $uid || $this->chat->blocked($uid, $user->uid) || $this->chat->blocked($user->uid, $uid), 403, 'This person cannot be invited.');
+        abort_if($user->uid === $uid, 403, 'You cannot invite yourself.');
 
         return ['user_id' => $user->uid, 'name' => $user->name];
     }
@@ -232,7 +223,7 @@ class ChatController extends Controller
         }
         $users = [];
         foreach ($this->chat->store->get("room_typing/$room") ?? [] as $entry) {
-            if (($entry['expires_at'] ?? 0) <= now()->valueOf() || $entry['user_id'] === $uid || $this->chat->blocked($uid, $entry['user_id'])) {
+            if (($entry['expires_at'] ?? 0) <= now()->valueOf() || $entry['user_id'] === $uid) {
                 continue;
             }
             $users[$entry['user_id']] = ['user_id' => $entry['user_id'], 'name' => $entry['name'], 'is_admin' => false, 'expires_in' => (int) ceil(($entry['expires_at'] - now()->valueOf()) / 1000)];
@@ -247,7 +238,7 @@ class ChatController extends Controller
         $p = $r->validate(['room_ids' => 'required|array|max:200', 'room_ids.*' => ['string', 'regex:/^[0-9]{1,19}$/D']]);
         $shared = [];
         foreach ($this->chat->store->get("rooms/$room/messages") ?? [] as $m) {
-            if (! ($m['deleted'] ?? false) && ! $this->chat->blocked($uid, $m['sender_id']) && isset($m['invitation'])) {
+            if (! ($m['deleted'] ?? false) && isset($m['invitation'])) {
                 $shared[$m['invitation']['room_id']] = $m['invitation'];
             }
         }

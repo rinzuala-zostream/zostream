@@ -33,8 +33,7 @@ class DeliverChatPush implements ShouldQueue
                 return;
             }
             $uid = $item['recipient'];
-            $cancel = $chat->blocked($uid, $item['sender']) || $chat->blocked($item['sender'], $uid)
-                || $item['created_at'] < now()->subHour()->timestamp;
+            $cancel = $item['created_at'] < now()->subHour()->timestamp;
             try {
                 $chat->room($item['room_id'], $item['kind'] === 'invite' ? null : $uid);
             } catch (HttpExceptionInterface $e) {

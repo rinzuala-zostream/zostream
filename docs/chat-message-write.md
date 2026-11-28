@@ -1,6 +1,6 @@
 # Mobile chat contract
 
-Android and iOS keep the existing chat UI. ZoStream bearer authentication remains the user login. Message writes, membership, invitations, reactions, reads, pins, reports and blocks go through `/api/v2/chat`; only ephemeral typing is client-writable in RTDB. Watch Together playback/control is outside this change.
+Android and iOS use ZoStream bearer authentication for chat. Message writes, membership, invitations, reactions, reads, pins and reports go through `/api/v2/chat`; only ephemeral typing is client-writable in RTDB. Chat no longer has user-to-user blocking. Watch Together playback/control is outside this change.
 
 ## Realtime access
 
@@ -30,7 +30,7 @@ Loading/caching never marks messages read. Only visible message rows enqueue a r
 
 ## Typing
 
-Both SDKs write `room_typing/{room}/{uid}_{typingSessionID}` directly through the native adapter. Rules enforce the caller's UID, token-bound name, send permission, nondecreasing sequence and an expiry no more than ten seconds ahead. Native clients use a six-second expiry and register `onDisconnect` removal. Multiple device/session indicators are deduplicated per user; own/blocked users are hidden. Typing never produces a push. The HTTP typing endpoint remains as recovery/older-client compatibility.
+Both SDKs write `room_typing/{room}/{uid}_{typingSessionID}` directly through the native adapter. Rules enforce the caller's UID, token-bound name, send permission, nondecreasing sequence and an expiry no more than ten seconds ahead. Native clients use a six-second expiry and register `onDisconnect` removal. Multiple device/session indicators are deduplicated per user; a user's own indicator is hidden. Typing never produces a push. The HTTP typing endpoint remains as recovery/older-client compatibility.
 
 ## Private rooms and moderation
 
@@ -38,16 +38,16 @@ Create/invite endpoints use existing phone lookup, contact picker, user long-pre
 
 Ordinary private rooms expire one hour after their last message. Reads, typing and reactions do not extend this period. Expiry is enforced during authorization and in `chat:maintain`. Rooms marked as Watch Together content or actively watching are excluded from ordinary-chat expiry.
 
-Reactions use desired active/inactive state. Pins require existing ZoStream administrator access. Reports persist the reporter, message and reason. Blocks remove the blocked sender from the viewer's projection/history and suppress their typing and notification activity; unblocking restores recent projections.
+Reactions use desired active/inactive state. Pins require existing ZoStream administrator access. Reports persist the reporter, message and reason.
 
 ## Push policy and operation
 
 - Private room messages notify members except the sender.
 - Global/movie/episode messages do not notify the room; replies notify the original author and reactions notify the message author.
 - Self-actions never notify the actor. A private reply produces only one notification per recipient.
-- Invitations notify their intended recipient. Mutual blocks suppress notification delivery.
+- Invitations notify their intended recipient.
 
-Outbox rows are included in the originating RTDB update. Delivery is attempted after the HTTP response; the scheduler recovers pending rows. The delivery job rechecks membership, room expiry, blocks and invitation status. It claims an entry before FCM I/O and does not automatically replay an ambiguous sending/failed entry, avoiding duplicate pushes. FCM currently uses the account's existing `user.token` field. Android chat keys use the app's existing message/invitation notification channels and are never treated as movie IDs.
+Outbox rows are included in the originating RTDB update. Delivery is attempted after the HTTP response; the scheduler recovers pending rows. The delivery job rechecks membership, room expiry and invitation status. It claims an entry before FCM I/O and does not automatically replay an ambiguous sending/failed entry, avoiding duplicate pushes. FCM currently uses the account's existing `user.token` field. Android chat keys use the app's existing message/invitation notification channels and are never treated as movie IDs.
 
 Deploy the RTDB rules before enabling the new backend and releasing the updated mobile apps. Configure `FIREBASE_DATABASE_URL` and the existing Firebase service account with RTDB and custom-token signing access. API and queue hosts must share the same database/Redis cache lock store. Keep the existing Laravel scheduler and queue worker running; `chat:maintain` runs every minute. No production deployment or live FCM delivery is performed by the local tests.
 

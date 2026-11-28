@@ -243,7 +243,7 @@ public final class ZoChatClient {
         else if let string = successValue as? String { declaredSuccess = string.lowercased() == "true" || string == "1" }
         else { declaredSuccess = (json["status"] as? String)?.lowercased() == "success" }
         let payloadKeys = ["room_id", "user_id", "messages", "pins", "pinned", "invites", "rooms", "ended", "accepted", "position_ms",
-                           "online_count", "auth", "blocked", "left", "users", "reported", "resolved", "updated"]
+                           "online_count", "auth", "left", "users", "reported", "resolved", "updated"]
         let undeclared = successValue == nil || successValue is NSNull
         let directPayload = payloadKeys.contains { json[$0] != nil && !(json[$0] is NSNull) }
         let successfulEnvelope = declaredSuccess || (undeclared && (json["data"] is [String: Any] || directPayload))

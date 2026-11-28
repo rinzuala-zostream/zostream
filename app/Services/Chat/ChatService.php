@@ -62,11 +62,6 @@ class ChatService
         return ['uid' => $uid, 'name' => $displayName, 'is_admin' => app(AdminAccess::class)->isAdmin($uid)];
     }
 
-    public function blocked(string $viewer, string $sender): bool
-    {
-        return $viewer !== $sender && $this->store->get("blocks/$viewer/$sender") !== null;
-    }
-
     public function room(string $id, ?string $uid = null, bool $send = false): array
     {
         abort_unless(preg_match('/^[A-Za-z0-9_-]{1,80}$/D', $id), 404);
@@ -157,14 +152,11 @@ class ChatService
 
     public function publicMessage(array $r, string $uid): array
     {
-        if (isset($r['reply']['user_id']) && $this->blocked($uid, $r['reply']['user_id'])) {
-            $r['reply'] = ['id' => $r['reply']['id'], 'user_id' => $r['reply']['user_id'], 'display_name' => 'Blocked user', 'body' => null, 'spoiler' => false, 'deleted' => true];
-        }
         $reactions = [];
         $mine = [];
         foreach ($r['reaction_users'] ?? [] as $emojiKey => $users) {
             $emoji = base64_decode(strtr($emojiKey, '-_', '+/'));
-            $visible = array_filter($users, fn ($active, $sender) => $active && ! $this->blocked($uid, (string) $sender), ARRAY_FILTER_USE_BOTH);
+            $visible = array_filter($users, fn ($active) => $active);
             if ($visible) {
                 $reactions[] = ['emoji' => $emoji, 'count' => count($visible)];
             }
@@ -196,9 +188,6 @@ class ChatService
     {
         foreach ($this->members($room) as $uid => $member) {
             $uid = (string) $uid;
-            if ($this->blocked($uid, $record['sender_id'])) {
-                continue;
-            }
             $updates["user_messages/$uid/$room/".$record['id']] = $record;
             $updates['user_sync_events/'.$uid.'/'.$room.'/'.FirebaseChatStore::key($cursor)] = [
                 'kind' => $kind, 'message_id' => $record['id'], 'cursor' => $cursor, 'overlay_live' => $kind === 'created'];
@@ -208,7 +197,7 @@ class ChatService
 
     private function push(array &$updates, string $recipient, string $sender, string $room, int $cursor, string $kind, string $body, array $extra = []): void
     {
-        if ($recipient === $sender || $this->blocked($recipient, $sender) || $this->blocked($sender, $recipient)) {
+        if ($recipient === $sender) {
             return;
         }
         $id = hash('sha256', "$cursor:$recipient");
@@ -236,7 +225,7 @@ class ChatService
             $reply = null;
             if ($replyID = $p['reply_to_id'] ?? null) {
                 $original = $this->message($room, $replyID);
-                abort_if(($original['deleted'] ?? false) || $this->blocked($uid, $original['sender_id']), 422, 'This reply target is unavailable.');
+                abort_if(($original['deleted'] ?? false), 422, 'This reply target is unavailable.');
                 $reply = ['id' => $original['id'], 'user_id' => $original['sender_id'], 'display_name' => $original['sender_name'],
                     'is_admin' => $original['sender_is_admin'] ?? false, 'body' => $original['spoiler'] ? null : $original['body'], 'spoiler' => $original['spoiler'], 'deleted' => false];
             }
@@ -310,7 +299,7 @@ class ChatService
             }
             uasort($page, fn ($a, $b) => $a['cursor'] <=> $b['cursor']);
             foreach ($page as $r) {
-                if (! $this->blocked($uid, $r['sender_id']) && ! ($r['deleted'] ?? false)) {
+                if (! ($r['deleted'] ?? false)) {
                     $values[$r['id']] = $r;
                 }
             }
@@ -336,7 +325,7 @@ class ChatService
             $page = $this->store->query("rooms/$room/messages", 'cursor', $after + 1, null, 31, true);
             uasort($page, fn ($a, $b) => $a['cursor'] <=> $b['cursor']);
             foreach ($page as $r) {
-                if ($r['sender_id'] !== $uid && ! ($r['deleted'] ?? false) && ! $this->blocked($uid, $r['sender_id'])) {
+                if ($r['sender_id'] !== $uid && ! ($r['deleted'] ?? false)) {
                     return (string) $r['id'];
                 }
                 $after = (int) $r['cursor'];
@@ -344,17 +333,6 @@ class ChatService
         } while (count($page) === 31);
 
         return null;
-    }
-
-    public function refreshProjection(string $room, string $uid): void
-    {
-        $u = [];
-        foreach ($this->store->query("rooms/$room/messages", 'cursor', null, null, 100) as $r) {
-            $u["user_messages/$uid/$room/".$r['id']] = $this->blocked($uid, $r['sender_id']) ? null : $r;
-        }
-        if ($u) {
-            $this->store->update($u);
-        }
     }
 
     public function sync(string $room, string $uid, int $cursor): array
@@ -368,7 +346,7 @@ class ChatService
             $cursor = max($cursor, $item['cursor']);
             if (in_array($item['kind'], ['created', 'deleted'])) {
                 $record = $this->store->get("user_messages/$uid/$room/".$item['message_id']);
-                if (! $record || $this->blocked($uid, $record['sender_id'])) {
+                if (! $record) {
                     continue;
                 }
                 $item['message'] = $this->publicMessage($record, $uid);
@@ -383,7 +361,7 @@ class ChatService
     {
         $read = (int) ($this->store->get("reads/$uid/$room") ?? 0);
         $unread = array_filter($this->store->query("rooms/$room/messages", 'cursor', $read + 1),
-            fn ($r) => $r['sender_id'] !== $uid && ! ($r['deleted'] ?? false) && ! $this->blocked($uid, $r['sender_id']));
+            fn ($r) => $r['sender_id'] !== $uid && ! ($r['deleted'] ?? false));
         uasort($unread, fn ($a, $b) => $a['cursor'] <=> $b['cursor']);
         $s = $this->room($room, $uid);
 
@@ -412,7 +390,6 @@ class ChatService
         }
 
         return ['rooms' => $rooms, 'total_unread' => array_sum(array_column($rooms, 'unread_count')), 'user_id' => $uid, 'is_admin' => $this->user($uid)['is_admin'],
-            'blocked_user_ids' => array_map('strval', array_keys($this->store->get("blocks/$uid") ?? [])),
             'channels' => [], 'websocket_url' => '', 'firebase_realtime' => true, 'event_cursor' => (string) $snapshot];
     }
 
@@ -437,7 +414,7 @@ class ChatService
             $uid = $actor['uid'];
             $this->room($room, $uid, true);
             $r = $this->message($room, $id);
-            abort_if($r['deleted'] || $this->blocked($uid, $r['sender_id']), 422);
+            abort_if($r['deleted'], 422);
             $key = rtrim(strtr(base64_encode($emoji), '+/', '-_'), '=');
             if ((bool) ($r['reaction_users'][$key][$uid] ?? false) === $active) {
                 return $this->publicMessage($r, $uid);
@@ -465,7 +442,7 @@ class ChatService
         $pins = [];
         foreach ($this->store->get("rooms/$room/pins") ?? [] as $id => $active) {
             $r = $this->message($room, (string) $id);
-            if (! $r['deleted'] && ! $this->blocked($uid, $r['sender_id'])) {
+            if (! $r['deleted']) {
                 $pins[] = $this->publicMessage($r, $uid);
             }
         }
@@ -487,40 +464,6 @@ class ChatService
 
             return ['pinned' => $active];
         });
-    }
-
-    public function block(string $uid, string $other, bool $active): array
-    {
-        abort_if($uid === $other, 422);
-        $this->user($other);
-        // Every message fan-out uses the same per-room lock as projection removal.
-        $this->store->update(["blocks/$uid/$other" => $active ? ['at' => now()->timestamp] : null]);
-        foreach (array_keys($this->store->get("user_rooms/$uid") ?? []) as $room) {
-            $this->locked((string) $room, function () use ($uid, $other, $room, $active) {
-                $u = [];
-                if ($active) {
-                    foreach ($this->store->get("user_messages/$uid/$room") ?? [] as $id => $r) {
-                        if ($r['sender_id'] === $other) {
-                            $u["user_messages/$uid/$room/$id"] = null;
-                        }
-                    }
-                }
-                $this->accountEvent($u, $uid, $this->store->nextCursor());
-                $this->store->update($u);
-                if (! $active) {
-                    $this->refreshProjection((string) $room, $uid);
-                }
-            });
-        }
-
-        return ['blocked' => $active];
-    }
-
-    public function blocks(string $uid): array
-    {
-        $ids = array_keys($this->store->get("blocks/$uid") ?? []);
-
-        return ['users' => DB::table('user')->whereIn('uid', $ids)->get(['uid', 'name'])->map(fn ($r) => ['id' => $r->uid, 'name' => $r->name])->all()];
     }
 
     public function movie(string $id, bool $kids = false, bool $ageRestriction = false): array
@@ -553,7 +496,6 @@ class ChatService
             // Validate invitees before creating any room.
             foreach ($p['invitee_ids'] as $other) {
                 $this->user($other);
-                abort_if($this->blocked($other, $uid) || $this->blocked($uid, $other), 403, 'This person cannot be invited.');
             }
             $this->store->update($u);
             $this->invitePeople($actor, $room, $p['invitee_ids'], false);
@@ -572,7 +514,6 @@ class ChatService
             $u = [];
             foreach (array_unique($ids) as $other) {
                 $this->user($other);
-                abort_if($this->blocked($uid, $other) || $this->blocked($other, $uid), 403, 'This person cannot be invited.');
                 if ($other === $uid || ($this->store->get("rooms/$room/members/$other/active") ?? false)) {
                     continue;
                 }
@@ -632,7 +573,7 @@ class ChatService
         $result = [];
         foreach (array_keys($this->store->get("user_invites/$uid") ?? []) as $id) {
             $r = $this->store->get("invites/$id");
-            if (! $r || $r['status'] !== 'pending' || $this->blocked($uid, $r['inviter_id']) || $this->blocked($r['inviter_id'], $uid)) {
+            if (! $r || $r['status'] !== 'pending') {
                 continue;
             }
             try {
@@ -662,7 +603,6 @@ class ChatService
             $r = $this->store->get("invites/$id");
             $room = $r['room_id'];
             $s = $this->room($room);
-            abort_if($this->blocked($uid, $r['inviter_id']) || $this->blocked($r['inviter_id'], $uid), 403, 'This invitation is unavailable.');
             abort_if($r['status'] === 'declined', 410, 'This invitation was declined.');
             if ($accept !== null && $r['status'] === 'pending') {
                 $u = ["invites/$id/status" => $accept ? 'accepted' : 'declined'];
@@ -686,7 +626,7 @@ class ChatService
         $uid = $actor['uid'];
         $this->room($room, $uid);
         $record = $this->message($room, $message);
-        abort_if($record['deleted'] || $this->blocked($uid, $record['sender_id']), 404);
+        abort_if($record['deleted'], 404);
         $target = $record['invitation']['room_id'] ?? null;
         abort_unless($target, 404);
 

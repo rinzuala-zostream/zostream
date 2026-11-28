@@ -204,7 +204,7 @@ class ZoChatClient(
             val successUndeclared = successValue == null || successValue == JSONObject.NULL
             val payloadKeys = listOf(
                 "room_id", "user_id", "messages", "pins", "pinned", "invites", "rooms", "ended", "accepted", "position_ms",
-                "online_count", "auth", "blocked", "left", "users", "reported", "resolved", "updated", "movies"
+                "online_count", "auth", "left", "users", "reported", "resolved", "updated", "movies"
             )
             val hasDirectPayload = payloadKeys.any { key -> json.has(key) && json.opt(key) != JSONObject.NULL }
             val successfulEnvelope = declaredSuccess || (successUndeclared && (data != null || hasDirectPayload))

@@ -23,7 +23,6 @@ Route::prefix('v2/chat')
             ['POST', 'rooms/{roomId}/messages/{messageId}/pin', 'pin'],
             ['POST', 'rooms/{roomId}/messages/{messageId}/unpin', 'unpin'],
             ['POST', 'rooms/{roomId}/messages/{messageId}/report', 'report'],
-            ['GET|POST', 'blocks', 'blocks'],
             ['GET', 'rooms/{roomId}/movie-suggestions', 'movies'],
             ['GET|POST', 'invite-rooms', 'rooms'],
             ['POST', 'invite-rooms/{roomId}/join', 'private-join'],

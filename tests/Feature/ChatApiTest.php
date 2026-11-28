@@ -219,20 +219,16 @@ class ChatApiTest extends TestCase
         $this->asUser('bob')->getJson('/api/v2/chat/invite-rooms')->assertJsonPath('data.rooms', []);
     }
 
-    public function test_block_filters_history_projection_typing_and_push(): void
+    public function test_chat_messages_are_visible_and_delivered_without_user_blocks(): void
     {
         $room = $this->privateRoom();
         $id = $this->send('alice', $room)->json('data.id');
-        $this->store->update(['push_outbox' => null]);
-        $this->asUser('bob')->postJson('/api/v2/chat/blocks', ['user_id' => 'alice', 'blocked' => true])->assertOk();
-        $this->assertNull($this->store->get("user_messages/bob/$room/$id"));
-        $this->send('alice', $room)->assertCreated();
-        $this->assertEmpty($this->store->get('push_outbox'));
-        $this->asUser('bob')->getJson("/api/v2/chat/rooms/$room/messages")->assertJsonPath('data.messages', []);
+        $this->assertNotNull($this->store->get("user_messages/bob/$room/$id"));
+        $this->asUser('bob')->getJson("/api/v2/chat/rooms/$room/messages")->assertJsonCount(1, 'data.messages');
+        $this->asUser('bob')->getJson('/api/v2/chat/blocks')->assertNotFound();
+        $this->asUser('bob')->postJson('/api/v2/chat/blocks', ['user_id' => 'alice', 'blocked' => true])->assertNotFound();
         $this->store->update(["room_typing/$room/alice_session" => ['user_id' => 'alice', 'name' => 'Alice', 'expires_at' => now()->addSeconds(6)->valueOf()]]);
-        $this->getJson("/api/v2/chat/rooms/$room/typing")->assertJsonPath('data.users', []);
-        $this->postJson('/api/v2/chat/blocks', ['user_id' => 'alice', 'blocked' => false])->assertOk();
-        $this->getJson("/api/v2/chat/rooms/$room/messages")->assertJsonCount(2, 'data.messages');
+        $this->getJson("/api/v2/chat/rooms/$room/typing")->assertJsonPath('data.users.0.user_id', 'alice');
     }
 
     public function test_invitation_links_are_account_bound_and_decline_does_not_grant_access(): void
@@ -265,7 +261,7 @@ class ChatApiTest extends TestCase
         $this->assertLessThanOrEqual(now()->addSeconds(90)->valueOf(), $expiry);
     }
 
-    public function test_push_delivery_rechecks_blocks_and_does_not_replay_a_claim(): void
+    public function test_push_delivery_does_not_replay_a_claim(): void
     {
         $room = $this->privateRoom();
         $this->send('alice', $room);
