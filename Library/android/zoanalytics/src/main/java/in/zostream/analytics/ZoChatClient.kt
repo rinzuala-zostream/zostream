@@ -23,6 +23,8 @@ class ZoChatClient(
     init { require(baseUrl.startsWith("https://")) { "Chat API must use HTTPS" } }
     private val main = Handler(Looper.getMainLooper())
     private val executor = Executors.newSingleThreadExecutor()
+    // Realtime recovery must not wait behind unrelated chat/history requests.
+    private val firebaseExecutor = Executors.newSingleThreadExecutor()
     var onBadgeEvent: ((JSONObject) -> Unit)? = null
     var onUnreadRoomChange: ((JSONObject) -> Unit)? = null
     var onMessage: ((JSONObject) -> Unit)? = null
@@ -142,7 +144,9 @@ class ZoChatClient(
         val requestOwner = credentials()?.ownerKey
         val requestPlaybackToken = playbackToken()
         val requestRoomRevision = roomRevision
-        executor.execute {
+        val requestExecutor = if (path == "firebase/token" || path == "firebase/lease" ||
+            (path.startsWith("rooms/") && path.contains("/sync?cursor="))) firebaseExecutor else executor
+        requestExecutor.execute {
             val result = runCatching { perform(path, body, requestOwner, requestPlaybackToken) }
             main.post {
                 if (!closed && credentials()?.ownerKey == requestOwner)
@@ -663,7 +667,7 @@ class ZoChatClient(
         isConnected = false
         closed = true; generation++; roomRevision++; main.removeCallbacksAndMessages(null)
         channel = null; socketId = null; room = null
-        socket?.cancel(); pendingCall?.cancel(); executor.shutdownNow()
+        socket?.cancel(); pendingCall?.cancel(); executor.shutdownNow(); firebaseExecutor.shutdownNow()
 
     }
 }
