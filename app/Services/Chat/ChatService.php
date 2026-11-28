@@ -35,6 +35,16 @@ class ChatService
         return Cache::lock('chat:room:'.hash('sha256', $room), 120)->block(10, $work);
     }
 
+    private function lockedSend(string $room, string $uid, string $requestId, callable $work): mixed
+    {
+        // Persistent public rooms cannot be ended. Serialize their sends only
+        // against retries of the same operation; a room-wide lock made every
+        // message wait behind unrelated Firebase reads and writes.
+        $key = hash('sha256', $room.':'.$uid.':'.strtolower($requestId));
+
+        return Cache::lock('chat:send:'.$key, 120)->block(10, $work);
+    }
+
     public function user(string $uid): array
     {
         abort_unless(preg_match('/^[A-Za-z0-9_-]{1,128}$/D', $uid), 403, 'Your chat identity is unavailable.');
@@ -204,7 +214,7 @@ class ChatService
 
     public function send(array $actor, string $room, array $p): array
     {
-        return $this->locked($room, function () use ($actor, $room, $p) {
+        $work = function () use ($actor, $room, $p) {
             $uid = $actor['uid'];
             $s = $this->room($room, $uid, true);
             $request = strtolower($p['request_id']);
@@ -259,7 +269,16 @@ class ChatService
             $this->publish($u);
 
             return $response;
-        });
+        };
+
+        // Invite rooms can be ended or expired concurrently, so keep their
+        // room lifecycle lock. Global and title rooms stay open and can safely
+        // process different sends in parallel.
+        $persistentRoom = $room === 'global' || preg_match('/^(movie|episode)-[0-9]+$/D', $room) === 1;
+
+        return $persistentRoom
+            ? $this->lockedSend($room, $actor['uid'], $p['request_id'], $work)
+            : $this->locked($room, $work);
     }
 
     public function history(string $room, string $uid, ?int $before, ?int $after, bool $initial = false, int $limit = 30): array
